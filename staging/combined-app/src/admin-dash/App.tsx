@@ -250,15 +250,10 @@ export default function App({ isPresentation = false }: AppProps) {
   }
 
   useEffect(() => {
-    if (adminKey) {
-      fetchSales(adminKey)
-      const interval = setInterval(() => fetchSales(adminKey), 10000)
-      return () => clearInterval(interval)
-    } else {
-      setAuthChecking(false)
-      setIsAuthenticated(false)
-    }
-  }, [adminKey])
+    fetchSales()
+    const interval = setInterval(() => fetchSales(), 10000)
+    return () => clearInterval(interval)
+  }, [])
 
   const handleLogin = async () => {
     const trimmed = keyInput.trim()
