@@ -1,0 +1,41 @@
+# ============================
+# LITTX — Root .gitignore
+# ============================
+
+# ---- Dependencies ----
+node_modules/
+.pnp
+.pnp.js
+
+# ---- Environment / Secrets ----
+.env
+.env.local
+.env.production
+.env.*.local
+staging/server/.env
+
+# ---- Build output ----
+staging/combined-app/dist/
+staging/combined-app/build/
+
+# ---- Generated ticket PDFs ----
+staging/server/tickets/*.pdf
+staging/server/tickets/*.png
+
+# ---- OS & Editor ----
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# ---- Logs ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- Misc ----
+*.zip
+littx_temp/
