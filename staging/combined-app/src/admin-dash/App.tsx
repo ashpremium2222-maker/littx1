@@ -172,8 +172,8 @@ export default function App({ isPresentation = false }: AppProps) {
     sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key') || ''
   )
   const [keyInput, setKeyInput] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [authChecking, setAuthChecking] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(true)
+  const [authChecking, setAuthChecking] = useState(false)
   const [authError, setAuthError] = useState('')
   const [sales, setSales] = useState<any[]>([])
   const [allSales, setAllSales] = useState<any[]>([])
@@ -202,20 +202,14 @@ export default function App({ isPresentation = false }: AppProps) {
   const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_male') || '699')
   const [manualEvent, setManualEvent] = useState('FRESHERS TAKEOVER')
 
-  const fetchSales = async (keyToUse = adminKey) => {
-    if (!keyToUse) {
-      setIsAuthenticated(false)
-      setAuthChecking(false)
-      return false
-    }
+  const fetchSales = async () => {
     try {
       const res = await fetch(
-        `/api/admin/sales?key=${encodeURIComponent(keyToUse)}${isPresentation ? '&pres=true' : ''}`
+        `/api/admin/sales?${isPresentation ? 'pres=true' : ''}`
       )
       const data = await res.json().catch(() => ({}))
-      if (res.status === 401 || !res.ok || !data.success) {
-        const errReason = data.message || 'Access Denied: Admin key invalid.'
-        handleLogout(errReason)
+      if (!res.ok || !data.success) {
+        console.error('Failed to fetch sales:', data.message)
         return false
       }
       const fetchedSales = data.sales || []

@@ -124,17 +124,7 @@ function computeAmount(gender, quantity) {
 }
 
 function requireAdmin(req, res, next) {
-    const key = req.headers['x-admin-key'] || req.query.key;
-    const isPres = req.headers['x-presentation'] === 'true' || req.query.pres === 'true';
-
-    if (isPres) {
-        if (req.method === 'GET' && key === 'ftlittx26') {
-            return next();
-        }
-        return res.status(401).json({ success: false, message: 'Access Denied: Use the presentation password.' });
-    }
-
-    if (key !== ADMIN_KEY) return res.status(401).json({ success: false, message: 'Access Denied: Dashboard is bound to its original deployment device.' });
+    // Key check removed - dashboard is open
     next();
 }
 
