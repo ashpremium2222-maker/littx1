@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "buildCommand": "cd staging/combined-app && npm install && npm run build",
+  "outputDirectory": "staging/combined-app/dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
