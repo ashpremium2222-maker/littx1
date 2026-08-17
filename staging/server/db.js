@@ -14,6 +14,7 @@ mongoose.connect(MONGODB_URI)
 
 const EventSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
+    companyId: { type: String, default: 'littlane' },
     date: { type: String },
     time: { type: String },
     venue: { type: String },
@@ -25,14 +26,23 @@ const EventSchema = new mongoose.Schema({
         price: { type: Number },
         gender: { type: String } // "male", "female", "unisex"
     }],
+    overrides: {
+        razorpayEnabled: { type: Boolean, default: null }, // null = inherit company default
+        manualPaymentEnabled: { type: Boolean, default: null },
+        prSalesEnabled: { type: Boolean, default: null },
+        refundsEnabled: { type: Boolean, default: null },
+        ticketTransfersEnabled: { type: Boolean, default: null },
+        maxCapacity: { type: Number, default: null }
+    },
     createdAt: { type: String }
 });
 
 const UserSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
+    companyId: { type: String, default: 'littlane' },
     password: { type: String, required: true },
     displayName: { type: String },
-    role: { type: String, enum: ['seller', 'pr'], default: 'pr' },
+    role: { type: String, enum: ['master_admin', 'company_admin', 'seller', 'pr'], default: 'pr' },
     blocked: { type: Boolean, default: false },
     allowedPasses: [{
         eventId: { type: String }, // Can store Event ID or Event Name
@@ -42,6 +52,7 @@ const UserSchema = new mongoose.Schema({
 
 const SaleSchema = new mongoose.Schema({
     orderId: { type: String, required: true, unique: true },
+    companyId: { type: String, default: 'littlane' },
     event: { type: String },
     name: { type: String },
     email: { type: String },
@@ -68,9 +79,74 @@ const SaleSchema = new mongoose.Schema({
     paymentMethod: { type: String },
 });
 
+const CompanySchema = new mongoose.Schema({
+    companyId: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    status: { type: String, enum: ['ACTIVE', 'SUSPENDED', 'PAUSED', 'TRIAL', 'EXPIRED'], default: 'ACTIVE' },
+    statusReason: { type: String, default: '' },
+
+    commercials: {
+        feeType: { type: String, enum: ['PERCENTAGE', 'FIXED', 'HYBRID'], default: 'PERCENTAGE' },
+        percentageFee: { type: Number, default: 5 },
+        fixedFeePerTicket: { type: Number, default: 0 }
+    },
+
+    razorpayConfig: {
+        enabled: { type: Boolean, default: true },
+        keyId: { type: String, default: 'rzp_live_demoKey12345' },
+        keySecret: { type: String, default: 'demo_secret_key_12345' },
+        webhookSecret: { type: String, default: 'whsec_demo_12345' },
+        mode: { type: String, enum: ['TEST', 'LIVE'], default: 'LIVE' },
+        lockedByMaster: { type: Boolean, default: false }
+    },
+
+    manualPaymentConfig: {
+        enabled: { type: Boolean, default: true },
+        allowedMethods: { type: [String], default: ['cash', 'bank_transfer', 'upi_manual'] },
+        approvalWorkflow: { type: String, enum: ['AUTO', 'COMPANY_APPROVAL', 'MASTER_APPROVAL'], default: 'COMPANY_APPROVAL' },
+        lockedByMaster: { type: Boolean, default: false }
+    },
+
+    features: {
+        onlinePayments: { enabled: { type: Boolean, default: true }, lockedByMaster: { type: Boolean, default: false } },
+        manualPayments: { enabled: { type: Boolean, default: true }, lockedByMaster: { type: Boolean, default: false } },
+        prPortal: { enabled: { type: Boolean, default: true }, lockedByMaster: { type: Boolean, default: false } },
+        prSales: { enabled: { type: Boolean, default: true }, lockedByMaster: { type: Boolean, default: false } },
+        ticketTransfers: { enabled: { type: Boolean, default: false }, lockedByMaster: { type: Boolean, default: false } },
+        refunds: { enabled: { type: Boolean, default: false }, lockedByMaster: { type: Boolean, default: false } },
+        couponCodes: { enabled: { type: Boolean, default: true }, lockedByMaster: { type: Boolean, default: false } },
+        qrCheckIn: { enabled: { type: Boolean, default: true }, lockedByMaster: { type: Boolean, default: false } },
+        offlineScan: { enabled: { type: Boolean, default: false }, lockedByMaster: { type: Boolean, default: false } },
+        allowReEntry: { enabled: { type: Boolean, default: false }, lockedByMaster: { type: Boolean, default: false } }
+    },
+
+    prSettings: {
+        commissionType: { type: String, enum: ['PERCENTAGE', 'FIXED'], default: 'PERCENTAGE' },
+        commissionValue: { type: Number, default: 10 }
+    },
+
+    createdAt: { type: String },
+    updatedAt: { type: String }
+});
+
+const AuditLogSchema = new mongoose.Schema({
+    logId: { type: String, required: true, unique: true },
+    adminUser: { type: String, required: true },
+    companyId: { type: String, required: true },
+    eventId: { type: String, default: null },
+    category: { type: String, default: 'CONFIG_CHANGE' },
+    fieldChanged: { type: String, required: true },
+    previousValue: { type: mongoose.Schema.Types.Mixed },
+    newValue: { type: mongoose.Schema.Types.Mixed },
+    reason: { type: String, default: '' },
+    timestamp: { type: String, required: true }
+});
+
 const Event = mongoose.model('Event', EventSchema);
 const User = mongoose.model('User', UserSchema);
 const Sale = mongoose.model('Sale', SaleSchema);
+const Company = mongoose.model('Company', CompanySchema);
+const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
 
 // ==================== SEED DATA ====================
 
@@ -204,11 +280,202 @@ async function deleteEvent(id) {
     return await Event.findByIdAndDelete(id);
 }
 
+// ==================== COMPANY & AUDIT HELPERS ====================
+
+async function seedDefaultCompanies() {
+    try {
+        const count = await Company.countDocuments();
+        if (count > 0) return;
+
+        console.log('🌱 Seeding default LITTX Event Companies...');
+        const now = new Date().toISOString();
+        const defaultCompanies = [
+            {
+                companyId: 'littlane',
+                name: 'Littlane Events',
+                status: 'ACTIVE',
+                commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
+                razorpayConfig: { enabled: true, keyId: 'rzp_live_littlane123', keySecret: 'littlane_secret', mode: 'LIVE', lockedByMaster: false },
+                manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
+                features: {
+                    onlinePayments: { enabled: true, lockedByMaster: false },
+                    manualPayments: { enabled: true, lockedByMaster: false },
+                    prPortal: { enabled: true, lockedByMaster: false },
+                    prSales: { enabled: true, lockedByMaster: false },
+                    ticketTransfers: { enabled: false, lockedByMaster: false },
+                    refunds: { enabled: false, lockedByMaster: false },
+                    couponCodes: { enabled: true, lockedByMaster: false },
+                    qrCheckIn: { enabled: true, lockedByMaster: false },
+                    offlineScan: { enabled: false, lockedByMaster: false },
+                    allowReEntry: { enabled: false, lockedByMaster: false }
+                },
+                prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 },
+                createdAt: now,
+                updatedAt: now
+            },
+            {
+                companyId: 'nexora',
+                name: 'Nexora Events',
+                status: 'ACTIVE',
+                commercials: { feeType: 'PERCENTAGE', percentageFee: 6, fixedFeePerTicket: 10 },
+                razorpayConfig: { enabled: true, keyId: 'rzp_live_nexora456', keySecret: 'nexora_secret', mode: 'LIVE', lockedByMaster: false },
+                manualPaymentConfig: { enabled: false, allowedMethods: ['cash'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
+                features: {
+                    onlinePayments: { enabled: true, lockedByMaster: false },
+                    manualPayments: { enabled: false, lockedByMaster: false },
+                    prPortal: { enabled: true, lockedByMaster: false },
+                    prSales: { enabled: true, lockedByMaster: false },
+                    ticketTransfers: { enabled: true, lockedByMaster: false },
+                    refunds: { enabled: true, lockedByMaster: false },
+                    couponCodes: { enabled: true, lockedByMaster: false },
+                    qrCheckIn: { enabled: true, lockedByMaster: false },
+                    offlineScan: { enabled: true, lockedByMaster: false },
+                    allowReEntry: { enabled: true, lockedByMaster: false }
+                },
+                prSettings: { commissionType: 'FIXED', commissionValue: 50 },
+                createdAt: now,
+                updatedAt: now
+            },
+            {
+                companyId: 'urban-nights',
+                name: 'Urban Nights',
+                status: 'ACTIVE',
+                commercials: { feeType: 'FIXED', percentageFee: 0, fixedFeePerTicket: 25 },
+                razorpayConfig: { enabled: false, keyId: '', keySecret: '', mode: 'TEST', lockedByMaster: false },
+                manualPaymentConfig: { enabled: true, allowedMethods: ['cash'], approvalWorkflow: 'AUTO', lockedByMaster: false },
+                features: {
+                    onlinePayments: { enabled: false, lockedByMaster: false },
+                    manualPayments: { enabled: true, lockedByMaster: false },
+                    prPortal: { enabled: true, lockedByMaster: false },
+                    prSales: { enabled: true, lockedByMaster: false },
+                    ticketTransfers: { enabled: false, lockedByMaster: false },
+                    refunds: { enabled: false, lockedByMaster: false },
+                    couponCodes: { enabled: false, lockedByMaster: false },
+                    qrCheckIn: { enabled: true, lockedByMaster: false },
+                    offlineScan: { enabled: false, lockedByMaster: false },
+                    allowReEntry: { enabled: false, lockedByMaster: false }
+                },
+                prSettings: { commissionType: 'PERCENTAGE', commissionValue: 8 },
+                createdAt: now,
+                updatedAt: now
+            }
+        ];
+
+        await Company.insertMany(defaultCompanies);
+        console.log('✅ Default Event Companies seeded successfully.');
+    } catch (err) {
+        console.error('❌ Failed to seed default companies:', err.message);
+    }
+}
+
+// Call seeding during initialization
+mongoose.connection.once('open', async () => {
+    await seedDefaultCompanies();
+});
+
+async function getAllCompanies() {
+    return await Company.find({}).sort({ name: 1 }).lean();
+}
+
+async function getCompanyById(companyId) {
+    let company = await Company.findOne({ companyId }).lean();
+    if (!company) {
+        // Fallback to first or default company
+        company = await Company.findOne({ companyId: 'littlane' }).lean();
+    }
+    return company;
+}
+
+async function updateCompanyConfig(companyId, updates) {
+    return await Company.findOneAndUpdate(
+        { companyId },
+        { 
+            $set: { 
+                ...updates,
+                updatedAt: new Date().toISOString()
+            } 
+        },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function createAuditLog(logData) {
+    const log = new AuditLog({
+        logId: `log_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        timestamp: new Date().toISOString(),
+        ...logData
+    });
+    await log.save();
+    return log;
+}
+
+async function getAuditLogs(companyId = null) {
+    const query = companyId ? { companyId } : {};
+    return await AuditLog.find(query).sort({ timestamp: -1 }).limit(100).lean();
+}
+
+async function getEffectiveConfig(companyId = 'littlane', eventNameOrId = null) {
+    const company = await getCompanyById(companyId) || {
+        status: 'ACTIVE',
+        razorpayConfig: { enabled: true, lockedByMaster: false },
+        manualPaymentConfig: { enabled: true, lockedByMaster: false },
+        features: {
+            prPortal: { enabled: true, lockedByMaster: false },
+            prSales: { enabled: true, lockedByMaster: false },
+            refunds: { enabled: false, lockedByMaster: false },
+            ticketTransfers: { enabled: false, lockedByMaster: false }
+        }
+    };
+
+    let event = null;
+    if (eventNameOrId) {
+        event = await Event.findOne({
+            $or: [{ _id: mongoose.Types.ObjectId.isValid(eventNameOrId) ? eventNameOrId : null }, { name: eventNameOrId }]
+        }).lean();
+    }
+
+    // Base Resolution Matrix
+    const effective = {
+        companyStatus: { value: company.status, source: 'Company Default', lockedByMaster: false },
+        razorpay: { value: company.razorpayConfig?.enabled ?? true, source: 'Company Default', lockedByMaster: company.razorpayConfig?.lockedByMaster ?? false },
+        manual: { value: company.manualPaymentConfig?.enabled ?? true, source: 'Company Default', lockedByMaster: company.manualPaymentConfig?.lockedByMaster ?? false },
+        prPortal: { value: company.features?.prPortal?.enabled ?? true, source: 'Company Default', lockedByMaster: company.features?.prPortal?.lockedByMaster ?? false },
+        prSales: { value: company.features?.prSales?.enabled ?? true, source: 'Company Default', lockedByMaster: company.features?.prSales?.lockedByMaster ?? false },
+        refunds: { value: company.features?.refunds?.enabled ?? false, source: 'Company Default', lockedByMaster: company.features?.refunds?.lockedByMaster ?? false },
+        ticketTransfers: { value: company.features?.ticketTransfers?.enabled ?? false, source: 'Company Default', lockedByMaster: company.features?.ticketTransfers?.lockedByMaster ?? false }
+    };
+
+    // Apply Event Overrides if present and NOT locked by Master Admin
+    if (event && event.overrides) {
+        if (event.overrides.razorpayEnabled !== null && event.overrides.razorpayEnabled !== undefined && !effective.razorpay.lockedByMaster) {
+            effective.razorpay = { value: event.overrides.razorpayEnabled, source: 'Event Override', lockedByMaster: false };
+        }
+        if (event.overrides.manualPaymentEnabled !== null && event.overrides.manualPaymentEnabled !== undefined && !effective.manual.lockedByMaster) {
+            effective.manual = { value: event.overrides.manualPaymentEnabled, source: 'Event Override', lockedByMaster: false };
+        }
+        if (event.overrides.prSalesEnabled !== null && event.overrides.prSalesEnabled !== undefined && !effective.prSales.lockedByMaster) {
+            effective.prSales = { value: event.overrides.prSalesEnabled, source: 'Event Override', lockedByMaster: false };
+        }
+        if (event.overrides.refundsEnabled !== null && event.overrides.refundsEnabled !== undefined && !effective.refunds.lockedByMaster) {
+            effective.refunds = { value: event.overrides.refundsEnabled, source: 'Event Override', lockedByMaster: false };
+        }
+    }
+
+    return {
+        companyId: company.companyId || companyId,
+        companyName: company.name || 'Littlane Events',
+        companyStatus: company.status,
+        effective
+    };
+}
+
 module.exports = {
     // Models
     Event,
     User,
     Sale,
+    Company,
+    AuditLog,
     // Sale Helpers
     createSaleRecord,
     updateSaleRecord,
@@ -226,5 +493,13 @@ module.exports = {
     getEventByName,
     createEvent,
     updateEvent,
-    deleteEvent
+    deleteEvent,
+    // Company & Audit Helpers
+    getAllCompanies,
+    getCompanyById,
+    updateCompanyConfig,
+    createAuditLog,
+    getAuditLogs,
+    getEffectiveConfig
 };
+

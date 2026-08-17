@@ -741,9 +741,21 @@ app.post('/api/pr/create-order', async (req, res) => {
 
 // POST /api/pr/cash-request — PR partner submits a cash sale for admin approval
 app.post('/api/pr/cash-request', async (req, res) => {
-    const { name, email, phone, gender, quantity, prUserId, prName } = req.body || {};
+    const { name, email, phone, gender, quantity, prUserId, prName, companyId = 'littlane', eventName } = req.body || {};
     if (!name || !email || !phone || !gender || !prUserId)
         return res.status(400).json({ success: false, message: 'Missing required fields.' });
+
+    // Check Effective Configuration Enforcement
+    const config = await db.getEffectiveConfig(companyId, eventName || EVENT.name);
+    if (config.companyStatus !== 'ACTIVE') {
+        return res.status(403).json({ success: false, message: `Company '${config.companyName}' is currently ${config.companyStatus}. Sales are blocked.` });
+    }
+    if (!config.effective.prSales.value) {
+        return res.status(403).json({ success: false, message: `PR Sales are disabled for ${config.companyName} (Source: ${config.effective.prSales.source}).` });
+    }
+    if (!config.effective.manual.value) {
+        return res.status(403).json({ success: false, message: `Manual/Cash payments are disabled for ${config.companyName} (Source: ${config.effective.manual.source}).` });
+    }
 
     const computed = computeAmount(gender, quantity);
     if (!computed) return res.status(400).json({ success: false, message: 'Invalid ticket type.' });
@@ -755,7 +767,8 @@ app.post('/api/pr/cash-request', async (req, res) => {
 
         await db.createSaleRecord({
             orderId,
-            event: EVENT.name,
+            companyId,
+            event: eventName || EVENT.name,
             name, email, phone, gender,
             quantity: qty,
             amount,
@@ -776,6 +789,177 @@ app.post('/api/pr/cash-request', async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 });
+
+// ==================== MASTER ADMIN COMPANY CONTROL ROUTES ====================
+
+// GET /api/master/companies — List all companies with status & summary
+app.get('/api/master/companies', async (req, res) => {
+    try {
+        const companies = await db.getAllCompanies();
+        const sales = await db.getAll();
+        
+        // Calculate per-company ticket & revenue metrics
+        const list = companies.map(c => {
+            const companySales = sales.filter(s => (s.companyId || 'littlane') === c.companyId);
+            const paid = companySales.filter(s => ['paid', 'ticket_generated', 'emailed', 'scanned'].includes(s.status));
+            const revenue = paid.reduce((sum, s) => sum + (s.amount || 0), 0);
+            
+            // Calculate LITTX fee based on company commercial rules
+            let fee = 0;
+            if (c.commercials?.feeType === 'PERCENTAGE') {
+                fee = (revenue * (c.commercials?.percentageFee || 5)) / 100;
+            } else if (c.commercials?.feeType === 'FIXED') {
+                fee = paid.length * (c.commercials?.fixedFeePerTicket || 10);
+            } else {
+                fee = (revenue * (c.commercials?.percentageFee || 5)) / 100 + (paid.length * (c.commercials?.fixedFeePerTicket || 0));
+            }
+
+            return {
+                ...c,
+                stats: {
+                    totalOrders: companySales.length,
+                    ticketCount: paid.length,
+                    grossRevenue: revenue,
+                    platformFee: Math.round(fee),
+                    netCompanyRevenue: Math.round(revenue - fee)
+                }
+            };
+        });
+
+        res.json({ success: true, companies: list });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/master/companies/:companyId/control-center — Full control state + audit log
+app.get('/api/master/companies/:companyId/control-center', async (req, res) => {
+    try {
+        const { companyId } = req.params;
+        const { eventId } = req.query;
+        
+        const company = await db.getCompanyById(companyId);
+        if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+
+        const effectiveConfig = await db.getEffectiveConfig(companyId, eventId);
+        const auditLogs = await db.getAuditLogs(companyId);
+        const events = (await db.getAllEvents()).filter(e => (e.companyId || 'littlane') === companyId);
+        const users = (await db.getAllUsers()).filter(u => (u.companyId || 'littlane') === companyId);
+
+        res.json({
+            success: true,
+            company,
+            effectiveConfig,
+            events,
+            users,
+            auditLogs
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// PATCH /api/master/companies/:companyId/config — Update company config & feature flags (Log Audit)
+app.post('/api/master/companies/:companyId/config', async (req, res) => {
+    try {
+        const { companyId } = req.params;
+        const { updates, adminUser = 'LITTX Master Admin', reason = 'Configuration updated from Master Admin Control Center' } = req.body || {};
+
+        const company = await db.getCompanyById(companyId);
+        if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+
+        // Log audit entries for changed keys
+        for (const [key, value] of Object.entries(updates)) {
+            const prev = company[key];
+            if (JSON.stringify(prev) !== JSON.stringify(value)) {
+                await db.createAuditLog({
+                    adminUser,
+                    companyId,
+                    category: 'CONFIG_CHANGE',
+                    fieldChanged: key,
+                    previousValue: prev,
+                    newValue: value,
+                    reason
+                });
+            }
+        }
+
+        const updatedCompany = await db.updateCompanyConfig(companyId, updates);
+        res.json({ success: true, company: updatedCompany });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/master/companies/:companyId/emergency — Trigger Emergency Switch
+app.post('/api/master/companies/:companyId/emergency', async (req, res) => {
+    try {
+        const { companyId } = req.params;
+        const { action, statusReason = 'Emergency control action triggered', adminUser = 'LITTX Master Admin' } = req.body || {};
+
+        const company = await db.getCompanyById(companyId);
+        if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+
+        let updates = {};
+        if (action === 'SUSPEND_COMPANY') {
+            updates = { status: 'SUSPENDED', statusReason };
+        } else if (action === 'ACTIVATE_COMPANY') {
+            updates = { status: 'ACTIVE', statusReason: '' };
+        } else if (action === 'PAUSE_COMPANY') {
+            updates = { status: 'PAUSED', statusReason };
+        } else if (action === 'DISABLE_ONLINE_PAYMENTS') {
+            updates = { 'razorpayConfig.enabled': false, 'razorpayConfig.lockedByMaster': true };
+        } else if (action === 'ENABLE_ONLINE_PAYMENTS') {
+            updates = { 'razorpayConfig.enabled': true, 'razorpayConfig.lockedByMaster': false };
+        } else if (action === 'DISABLE_MANUAL_PAYMENTS') {
+            updates = { 'manualPaymentConfig.enabled': false, 'manualPaymentConfig.lockedByMaster': true };
+        } else if (action === 'ENABLE_MANUAL_PAYMENTS') {
+            updates = { 'manualPaymentConfig.enabled': true, 'manualPaymentConfig.lockedByMaster': false };
+        } else if (action === 'DISABLE_PR_SALES') {
+            updates = { 'features.prSales.enabled': false, 'features.prSales.lockedByMaster': true };
+        } else if (action === 'ENABLE_PR_SALES') {
+            updates = { 'features.prSales.enabled': true, 'features.prSales.lockedByMaster': false };
+        }
+
+        await db.createAuditLog({
+            adminUser,
+            companyId,
+            category: 'EMERGENCY_ACTION',
+            fieldChanged: `EMERGENCY:${action}`,
+            previousValue: { status: company.status },
+            newValue: updates,
+            reason: statusReason
+        });
+
+        const updatedCompany = await db.updateCompanyConfig(companyId, updates);
+        res.json({ success: true, action, company: updatedCompany });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/master/audit-logs — Platform-wide Audit Log
+app.get('/api/master/audit-logs', async (req, res) => {
+    try {
+        const { companyId } = req.query;
+        const logs = await db.getAuditLogs(companyId || null);
+        res.json({ success: true, auditLogs: logs });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/effective-config — Client helper to fetch active permissions
+app.get('/api/effective-config', async (req, res) => {
+    try {
+        const { companyId = 'littlane', eventName } = req.query;
+        const config = await db.getEffectiveConfig(companyId, eventName);
+        res.json({ success: true, config });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 
 // GET /api/admin/pr-approvals — admin sees all pending cash approvals
 app.get('/api/admin/pr-approvals', requireAdmin, async (req, res) => {
