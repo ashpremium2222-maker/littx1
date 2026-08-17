@@ -44,7 +44,7 @@ function MainAppShell() {
     }
   }
 
-  if (path === '/' || path === '/index.html') {
+  if (path === '/portal' || path === '/system') {
     return <PublicWebsite onLoginSuccess={handleLoginRedirect} />
   }
 
@@ -64,6 +64,7 @@ function MainAppShell() {
     return <PRApp />
   }
 
+  // Restore the original default route (PasswordGateApp -> LittixApp)
   return <PasswordGateApp />
 }
 
