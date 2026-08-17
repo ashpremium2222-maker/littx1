@@ -103,6 +103,12 @@ app.get('/master-admin', (req, res) => res.sendFile(distIndexHtml));
 app.get('/master-admin/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/login', (req, res) => res.sendFile(distIndexHtml));
 
+// Customer portal
+app.get('/customer', (req, res) => res.sendFile(distIndexHtml));
+app.get('/customer/login', (req, res) => res.sendFile(distIndexHtml));
+app.get('/customer/register', (req, res) => res.sendFile(distIndexHtml));
+app.get('/customer/dashboard', (req, res) => res.sendFile(distIndexHtml));
+
 // ---- PUBLIC HOMEPAGE: serve the littx static marketing website ----
 // Check multiple candidate locations for the littx public folder
 const _littxCandidates = [
@@ -1234,6 +1240,195 @@ app.post('/api/admin/pr-reject', requireAdmin, async (req, res) => {
         await db.updateSaleRecord(orderId, { status: 'pr_cash_rejected' });
         res.json({ success: true, message: 'Sale rejected.' });
     } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ==================== CUSTOMER PORTAL APIS ====================
+
+// POST /api/customer/register — Register new customer account
+app.post('/api/customer/register', async (req, res) => {
+    const { email, password, name, phone } = req.body || {};
+    if (!email || !password || !name) {
+        return res.status(400).json({ success: false, message: 'Email, password and name are required.' });
+    }
+
+    try {
+        const existing = await db.getCustomerByEmail(email);
+        if (existing) {
+            return res.status(400).json({ success: false, message: 'A customer account with this email already exists.' });
+        }
+
+        const customer = await db.createCustomer({ email, password, name, phone });
+        res.json({
+            success: true,
+            user: {
+                email: customer.email,
+                name: customer.name,
+                phone: customer.phone
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/customer/login — Authenticate customer credentials
+app.post('/api/customer/login', async (req, res) => {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+        return res.status(400).json({ success: false, message: 'Email and password are required.' });
+    }
+
+    try {
+        const customer = await db.getCustomerByEmail(email);
+        if (!customer || customer.password !== password) {
+            return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+        }
+
+        const token = generateToken();
+        res.json({
+            success: true,
+            token,
+            user: {
+                email: customer.email,
+                name: customer.name,
+                phone: customer.phone,
+                role: 'customer'
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/customer/events — List all active events for the customer
+app.get('/api/customer/events', async (req, res) => {
+    try {
+        const events = await db.getAllEvents();
+        const activeEvents = events.filter(e => !e.archived);
+        res.json({ success: true, events: activeEvents });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/customer/bookings — List bookings (sales) matching customer's email
+app.get('/api/customer/bookings', async (req, res) => {
+    const { email } = req.query;
+    if (!email) {
+        return res.status(400).json({ success: false, message: 'Email query parameter is required.' });
+    }
+
+    try {
+        const allSales = await db.getAll();
+        const bookings = allSales.filter(s => s.email && s.email.toLowerCase() === email.toLowerCase());
+        res.json({ success: true, bookings });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/customer/book — Book an event ticket (simulated manual checkout, instantly approved/generated for simplicity)
+app.post('/api/customer/book', async (req, res) => {
+    const { email, name, phone, eventId, ticketTypeName, quantity } = req.body || {};
+    if (!email || !name || !eventId || !ticketTypeName) {
+        return res.status(400).json({ success: false, message: 'Email, name, eventId, and ticketType are required.' });
+    }
+    const qty = parseInt(quantity, 10) || 1;
+
+    try {
+        const event = await db.getEventById(eventId);
+        if (!event) {
+            return res.status(404).json({ success: false, message: 'Event not found.' });
+        }
+
+        const ticketType = event.ticketTypes.find(t => t.name === ticketTypeName);
+        if (!ticketType) {
+            return res.status(400).json({ success: false, message: 'Invalid ticket type.' });
+        }
+
+        const amount = ticketType.price * qty;
+        const orderId = `order_cust_${crypto.randomBytes(8).toString('hex')}`;
+        const ticketId = generateTicketId();
+        const generatedAt = new Date().toISOString();
+
+        await db.createSaleRecord({
+            orderId,
+            companyId: event.companyId || 'littlane',
+            event: event.name,
+            name, email, phone: phone || '',
+            gender: ticketType.gender || 'unisex',
+            quantity: qty, amount, currency: 'INR',
+            status: 'paid', paymentId: 'customer_checkout', ticketId,
+            emailStatus: 'pending', emailError: null, errorLog: [],
+            createdAt: generatedAt, paidAt: generatedAt, generatedAt,
+            generatedBy: 'Customer',
+            scannedBy: null, scannedAt: null
+        });
+
+        // Build PDF and QR
+        const pdfPath = await buildTicketPdf({
+            ticketId,
+            name,
+            email,
+            gender: ticketTypeName,
+            quantity: qty,
+            amount,
+            createdAt: generatedAt,
+            event: event.name
+        });
+        const qrBuffer = await buildQrBuffer(ticketId);
+        const qrDataUrl = await buildQrDataUrl(ticketId);
+
+        await db.updateSaleRecord(orderId, { status: 'ticket_generated' });
+
+        const downloadUrl = `${BASE_URL}/api/ticket/${ticketId}/download`;
+
+        // Send Email
+        const emailResult = await sendTicketEmail({
+            to: email,
+            name,
+            ticketId,
+            gender: ticketTypeName,
+            quantity: qty,
+            amount,
+            pdfPath,
+            qrBuffer,
+            downloadUrl,
+            event: event.name
+        });
+
+        if (emailResult.success) {
+            await db.updateSaleRecord(orderId, { status: 'emailed', emailStatus: 'sent', emailError: null, emailPreviewUrl: emailResult.previewUrl || null });
+        } else {
+            await db.updateSaleRecord(orderId, {
+                status: 'email_failed',
+                emailStatus: 'failed',
+                emailError: emailResult.error,
+                errorLog: [{ at: new Date().toISOString(), stage: 'email', error: emailResult.error }]
+            });
+        }
+
+        res.json({
+            success: true,
+            ticket: {
+                id: ticketId,
+                orderId,
+                event: event.name,
+                attendee: name,
+                email,
+                phone,
+                ticketType: ticketTypeName,
+                price: amount.toString(),
+                qty,
+                generatedAt,
+                downloadUrl,
+                qrDataUrl
+            }
+        });
+    } catch (err) {
+        console.error('[customer-book] Error:', err);
         res.status(500).json({ success: false, message: err.message });
     }
 });

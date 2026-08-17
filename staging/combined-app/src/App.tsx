@@ -5,6 +5,9 @@ import AdminDashboard from './admin-dash/App'
 import PRApp from './pr-portal/PRApp'
 import LoginPage from './components/LoginPage'
 import PublicWebsite from './components/PublicWebsite'
+import CustomerLogin from './components/CustomerLogin'
+import CustomerRegister from './components/CustomerRegister'
+import CustomerDashboard from './components/CustomerDashboard'
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
@@ -15,48 +18,106 @@ function MainAppShell() {
     } catch { return null }
   })
 
-  useEffect(() => {
-    const handlePopState = () => {
-      setPath(window.location.pathname)
-    }
-    window.addEventListener('popstate', handlePopState)
-    
-    const interval = setInterval(() => {
-      if (window.location.pathname !== path) {
-        setPath(window.location.pathname)
-      }
-    }, 200)
+  // Customer session — stored in localStorage so it persists between tabs
+  const [customerSession, setCustomerSession] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem('littx_customer')
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
+  })
 
+  useEffect(() => {
+    const handlePopState = () => setPath(window.location.pathname)
+    window.addEventListener('popstate', handlePopState)
+    const interval = setInterval(() => {
+      if (window.location.pathname !== path) setPath(window.location.pathname)
+    }, 200)
     return () => {
       window.removeEventListener('popstate', handlePopState)
       clearInterval(interval)
     }
   }, [path])
 
+  const navigate = (to: string) => {
+    window.history.pushState({}, '', to)
+    setPath(to)
+  }
+
   const handleLoginRedirect = (session: any) => {
     setUserSession(session)
     if (session.role === 'pr') {
-      window.history.pushState({}, '', '/pr')
+      navigate('/pr')
     } else if (session.role === 'master_admin') {
-      window.history.pushState({}, '', '/master-admin')
+      navigate('/master-admin')
     } else {
-      window.history.pushState({}, '', '/company')
+      navigate('/company')
     }
   }
 
+  // ── Root redirect ──────────────────────────────────────────────────────────
   if (path === '/' || path === '/index.html') {
     window.location.href = '/littx/index.html'
     return null
   }
 
+  // ── Public platform portal / marketing page ────────────────────────────────
   if (path === '/portal' || path === '/system') {
     return <PublicWebsite onLoginSuccess={handleLoginRedirect} />
   }
 
+  // ── Staff/admin login ──────────────────────────────────────────────────────
   if (path.startsWith('/login')) {
     return <LoginPage onLoginSuccess={handleLoginRedirect} />
   }
 
+  // ── Customer portal ────────────────────────────────────────────────────────
+  if (path.startsWith('/customer')) {
+    // Register
+    if (path === '/customer/register') {
+      return (
+        <CustomerRegister
+          onRegisterSuccess={(u) => {
+            setCustomerSession(u)
+            navigate('/customer/dashboard')
+          }}
+          onGoToLogin={() => navigate('/customer/login')}
+        />
+      )
+    }
+
+    // Dashboard — requires session
+    if (path === '/customer/dashboard' || path === '/customer') {
+      if (customerSession) {
+        return (
+          <CustomerDashboard
+            user={customerSession}
+            onLogout={() => {
+              localStorage.removeItem('littx_customer')
+              localStorage.removeItem('littx_customer_token')
+              setCustomerSession(null)
+              navigate('/customer/login')
+            }}
+          />
+        )
+      }
+      // Not logged in — redirect to customer login
+      navigate('/customer/login')
+      return null
+    }
+
+    // Login (default for /customer/login or any other /customer/* path)
+    return (
+      <CustomerLogin
+        onLoginSuccess={(u) => {
+          setCustomerSession(u)
+          navigate('/customer/dashboard')
+        }}
+        onGoToRegister={() => navigate('/customer/register')}
+      />
+    )
+  }
+
+  // ── Admin / Dashboard routes ───────────────────────────────────────────────
   if (path.startsWith('/dashhboard')) {
     return <AdminDashboard isPresentation={true} />
   }
@@ -69,7 +130,7 @@ function MainAppShell() {
     return <PRApp />
   }
 
-  // Restore the original default route (PasswordGateApp -> LittixApp)
+  // ── Gate staff (default) ───────────────────────────────────────────────────
   return <PasswordGateApp />
 }
 
@@ -195,3 +256,4 @@ export default function App() {
     </StoreProvider>
   )
 }
+

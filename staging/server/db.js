@@ -142,11 +142,20 @@ const AuditLogSchema = new mongoose.Schema({
     timestamp: { type: String, required: true }
 });
 
+const CustomerSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    name: { type: String, required: true },
+    phone: { type: String },
+    createdAt: { type: String }
+});
+
 const Event = mongoose.model('Event', EventSchema);
 const User = mongoose.model('User', UserSchema);
 const Sale = mongoose.model('Sale', SaleSchema);
 const Company = mongoose.model('Company', CompanySchema);
 const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
+const Customer = mongoose.model('Customer', CustomerSchema);
 
 // ==================== SEED DATA ====================
 
@@ -332,6 +341,24 @@ async function updateUser(userId, updates) {
         { $set: updates },
         { returnDocument: 'after', lean: true }
     );
+}
+
+// ==================== CUSTOMER HELPERS ====================
+
+async function createCustomer(customerData) {
+    const customer = new Customer({
+        email: customerData.email.toLowerCase(),
+        password: customerData.password,
+        name: customerData.name,
+        phone: customerData.phone,
+        createdAt: new Date().toISOString()
+    });
+    return await customer.save();
+}
+
+async function getCustomerByEmail(email) {
+    if (!email) return null;
+    return await Customer.findOne({ email: email.toLowerCase() }).lean();
 }
 
 // ==================== EVENT HELPERS ====================
@@ -566,6 +593,7 @@ module.exports = {
     Sale,
     Company,
     AuditLog,
+    Customer,
     // Sale Helpers
     createSaleRecord,
     updateSaleRecord,
@@ -577,6 +605,9 @@ module.exports = {
     getAllUsers,
     getUserById,
     updateUser,
+    // Customer Helpers
+    createCustomer,
+    getCustomerByEmail,
     // Event Helpers
     getAllEvents,
     getEventById,

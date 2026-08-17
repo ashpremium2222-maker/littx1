@@ -146,6 +146,33 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
                   <div style={{ fontSize: '11px', color: 'var(--ink-soft)', marginTop: '2px' }}>Sign in to PR sales & commission portal</div>
                 </div>
               </button>
+
+              {/* Option 3: Customer / Attendee */}
+              <a
+                href="/customer/login"
+                style={{
+                  padding: '18px',
+                  borderRadius: '14px',
+                  background: 'var(--panel-2)',
+                  border: '1px solid var(--line)',
+                  color: 'var(--ink)',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  transition: 'all 0.2s',
+                  textDecoration: 'none',
+                }}
+              >
+                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(61,220,132,0.12)', border: '1px solid rgba(61,220,132,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3DDC84', fontSize: '1.3rem' }}>
+                  🎟
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--ink)' }}>Customer / Attendee</div>
+                  <div style={{ fontSize: '11px', color: 'var(--ink-soft)', marginTop: '2px' }}>Browse events & book your tickets</div>
+                </div>
+              </a>
             </div>
           ) : (
             <div>
