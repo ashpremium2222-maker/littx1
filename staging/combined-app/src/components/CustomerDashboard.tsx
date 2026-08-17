@@ -149,14 +149,14 @@ function BookModal({
             <div className="modal-tag">Secure Checkout</div>
             <div className="modal-title">{event.name}</div>
           </div>
-          <button onClick={onClose} className="modal-close-btn">\u2715</button>
+          <button onClick={onClose} className="modal-close-btn">{"\u2715"}</button>
         </div>
 
         {/* Body */}
         <div className="modal-body">
           {success ? (
             <div className="success-container animate-fadeIn">
-              <div className="success-icon">\uD83C\uDF89</div>
+              <div className="success-icon">{"\uD83C\uDF89"}</div>
               <div className="success-title">Pass Secured!</div>
               <div className="success-desc">
                 Your ticket <strong style={{ color: '#F0EEF8' }}>#{success.id}</strong> has been generated.<br />
@@ -209,7 +209,7 @@ function BookModal({
                           <div style={{ fontSize: '0.75rem', color: '#8F8C9F', marginTop: 2, textTransform: 'capitalize' }}>{tt.gender} pass</div>
                         </span>
                       </span>
-                      <span className="ticket-option-price">\u20B9{tt.price.toLocaleString('en-IN')}</span>
+                      <span className="ticket-option-price">{"\u20B9"}{tt.price.toLocaleString('en-IN')}</span>
                     </button>
                   ))}
                 </div>
@@ -222,7 +222,7 @@ function BookModal({
                   <button
                     onClick={() => setQty(q => Math.max(1, q - 1))}
                     className="qty-btn"
-                  >\u2212</button>
+                  >{"\u2212"}</button>
                   <span className="qty-val">{qty}</span>
                   <button
                     onClick={() => setQty(q => Math.min(10, q + 1))}
@@ -234,7 +234,7 @@ function BookModal({
 
               {error && (
                 <div className="error-alert">
-                  \u26A0\uFE0F {error}
+                  {"\u26A0\uFE0F"} {error}
                 </div>
               )}
 
@@ -242,7 +242,7 @@ function BookModal({
               <div className="modal-footer">
                 <div>
                   <div style={{ fontSize: '0.7rem', color: '#8F8C9F', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>Total Price</div>
-                  <div className="total-price-text">\u20B9{total.toLocaleString('en-IN')}</div>
+                  <div className="total-price-text">{"\u20B9"}{total.toLocaleString('en-IN')}</div>
                 </div>
                 <button
                   id="customer-book-confirm"
@@ -253,7 +253,7 @@ function BookModal({
                   {loading ? (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span className="loading-spinner" />
-                      Securing Pass\u2026
+                      Securing Pass{"\u2026"}
                     </span>
                   ) : 'Confirm Booking'}
                 </button>
@@ -295,7 +295,7 @@ function EventCard({ event, onBook }: { event: Event; onBook: () => void }) {
       <div className="card-graphic-header">
         <span className="company-badge-pill">{event.companyId}</span>
         {event.date && (
-          <span className="event-date-pill">\uD83D\uDCC5 {fmtDate(event.date)}</span>
+          <span className="event-date-pill">{"\uD83D\uDCC5"} {fmtDate(event.date)}</span>
         )}
       </div>
 
@@ -304,9 +304,9 @@ function EventCard({ event, onBook }: { event: Event; onBook: () => void }) {
 
         {/* Info badges list */}
         <div className="meta-row">
-          {event.venue && <span className="meta-pill">\uD83D\uDCCD {event.venue}</span>}
-          {event.time && <span className="meta-pill">\u23F0 {event.time}</span>}
-          {event.stage && <span className="meta-pill">\uD83C\uDFAD {event.stage}</span>}
+          {event.venue && <span className="meta-pill">{"\uD83D\uDCCD"} {event.venue}</span>}
+          {event.time && <span className="meta-pill">{"\u23F0"} {event.time}</span>}
+          {event.stage && <span className="meta-pill">{"\uD83C\uDFAD"} {event.stage}</span>}
         </div>
 
         {/* Event description */}
@@ -320,7 +320,7 @@ function EventCard({ event, onBook }: { event: Event; onBook: () => void }) {
         <div className="passes-preview-container">
           {event.ticketTypes.map(tt => (
             <span key={tt.name} className="pass-preview-badge">
-              {ticketIcon(tt.gender)} {tt.name} \u2022 <span style={{ color: '#D8FF3F' }}>\u20B9{tt.price.toLocaleString('en-IN')}</span>
+              {ticketIcon(tt.gender)} {tt.name} {"\u2022"} <span style={{ color: '#D8FF3F' }}>{"\u20B9"}{tt.price.toLocaleString('en-IN')}</span>
             </span>
           ))}
         </div>
@@ -330,8 +330,8 @@ function EventCard({ event, onBook }: { event: Event; onBook: () => void }) {
           <div>
             <div style={{ fontSize: '0.7rem', color: '#8F8C9F', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>Passes From</div>
             <div className="price-tag-big">
-              \u20B9{minPrice.toLocaleString('en-IN')}
-              {minPrice !== maxPrice && <span className="price-tag-range"> \u2013 \u20B9{maxPrice.toLocaleString('en-IN')}</span>}
+              {"\u20B9"}{minPrice.toLocaleString('en-IN')}
+              {minPrice !== maxPrice && <span className="price-tag-range"> {"\u2013"} {"\u20B9"}{maxPrice.toLocaleString('en-IN')}</span>}
             </div>
           </div>
           <button onClick={onBook} className="btn-card-book">
@@ -356,7 +356,7 @@ function BookingRow({ booking }: { booking: Booking }) {
         {booking.qrDataUrl ? (
           <img src={booking.qrDataUrl} alt="QR Code" className="ticket-qr-img" />
         ) : (
-          <span style={{ fontSize: '1.4rem' }}>\uD83C\uDFAB</span>
+          <span style={{ fontSize: '1.4rem' }}>{"\uD83C\uDFAB"}</span>
         )}
       </div>
 
@@ -365,7 +365,7 @@ function BookingRow({ booking }: { booking: Booking }) {
         <div className="ticket-event-name">{booking.event}</div>
         <div className="ticket-meta-row">
           <span className="ticket-meta-item">
-            {ticketIcon(booking.gender)} {booking.gender} \u00D7 {booking.quantity}
+            {ticketIcon(booking.gender)} {booking.gender} {"\u00D7"} {booking.quantity}
           </span>
           {booking.ticketId && (
             <span className="ticket-id-badge">
@@ -374,7 +374,7 @@ function BookingRow({ booking }: { booking: Booking }) {
           )}
           {(booking.generatedAt || booking.createdAt) && (
             <span className="ticket-meta-item">
-              \uD83D\uDCC5 {fmtDate(booking.generatedAt || booking.createdAt)}
+              {"\uD83D\uDCC5"} {fmtDate(booking.generatedAt || booking.createdAt)}
             </span>
           )}
         </div>
@@ -385,7 +385,7 @@ function BookingRow({ booking }: { booking: Booking }) {
 
       {/* Price + Status Section */}
       <div className="ticket-action-box">
-        <div className="ticket-price">\u20B9{booking.amount.toLocaleString('en-IN')}</div>
+        <div className="ticket-price">{"\u20B9"}{booking.amount.toLocaleString('en-IN')}</div>
         <div className="status-badge-container" style={{ background: badge.bg, color: badge.color, borderColor: `${badge.color}35` }}>
           {badge.label}
         </div>
@@ -400,7 +400,7 @@ function BookingRow({ booking }: { booking: Booking }) {
           title="Download ticket PDF file"
           className="ticket-download-link-btn"
         >
-          \u2B07\uFE0F
+          {"\u2B07\uFE0F"}
         </a>
       )}
 
@@ -510,7 +510,7 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
           <div className="banner-glow-element"></div>
           
           <div className="banner-content">
-            <h1 className="banner-title">Welcome Back, {user.name.split(' ')[0]}! \uD83D\uDC4B</h1>
+            <h1 className="banner-title">Welcome Back, {user.name.split(' ')[0]}! {"\uD83D\uDC4B"}</h1>
             <p className="banner-subtitle">
               Your digital hub for bookings and passes to the hottest freshers takeovers and premium events.
             </p>
@@ -561,12 +561,12 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
           <div className="tab-pane-container">
             {loadingEvents ? (
               <div className="dashboard-loading-spinner animate-pulse">
-                <div className="spinner-emoji">\uD83C\uDF89</div>
+                <div className="spinner-emoji">{"\uD83C\uDF89"}</div>
                 <div className="spinner-text">Finding premium parties for you\u2026</div>
               </div>
             ) : eventsError ? (
               <div className="dashboard-error-pane">
-                <div className="error-emoji">\u26A0\uFE0F</div>
+                <div className="error-emoji">{"\u26A0\uFE0F"}</div>
                 <div className="error-msg">{eventsError}</div>
                 <button onClick={fetchEvents} className="btn-secondary">
                   Reload Events
@@ -574,7 +574,7 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
               </div>
             ) : events.length === 0 ? (
               <div className="dashboard-empty-pane">
-                <div className="empty-emoji">\uD83D\uDCEE</div>
+                <div className="empty-emoji">{"\uD83D\uDCEE"}</div>
                 <div className="empty-title">No events online</div>
                 <div className="empty-desc">Check back soon for upcoming takeovers.</div>
               </div>
@@ -597,12 +597,12 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
           <div className="tab-pane-container">
             {loadingBookings ? (
               <div className="dashboard-loading-spinner animate-pulse">
-                <div className="spinner-emoji">\uD83C\uDFAB</div>
+                <div className="spinner-emoji">{"\uD83C\uDFAB"}</div>
                 <div className="spinner-text">Retrieving your ticket wallet\u2026</div>
               </div>
             ) : bookingsError ? (
               <div className="dashboard-error-pane">
-                <div className="error-emoji">\u26A0\uFE0F</div>
+                <div className="error-emoji">{"\u26A0\uFE0F"}</div>
                 <div className="error-msg">{bookingsError}</div>
                 <button onClick={fetchBookings} className="btn-secondary">
                   Try Again
@@ -610,7 +610,7 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
               </div>
             ) : bookings.length === 0 ? (
               <div className="dashboard-empty-pane">
-                <div className="empty-emoji">\uD83C\uDFAB</div>
+                <div className="empty-emoji">{"\uD83C\uDFAB"}</div>
                 <div className="empty-title">Your ticket list is empty</div>
                 <div className="empty-desc" style={{ marginBottom: 20 }}>Book a pass to any party and it will appear here.</div>
                 <button onClick={() => setTab('events')} className="btn-accent-glow">
