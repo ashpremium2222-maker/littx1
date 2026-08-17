@@ -44,6 +44,11 @@ function MainAppShell() {
     }
   }
 
+  if (path === '/' || path === '/index.html') {
+    window.location.href = '/littx/index.html'
+    return null
+  }
+
   if (path === '/portal' || path === '/system') {
     return <PublicWebsite onLoginSuccess={handleLoginRedirect} />
   }
