@@ -308,7 +308,7 @@ export default function Orders({
           tax: 0,
           discount: 0,
           final: s.amount,
-          gateway: s.paymentId === 'manual' ? 'Manual' : 'Razorpay',
+          gateway: 'Manual',
           txnId: s.paymentId || '—',
           paymentStatus,
           emailStatus,
@@ -331,7 +331,6 @@ export default function Orders({
     if (filter === 'pending' && o.paymentStatus !== 'Pending') return false
     if (filter === 'failed' && o.paymentStatus !== 'Failed') return false
 
-    if (gatewayFilter === 'razorpay' && o.gateway !== 'Razorpay') return false
     if (gatewayFilter === 'manual' && o.gateway !== 'Manual') return false
 
     if (eventFilter !== 'all' && o.event.toLowerCase() !== eventFilter) return false
@@ -447,9 +446,8 @@ export default function Orders({
         </select>
 
         <select value={gatewayFilter} onChange={(e) => setGatewayFilter(e.target.value)}>
-          <option value="all">All gateways</option>
-          <option value="razorpay">Razorpay</option>
-          <option value="manual">Manual</option>
+          <option value="all">All methods</option>
+          <option value="manual">Manual / Cash</option>
         </select>
 
         <button
@@ -511,15 +509,11 @@ export default function Orders({
                             <div className="cell-title">#{o.id.substring(0, 10)}</div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
                               {o.gateway === 'Manual' ? (
-                                <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 197, 66, 0.15)', color: '#F5C542', border: '1px solid rgba(245, 197, 66, 0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Manual</span>
+                                <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(216,255,63,0.1)', color: 'var(--volt)', border: '1px solid rgba(216,255,63,0.2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Manual</span>
                               ) : o.prUserId ? (
-                                o.paymentMethod === 'cash' ? (
-                                  <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cash by {o.prName || o.prUserId} ({o.prUserId})</span>
-                                ) : (
-                                  <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(124, 92, 250, 0.15)', color: '#7C5CFA', border: '1px solid rgba(124, 92, 250, 0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Razorpay by {o.prName || o.prUserId} ({o.prUserId})</span>
-                                )
+                                <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cash by {o.prName || o.prUserId} ({o.prUserId})</span>
                               ) : (
-                                <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(124, 92, 250, 0.15)', color: '#7C5CFA', border: '1px solid rgba(124, 92, 250, 0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Razorpay</span>
+                                <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(216,255,63,0.1)', color: 'var(--volt)', border: '1px solid rgba(216,255,63,0.2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cash</span>
                               )}
                             </div>
                           </div>

@@ -162,7 +162,7 @@ export default function Settings({ adminKey }: SettingsProps) {
               <div className="p">CURRENT PLAN</div>
               <div className="n">Enterprise · Live Ops</div>
               <p style={{ fontSize: '11.5px', opacity: 0.85, margin: '0 0 16px', lineHeight: 1.4 }}>
-                Instant QR validation, Razorpay integration, & unlimited manual pass generation.
+                Instant QR validation, manual cash payment tracking, & unlimited pass generation.
               </p>
               <button
                 className="btn-secondary"
@@ -269,16 +269,16 @@ export default function Settings({ adminKey }: SettingsProps) {
       {tab === 'payments' && (
         <div className="card">
           <div className="card-head">
-            <h3>Payment Gateway Integration</h3>
+            <h3>Payment Method</h3>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: 'var(--panel-2)', padding: '16px', borderRadius: '14px', border: '1px solid var(--line)' }}>
+            <div style={{ background: 'var(--volt-dim)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(216,255,63,0.2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--ink)' }}>Razorpay (India)</div>
-                <span className="badge badge-green"><span className="badge-dot" />Connected</span>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--volt)' }}>💵 Manual / Cash Only</div>
+                <span className="badge badge-volt"><span className="badge-dot" />Active</span>
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--ink-faint)' }}>Key ID: rzp_live_xxxxx · Webhook Active</div>
+              <div style={{ fontSize: '11px', color: 'var(--ink-faint)' }}>All transactions are collected manually. No payment gateway is configured. Tickets are issued after admin approval.</div>
             </div>
           </div>
         </div>

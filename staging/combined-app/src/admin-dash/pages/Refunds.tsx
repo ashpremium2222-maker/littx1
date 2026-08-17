@@ -70,7 +70,7 @@ export default function Refunds({ sales = [] }: Props) {
               ? `${Math.round((paidOrders.length / sales.length) * 100)}%`
               : '100%'}
           </div>
-          <div className="tile-sub">Razorpay & Manual gateway</div>
+          <div className="tile-sub">Manual / Cash gateway</div>
           <div className="tile-delta">
             <span>✓</span> Healthy
           </div>

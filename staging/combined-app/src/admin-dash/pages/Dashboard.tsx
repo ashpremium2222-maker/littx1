@@ -31,11 +31,11 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
     .filter(s => s.createdAt && new Date(s.createdAt).toDateString() === todayStr)
     .reduce((acc, s) => acc + (s.amount || 0), 0)
 
-  const manualSales = revenueSales.filter(s => s.paymentId === 'manual')
-  const razorpaySales = revenueSales.filter(s => s.paymentId !== 'manual')
+  const manualSales = revenueSales.filter(s => s.paymentId === 'manual' || s.paymentMethod === 'manual' || s.paymentMethod === 'cash')
+  const cashSales = revenueSales // all sales are cash/manual now
 
   const manualRevenue = manualSales.reduce((acc, s) => acc + (s.amount || 0), 0)
-  const razorpayRevenue = razorpaySales.reduce((acc, s) => acc + (s.amount || 0), 0)
+  const cashRevenue = totalRevenue // all revenue is cash
 
   const emailFailures = sales.filter(s => s.emailStatus === 'failed').length
   const ticketFailures = sales.filter(s => s.status === 'ticket_generation_failed').length
@@ -257,19 +257,11 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         </div>
 
         <div className="tile tile-violet">
-          <div className="tile-label">COLLECTED BY METHOD</div>
-          <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, opacity: 0.85 }}>Razorpay:</span>
-              <span style={{ fontSize: '15px', fontWeight: 800 }}>₹{razorpayRevenue.toLocaleString()}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, opacity: 0.85 }}>Manual:</span>
-              <span style={{ fontSize: '15px', fontWeight: 800 }}>₹{manualRevenue.toLocaleString()}</span>
-            </div>
-          </div>
-          <div className="tile-delta" style={{ marginTop: '10px' }}>
-            <span>💳</span> RZP ({razorpaySales.length}) · MAN ({manualSales.length})
+          <div className="tile-label">CASH COLLECTED</div>
+          <div className="tile-value">₹{totalRevenue.toLocaleString()}</div>
+          <div className="tile-sub">All manual / cash sales</div>
+          <div className="tile-delta">
+            <span>💵</span> {cashSales.length} manual transactions
           </div>
         </div>
 
@@ -278,7 +270,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
           <div className="tile-value">{paidSales.length}</div>
           <div className="tile-sub">Tickets successfully issued</div>
           <div className="tile-delta">
-            <span>✓</span> {testMode ? 'Test mode' : 'Live mode'}
+            <span>✓</span> Cash-only mode
           </div>
         </div>
 
