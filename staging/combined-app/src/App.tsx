@@ -3,9 +3,16 @@ import { StoreProvider } from './lib/store'
 import LittixApp from './littix/App'
 import AdminDashboard from './admin-dash/App'
 import PRApp from './pr-portal/PRApp'
+import LoginPage from './components/LoginPage'
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
+  const [userSession, setUserSession] = useState<any>(() => {
+    try {
+      const saved = sessionStorage.getItem('littx_user')
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
+  })
 
   useEffect(() => {
     const handlePopState = () => {
@@ -25,11 +32,22 @@ function MainAppShell() {
     }
   }, [path])
 
+  if (path.startsWith('/login')) {
+    return <LoginPage onLoginSuccess={(session) => {
+      setUserSession(session)
+      if (session.role === 'pr') {
+        window.history.pushState({}, '', '/pr')
+      } else {
+        window.history.pushState({}, '', '/dashboard')
+      }
+    }} />
+  }
+
   if (path.startsWith('/dashhboard')) {
     return <AdminDashboard isPresentation={true} />
   }
 
-  if (path.startsWith('/dashboard')) {
+  if (path.startsWith('/dashboard') || path.startsWith('/admin') || path.startsWith('/company')) {
     return <AdminDashboard isPresentation={false} />
   }
 

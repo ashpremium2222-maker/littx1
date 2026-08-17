@@ -677,7 +677,189 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
 });
 
 
-// ==================== PR PARTNER PORTAL ROUTES ====================
+// ==================== UNIVERSAL PLATFORM LOGIN & RBAC ====================
+
+// POST /api/auth/login — Unified entry point for all 7 platform roles
+app.post('/api/auth/login', async (req, res) => {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+        return res.status(400).json({ success: false, message: 'Username/email and password are required.' });
+    }
+
+    try {
+        const user = await db.getUserById(username);
+        if (!user) {
+            // Check legacy SELLER_ACCOUNTS fallback
+            const sid = username.toUpperCase();
+            if (SELLER_ACCOUNTS[sid] && SELLER_ACCOUNTS[sid] === password) {
+                const token = generateToken();
+                return res.json({
+                    success: true,
+                    token,
+                    user: {
+                        userId: sid,
+                        displayName: `Seller ${sid}`,
+                        role: 'seller',
+                        companyId: 'littlane'
+                    }
+                });
+            }
+            return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        }
+
+        if (user.blocked) {
+            return res.status(403).json({ success: false, message: 'User account is blocked. Contact LITTX Master Admin.' });
+        }
+
+        if (user.password !== password) {
+            await db.createAuditLog({
+                adminUser: username,
+                companyId: user.companyId || 'littlane',
+                category: 'AUTH',
+                fieldChanged: 'LOGIN_ATTEMPT',
+                previousValue: null,
+                newValue: 'FAILED',
+                reason: 'Invalid password entered'
+            });
+            return res.status(401).json({ success: false, message: 'Invalid password.' });
+        }
+
+        // Log successful login
+        await db.createAuditLog({
+            adminUser: user.userId,
+            companyId: user.companyId || 'littlane',
+            category: 'AUTH',
+            fieldChanged: 'LOGIN_SUCCESS',
+            previousValue: null,
+            newValue: 'ACTIVE_SESSION',
+            reason: `Role ${user.role} logged in`
+        });
+
+        const token = generateToken();
+        res.json({
+            success: true,
+            token,
+            user: {
+                userId: user.userId,
+                displayName: user.displayName || user.userId,
+                role: user.role,
+                companyId: user.companyId || 'littlane',
+                allowedPasses: user.allowedPasses || []
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/master/global-search?q=query — Universal Search across all platform entities
+app.get('/api/master/global-search', async (req, res) => {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) {
+        return res.json({ success: true, results: [] });
+    }
+
+    try {
+        const query = q.trim().toLowerCase();
+        const companies = await db.getAllCompanies();
+        const events = await db.getAllEvents();
+        const sales = await db.getAll();
+        const users = await db.getAllUsers();
+
+        const results = [];
+
+        // Match Companies
+        companies.forEach(c => {
+            if (c.name.toLowerCase().includes(query) || c.companyId.toLowerCase().includes(query)) {
+                results.push({
+                    type: 'COMPANY',
+                    title: c.name,
+                    subtitle: `ID: ${c.companyId} • Status: ${c.status}`,
+                    companyId: c.companyId,
+                    entityId: c.companyId
+                });
+            }
+        });
+
+        // Match Events
+        events.forEach(e => {
+            if (e.name.toLowerCase().includes(query) || (e.venue && e.venue.toLowerCase().includes(query))) {
+                results.push({
+                    type: 'EVENT',
+                    title: e.name,
+                    subtitle: `Company: ${e.companyId || 'littlane'} • Date: ${e.date || 'TBD'}`,
+                    companyId: e.companyId || 'littlane',
+                    entityId: e._id || e.name
+                });
+            }
+        });
+
+        // Match Users / PRs
+        users.forEach(u => {
+            if (u.userId.toLowerCase().includes(query) || (u.displayName && u.displayName.toLowerCase().includes(query))) {
+                results.push({
+                    type: 'USER',
+                    title: u.displayName || u.userId,
+                    subtitle: `Role: ${u.role} • Company: ${u.companyId || 'littlane'}`,
+                    companyId: u.companyId || 'littlane',
+                    entityId: u.userId
+                });
+            }
+        });
+
+        // Match Tickets & Orders & Attendees
+        sales.forEach(s => {
+            if (
+                (s.ticketId && s.ticketId.toLowerCase().includes(query)) ||
+                (s.orderId && s.orderId.toLowerCase().includes(query)) ||
+                (s.name && s.name.toLowerCase().includes(query)) ||
+                (s.email && s.email.toLowerCase().includes(query)) ||
+                (s.phone && s.phone.includes(query))
+            ) {
+                results.push({
+                    type: 'TICKET/ORDER',
+                    title: `${s.name} (${s.ticketId || s.orderId})`,
+                    subtitle: `${s.event || 'Event'} • ₹${s.amount || 0} • Status: ${s.status}`,
+                    companyId: s.companyId || 'littlane',
+                    entityId: s.ticketId || s.orderId
+                });
+            }
+        });
+
+        res.json({ success: true, results: results.slice(0, 30) });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/master/impersonate — View-As Impersonation API
+app.post('/api/master/impersonate', async (req, res) => {
+    const { targetCompanyId, targetPrUserId, adminUser = 'LITTX Master Admin' } = req.body || {};
+    try {
+        await db.createAuditLog({
+            adminUser,
+            companyId: targetCompanyId || 'all',
+            category: 'IMPERSONATION',
+            fieldChanged: 'VIEW_AS_SESSION',
+            previousValue: null,
+            newValue: { targetCompanyId, targetPrUserId },
+            reason: `Master Admin impersonated tenant dashboard`
+        });
+
+        res.json({
+            success: true,
+            impersonation: {
+                active: true,
+                targetCompanyId,
+                targetPrUserId,
+                startedAt: new Date().toISOString()
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 
 // PR user credentials (server-side auth)
 const PR_USERS = [

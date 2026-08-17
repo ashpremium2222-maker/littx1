@@ -155,23 +155,111 @@ async function seedDefaultUsers() {
         const count = await User.countDocuments();
         if (count > 0) return; // DB already has users
 
-        console.log('🌱 Seeding default LITTX sellers and partners...');
+        console.log('🌱 Seeding multi-tenant LITTX platform users across roles...');
         
         const defaultUsers = [
-            { userId: 'SELLER-A', password: process.env.SELLER_A_PASS || 'littx-a-2026', displayName: 'Seller Alpha', role: 'seller' },
-            { userId: 'SELLER-B', password: process.env.SELLER_B_PASS || 'littx-b-2026', displayName: 'Seller Beta', role: 'seller' },
-            { userId: 'SELLER-C', password: process.env.SELLER_C_PASS || 'littx-c-2026', displayName: 'Seller Gamma', role: 'seller' },
-            { userId: 'partner1', password: process.env.PR1_PASS || 'ftpr@001', displayName: 'Partner One', role: 'pr' },
-            { userId: 'partner2', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two', role: 'pr' },
-            { userId: 'partner3', password: process.env.PR3_PASS || 'ftpr@003', displayName: 'Partner Three', role: 'pr' },
-            { userId: 'partner4', password: process.env.PR4_PASS || 'ftpr@004', displayName: 'Partner Four', role: 'pr' },
-            { userId: 'partner5', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five', role: 'pr' },
+            // Master Admin / Super Admin
+            { userId: 'superadmin@littx.in', password: process.env.MASTER_PASS || 'littx-master-2026', displayName: 'LITTX Super Admin', role: 'master_admin', companyId: 'all' },
+            // Company Admins
+            { userId: 'admin@littlane.in', password: 'littlane-2026', displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
+            { userId: 'admin@nexora.in', password: 'nexora-2026', displayName: 'Nexora Admin', role: 'company_admin', companyId: 'nexora' },
+            { userId: 'admin@urbannights.in', password: 'urban-2026', displayName: 'Urban Nights Admin', role: 'company_admin', companyId: 'urban-nights' },
+            // Sellers & PR Partners
+            { userId: 'SELLER-A', companyId: 'littlane', password: process.env.SELLER_A_PASS || 'littx-a-2026', displayName: 'Seller Alpha', role: 'seller' },
+            { userId: 'SELLER-B', companyId: 'littlane', password: process.env.SELLER_B_PASS || 'littx-b-2026', displayName: 'Seller Beta', role: 'seller' },
+            { userId: 'SELLER-C', companyId: 'nexora', password: process.env.SELLER_C_PASS || 'littx-c-2026', displayName: 'Seller Gamma', role: 'seller' },
+            { userId: 'partner1', companyId: 'littlane', password: process.env.PR1_PASS || 'ftpr@001', displayName: 'Partner One', role: 'pr' },
+            { userId: 'partner2', companyId: 'littlane', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two', role: 'pr' },
+            { userId: 'partner3', companyId: 'nexora', password: process.env.PR3_PASS || 'ftpr@003', displayName: 'Partner Three', role: 'pr' },
+            { userId: 'partner4', companyId: 'urban-nights', password: process.env.PR4_PASS || 'ftpr@004', displayName: 'Partner Four', role: 'pr' },
+            { userId: 'partner5', companyId: 'littlane', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five', role: 'pr' },
         ];
 
         await User.insertMany(defaultUsers);
-        console.log('✅ Default users seeded successfully.');
+        console.log('✅ Multi-tenant platform users seeded successfully.');
     } catch (err) {
-        console.error('❌ Failed to seed default users:', err.message);
+        console.error('❌ Failed to seed platform users:', err.message);
+    }
+}
+
+async function seedDefaultEvents() {
+    try {
+        const count = await Event.countDocuments();
+        if (count > 0) return;
+
+        console.log('🌱 Seeding multi-tenant events across companies...');
+        const now = new Date().toISOString();
+        const defaultEvents = [
+            {
+                name: 'Freshers Takeover 2026',
+                companyId: 'littlane',
+                date: '2026-09-15',
+                time: '07:00 PM',
+                venue: 'The Orchid, Pune',
+                stage: 'Main Arena',
+                description: 'The biggest freshers party of the year!',
+                archived: false,
+                ticketTypes: [
+                    { name: 'Male Pass', price: 699, gender: 'male' },
+                    { name: 'Female Pass', price: 599, gender: 'female' }
+                ],
+                overrides: { razorpayEnabled: null, manualPaymentEnabled: null, prSalesEnabled: null },
+                createdAt: now
+            },
+            {
+                name: 'Aura Genesis Fest',
+                companyId: 'littlane',
+                date: '2026-10-20',
+                time: '06:30 PM',
+                venue: 'JW Marriott Ground',
+                stage: 'EDM Stage',
+                description: 'Annual cultural extravaganza',
+                archived: false,
+                ticketTypes: [
+                    { name: 'General Entry', price: 499, gender: 'unisex' },
+                    { name: 'VIP Pass', price: 999, gender: 'unisex' }
+                ],
+                overrides: { razorpayEnabled: null, manualPaymentEnabled: null, prSalesEnabled: null },
+                createdAt: now
+            },
+            {
+                name: 'Nexora Summer Rave',
+                companyId: 'nexora',
+                date: '2026-08-30',
+                time: '08:00 PM',
+                venue: 'Sunburn Arena',
+                stage: 'Open Air',
+                description: 'Electronic music festival by Nexora Events',
+                archived: false,
+                ticketTypes: [
+                    { name: 'Early Bird', price: 899, gender: 'unisex' },
+                    { name: 'VIP Access', price: 1500, gender: 'unisex' }
+                ],
+                overrides: { razorpayEnabled: true, manualPaymentEnabled: false, prSalesEnabled: true },
+                createdAt: now
+            },
+            {
+                name: 'Urban Night Bash',
+                companyId: 'urban-nights',
+                date: '2026-09-05',
+                time: '09:00 PM',
+                venue: 'High Spirits Club',
+                stage: 'Club Indoor',
+                description: 'Exclusive club night by Urban Nights',
+                archived: false,
+                ticketTypes: [
+                    { name: 'Couple Pass', price: 1200, gender: 'unisex' },
+                    { name: 'Stag Male', price: 800, gender: 'male' }
+                ],
+                overrides: { razorpayEnabled: false, manualPaymentEnabled: true, prSalesEnabled: false },
+                createdAt: now
+            }
+        ];
+
+        await Event.insertMany(defaultEvents);
+        console.log('✅ Multi-tenant events seeded successfully.');
+    } catch (err) {
+        console.error('❌ Failed to seed default events:', err.message);
     }
 }
 
@@ -371,6 +459,8 @@ async function seedDefaultCompanies() {
 // Call seeding during initialization
 mongoose.connection.once('open', async () => {
     await seedDefaultCompanies();
+    await seedDefaultEvents();
+    await seedDefaultUsers();
 });
 
 async function getAllCompanies() {
