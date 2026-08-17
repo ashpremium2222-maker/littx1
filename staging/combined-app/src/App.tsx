@@ -4,6 +4,7 @@ import LittixApp from './littix/App'
 import AdminDashboard from './admin-dash/App'
 import PRApp from './pr-portal/PRApp'
 import LoginPage from './components/LoginPage'
+import PublicWebsite from './components/PublicWebsite'
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
@@ -32,22 +33,30 @@ function MainAppShell() {
     }
   }, [path])
 
+  const handleLoginRedirect = (session: any) => {
+    setUserSession(session)
+    if (session.role === 'pr') {
+      window.history.pushState({}, '', '/pr')
+    } else if (session.role === 'master_admin') {
+      window.history.pushState({}, '', '/master-admin')
+    } else {
+      window.history.pushState({}, '', '/company')
+    }
+  }
+
+  if (path === '/' || path === '/index.html') {
+    return <PublicWebsite onLoginSuccess={handleLoginRedirect} />
+  }
+
   if (path.startsWith('/login')) {
-    return <LoginPage onLoginSuccess={(session) => {
-      setUserSession(session)
-      if (session.role === 'pr') {
-        window.history.pushState({}, '', '/pr')
-      } else {
-        window.history.pushState({}, '', '/dashboard')
-      }
-    }} />
+    return <LoginPage onLoginSuccess={handleLoginRedirect} />
   }
 
   if (path.startsWith('/dashhboard')) {
     return <AdminDashboard isPresentation={true} />
   }
 
-  if (path.startsWith('/dashboard') || path.startsWith('/admin') || path.startsWith('/company')) {
+  if (path.startsWith('/dashboard') || path.startsWith('/master-admin') || path.startsWith('/admin') || path.startsWith('/company')) {
     return <AdminDashboard isPresentation={false} />
   }
 
