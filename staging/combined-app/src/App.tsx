@@ -65,8 +65,21 @@ function MainAppShell() {
     return <PublicWebsite onLoginSuccess={handleLoginRedirect} />
   }
 
-  // ── Staff/admin login ──────────────────────────────────────────────────────
-  if (path.startsWith('/login')) {
+  // ── /login → Customer login (staff access via /portal) ───────────────────
+  if (path.startsWith('/login') || path === '/customer/login') {
+    return (
+      <CustomerLogin
+        onLoginSuccess={(u) => {
+          setCustomerSession(u)
+          navigate('/customer/dashboard')
+        }}
+        onGoToRegister={() => navigate('/customer/register')}
+      />
+    )
+  }
+
+  // ── Staff/admin login (internal — keep at /admin-login) ───────────────────
+  if (path.startsWith('/admin-login')) {
     return <LoginPage onLoginSuccess={handleLoginRedirect} />
   }
 

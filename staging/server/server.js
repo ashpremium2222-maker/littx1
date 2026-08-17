@@ -102,6 +102,7 @@ app.get('/company/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/master-admin', (req, res) => res.sendFile(distIndexHtml));
 app.get('/master-admin/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/login', (req, res) => res.sendFile(distIndexHtml));
+app.get('/admin-login', (req, res) => res.sendFile(distIndexHtml));
 
 // Customer portal
 app.get('/customer', (req, res) => res.sendFile(distIndexHtml));
