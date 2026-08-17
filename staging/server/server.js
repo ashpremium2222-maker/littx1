@@ -90,12 +90,36 @@ app.get('/tickets/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/pr', (req, res) => res.sendFile(distIndexHtml));
 app.get('/pr/:splat', (req, res) => res.sendFile(distIndexHtml));
 
-// Admin dashboard — serve the React build
+// Admin / Company / Master Admin — serve the React build
 app.get('/admin', (req, res) => res.sendFile(distIndexHtml));
+app.get('/admin/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashboard', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashboard/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashhboard', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashhboard/:splat', (req, res) => res.sendFile(distIndexHtml));
+app.get('/company', (req, res) => res.sendFile(distIndexHtml));
+app.get('/company/:splat', (req, res) => res.sendFile(distIndexHtml));
+app.get('/master-admin', (req, res) => res.sendFile(distIndexHtml));
+app.get('/master-admin/:splat', (req, res) => res.sendFile(distIndexHtml));
+app.get('/login', (req, res) => res.sendFile(distIndexHtml));
+
+// ---- PUBLIC HOMEPAGE: serve the littx static marketing website ----
+// Check multiple candidate locations for the littx public folder
+const _littxCandidates = [
+    path.join(_distDir, 'littx', 'index.html'),                                          // after vite build copies public/
+    path.join(__dirname, '../combined-app/public/littx/index.html'),                    // dev mode
+    path.join(__dirname, '../../combined-app/public/littx/index.html'),
+];
+const _littxIndexHtml = _littxCandidates.find(p => fs2.existsSync(p));
+console.log(`Littx homepage: ${_littxIndexHtml || 'NOT FOUND'}`);
+
+// Serve static assets inside the littx folder (logo.png etc)
+if (_littxIndexHtml) {
+    const _littxDir = path.dirname(_littxIndexHtml);
+    app.use('/littx', express.static(_littxDir));
+    // Root homepage — serve the littx website
+    app.get('/', (req, res) => res.sendFile(_littxIndexHtml));
+}
 
 // Serve original LITTX HTML site (index.html + script.js + styles.css) for everything else
 const _staticCandidates = [
