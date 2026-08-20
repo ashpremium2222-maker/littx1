@@ -264,6 +264,13 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [showManualModal, setShowManualModal] = useState(false)
   const [isManualSubmitting, setIsManualSubmitting] = useState(false)
   const [manualSuccessMsg, setManualSuccessMsg] = useState<string | null>(null)
+  // Scan stats from ScanLog aggregation (included in /api/admin/sales response)
+  const [scanStats, setScanStats] = useState<any>({
+    accepted: 0,
+    declined: 0,
+    declinedByReason: { duplicate: 0, cancelled: 0, invalid: 0 },
+    activeScannerCount: 0,
+  })
 
   // Rail tabs state
   const [railTab, setRailTab] = useState<'events' | 'archived'>('events')
@@ -314,6 +321,8 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       setAllSales(fetchedSales)
       setSummary(activeSummary)
       setTestMode(data.testMode)
+      // Extract scan stats from backend response (avoids separate poll from admin UI)
+      if (data.scanStats) setScanStats(data.scanStats)
       setIsAuthenticated(true)
       setAuthError('')
       setAuthChecking(false)
@@ -594,7 +603,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       case 'refunds':
         return <Refunds sales={sales} />
       case 'qr':
-        return <QRScans sales={sales} isPresentation={isPresentation} />
+        return <QRScans sales={sales} isPresentation={isPresentation} scanStats={scanStats} />
       case 'analytics':
       case 'reports':
         return <Analytics sales={sales} />
@@ -612,6 +621,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             summary={summary}
             testMode={testMode}
             onManualGenerate={() => setShowManualModal(true)}
+            scanStats={scanStats}
           />
         )
     }

@@ -29,7 +29,8 @@ export default function Settings({ adminKey }: SettingsProps) {
   const loadSessions = async () => {
     setLoadingSessions(true)
     try {
-      const res = await fetch('/api/master/seller-sessions', {
+      // Load ALL active sessions for ALL roles (unified UserSession store)
+      const res = await fetch('/api/master/sessions', {
         headers: { 'x-master-token': 'littx-master-2026' }
       })
       const data = await res.json()
@@ -43,10 +44,11 @@ export default function Settings({ adminKey }: SettingsProps) {
     }
   }
 
-  const unlockSeller = async (sellerId: string) => {
-    if (!confirm(`Are you sure you want to kick and unlock ${sellerId}?`)) return
+  const unlockSeller = async (userId: string) => {
+    if (!confirm(`Are you sure you want to kick and unlock ${userId}?`)) return
     try {
-      const res = await fetch(`/api/master/seller-sessions/${sellerId}`, {
+      // Generalized endpoint — works for all roles, not just legacy 3 sellers
+      const res = await fetch(`/api/master/sessions/${encodeURIComponent(userId)}`, {
         method: 'DELETE',
         headers: { 'x-master-token': 'littx-master-2026' }
       })
@@ -96,7 +98,7 @@ export default function Settings({ adminKey }: SettingsProps) {
         <div className="pill-toggle">
           {(
             [
-              { id: 'seller-locks', label: 'IP Locks & Sellers' },
+              { id: 'seller-locks', label: 'Active Sessions' },
               { id: 'profile', label: 'Profile & Workspace' },
               { id: 'smtp', label: 'SMTP Config' },
               { id: 'payments', label: 'Payment Gateways' },
@@ -120,8 +122,8 @@ export default function Settings({ adminKey }: SettingsProps) {
       {tab === 'seller-locks' && (
         <div className="card">
           <div className="card-head">
-            <h3>Gate Staff Devices (IP Locks)</h3>
-            <div className="muted-sm">Sellers are locked to one device. Unlock them here if they need to switch.</div>
+            <h3>Active Sessions — All Roles</h3>
+            <div className="muted-sm">All logged-in users are locked to one device (IP). Kick & Unlock to allow login from a different device.</div>
           </div>
           <div style={{ marginTop: '16px' }}>
             <button className="btn-secondary" onClick={loadSessions} disabled={loadingSessions}>
@@ -132,7 +134,9 @@ export default function Settings({ adminKey }: SettingsProps) {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Seller ID</th>
+                  <th>User ID</th>
+                  <th>Display Name</th>
+                  <th>Role</th>
                   <th>Locked IP Address</th>
                   <th>Login Time</th>
                   <th>Action</th>
@@ -141,21 +145,32 @@ export default function Settings({ adminKey }: SettingsProps) {
               <tbody>
                 {sessions.length === 0 ? (
                   <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', padding: '32px', color: 'var(--ink-faint)' }}>
-                      No sellers currently logged in.
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '32px', color: 'var(--ink-faint)' }}>
+                      No active sessions. Click Refresh Sessions to load.
                     </td>
                   </tr>
                 ) : (
                   sessions.map((s, i) => (
                     <tr key={i}>
-                      <td style={{ fontWeight: 'bold' }}>{s.sellerId}</td>
+                      <td style={{ fontWeight: 'bold', fontFamily: 'monospace', fontSize: '0.8rem' }}>{s.userId || s.sellerId}</td>
+                      <td>{s.displayName || s.userId || s.sellerId}</td>
+                      <td>
+                        <span className={`badge ${
+                          s.role === 'master_admin' ? 'badge-violet' :
+                          s.role === 'company_admin' ? 'badge-teal' :
+                          s.role === 'seller' ? 'badge-gold' :
+                          s.role === 'pr' ? 'badge-amber' : 'badge-dark'
+                        }`}>
+                          {s.role || 'seller'}
+                        </span>
+                      </td>
                       <td>
                         <span className="badge badge-teal"><span className="badge-dot" />{s.lockedIp}</span>
                       </td>
                       <td>{new Date(s.loginAt).toLocaleString()}</td>
                       <td>
                         <button
-                          onClick={() => unlockSeller(s.sellerId)}
+                          onClick={() => unlockSeller(s.userId || s.sellerId)}
                           style={{
                             padding: '6px 12px',
                             borderRadius: '6px',
@@ -166,7 +181,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                             cursor: 'pointer',
                           }}
                         >
-                          Kick & Unlock
+                          Kick &amp; Unlock
                         </button>
                       </td>
                     </tr>

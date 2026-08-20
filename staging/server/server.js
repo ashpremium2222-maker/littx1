@@ -50,6 +50,39 @@ function generateToken() {
     return crypto.randomBytes(32).toString('hex');
 }
 
+// Helper to extract the real client IP (respects reverse proxy / Railway / Vercel headers)
+function getIp(req) {
+    return (
+        (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+        req.ip ||
+        req.connection?.remoteAddress ||
+        'unknown'
+    );
+}
+
+// ==================== SIMPLE IN-MEMORY RATE LIMITER ====================
+// 10 login attempts per IP per 15-minute window.
+// No dependency on express-rate-limit — uses plain Map.
+const _loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 10;
+
+function checkLoginRateLimit(ip) {
+    const now = Date.now();
+    let entry = _loginAttempts.get(ip);
+    if (!entry || now > entry.resetAt) {
+        entry = { count: 1, resetAt: now + LOGIN_WINDOW_MS };
+        _loginAttempts.set(ip, entry);
+        return { allowed: true };
+    }
+    if (entry.count >= LOGIN_MAX_ATTEMPTS) {
+        const resetInSec = Math.ceil((entry.resetAt - now) / 1000);
+        return { allowed: false, resetInSec };
+    }
+    entry.count++;
+    return { allowed: true };
+}
+
 // Returns sellerId if token is valid AND IP matches, null otherwise
 // Pass requestIp to enforce IP lock; omit to skip IP check (e.g. logout)
 async function authenticateSeller(token, requestIp) {
@@ -71,7 +104,7 @@ async function authenticateSeller(token, requestIp) {
 
 async function requireSeller(req, res, next) {
     const token = req.headers['x-seller-token'] || req.query.sellerToken;
-    const requestIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.connection?.remoteAddress || 'unknown';
+    const requestIp = getIp(req);
     const sellerId = await authenticateSeller(token, requestIp);
     if (!sellerId) {
         return res.status(401).json({ success: false, message: 'Seller not authenticated. Please log in.' });
@@ -85,6 +118,34 @@ async function requireSeller(req, res, next) {
     }
     req.sellerId = sellerId;
     next();
+}
+
+// ==================== REQUIRE AUTH MIDDLEWARE (unified session, all roles) ====================
+// Validates x-auth-token header against UserSession store and enforces IP lock.
+async function requireAuth(req, res, next) {
+    const token = req.headers['x-auth-token'] || req.query.authToken;
+    const requestIp = getIp(req);
+    if (!token) {
+        return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+    try {
+        const session = await db.getUserSessionByToken(token);
+        if (!session) {
+            return res.status(401).json({ success: false, message: 'Session expired or invalid. Please log in again.' });
+        }
+        if (session.ip && session.ip !== 'unknown' && session.ip !== requestIp) {
+            return res.status(403).json({
+                success: false,
+                ipLocked: true,
+                message: 'Access denied. Session is locked to another device. Contact admin to unlock.'
+            });
+        }
+        req.authUser = { userId: session.userId, role: session.role, companyId: session.companyId, displayName: session.displayName };
+        next();
+    } catch (err) {
+        console.error('[requireAuth]', err);
+        res.status(500).json({ success: false, message: 'Auth check failed.' });
+    }
 }
 
 // Serve generated ticket PDFs at /ticket-files
@@ -320,7 +381,22 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
         emailFailures: sales.filter(s => s.emailStatus === 'failed').length,
         ticketFailures: sales.filter(s => s.status === 'ticket_generation_failed').length
     };
-    res.json({ success: true, summary, sales });
+    // Fetch today's scan stats from ScanLog (IST midnight boundary)
+    let scanStats = { accepted: 0, declined: 0, declinedByReason: { duplicate: 0, cancelled: 0, invalid: 0 }, activeScannerCount: 0 };
+    try {
+        const now = new Date();
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const istNow = new Date(now.getTime() + istOffset);
+        const istMidnight = new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()) - istOffset);
+        const [stats, activeScannerCount] = await Promise.all([
+            db.getScanStats(null, istMidnight),
+            db.getActiveScannerCount(null, istMidnight)
+        ]);
+        scanStats = { ...stats, activeScannerCount };
+    } catch (e) {
+        console.error('[admin/sales scanStats]', e.message);
+    }
+    res.json({ success: true, summary, sales, scanStats });
 });
 
 app.get('/api/admin/config', requireAdmin, (req, res) => {
@@ -521,14 +597,22 @@ app.post('/api/scan-ticket', async (req, res) => {
     if (!ticketId) {
         return res.status(400).json({ success: false, message: 'Ticket ID is required' });
     }
+    const requestIp = getIp(req);
 
     try {
         const sale = await db.getByTicketId(ticketId);
         if (!sale) {
+            // Fire-and-forget — never blocks the gate response
+            db.createScanLog({ ticketId, result: 'invalid', scannedBy: scannedBy || 'Gate Staff', ip: requestIp }).catch(e => console.error('[ScanLog]', e));
             return res.json({ result: 'not_found' });
         }
 
+        const companyId = sale.companyId || 'littlane';
+        const event = sale.event;
+        const logBase = { ticketId, scannedBy: scannedBy || 'Gate Staff', ip: requestIp, companyId, event };
+
         if (sale.status === 'cancelled') {
+            db.createScanLog({ ...logBase, result: 'cancelled' }).catch(e => console.error('[ScanLog]', e));
             return res.json({
                 result: 'rejected',
                 ticket: {
@@ -549,6 +633,7 @@ app.post('/api/scan-ticket', async (req, res) => {
         }
 
         if (sale.status === 'scanned' || sale.scannedAt) {
+            db.createScanLog({ ...logBase, result: 'duplicate' }).catch(e => console.error('[ScanLog]', e));
             return res.json({
                 result: 'rejected',
                 ticket: {
@@ -578,13 +663,34 @@ app.post('/api/scan-ticket', async (req, res) => {
         const mm = ist.getUTCMinutes().toString().padStart(2, '0');
         const scannedAtStr = `${months[ist.getUTCMonth()]} ${ist.getUTCDate()}, ${hour12}:${mm} ${ampm}`;
 
-        await db.updateSaleRecord(sale.orderId, {
-            status: 'scanned',
-            scannedBy: scannedBy || 'Gate Staff',
-            scannedAt: scannedAtStr
-        });
+        // Atomic update: only succeeds if ticket is in a scannable state (race-condition guard)
+        const updatedSale = await db.atomicScanTicket(ticketId, scannedBy || 'Gate Staff', scannedAtStr);
 
-        const updatedSale = await db.getByOrderId(sale.orderId);
+        if (!updatedSale) {
+            // Another gate device won the race — treat as duplicate
+            db.createScanLog({ ...logBase, result: 'duplicate' }).catch(e => console.error('[ScanLog]', e));
+            const freshSale = await db.getByTicketId(ticketId);
+            return res.json({
+                result: 'rejected',
+                ticket: freshSale ? {
+                    id: freshSale.ticketId,
+                    event: freshSale.event,
+                    attendee: freshSale.name,
+                    email: freshSale.email,
+                    phone: freshSale.phone,
+                    ticketType: freshSale.gender,
+                    quantity: freshSale.quantity,
+                    amount: freshSale.amount,
+                    generatedAt: freshSale.generatedAt,
+                    status: 'scanned',
+                    scannedBy: freshSale.scannedBy,
+                    scannedAt: freshSale.scannedAt
+                } : null
+            });
+        }
+
+        // Success
+        db.createScanLog({ ...logBase, result: 'accepted' }).catch(e => console.error('[ScanLog]', e));
 
         res.json({
             result: 'success',
@@ -605,6 +711,32 @@ app.post('/api/scan-ticket', async (req, res) => {
         });
     } catch (err) {
         console.error('[scan-ticket] Error:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ==================== 7B. SCAN STATS (seller/scanner-authenticated) ====================
+// Returns today's accepted/declined counts from ScanLog — survives refresh, cross-device.
+app.get('/api/scan-stats', requireSeller, async (req, res) => {
+    try {
+        // Today midnight in IST (UTC+5:30)
+        const now = new Date();
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const istNow = new Date(now.getTime() + istOffset);
+        const istMidnight = new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()) - istOffset);
+
+        const session = await db.getSellerSession(req.sellerId);
+        const sellerUser = await db.getUserById(req.sellerId);
+        const companyId = sellerUser?.companyId || 'littlane';
+
+        const [stats, activeScannerCount] = await Promise.all([
+            db.getScanStats(companyId, istMidnight),
+            db.getActiveScannerCount(companyId, istMidnight)
+        ]);
+
+        res.json({ success: true, ...stats, activeScannerCount });
+    } catch (err) {
+        console.error('[scan-stats]', err);
         res.status(500).json({ success: false, message: err.message });
     }
 });
@@ -701,8 +833,14 @@ app.delete('/api/master/active-events/:id', (req, res) => {
 
 // ==================== LITTX SELLER LOGIN SYSTEM ====================
 
-// POST /api/seller/login — returns a session token
+// POST /api/seller/login — returns a session token (legacy 3-seller path, IP-locked via SellerSession)
 app.post('/api/seller/login', async (req, res) => {
+    const requestIp = getIp(req);
+    // Rate limit
+    const rl = checkLoginRateLimit(requestIp);
+    if (!rl.allowed) {
+        return res.status(429).json({ success: false, message: `Too many login attempts. Try again in ${rl.resetInSec}s.` });
+    }
     const { sellerId, password } = req.body || {};
     if (!sellerId || !password) {
         return res.status(400).json({ success: false, message: 'Missing credentials.' });
@@ -713,11 +851,10 @@ app.post('/api/seller/login', async (req, res) => {
     }
     const sid = sellerId.toUpperCase();
     const token = generateToken();
-    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.connection?.remoteAddress || 'unknown';
     // Check if already locked to a different IP
     const existing = await db.getSellerSession(sid);
-    if (existing && existing.ip && existing.ip !== 'unknown' && existing.ip !== ip) {
-        console.log(`[Seller Login BLOCKED] ${sid} attempted from ${ip}, locked to ${existing.ip}`);
+    if (existing && existing.ip && existing.ip !== 'unknown' && existing.ip !== requestIp) {
+        console.log(`[Seller Login BLOCKED] ${sid} attempted from ${requestIp}, locked to ${existing.ip}`);
         return res.status(403).json({
             success: false,
             ipLocked: true,
@@ -726,9 +863,12 @@ app.post('/api/seller/login', async (req, res) => {
         });
     }
     const loginAt = existing?.loginAt || new Date().toISOString();
-    await db.setSellerSession(sid, { token, loginAt, ip });
-    console.log(`[Seller Login] ${sid} logged in from ${ip} — session IP-locked`);
-    res.json({ success: true, sellerId: sid, token, loginAt, lockedIp: ip });
+    await db.setSellerSession(sid, { token, loginAt, ip: requestIp });
+    // Also maintain unified UserSession for this seller
+    const sellerUser = await db.getUserById(sid);
+    await db.setUserSession(sid, { token, ip: requestIp, loginAt, role: 'seller', companyId: sellerUser?.companyId || 'littlane', displayName: sellerUser?.displayName || sid });
+    console.log(`[Seller Login] ${sid} logged in from ${requestIp} — session IP-locked`);
+    res.json({ success: true, sellerId: sid, token, loginAt, lockedIp: requestIp });
 });
 
 // POST /api/seller/logout — invalidate session
@@ -737,6 +877,7 @@ app.post('/api/seller/logout', async (req, res) => {
     const sid = await authenticateSeller(token);
     if (sid) {
         await db.deleteSellerSession(sid);
+        await db.deleteUserSession(sid).catch(() => {});
         console.log(`[Seller Logout] ${sid} logged out`);
     }
     res.json({ success: true });
@@ -745,7 +886,7 @@ app.post('/api/seller/logout', async (req, res) => {
 // GET /api/seller/verify — check if session is still valid + enforce IP lock
 app.get('/api/seller/verify', async (req, res) => {
     const token = req.headers['x-seller-token'] || req.query.token;
-    const requestIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.connection?.remoteAddress || 'unknown';
+    const requestIp = getIp(req);
     const sid = await authenticateSeller(token, requestIp);
     if (!sid) {
         return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
@@ -761,7 +902,44 @@ app.get('/api/seller/verify', async (req, res) => {
     res.json({ success: true, sellerId: sid, loginAt: session?.loginAt, lockedIp: session?.ip });
 });
 
-// ==================== MASTER ADMIN — SELLER SESSION CONTROL ====================
+// POST /api/auth/logout — universal logout for all roles (clears UserSession by token)
+app.post('/api/auth/logout', async (req, res) => {
+    const token = req.headers['x-auth-token'] || req.body?.token;
+    if (token) {
+        const session = await db.getUserSessionByToken(token).catch(() => null);
+        if (session) {
+            await db.deleteUserSession(session.userId);
+            console.log(`[Auth Logout] ${session.userId} (${session.role}) logged out`);
+        } else {
+            // Fallback: try to clear by token directly
+            await db.deleteUserSessionByToken(token).catch(() => {});
+        }
+    }
+    res.json({ success: true });
+});
+
+// GET /api/auth/verify — checks x-auth-token against UserSession + IP (all roles)
+app.get('/api/auth/verify', async (req, res) => {
+    const token = req.headers['x-auth-token'] || req.query.authToken;
+    const requestIp = getIp(req);
+    if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
+    try {
+        const session = await db.getUserSessionByToken(token);
+        if (!session) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
+        if (session.ip && session.ip !== 'unknown' && session.ip !== requestIp) {
+            return res.status(403).json({
+                success: false,
+                ipLocked: true,
+                message: 'Session locked to another device. Contact admin to unlock.'
+            });
+        }
+        res.json({ success: true, userId: session.userId, role: session.role, companyId: session.companyId, displayName: session.displayName, loginAt: session.loginAt, lockedIp: session.ip });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ==================== MASTER ADMIN — SELLER SESSION CONTROL (legacy, sellers only) ====================
 
 // GET /api/master/seller-sessions — view all active seller sessions + their locked IPs
 app.get('/api/master/seller-sessions', async (req, res) => {
@@ -792,8 +970,68 @@ app.delete('/api/master/seller-sessions/:sellerId', async (req, res) => {
     const existing = await db.getSellerSession(sid);
     const wasLocked = !!existing;
     await db.deleteSellerSession(sid);
+    await db.deleteUserSession(sid).catch(() => {});
+    await db.createAuditLog({ adminUser: 'master_admin', companyId: 'all', category: 'AUTH', fieldChanged: 'FORCE_LOGOUT_BY_ADMIN', previousValue: existing?.ip, newValue: null, reason: `Admin force-kicked seller ${sid}` }).catch(() => {});
     console.log(`[Master Admin] Kicked & unlocked ${sid}`);
     res.json({ success: true, message: `${sid} session cleared. They can now log in from any device.`, wasActive: wasLocked });
+});
+
+// ==================== MASTER ADMIN — UNIVERSAL SESSION CONTROL (all roles) ====================
+
+// GET /api/master/sessions — view ALL active sessions for ALL roles
+app.get('/api/master/sessions', async (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    try {
+        const all = await db.getAllUserSessions();
+        const sessions = all.map(s => ({
+            userId: s.userId,
+            displayName: s.displayName || s.userId,
+            role: s.role || 'unknown',
+            companyId: s.companyId || 'littlane',
+            lockedIp: s.ip,
+            loginAt: s.loginAt,
+            active: true
+        }));
+        res.json({ success: true, sessions });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// DELETE /api/master/sessions/:userId — force logout any user (all roles)
+app.delete('/api/master/sessions/:userId', async (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const userId = req.params.userId;
+    try {
+        const existing = await db.getUserSession(userId);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: `No active session found for ${userId}.` });
+        }
+        await db.deleteUserSession(userId);
+        // If it's a legacy seller, also clear SellerSession
+        if (SELLER_ACCOUNTS[userId.toUpperCase()]) {
+            await db.deleteSellerSession(userId.toUpperCase()).catch(() => {});
+        }
+        await db.createAuditLog({
+            adminUser: 'master_admin',
+            companyId: existing.companyId || 'all',
+            category: 'AUTH',
+            fieldChanged: 'FORCE_LOGOUT_BY_ADMIN',
+            previousValue: { ip: existing.ip, role: existing.role },
+            newValue: null,
+            reason: `Admin force-cleared session for ${userId} (${existing.role})`
+        }).catch(() => {});
+        console.log(`[Master Admin] Force-cleared session for ${userId} (${existing.role})`);
+        res.json({ success: true, message: `${userId} session cleared. They can now log in from any device.` });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
 });
 
 // GET /api/seller/all-tickets — returns ALL tickets from ALL sellers combined (for shared dashboard)
@@ -866,7 +1104,15 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
 // ==================== UNIVERSAL PLATFORM LOGIN & RBAC ====================
 
 // POST /api/auth/login — Unified entry point for all 7 platform roles
+// Now creates a persistent UserSession in MongoDB and enforces strict one-device-per-user IP lock.
 app.post('/api/auth/login', async (req, res) => {
+    const requestIp = getIp(req);
+    // Rate limit: 10 attempts per IP per 15 minutes
+    const rl = checkLoginRateLimit(requestIp);
+    if (!rl.allowed) {
+        return res.status(429).json({ success: false, message: `Too many login attempts. Please wait ${rl.resetInSec} seconds before trying again.` });
+    }
+
     const { username, password } = req.body || {};
     if (!username || !password) {
         return res.status(400).json({ success: false, message: 'Username/email and password are required.' });
@@ -878,16 +1124,24 @@ app.post('/api/auth/login', async (req, res) => {
             // Check legacy SELLER_ACCOUNTS fallback
             const sid = username.toUpperCase();
             if (SELLER_ACCOUNTS[sid] && SELLER_ACCOUNTS[sid] === password) {
+                // Route through unified session for legacy sellers too
+                const existingSession = await db.getUserSession(sid);
+                if (existingSession && existingSession.ip && existingSession.ip !== 'unknown' && existingSession.ip !== requestIp) {
+                    return res.status(403).json({
+                        success: false,
+                        ipLocked: true,
+                        lockedIp: existingSession.ip,
+                        message: `This account is already active on another device (${existingSession.ip}). Ask admin to unlock.`
+                    });
+                }
                 const token = generateToken();
+                const loginAt = new Date().toISOString();
+                await db.setUserSession(sid, { token, ip: requestIp, loginAt, role: 'seller', companyId: 'littlane', displayName: `Seller ${sid}` });
+                await db.setSellerSession(sid, { token, ip: requestIp, loginAt });
                 return res.json({
                     success: true,
                     token,
-                    user: {
-                        userId: sid,
-                        displayName: `Seller ${sid}`,
-                        role: 'seller',
-                        companyId: 'littlane'
-                    }
+                    user: { userId: sid, displayName: `Seller ${sid}`, role: 'seller', companyId: 'littlane' }
                 });
             }
             return res.status(401).json({ success: false, message: 'Invalid credentials.' });
@@ -910,6 +1164,32 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ success: false, message: 'Invalid password.' });
         }
 
+        // ==================== UNIFIED IP LOCK CHECK ====================
+        // Customer accounts are excluded from device locking (see implementation plan).
+        const lockableRoles = ['master_admin', 'company_admin', 'seller', 'pr'];
+        if (lockableRoles.includes(user.role)) {
+            const existingSession = await db.getUserSession(user.userId);
+            if (existingSession && existingSession.ip && existingSession.ip !== 'unknown' && existingSession.ip !== requestIp) {
+                // Log the rejected attempt
+                await db.createAuditLog({
+                    adminUser: user.userId,
+                    companyId: user.companyId || 'littlane',
+                    category: 'AUTH',
+                    fieldChanged: 'IP_LOCKED_REJECT',
+                    previousValue: existingSession.ip,
+                    newValue: requestIp,
+                    reason: `Login blocked: account already active on ${existingSession.ip}`
+                }).catch(() => {});
+                console.log(`[Auth Login BLOCKED] ${user.userId} (${user.role}) from ${requestIp}, locked to ${existingSession.ip}`);
+                return res.status(403).json({
+                    success: false,
+                    ipLocked: true,
+                    lockedIp: existingSession.ip,
+                    message: `This account is already active on another device (${existingSession.ip}). Contact your admin to unlock.`
+                });
+            }
+        }
+
         // Log successful login
         await db.createAuditLog({
             adminUser: user.userId,
@@ -918,10 +1198,25 @@ app.post('/api/auth/login', async (req, res) => {
             fieldChanged: 'LOGIN_SUCCESS',
             previousValue: null,
             newValue: 'ACTIVE_SESSION',
-            reason: `Role ${user.role} logged in`
+            reason: `Role ${user.role} logged in from ${requestIp}`
         });
 
         const token = generateToken();
+        const loginAt = new Date().toISOString();
+
+        // Create/update unified UserSession (only for lockable roles)
+        if (lockableRoles.includes(user.role)) {
+            await db.setUserSession(user.userId, {
+                token,
+                ip: requestIp,
+                loginAt,
+                role: user.role,
+                companyId: user.companyId || 'littlane',
+                displayName: user.displayName || user.userId
+            });
+            console.log(`[Auth Login] ${user.userId} (${user.role}) from ${requestIp} — session IP-locked`);
+        }
+
         res.json({
             success: true,
             token,

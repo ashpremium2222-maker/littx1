@@ -18,12 +18,14 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [ipLocked, setIpLocked] = useState<{ lockedIp: string } | null>(null)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!username || !password) return
     setLoading(true)
     setError('')
+    setIpLocked(null)
 
     try {
       const res = await fetch('/api/auth/login', {
@@ -37,6 +39,9 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
         sessionStorage.setItem('littx_user', JSON.stringify(data.user))
         sessionStorage.setItem('littx_token', data.token)
         onLoginSuccess(data.user)
+      } else if (data.ipLocked) {
+        // Distinct handling — this is a device lock, not a password error
+        setIpLocked({ lockedIp: data.lockedIp || 'another device' })
       } else {
         setError(data.message || 'Invalid login credentials')
       }
@@ -72,6 +77,30 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
           <h2 style={{ margin: '0 0 6px', fontSize: '1.5rem', fontWeight: 800, color: 'var(--ink)' }}>LITTX PLATFORM</h2>
           <div style={{ fontSize: '12px', color: 'var(--ink-faint)' }}>Multi-Tenant SaaS Event Portal</div>
         </div>
+
+        {/* IP-lock error — distinct from a password error, shown as a device-locked warning */}
+        {ipLocked && (
+          <div
+            style={{
+              background: 'rgba(168,85,247,0.1)',
+              border: '1px solid rgba(168,85,247,0.35)',
+              color: '#c4b5fd',
+              padding: '14px 16px',
+              borderRadius: '10px',
+              fontSize: '12px',
+              fontWeight: 600,
+              marginBottom: '20px',
+              textAlign: 'center',
+              lineHeight: 1.6
+            }}
+          >
+            🔒 Account locked to another device<br />
+            <span style={{ fontWeight: 400, color: '#a78bfa' }}>
+              IP: <code style={{ background: 'rgba(168,85,247,0.15)', padding: '2px 6px', borderRadius: 4 }}>{ipLocked.lockedIp}</code>
+            </span><br />
+            Contact your admin to unlock this account.
+          </div>
+        )}
 
         {error && (
           <div

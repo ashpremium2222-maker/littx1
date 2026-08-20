@@ -57,6 +57,36 @@ const SellerSessionSchema = new mongoose.Schema({
     ip: { type: String }
 });
 
+// ==================== SCAN LOG SCHEMA ====================
+// Written on EVERY scan attempt (accepted, duplicate, cancelled, invalid).
+// Fire-and-forget from the gate endpoint — never blocks the gate response.
+const ScanLogSchema = new mongoose.Schema({
+    ticketId: { type: String, required: true },
+    result: { type: String, enum: ['accepted', 'duplicate', 'cancelled', 'invalid'], required: true },
+    scannedBy: { type: String, default: 'Gate Staff' },
+    ip: { type: String, default: 'unknown' },
+    companyId: { type: String, default: 'littlane' },
+    event: { type: String },
+    timestamp: { type: Date, default: Date.now }
+});
+ScanLogSchema.index({ timestamp: -1 });
+ScanLogSchema.index({ scannedBy: 1, timestamp: -1 });
+ScanLogSchema.index({ result: 1 });
+ScanLogSchema.index({ ticketId: 1 });
+
+// ==================== UNIFIED USER SESSION SCHEMA ====================
+// One active session per userId — enforces strict one-device-per-user for all roles.
+// Mirrors SellerSessionSchema but covers every role: master_admin, company_admin, seller, pr.
+const UserSessionSchema = new mongoose.Schema({
+    userId: { type: String, required: true, unique: true },
+    token: { type: String, required: true },
+    ip: { type: String, default: 'unknown' },
+    loginAt: { type: String },
+    role: { type: String },
+    companyId: { type: String },
+    displayName: { type: String }
+});
+
 const SaleSchema = new mongoose.Schema({
     orderId: { type: String, required: true, unique: true },
     companyId: { type: String, default: 'littlane' },
@@ -164,6 +194,8 @@ const Company = mongoose.model('Company', CompanySchema);
 const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
 const Customer = mongoose.model('Customer', CustomerSchema);
 const SellerSession = mongoose.model('SellerSession', SellerSessionSchema);
+const ScanLog = mongoose.model('ScanLog', ScanLogSchema);
+const UserSession = mongoose.model('UserSession', UserSessionSchema);
 
 // ==================== SEED DATA ====================
 
@@ -650,7 +682,9 @@ const mockDb = {
         }
     ],
     auditLogs: [],
-    sellerSessions: []
+    sellerSessions: [],
+    scanLogs: [],
+    userSessions: []
 };
 
 function useMock() {
@@ -659,6 +693,8 @@ function useMock() {
 
 // In-memory fallback for local dev (when MongoDB is not available)
 const _mockSessions = new Map();
+const _mockUserSessions = new Map();
+const _mockScanLogs = [];
 
 module.exports = {
     // Session handlers
@@ -690,6 +726,8 @@ module.exports = {
     AuditLog,
     Customer,
     SellerSession,
+    ScanLog,
+    UserSession,
 
     // Sale Helpers
     createSaleRecord: async (saleData) => {
@@ -902,6 +940,144 @@ module.exports = {
             };
         }
         return await getEffectiveConfig(companyId, eventName);
+    },
+
+    // ==================== SCAN LOG HELPERS ====================
+
+    // Fire-and-forget safe: callers should .catch(e => console.error('[ScanLog]', e)) — never await this.
+    createScanLog: async (logData) => {
+        const now = new Date();
+        if (useMock()) {
+            _mockScanLogs.push({ ...logData, timestamp: now });
+            return logData;
+        }
+        try {
+            const log = new ScanLog({ ...logData, timestamp: now });
+            return await log.save();
+        } catch (err) {
+            console.error('[ScanLog write error]', err.message);
+        }
+    },
+
+    // Returns accepted/declined counts for today (or since sinceDate).
+    getScanStats: async (companyId, sinceDate) => {
+        if (useMock()) {
+            const since = sinceDate || new Date(0);
+            const logs = _mockScanLogs.filter(l =>
+                (!companyId || l.companyId === companyId) &&
+                new Date(l.timestamp) >= since
+            );
+            const c = { accepted: 0, duplicate: 0, cancelled: 0, invalid: 0 };
+            logs.forEach(l => { if (c[l.result] !== undefined) c[l.result]++; });
+            return { accepted: c.accepted, declined: c.duplicate + c.cancelled + c.invalid, declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid } };
+        }
+        const query = { timestamp: { $gte: sinceDate || new Date(0) } };
+        if (companyId) query.companyId = companyId;
+        const agg = await ScanLog.aggregate([
+            { $match: query },
+            { $group: { _id: '$result', count: { $sum: 1 } } }
+        ]);
+        const c = { accepted: 0, duplicate: 0, cancelled: 0, invalid: 0 };
+        agg.forEach(a => { if (c[a._id] !== undefined) c[a._id] = a.count; });
+        return {
+            accepted: c.accepted,
+            declined: c.duplicate + c.cancelled + c.invalid,
+            declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid }
+        };
+    },
+
+    // Count unique scanner userIds who have scanned since sinceDate.
+    getActiveScannerCount: async (companyId, sinceDate) => {
+        if (useMock()) {
+            const since = sinceDate || new Date(0);
+            const recent = _mockScanLogs.filter(l =>
+                (!companyId || l.companyId === companyId) &&
+                new Date(l.timestamp) >= since
+            );
+            return new Set(recent.map(l => l.scannedBy)).size;
+        }
+        const query = { timestamp: { $gte: sinceDate || new Date(0) }, result: 'accepted' };
+        if (companyId) query.companyId = companyId;
+        const distinct = await ScanLog.distinct('scannedBy', query);
+        return distinct.length;
+    },
+
+    // Atomic scan: only transitions ticket from paid/generated/emailed state to scanned.
+    // Returns updated sale or null if precondition failed (already scanned — race condition guard).
+    atomicScanTicket: async (ticketId, scannedBy, scannedAtStr) => {
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s =>
+                s.ticketId === ticketId &&
+                ['paid', 'ticket_generated', 'emailed', 'email_failed'].includes(s.status)
+            );
+            if (idx === -1) return null;
+            mockDb.sales[idx].status = 'scanned';
+            mockDb.sales[idx].scannedBy = scannedBy;
+            mockDb.sales[idx].scannedAt = scannedAtStr;
+            mockDb.sales[idx].updatedAt = new Date().toISOString();
+            return mockDb.sales[idx];
+        }
+        return Sale.findOneAndUpdate(
+            {
+                ticketId,
+                status: { $in: ['paid', 'ticket_generated', 'emailed', 'email_failed'] }
+            },
+            {
+                $set: {
+                    status: 'scanned',
+                    scannedBy,
+                    scannedAt: scannedAtStr,
+                    updatedAt: new Date().toISOString()
+                }
+            },
+            { returnDocument: 'after', lean: true }
+        );
+    },
+
+    // ==================== UNIFIED USER SESSION HELPERS ====================
+
+    getUserSession: async (userId) => {
+        if (useMock()) return _mockUserSessions.get(userId) || null;
+        return UserSession.findOne({ userId }).lean();
+    },
+    getUserSessionByToken: async (token) => {
+        if (!token) return null;
+        if (useMock()) {
+            for (const s of _mockUserSessions.values()) {
+                if (s.token === token) return s;
+            }
+            return null;
+        }
+        return UserSession.findOne({ token }).lean();
+    },
+    setUserSession: async (userId, data) => {
+        if (useMock()) {
+            _mockUserSessions.set(userId, { ...data, userId });
+            return data;
+        }
+        return UserSession.findOneAndUpdate(
+            { userId },
+            { ...data, userId },
+            { upsert: true, new: true, lean: true }
+        );
+    },
+    deleteUserSession: async (userId) => {
+        if (useMock()) { _mockUserSessions.delete(userId); return true; }
+        return UserSession.deleteOne({ userId });
+    },
+    deleteUserSessionByToken: async (token) => {
+        if (!token) return false;
+        if (useMock()) {
+            for (const [id, s] of _mockUserSessions.entries()) {
+                if (s.token === token) { _mockUserSessions.delete(id); return true; }
+            }
+            return false;
+        }
+        return UserSession.deleteOne({ token });
+    },
+    getAllUserSessions: async () => {
+        if (useMock()) return Array.from(_mockUserSessions.values());
+        return UserSession.find({}).lean();
     }
 };
 

@@ -8,9 +8,15 @@ interface DashboardProps {
   summary: any
   testMode: boolean
   onManualGenerate: () => void
+  scanStats?: {
+    accepted: number
+    declined: number
+    declinedByReason?: { duplicate: number; cancelled: number; invalid: number }
+    activeScannerCount: number
+  }
 }
 
-export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate }: DashboardProps) {
+export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, scanStats }: DashboardProps) {
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
   const [chartMode, setChartMode] = useState<'actual' | 'forecast'>('actual')
   const [popupEvent, setPopupEvent] = useState<{ name: string; top: number; left: number } | null>(null)
@@ -281,6 +287,20 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
           <div className={`tile-delta ${emailFailures + ticketFailures > 0 ? 'down' : 'up'}`}>
             <span>{emailFailures + ticketFailures > 0 ? '⚠' : '✓'}</span>{' '}
             {emailFailures + ticketFailures > 0 ? 'Requires attention' : 'All clear'}
+          </div>
+        </div>
+
+        {/* Gate Scans tile — sourced from ScanLog aggregation via /api/admin/sales scanStats */}
+        <div className="tile tile-teal" style={{ borderColor: 'rgba(168,85,247,0.3)' }}>
+          <div className="tile-label">GATE SCANS TODAY</div>
+          <div className="tile-value">{scanStats ? scanStats.accepted : qrScannedCount}</div>
+          <div className="tile-sub">
+            {scanStats
+              ? `${scanStats.declined} declined · ${scanStats.activeScannerCount} active scanner${scanStats.activeScannerCount !== 1 ? 's' : ''}`
+              : `${qrScannedCount} scanned at gate`}
+          </div>
+          <div className="tile-delta up">
+            <span>📲</span> Gate scanner live
           </div>
         </div>
       </div>

@@ -54,6 +54,29 @@ function MainAppShell() {
     }
   }
 
+  // ==================== VERIFY SESSION ON EVERY MOUNT / REFRESH ====================
+  // If the user has a stored token, validate it against UserSession + IP on the server.
+  // This handles: admin force-clear (401), IP switch without explicit logout (403 ipLocked).
+  useEffect(() => {
+    const token = sessionStorage.getItem('littx_token')
+    if (!token || !userSession) return // nothing stored, skip
+    fetch('/api/auth/verify', { headers: { 'x-auth-token': token } })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) {
+          // Session was force-cleared by admin or IP changed — kick client
+          sessionStorage.removeItem('littx_user')
+          sessionStorage.removeItem('littx_token')
+          setUserSession(null)
+          if (data.ipLocked) {
+            // Redirect to login, which will show the locked-device UI
+            navigate('/admin-login')
+          }
+        }
+      })
+      .catch(() => {}) // network error — stay logged in (offline tolerance)
+  }, []) // run once on mount
+
   // ── Root redirect ──────────────────────────────────────────────────────────
   if (path === '/' || path === '/index.html') {
     window.location.href = '/littx/index.html'

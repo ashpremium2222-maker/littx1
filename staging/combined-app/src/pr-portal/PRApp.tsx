@@ -38,23 +38,36 @@ function LoginPage({ onLogin }: { onLogin: (user: PRUser) => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [ipLocked, setIpLocked] = useState<{ lockedIp: string } | null>(null)
   const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setTimeout(() => {
-      const user = PR_USERS.find(u => u.username === username.trim() && u.password === password)
-      if (user) {
-        const { password: _, ...safeUser } = user
+    setIpLocked(null)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password })
+      })
+      const data = await res.json()
+      if (data.success && data.user && (data.user.role === 'pr' || data.user.role === 'seller')) {
+        const safeUser: PRUser = { id: data.user.userId, username: data.user.userId, displayName: data.user.displayName || data.user.userId }
         sessionStorage.setItem('pr_user', JSON.stringify(safeUser))
+        sessionStorage.setItem('littx_token', data.token)
         onLogin(safeUser)
+      } else if (data.ipLocked) {
+        setIpLocked({ lockedIp: data.lockedIp || 'another device' })
       } else {
-        setError('Invalid credentials')
+        setError(data.message || 'Invalid credentials')
       }
+    } catch (err: any) {
+      setError(err.message || 'Server connection error')
+    } finally {
       setLoading(false)
-    }, 400)
+    }
   }
 
   return (
@@ -66,7 +79,27 @@ function LoginPage({ onLogin }: { onLogin: (user: PRUser) => void }) {
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--ink-faint)', marginTop: '8px' }}>Partner Portal</div>
         </div>
-        
+
+        {/* IP-lock error — device locked to another IP */}
+        {ipLocked && (
+          <div style={{
+            background: 'rgba(168,85,247,0.1)',
+            border: '1px solid rgba(168,85,247,0.35)',
+            color: '#c4b5fd',
+            padding: '12px 14px',
+            borderRadius: '8px',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            marginBottom: '16px',
+            textAlign: 'center',
+            lineHeight: 1.6
+          }}>
+            🔒 Account locked to another device<br />
+            <span style={{ fontWeight: 400, color: '#a78bfa' }}>IP: {ipLocked.lockedIp}</span><br />
+            Contact LITTX admin to unlock.
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>USERNAME</label>

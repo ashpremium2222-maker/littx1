@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import LittixLogo from '../components/LittixLogo'
 import AnimatedCounter from '../components/AnimatedCounter'
@@ -21,6 +21,24 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
   const [activeTab, setActiveTab] = useState<'scanned' | 'failed'>('scanned')
   const [search, setSearch] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
+
+  // ==================== SERVER-SIDE SCAN STATS ====================
+  // Polled from /api/scan-stats every 8s — survives refresh, cross-device accurate.
+  const [scanStats, setScanStats] = useState({ accepted: 0, declined: 0, declinedByReason: { duplicate: 0, cancelled: 0, invalid: 0 }, activeScannerCount: 0 })
+
+  useEffect(() => {
+    const sellerToken = sessionStorage.getItem('littx_seller_token') || sessionStorage.getItem('littx_token')
+    if (!sellerToken) return
+    const fetchStats = () => {
+      fetch('/api/scan-stats', { headers: { 'x-seller-token': sellerToken } })
+        .then(r => r.json())
+        .then(d => { if (d.success) setScanStats({ accepted: d.accepted, declined: d.declined, declinedByReason: d.declinedByReason, activeScannerCount: d.activeScannerCount }) })
+        .catch(() => {})
+    }
+    fetchStats()
+    const interval = setInterval(fetchStats, 8000)
+    return () => clearInterval(interval)
+  }, [])
 
   const bg = dark ? 'bg-[#0D0D0D]' : 'bg-[#F9F9FB]'
   const navBg = dark ? 'bg-[#0D0D0D] border-[#1E1E1E]' : 'bg-[#F9F9FB] border-[#EBEBEB]'
@@ -103,7 +121,7 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
         </div>
       </div>
 
-      {/* Stats row */}
+      {/* Stats row — Accepted and Declined come from /api/scan-stats (server-persisted, not in-memory) */}
       <div className="flex gap-3 px-4 pt-4 pb-2">
         <div
           className={`flex-1 rounded-2xl border px-4 py-3.5 ${cardBg}`}
@@ -118,10 +136,19 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
           className={`flex-1 rounded-2xl border px-4 py-3.5 ${cardBg}`}
           style={{ boxShadow: dark ? 'none' : '0 1px 8px rgba(0,0,0,0.04)' }}
         >
-          <p className="text-2xl font-black text-[#EF4444]">
-            <AnimatedCounter value={rejectedScans.length} />
+          <p className="text-2xl font-black text-[#A855F7]">
+            <AnimatedCounter value={scanStats.accepted} />
           </p>
-          <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Failed (Session)</p>
+          <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Accepted</p>
+        </div>
+        <div
+          className={`flex-1 rounded-2xl border px-4 py-3.5 ${cardBg}`}
+          style={{ boxShadow: dark ? 'none' : '0 1px 8px rgba(0,0,0,0.04)' }}
+        >
+          <p className="text-2xl font-black text-[#EF4444]">
+            <AnimatedCounter value={scanStats.declined} />
+          </p>
+          <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Declined</p>
         </div>
       </div>
 
