@@ -61,6 +61,8 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
         sessionStorage.setItem('littx_seller_token', data.token)
         sessionStorage.setItem('littx_seller_id', data.sellerId)
         onLogin(data.sellerId, data.token)
+      } else if (data.ipLocked) {
+        setError(`🔒 Device locked — this ID is already active on another device. Ask master admin to unlock it.`)
       } else {
         setError(data.message || 'Login failed')
       }

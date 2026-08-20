@@ -79,13 +79,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const refreshTickets = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/sales?key=${adminKey}`)
+      // Prefer seller token (combined view of all tickets for all sellers)
+      const sellerToken = sessionStorage.getItem('littx_seller_token')
+      let res: Response
+      if (sellerToken) {
+        res = await fetch('/api/seller/all-tickets', {
+          headers: { 'x-seller-token': sellerToken }
+        })
+      } else {
+        res = await fetch(`/api/admin/sales?key=${adminKey}`)
+      }
       if (res.ok) {
         const data = await res.json()
         if (data.success && data.sales) {
           // Map DB sales to Littix Ticket objects
           const mapped: Ticket[] = data.sales.map((sale: any) => {
             const isScanned = sale.status === 'scanned' || !!sale.scannedAt
+            const resolveType = (): TicketType => {
+              const t = (sale.ticketType || sale.gender || '').toLowerCase()
+              if (t.includes('female')) return 'Female Pass'
+              if (t.includes('male')) return 'Male Pass'
+              if (t.includes('aura')) return 'Aura Genesis'
+              if (t.includes('vip')) return 'VIP'
+              return 'General'
+            }
             return {
               id: sale.ticketId || sale.orderId,
               event: sale.event || 'FRESHERS TAKEOVER',
@@ -94,10 +111,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               phone: sale.phone || '',
               dateLabel: fmtIST(sale.generatedAt),
               venue: 'Flo The Brewery, Pune',
-              ticketType: sale.gender === 'male' ? 'Male Pass' : sale.gender === 'female' ? 'Female Pass' : 'General',
+              ticketType: resolveType(),
               price: `₹${sale.amount}`,
               qty: sale.quantity || 1,
-              generatedBy: 'Admin',
+              generatedBy: sale.generatedBy || 'Staff',
               generatedAt: fmtIST(sale.generatedAt),
               status: isScanned ? 'scanned' : 'pending',
               scannedBy: sale.scannedBy || undefined,

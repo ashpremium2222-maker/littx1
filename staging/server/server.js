@@ -20,6 +20,13 @@ const PRICING = {
     male: 699
 };
 
+// ==================== ACTIVE EVENTS (Master Admin controlled) ====================
+// Master admin adds/removes events sellers can punch tickets for.
+// Persisted in-memory; on restart resets to defaults (extend to DB if needed).
+let ACTIVE_EVENTS = [
+    { id: 1, name: EVENT_NAME, date: '', active: true }
+];
+
 // ==================== RAZORPAY SETUP ====================
 // Razorpay integration removed; manual cash payments only.
 // No external payment gateway is used.
@@ -32,9 +39,9 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT ||
 // 3 hardcoded seller IDs + passwords. Each seller can only have 1 active session at a time.
 // Adjust passwords here or move to env vars for production.
 const SELLER_ACCOUNTS = {
-    'SELLER-A': process.env.SELLER_A_PASS || 'littx-a-2026',
-    'SELLER-B': process.env.SELLER_B_PASS || 'littx-b-2026',
-    'SELLER-C': process.env.SELLER_C_PASS || 'littx-c-2026',
+    'SELLER-A': process.env.SELLER_A_PASS || 'nova-gate-8x4',
+    'SELLER-B': process.env.SELLER_B_PASS || 'pulse-core-3m9',
+    'SELLER-C': process.env.SELLER_C_PASS || 'nexus-wave-7k2',
 };
 
 // In-memory session store: sellerId -> { token, loginAt, ip }
@@ -45,20 +52,37 @@ function generateToken() {
     return crypto.randomBytes(32).toString('hex');
 }
 
-// Returns sellerId if token is valid, null otherwise
-function authenticateSeller(token) {
+// Returns sellerId if token is valid AND IP matches, null otherwise
+// Pass requestIp to enforce IP lock; omit to skip IP check (e.g. logout)
+function authenticateSeller(token, requestIp) {
     if (!token) return null;
     for (const [id, session] of Object.entries(sellerSessions)) {
-        if (session && session.token === token) return id;
+        if (session && session.token === token) {
+            // IP lock: if requestIp provided, it must match the login IP
+            if (requestIp && session.ip && session.ip !== 'unknown') {
+                if (session.ip !== requestIp) {
+                    return '__IP_MISMATCH__';
+                }
+            }
+            return id;
+        }
     }
     return null;
 }
 
 function requireSeller(req, res, next) {
     const token = req.headers['x-seller-token'] || req.query.sellerToken;
-    const sellerId = authenticateSeller(token);
+    const requestIp = req.ip || req.connection?.remoteAddress || 'unknown';
+    const sellerId = authenticateSeller(token, requestIp);
     if (!sellerId) {
         return res.status(401).json({ success: false, message: 'Seller not authenticated. Please log in.' });
+    }
+    if (sellerId === '__IP_MISMATCH__') {
+        return res.status(403).json({
+            success: false,
+            ipLocked: true,
+            message: 'Access denied. This session is locked to another device. Contact admin to unlock.'
+        });
     }
     req.sellerId = sellerId;
     next();
@@ -140,8 +164,14 @@ function computeAmount(gender, quantity) {
 }
 
 function requireAdmin(req, res, next) {
-    // Key check removed - dashboard is open
-    next();
+    const key = req.headers['x-admin-key'] || req.query.key || req.body?.key;
+    const managerToken = process.env.MANAGER_TOKEN || 'dash-2026';
+    if (key === ADMIN_KEY || key === managerToken) {
+        req.isManager = key === managerToken; // Flag if it's the manager
+        next();
+    } else {
+        res.status(401).json({ success: false, message: 'Unauthorized. Invalid admin key.' });
+    }
 }
 
 // ==================== 1. CREATE ORDER (start of checkout) ====================
@@ -603,6 +633,66 @@ app.get('/api/test-email', async (req, res) => {
 // ==================== HEALTH ====================
 app.get('/api/health', (req, res) => res.json({ success: true, event: EVENT.name, paymentMode: 'manual' }));
 
+// ==================== ACTIVE EVENTS (seller-readable, master-admin-writable) ====================
+
+// GET /api/active-events — sellers fetch which events are currently active
+app.get('/api/active-events', (req, res) => {
+    const token = req.headers['x-seller-token'] || req.query.sellerToken;
+    const sellerId = authenticateSeller(token);
+    if (!sellerId) return res.status(401).json({ success: false, message: 'Not authenticated.' });
+    const visible = ACTIVE_EVENTS.filter(e => e.active);
+    res.json({ success: true, events: visible });
+});
+
+// GET /api/master/active-events — master admin reads all events (including inactive)
+app.get('/api/master/active-events', (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    res.json({ success: true, events: ACTIVE_EVENTS });
+});
+
+// POST /api/master/active-events — add a new event
+app.post('/api/master/active-events', (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const { name, date } = req.body || {};
+    if (!name || !name.trim()) return res.status(400).json({ success: false, message: 'Event name required.' });
+    const newEvent = { id: Date.now(), name: name.trim(), date: date || '', active: true };
+    ACTIVE_EVENTS.push(newEvent);
+    res.json({ success: true, event: newEvent, events: ACTIVE_EVENTS });
+});
+
+// PUT /api/master/active-events/:id — toggle active/inactive or rename
+app.put('/api/master/active-events/:id', (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const id = parseInt(req.params.id);
+    const ev = ACTIVE_EVENTS.find(e => e.id === id);
+    if (!ev) return res.status(404).json({ success: false, message: 'Event not found.' });
+    const { name, date, active } = req.body || {};
+    if (name !== undefined) ev.name = name.trim();
+    if (date !== undefined) ev.date = date;
+    if (active !== undefined) ev.active = !!active;
+    res.json({ success: true, event: ev, events: ACTIVE_EVENTS });
+});
+
+// DELETE /api/master/active-events/:id — remove event
+app.delete('/api/master/active-events/:id', (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const id = parseInt(req.params.id);
+    ACTIVE_EVENTS = ACTIVE_EVENTS.filter(e => e.id !== id);
+    res.json({ success: true, events: ACTIVE_EVENTS });
+});
+
 // ==================== LITTX SELLER LOGIN SYSTEM ====================
 
 // POST /api/seller/login — validate credentials, issue token, enforce 1-session-per-seller
@@ -618,9 +708,20 @@ app.post('/api/seller/login', (req, res) => {
     const sid = sellerId.toUpperCase();
     const token = generateToken();
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    // Check if already locked to a different IP
+    const existing = sellerSessions[sid];
+    if (existing && existing.ip && existing.ip !== 'unknown' && existing.ip !== ip) {
+        console.log(`[Seller Login BLOCKED] ${sid} attempted from ${ip}, locked to ${existing.ip}`);
+        return res.status(403).json({
+            success: false,
+            ipLocked: true,
+            lockedIp: existing.ip,
+            message: `This account is already logged in from another device (${existing.ip}). Ask admin to unlock.`
+        });
+    }
     sellerSessions[sid] = { token, loginAt: new Date().toISOString(), ip };
-    console.log(`[Seller Login] ${sid} logged in from ${ip}`);
-    res.json({ success: true, sellerId: sid, token, loginAt: sellerSessions[sid].loginAt });
+    console.log(`[Seller Login] ${sid} logged in from ${ip} — session IP-locked`);
+    res.json({ success: true, sellerId: sid, token, loginAt: sellerSessions[sid].loginAt, lockedIp: ip });
 });
 
 // POST /api/seller/logout — invalidate session
@@ -634,17 +735,68 @@ app.post('/api/seller/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// GET /api/seller/verify — check if session is still valid
+// GET /api/seller/verify — check if session is still valid + enforce IP lock
 app.get('/api/seller/verify', (req, res) => {
     const token = req.headers['x-seller-token'] || req.query.token;
-    const sid = authenticateSeller(token);
+    const requestIp = req.ip || req.connection?.remoteAddress || 'unknown';
+    const sid = authenticateSeller(token, requestIp);
     if (!sid) {
         return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
     }
-    res.json({ success: true, sellerId: sid, loginAt: sellerSessions[sid]?.loginAt });
+    if (sid === '__IP_MISMATCH__') {
+        return res.status(403).json({
+            success: false,
+            ipLocked: true,
+            message: 'Session locked to another device. Contact admin to unlock.'
+        });
+    }
+    res.json({ success: true, sellerId: sid, loginAt: sellerSessions[sid]?.loginAt, lockedIp: sellerSessions[sid]?.ip });
 });
 
-// GET /api/seller/sales — returns sales made by THIS seller
+// ==================== MASTER ADMIN — SELLER SESSION CONTROL ====================
+
+// GET /api/master/seller-sessions — view all active seller sessions + their locked IPs
+app.get('/api/master/seller-sessions', (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const sessions = Object.entries(sellerSessions).map(([sid, s]) => ({
+        sellerId: sid,
+        lockedIp: s.ip,
+        loginAt: s.loginAt,
+        active: true
+    }));
+    res.json({ success: true, sessions });
+});
+
+// DELETE /api/master/seller-sessions/:sellerId — kick/unlock a seller (force logout + clear IP lock)
+app.delete('/api/master/seller-sessions/:sellerId', (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const sid = req.params.sellerId.toUpperCase();
+    if (!SELLER_ACCOUNTS[sid]) {
+        return res.status(404).json({ success: false, message: 'Seller not found.' });
+    }
+    const wasLocked = !!sellerSessions[sid];
+    delete sellerSessions[sid];
+    console.log(`[Master Admin] Kicked & unlocked ${sid}`);
+    res.json({ success: true, message: `${sid} session cleared. They can now log in from any device.`, wasActive: wasLocked });
+});
+
+// GET /api/seller/all-tickets — returns ALL tickets from ALL sellers combined (for shared dashboard)
+app.get('/api/seller/all-tickets', requireSeller, async (req, res) => {
+    try {
+        const all = await db.getAll();
+        res.json({ success: true, sales: all });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/seller/sales — returns sales made by THIS seller only
 app.get('/api/seller/sales', requireSeller, async (req, res) => {
     try {
         const all = await db.getAll();

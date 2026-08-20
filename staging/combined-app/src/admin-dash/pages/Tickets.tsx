@@ -8,6 +8,7 @@ interface TicketsProps {
   onReload: () => Promise<void> | void
   globalSearch?: string
   isPresentation?: boolean
+  isManager?: boolean
   eventFilter?: string
   onEventFilterChange?: (val: string) => void
 }
@@ -380,7 +381,7 @@ export default function Tickets({
                           >
                             Resend
                           </button>
-                          {t.status !== 'Cancelled' && (
+                          {!isManager && t.status !== 'Cancelled' && (
                             <button
                               onClick={() => handleCancel(t.id)}
                               disabled={cancellingId === t.id}

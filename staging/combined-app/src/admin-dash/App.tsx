@@ -235,19 +235,20 @@ const navItems: NavItemDef[] = [
 
 interface AppProps {
   isPresentation?: boolean
+  isManager?: boolean
 }
 
-export default function App({ isPresentation = false }: AppProps) {
-  const [page, setPage] = useState<Page>('master-overview')
+export default function App({ isPresentation = false, isManager = false }: AppProps) {
+  const [page, setPage] = useState<Page>(isManager ? 'dashboard' : 'master-overview')
   const [selectedCompanyId, setSelectedCompanyId] = useState('littlane')
   const [selectedCompanyName, setSelectedCompanyName] = useState('Littlane Events')
   const [dark, setDark] = useState(true)
   const [search, setSearch] = useState('')
   const [adminKey, setAdminKey] = useState(
-    sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key') || ''
+    isManager ? 'dash-2026' : (sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key') || '')
   )
   const [keyInput, setKeyInput] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(isManager ? true : false)
   const [authChecking, setAuthChecking] = useState(false)
   const [authError, setAuthError] = useState('')
   const [sales, setSales] = useState<any[]>([])
@@ -575,9 +576,10 @@ export default function App({ isPresentation = false }: AppProps) {
             allSales={allSales}
             onResend={handleResend}
             adminKey={adminKey}
-            onReload={() => fetchSales(adminKey)}
+            onReload={() => fetchSales()}
             globalSearch={search}
             isPresentation={isPresentation}
+            isManager={isManager}
             eventFilter={ticketEventFilter}
             onEventFilterChange={setTicketEventFilter}
           />
@@ -645,7 +647,12 @@ export default function App({ isPresentation = false }: AppProps) {
         </div>
 
         <nav className="rail-nav">
-          {navItems.map((item) => {
+          {navItems.filter(item => {
+            if (isManager) {
+              return ['dashboard', 'tickets'].includes(item.id)
+            }
+            return true
+          }).map((item) => {
             const active = page === item.id
             return (
               <button

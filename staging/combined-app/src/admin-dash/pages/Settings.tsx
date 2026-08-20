@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-type SettingsTab = 'profile' | 'smtp' | 'payments' | 'branding' | 'roles' | 'audit'
+type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller-locks'
 
 interface SettingsProps {
   adminKey: string
@@ -8,8 +8,10 @@ interface SettingsProps {
 }
 
 export default function Settings({ adminKey }: SettingsProps) {
-  const [tab, setTab] = useState<SettingsTab>('profile')
+  const [tab, setTab] = useState<SettingsTab>('seller-locks')
   const [wiping, setWiping] = useState(false)
+  const [sessions, setSessions] = useState<any[]>([])
+  const [loadingSessions, setLoadingSessions] = useState(false)
 
   // Notification toggle states
   const [notifs, setNotifs] = useState({
@@ -22,6 +24,42 @@ export default function Settings({ adminKey }: SettingsProps) {
 
   const toggleNotif = (key: keyof typeof notifs) => {
     setNotifs((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const loadSessions = async () => {
+    setLoadingSessions(true)
+    try {
+      const res = await fetch('/api/master/seller-sessions', {
+        headers: { 'x-master-token': 'littx-master-2026' }
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSessions(data.sessions)
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingSessions(false)
+    }
+  }
+
+  const unlockSeller = async (sellerId: string) => {
+    if (!confirm(`Are you sure you want to kick and unlock ${sellerId}?`)) return
+    try {
+      const res = await fetch(`/api/master/seller-sessions/${sellerId}`, {
+        method: 'DELETE',
+        headers: { 'x-master-token': 'littx-master-2026' }
+      })
+      const data = await res.json()
+      if (data.success) {
+        alert(data.message)
+        loadSessions()
+      } else {
+        alert(data.message || 'Failed to unlock')
+      }
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   const handleWipe = async () => {
@@ -58,6 +96,7 @@ export default function Settings({ adminKey }: SettingsProps) {
         <div className="pill-toggle">
           {(
             [
+              { id: 'seller-locks', label: 'IP Locks & Sellers' },
               { id: 'profile', label: 'Profile & Workspace' },
               { id: 'smtp', label: 'SMTP Config' },
               { id: 'payments', label: 'Payment Gateways' },
@@ -67,13 +106,77 @@ export default function Settings({ adminKey }: SettingsProps) {
             <button
               key={t.id}
               className={tab === t.id ? 'active' : ''}
-              onClick={() => setTab(t.id)}
+              onClick={() => {
+                setTab(t.id as SettingsTab)
+                if (t.id === 'seller-locks') loadSessions()
+              }}
             >
               {t.label}
             </button>
           ))}
         </div>
       </div>
+
+      {tab === 'seller-locks' && (
+        <div className="card">
+          <div className="card-head">
+            <h3>Gate Staff Devices (IP Locks)</h3>
+            <div className="muted-sm">Sellers are locked to one device. Unlock them here if they need to switch.</div>
+          </div>
+          <div style={{ marginTop: '16px' }}>
+            <button className="btn-secondary" onClick={loadSessions} disabled={loadingSessions}>
+              {loadingSessions ? 'Refreshing...' : 'Refresh Sessions'}
+            </button>
+          </div>
+          <div className="table-scroll scroll" style={{ marginTop: '20px' }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Seller ID</th>
+                  <th>Locked IP Address</th>
+                  <th>Login Time</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', padding: '32px', color: 'var(--ink-faint)' }}>
+                      No sellers currently logged in.
+                    </td>
+                  </tr>
+                ) : (
+                  sessions.map((s, i) => (
+                    <tr key={i}>
+                      <td style={{ fontWeight: 'bold' }}>{s.sellerId}</td>
+                      <td>
+                        <span className="badge badge-teal"><span className="badge-dot" />{s.lockedIp}</span>
+                      </td>
+                      <td>{new Date(s.loginAt).toLocaleString()}</td>
+                      <td>
+                        <button
+                          onClick={() => unlockSeller(s.sellerId)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid rgba(255,107,107,0.3)',
+                            backgroundColor: 'rgba(255,107,107,0.12)',
+                            color: 'var(--red)',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Kick & Unlock
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {tab === 'profile' && (
         <div className="set-row">
