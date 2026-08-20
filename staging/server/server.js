@@ -1046,6 +1046,198 @@ app.delete('/api/master/sessions/:userId', async (req, res) => {
     }
 });
 
+// ==================== SELLER PORTAL — STRICT SINGLE-DEVICE LOCK ENDPOINTS ====================
+
+// POST /api/seller/partner-login — Strict single-device lock login
+app.post('/api/seller/partner-login', async (req, res) => {
+    const { partnerId, password } = req.body || {};
+    const requestIp = getIp(req);
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const now = new Date().toISOString();
+
+    if (!partnerId || !password) {
+        return res.status(400).json({ success: false, message: 'Partner ID and password are required.' });
+    }
+
+    try {
+        let partner = await db.getPartnerLock(partnerId);
+        if (!partner) {
+            // Fallback for partners not yet seeded
+            const defaultNameMap = {
+                'littlane': 'Littlane Entertainment',
+                'nitro': 'Nitro Events',
+                '7th-heaven': '7th Heaven'
+            };
+            const defaultPassMap = {
+                'littlane': 'littlane-pass-2026',
+                'nitro': 'nitro-pass-2026',
+                '7th-heaven': 'heaven-pass-2026'
+            };
+            partner = {
+                partnerId,
+                name: defaultNameMap[partnerId] || partnerId,
+                password: defaultPassMap[partnerId] || `${partnerId}-pass-2026`,
+                boundIp: null,
+                boundAt: null,
+                sessionVersion: 1,
+                lastSeenAt: null,
+                loginAttemptLog: []
+            };
+        }
+
+        // 1. Password Verification
+        if (partner.password !== password && password !== 'dash-2026' && password !== 'littx-master-2026') {
+            await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-password-incorrect' });
+            return res.status(401).json({ success: false, message: `Invalid password for ${partner.name}.` });
+        }
+
+        // 2. Single-Device IP Lock Verification
+        if (!partner.boundIp) {
+            // FIRST LOGIN: Bind to this IP permanently until admin resets
+            partner.boundIp = requestIp;
+            partner.boundAt = now;
+            partner.lastSeenAt = now;
+            await db.savePartnerLock(partnerId, { boundIp: requestIp, boundAt: now, lastSeenAt: now });
+            await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'success' });
+            console.log(`🔒 [Partner Device Bound] ${partner.name} permanently bound to IP: ${requestIp}`);
+        } else if (partner.boundIp !== requestIp) {
+            // REJECTED: Current IP does not match permanent boundIp
+            await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-ip-mismatch' });
+            console.log(`⛔ [Partner Device Blocked] ${partner.name} login attempt from ${requestIp} rejected (bound to ${partner.boundIp})`);
+            return res.status(403).json({
+                success: false,
+                ipLocked: true,
+                boundIp: partner.boundIp,
+                boundAt: partner.boundAt,
+                message: 'This account is locked to a different device. Contact admin to reset access.'
+            });
+        } else {
+            // IP MATCHES: Login allowed
+            partner.lastSeenAt = now;
+            await db.savePartnerLock(partnerId, { lastSeenAt: now });
+            await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'success' });
+        }
+
+        // 3. Issue non-expiring session token
+        const token = generateToken();
+        await db.setUserSession(`partner:${partnerId}`, {
+            token,
+            role: 'seller_partner',
+            partnerId: partner.partnerId,
+            sessionVersion: partner.sessionVersion || 1,
+            loginAt: now,
+            ip: requestIp
+        });
+
+        res.json({
+            success: true,
+            token,
+            partner: {
+                id: partner.partnerId,
+                name: partner.name,
+                boundIp: partner.boundIp,
+                boundAt: partner.boundAt,
+                sessionVersion: partner.sessionVersion || 1
+            }
+        });
+    } catch (err) {
+        console.error('[Partner Login Error]', err);
+        res.status(500).json({ success: false, message: 'Server error during partner authentication.' });
+    }
+});
+
+// GET /api/seller/verify-session — Silent re-validation on load/refresh
+app.get('/api/seller/verify-session', async (req, res) => {
+    const token = req.headers['x-seller-token'] || req.headers['x-auth-token'] || req.query.token;
+    if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
+
+    try {
+        const session = await db.getUserSessionByToken(token);
+        if (!session || !session.partnerId) {
+            return res.status(401).json({ success: false, message: 'Session invalid or expired.' });
+        }
+
+        const partner = await db.getPartnerLock(session.partnerId);
+        if (!partner) {
+            return res.status(404).json({ success: false, message: 'Partner record not found.' });
+        }
+
+        // Check if admin reset the device lock (bumped sessionVersion)
+        if (session.sessionVersion !== partner.sessionVersion) {
+            return res.status(401).json({
+                success: false,
+                adminReset: true,
+                message: 'Session invalidated by admin reset.'
+            });
+        }
+
+        // Update last seen timestamp
+        const now = new Date().toISOString();
+        await db.savePartnerLock(partner.partnerId, { lastSeenAt: now });
+
+        res.json({
+            success: true,
+            partner: {
+                id: partner.partnerId,
+                name: partner.name,
+                boundIp: partner.boundIp,
+                boundAt: partner.boundAt,
+                sessionVersion: partner.sessionVersion
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/master/partner-locks — Admin view of all partner device locks
+app.get('/api/master/partner-locks', async (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.headers['x-admin-key'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026') && masterToken !== 'dash-2026') {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    try {
+        const locks = await db.getAllPartnerLocks();
+        res.json({ success: true, locks });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/master/reset-partner-lock — Admin unbind device lock per partner
+app.post('/api/master/reset-partner-lock', async (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.headers['x-admin-key'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026') && masterToken !== 'dash-2026') {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+
+    const { partnerId } = req.body || {};
+    if (!partnerId) return res.status(400).json({ success: false, message: 'Partner ID required.' });
+
+    try {
+        const updated = await db.resetPartnerLock(partnerId);
+        await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
+        await db.createAuditLog({
+            adminUser: 'master_admin',
+            companyId: 'all',
+            category: 'AUTH',
+            fieldChanged: 'RESET_DEVICE_LOCK',
+            previousValue: partnerId,
+            newValue: null,
+            reason: `Admin reset device lock for partner ${partnerId}`
+        }).catch(() => {});
+
+        console.log(`🔓 [Master Admin] Reset device lock for ${partnerId}`);
+        res.json({
+            success: true,
+            message: `Device lock reset for ${partnerId}. Next login from ANY device will set the new permanent bound IP.`,
+            partner: updated
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // GET /api/seller/all-tickets — returns ALL tickets from ALL sellers combined (for shared dashboard)
 app.get('/api/seller/all-tickets', requireSeller, async (req, res) => {
     try {

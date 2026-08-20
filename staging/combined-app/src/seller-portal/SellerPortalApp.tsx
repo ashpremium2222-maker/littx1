@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 
 export interface PartnerOption {
   id: string
@@ -12,21 +12,29 @@ export const PARTNERS: PartnerOption[] = [
   { id: '7th-heaven', name: '7th Heaven', defaultPass: 'heaven-pass-2026' },
 ]
 
+interface PartnerSessionData {
+  id: string
+  name: string
+  boundIp?: string | null
+  boundAt?: string | null
+  sessionVersion?: number
+}
+
 export default function SellerPortalApp() {
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>('littlane')
   const [passwordInput, setPasswordInput] = useState<string>('')
-  const [authenticatedPartner, setAuthenticatedPartner] = useState<PartnerOption | null>(() => {
-    const saved = localStorage.getItem('littx_seller_partner')
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch (e) {
-        return null
-      }
+  
+  const [authenticatedPartner, setAuthenticatedPartner] = useState<PartnerSessionData | null>(() => {
+    try {
+      const saved = localStorage.getItem('littx_seller_partner')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
     }
-    return null
   })
-  const [loginError, setLoginError] = useState<string>('')
+
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('littx_seller_token'))
+  const [loginError, setLoginError] = useState<string | null>(null)
   const [loginLoading, setLoginLoading] = useState<boolean>(false)
 
   // Ticket generation form state
@@ -43,26 +51,65 @@ export default function SellerPortalApp() {
 
   const currentPartner = PARTNERS.find((p) => p.id === selectedPartnerId) || PARTNERS[0]
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Silent session re-validation on app load / refresh
+  useEffect(() => {
+    const existingToken = localStorage.getItem('littx_seller_token')
+    if (!existingToken) return
+
+    const verifySession = async () => {
+      try {
+        const res = await fetch('/api/seller/verify-session', {
+          headers: { 'x-seller-token': existingToken }
+        })
+        const data = await res.json()
+        if (res.ok && data.success) {
+          setAuthenticatedPartner(data.partner)
+          localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
+        } else if (res.status === 401 && data.adminReset) {
+          // Admin reset device lock -> invalidate lingering token
+          localStorage.removeItem('littx_seller_token')
+          localStorage.removeItem('littx_seller_partner')
+          setAuthenticatedPartner(null)
+          setToken(null)
+        }
+        // NOTE: On network failure, we intentionally do NOT clear state/log out.
+      } catch (err) {
+        console.warn('Background session verification pending network connection...')
+      }
+    }
+
+    verifySession()
+  }, [])
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoginError('')
+    setLoginError(null)
     setLoginLoading(true)
 
-    setTimeout(() => {
-      if (passwordInput === currentPartner.defaultPass || passwordInput === 'dash-2026' || passwordInput === 'littx-master-2026') {
-        setAuthenticatedPartner(currentPartner)
-        localStorage.setItem('littx_seller_partner', JSON.stringify(currentPartner))
+    try {
+      const res = await fetch('/api/seller/partner-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partnerId: selectedPartnerId, password: passwordInput })
+      })
+
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        setAuthenticatedPartner(data.partner)
+        setToken(data.token)
+        localStorage.setItem('littx_seller_token', data.token)
+        localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
         setPasswordInput('')
       } else {
-        setLoginError(`Invalid password for ${currentPartner.name}`)
+        // Persistent error message (especially for IP Mismatch)
+        setLoginError(data.message || 'Authentication failed.')
       }
+    } catch (err) {
+      setLoginError('Network error connecting to authentication server.')
+    } finally {
       setLoginLoading(false)
-    }, 400)
-  }
-
-  const handleLogout = () => {
-    setAuthenticatedPartner(null)
-    localStorage.removeItem('littx_seller_partner')
+    }
   }
 
   const handleGenderChange = (newGender: string) => {
@@ -94,10 +141,12 @@ export default function SellerPortalApp() {
     setFeedback(null)
 
     try {
+      const activeToken = localStorage.getItem('littx_seller_token') || token || ''
       const res = await fetch('/api/admin/generate-ticket', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-seller-token': activeToken,
           'x-admin-key': 'dash-2026'
         },
         body: JSON.stringify({
@@ -144,10 +193,13 @@ export default function SellerPortalApp() {
           </div>
 
           <h2 className="text-lg font-bold text-center mb-1">Partner Authentication</h2>
-          <p className="text-xs text-slate-400 text-center mb-6">Select your event partner organization & enter password</p>
+          <p className="text-xs text-slate-400 text-center mb-6">Select your organization & enter password</p>
 
           {loginError && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-lg mb-4 text-center">
+            <div className="bg-red-500/15 border-2 border-red-500/40 text-red-300 text-xs p-4 rounded-xl mb-6 text-center font-medium leading-relaxed shadow-lg">
+              <div className="text-sm font-bold text-red-400 mb-1 flex items-center justify-center gap-1.5">
+                <span>⛔</span> ACCESS BLOCKED
+              </div>
               {loginError}
             </div>
           )}
@@ -160,7 +212,10 @@ export default function SellerPortalApp() {
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => setSelectedPartnerId(p.id)}
+                    onClick={() => {
+                      setSelectedPartnerId(p.id)
+                      setLoginError(null)
+                    }}
                     className={`flex items-center justify-between p-3 rounded-xl border text-sm font-medium transition-all ${
                       selectedPartnerId === p.id
                         ? 'border-violet-500 bg-violet-500/10 text-white ring-1 ring-violet-500'
@@ -168,7 +223,7 @@ export default function SellerPortalApp() {
                     }`}
                   >
                     <span>{p.name}</span>
-                    {selectedPartnerId === p.id && <span className="text-violet-400 text-xs">● Selected</span>}
+                    {selectedPartnerId === p.id && <span className="text-violet-400 text-xs font-bold">● Selected</span>}
                   </button>
                 ))}
               </div>
@@ -193,7 +248,7 @@ export default function SellerPortalApp() {
               disabled={loginLoading}
               className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-lg shadow-violet-600/25"
             >
-              {loginLoading ? 'Authenticating...' : `Log In as ${currentPartner.name}`}
+              {loginLoading ? 'Verifying Device Lock...' : `Log In as ${currentPartner.name}`}
             </button>
           </form>
         </div>
@@ -201,7 +256,7 @@ export default function SellerPortalApp() {
     )
   }
 
-  // AUTHENTICATED SELLER PORTAL — GENERATE TICKET ONLY
+  // AUTHENTICATED SELLER PORTAL — NO LOGOUT BUTTON ANYWHERE (PER SPEC)
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* Header */}
@@ -216,12 +271,15 @@ export default function SellerPortalApp() {
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             {authenticatedPartner.name}
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-xs text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            Log Out
-          </button>
+
+          {/* Read-only Device Lock Indicator */}
+          {authenticatedPartner.boundIp && (
+            <div className="hidden sm:flex text-[11px] text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg items-center gap-1.5">
+              <span>🔒 Locked to Device</span>
+              <span className="text-slate-500">•</span>
+              <span className="font-mono text-slate-300">{authenticatedPartner.boundIp}</span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -230,7 +288,7 @@ export default function SellerPortalApp() {
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
           <div>
             <div className="inline-block bg-indigo-500/10 text-indigo-400 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md mb-2">
-              EXCLUSIVE ISSUANCE PORTAL
+              PERMANENT DEVICE BOUND PORTAL
             </div>
             <h1 className="text-2xl font-black text-white">Generate Partner Ticket</h1>
             <p className="text-xs text-slate-400">

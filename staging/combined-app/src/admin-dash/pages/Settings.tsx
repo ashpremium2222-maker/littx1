@@ -13,6 +13,9 @@ export default function Settings({ adminKey }: SettingsProps) {
   const [sessions, setSessions] = useState<any[]>([])
   const [loadingSessions, setLoadingSessions] = useState(false)
 
+  const [partnerLocks, setPartnerLocks] = useState<any[]>([])
+  const [loadingPartners, setLoadingPartners] = useState(false)
+
   // Notification toggle states
   const [notifs, setNotifs] = useState({
     orders: true,
@@ -41,6 +44,46 @@ export default function Settings({ adminKey }: SettingsProps) {
       console.error(err)
     } finally {
       setLoadingSessions(false)
+    }
+  }
+
+  const loadPartnerLocks = async () => {
+    setLoadingPartners(true)
+    try {
+      const res = await fetch('/api/master/partner-locks', {
+        headers: { 'x-master-token': 'littx-master-2026' }
+      })
+      const data = await res.json()
+      if (data.success) {
+        setPartnerLocks(data.locks || [])
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingPartners(false)
+    }
+  }
+
+  const handleResetPartnerLock = async (partnerId: string, name: string) => {
+    if (!confirm(`Reset permanent device lock for ${name}? The next successful login from ANY device will set the new bound IP.`)) return
+    try {
+      const res = await fetch('/api/master/reset-partner-lock', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-master-token': 'littx-master-2026'
+        },
+        body: JSON.stringify({ partnerId })
+      })
+      const data = await res.json()
+      if (data.success) {
+        alert(data.message)
+        loadPartnerLocks()
+      } else {
+        alert(data.message || 'Failed to reset device lock.')
+      }
+    } catch (err) {
+      alert('Error resetting partner device lock.')
     }
   }
 
@@ -109,7 +152,10 @@ export default function Settings({ adminKey }: SettingsProps) {
               className={tab === t.id ? 'active' : ''}
               onClick={() => {
                 setTab(t.id as SettingsTab)
-                if (t.id === 'seller-locks') loadSessions()
+                if (t.id === 'seller-locks') {
+                  loadSessions()
+                  loadPartnerLocks()
+                }
               }}
             >
               {t.label}
@@ -119,77 +165,168 @@ export default function Settings({ adminKey }: SettingsProps) {
       </div>
 
       {tab === 'seller-locks' && (
-        <div className="card">
-          <div className="card-head">
-            <h3>Active Sessions — All Roles</h3>
-            <div className="muted-sm">All logged-in users are locked to one device (IP). Kick & Unlock to allow login from a different device.</div>
-          </div>
-          <div style={{ marginTop: '16px' }}>
-            <button className="btn-secondary" onClick={loadSessions} disabled={loadingSessions}>
-              {loadingSessions ? 'Refreshing...' : 'Refresh Sessions'}
-            </button>
-          </div>
-          <div className="table-scroll scroll" style={{ marginTop: '20px' }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>User ID</th>
-                  <th>Display Name</th>
-                  <th>Role</th>
-                  <th>Locked IP Address</th>
-                  <th>Login Time</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.length === 0 ? (
+        <>
+          <div className="card">
+            <div className="card-head">
+              <h3>Active Sessions — All Roles</h3>
+              <div className="muted-sm">All logged-in users are locked to one device (IP). Kick & Unlock to allow login from a different device.</div>
+            </div>
+            <div style={{ marginTop: '16px' }}>
+              <button className="btn-secondary" onClick={loadSessions} disabled={loadingSessions}>
+                {loadingSessions ? 'Refreshing...' : 'Refresh Sessions'}
+              </button>
+            </div>
+            <div className="table-scroll scroll" style={{ marginTop: '20px' }}>
+              <table className="table">
+                <thead>
                   <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '32px', color: 'var(--ink-faint)' }}>
-                      No active sessions. Click Refresh Sessions to load.
-                    </td>
+                    <th>User ID</th>
+                    <th>Display Name</th>
+                    <th>Role</th>
+                    <th>Locked IP Address</th>
+                    <th>Login Time</th>
+                    <th>Action</th>
                   </tr>
-                ) : (
-                  sessions.map((s, i) => (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 'bold', fontFamily: 'monospace', fontSize: '0.8rem' }}>{s.userId || s.sellerId}</td>
-                      <td>{s.displayName || s.userId || s.sellerId}</td>
-                      <td>
-                        <span className={`badge ${
-                          s.role === 'master_admin' ? 'badge-violet' :
-                          s.role === 'company_admin' ? 'badge-teal' :
-                          s.role === 'seller' ? 'badge-gold' :
-                          s.role === 'pr' ? 'badge-amber' : 'badge-dark'
-                        }`}>
-                          {s.role || 'seller'}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="badge badge-teal"><span className="badge-dot" />{s.lockedIp}</span>
-                      </td>
-                      <td>{new Date(s.loginAt).toLocaleString()}</td>
-                      <td>
-                        <button
-                          onClick={() => unlockSeller(s.userId || s.sellerId)}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '6px',
-                            border: '1px solid rgba(255,107,107,0.3)',
-                            backgroundColor: 'rgba(255,107,107,0.12)',
-                            color: 'var(--red)',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Kick &amp; Unlock
-                        </button>
+                </thead>
+                <tbody>
+                  {sessions.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '32px', color: 'var(--ink-faint)' }}>
+                        No active sessions. Click Refresh Sessions to load.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    sessions.map((s, i) => (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 'bold', fontFamily: 'monospace', fontSize: '0.8rem' }}>{s.userId || s.sellerId}</td>
+                        <td>{s.displayName || s.userId || s.sellerId}</td>
+                        <td>
+                          <span className={`badge ${
+                            s.role === 'master_admin' ? 'badge-violet' :
+                            s.role === 'company_admin' ? 'badge-teal' :
+                            s.role === 'seller' ? 'badge-gold' :
+                            s.role === 'pr' ? 'badge-amber' : 'badge-dark'
+                          }`}>
+                            {s.role || 'seller'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="badge badge-teal"><span className="badge-dot" />{s.lockedIp}</span>
+                        </td>
+                        <td>{new Date(s.loginAt).toLocaleString()}</td>
+                        <td>
+                          <button
+                            onClick={() => unlockSeller(s.userId || s.sellerId)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid rgba(255,107,107,0.3)',
+                              backgroundColor: 'rgba(255,107,107,0.12)',
+                              color: 'var(--red)',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Kick &amp; Unlock
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {/* Partner Device Locks Card */}
+          <div className="card" style={{ marginTop: '24px' }}>
+            <div className="card-head">
+              <h3>Seller Portal Partner Device Locks (/seller)</h3>
+              <div className="muted-sm">
+                Strict single-device lock: Once a partner logs in from a device/IP, it is permanently bound. Admin reset is the ONLY way to unbind.
+              </div>
+            </div>
+            <div style={{ marginTop: '16px' }}>
+              <button className="btn-secondary" onClick={loadPartnerLocks} disabled={loadingPartners}>
+                {loadingPartners ? 'Refreshing Locks...' : 'Refresh Partner Locks'}
+              </button>
+            </div>
+            <div className="table-scroll scroll" style={{ marginTop: '20px' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Partner Name</th>
+                    <th>Partner ID</th>
+                    <th>Bound IP Address</th>
+                    <th>Bound Timestamp</th>
+                    <th>Session Version</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {partnerLocks.length === 0 ? (
+                    [
+                      { partnerId: 'littlane', name: 'Littlane Entertainment' },
+                      { partnerId: 'nitro', name: 'Nitro Events' },
+                      { partnerId: '7th-heaven', name: '7th Heaven' }
+                    ].map((p) => (
+                      <tr key={p.partnerId}>
+                        <td style={{ fontWeight: 'bold' }}>{p.name}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{p.partnerId}</td>
+                        <td><span className="badge badge-dark">Not Bound (First Login Pending)</span></td>
+                        <td style={{ fontSize: '0.8rem', color: 'var(--ink-faint)' }}>N/A</td>
+                        <td>1</td>
+                        <td>
+                          <button
+                            onClick={() => handleResetPartnerLock(p.partnerId, p.name)}
+                            className="btn-secondary"
+                            style={{ fontSize: '11px', padding: '4px 10px' }}
+                          >
+                            Reset Lock
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    partnerLocks.map((p, i) => (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 'bold', color: 'var(--ink)' }}>{p.name}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--ink-faint)' }}>{p.partnerId}</td>
+                        <td>
+                          {p.boundIp ? (
+                            <span className="badge badge-teal"><span className="badge-dot" />🔒 {p.boundIp}</span>
+                          ) : (
+                            <span className="badge badge-dark">Not Bound (First Login Pending)</span>
+                          )}
+                        </td>
+                        <td style={{ fontSize: '0.8rem', color: 'var(--ink-faint)' }}>
+                          {p.boundAt ? new Date(p.boundAt).toLocaleString() : 'N/A'}
+                        </td>
+                        <td style={{ fontWeight: 'bold' }}>v{p.sessionVersion || 1}</td>
+                        <td>
+                          <button
+                            onClick={() => handleResetPartnerLock(p.partnerId, p.name)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid rgba(216,255,63,0.3)',
+                              backgroundColor: 'rgba(216,255,63,0.12)',
+                              color: 'var(--volt)',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Reset Device Lock
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {tab === 'profile' && (

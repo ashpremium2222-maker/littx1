@@ -187,6 +187,22 @@ const CustomerSchema = new mongoose.Schema({
     createdAt: { type: String }
 });
 
+const PartnerLockSchema = new mongoose.Schema({
+    partnerId: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    password: { type: String, required: true },
+    boundIp: { type: String, default: null },
+    boundAt: { type: String, default: null },
+    sessionVersion: { type: Number, default: 1 },
+    lastSeenAt: { type: String, default: null },
+    loginAttemptLog: [{
+        timestamp: { type: String },
+        ip: { type: String },
+        userAgent: { type: String },
+        result: { type: String }
+    }]
+});
+
 const Event = mongoose.model('Event', EventSchema);
 const User = mongoose.model('User', UserSchema);
 const Sale = mongoose.model('Sale', SaleSchema);
@@ -196,6 +212,7 @@ const Customer = mongoose.model('Customer', CustomerSchema);
 const SellerSession = mongoose.model('SellerSession', SellerSessionSchema);
 const ScanLog = mongoose.model('ScanLog', ScanLogSchema);
 const UserSession = mongoose.model('UserSession', UserSessionSchema);
+const PartnerLock = mongoose.model('PartnerLock', PartnerLockSchema);
 
 // ==================== SEED DATA ====================
 
@@ -226,8 +243,48 @@ async function seedDefaultUsers() {
 
         await User.insertMany(defaultUsers);
         console.log('✅ Multi-tenant platform users seeded successfully.');
+        await seedDefaultPartnerLocks();
     } catch (err) {
         console.error('❌ Failed to seed platform users:', err.message);
+    }
+}
+
+async function seedDefaultPartnerLocks() {
+    const defaultPartners = [
+        { partnerId: 'littlane', name: 'Littlane Entertainment', password: 'littlane-pass-2026' },
+        { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro-pass-2026' },
+        { partnerId: '7th-heaven', name: '7th Heaven', password: 'heaven-pass-2026' }
+    ];
+
+    for (const p of defaultPartners) {
+        if (useMock()) {
+            if (!_mockPartnerLocks.has(p.partnerId)) {
+                _mockPartnerLocks.set(p.partnerId, {
+                    ...p,
+                    boundIp: null,
+                    boundAt: null,
+                    sessionVersion: 1,
+                    lastSeenAt: null,
+                    loginAttemptLog: []
+                });
+            }
+        } else {
+            try {
+                const existing = await PartnerLock.findOne({ partnerId: p.partnerId });
+                if (!existing) {
+                    await PartnerLock.create({
+                        ...p,
+                        boundIp: null,
+                        boundAt: null,
+                        sessionVersion: 1,
+                        lastSeenAt: null,
+                        loginAttemptLog: []
+                    });
+                }
+            } catch (err) {
+                console.error('Error seeding partner lock:', err.message);
+            }
+        }
     }
 }
 
@@ -695,6 +752,11 @@ function useMock() {
 const _mockSessions = new Map();
 const _mockUserSessions = new Map();
 const _mockScanLogs = [];
+const _mockPartnerLocks = new Map([
+    ['littlane', { partnerId: 'littlane', name: 'Littlane Entertainment', password: 'littlane-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['nitro', { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: 'heaven-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
+]);
 
 module.exports = {
     // Session handlers
@@ -1078,6 +1140,69 @@ module.exports = {
     getAllUserSessions: async () => {
         if (useMock()) return Array.from(_mockUserSessions.values());
         return UserSession.find({}).lean();
+    },
+
+    // ==================== PARTNER LOCK HELPERS ====================
+    getPartnerLock: async (partnerId) => {
+        if (useMock()) return _mockPartnerLocks.get(partnerId) || null;
+        return PartnerLock.findOne({ partnerId }).lean();
+    },
+    getAllPartnerLocks: async () => {
+        if (useMock()) return Array.from(_mockPartnerLocks.values());
+        return PartnerLock.find({}).lean();
+    },
+    savePartnerLock: async (partnerId, updates) => {
+        if (useMock()) {
+            const current = _mockPartnerLocks.get(partnerId) || { partnerId, loginAttemptLog: [] };
+            const updated = { ...current, ...updates };
+            _mockPartnerLocks.set(partnerId, updated);
+            return updated;
+        }
+        return PartnerLock.findOneAndUpdate(
+            { partnerId },
+            { $set: updates },
+            { upsert: true, new: true, lean: true }
+        );
+    },
+    resetPartnerLock: async (partnerId) => {
+        if (useMock()) {
+            const current = _mockPartnerLocks.get(partnerId);
+            if (!current) return null;
+            const updated = {
+                ...current,
+                boundIp: null,
+                boundAt: null,
+                sessionVersion: (current.sessionVersion || 1) + 1
+            };
+            _mockPartnerLocks.set(partnerId, updated);
+            return updated;
+        }
+        const current = await PartnerLock.findOne({ partnerId });
+        const newVersion = ((current?.sessionVersion) || 1) + 1;
+        return PartnerLock.findOneAndUpdate(
+            { partnerId },
+            { $set: { boundIp: null, boundAt: null, sessionVersion: newVersion } },
+            { new: true, lean: true }
+        );
+    },
+    logPartnerAttempt: async (partnerId, attempt) => {
+        if (useMock()) {
+            const current = _mockPartnerLocks.get(partnerId);
+            if (current) {
+                current.loginAttemptLog = current.loginAttemptLog || [];
+                current.loginAttemptLog.push(attempt);
+                _mockPartnerLocks.set(partnerId, current);
+            }
+            return;
+        }
+        try {
+            await PartnerLock.updateOne(
+                { partnerId },
+                { $push: { loginAttemptLog: attempt } }
+            );
+        } catch (e) {
+            console.error('Failed to log partner attempt:', e.message);
+        }
     }
 };
 
