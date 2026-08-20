@@ -50,6 +50,13 @@ const UserSchema = new mongoose.Schema({
     }]
 });
 
+const SellerSessionSchema = new mongoose.Schema({
+    sellerId: { type: String, required: true, unique: true },
+    token: { type: String, required: true },
+    loginAt: { type: String },
+    ip: { type: String }
+});
+
 const SaleSchema = new mongoose.Schema({
     orderId: { type: String, required: true, unique: true },
     companyId: { type: String, default: 'littlane' },
@@ -156,6 +163,7 @@ const Sale = mongoose.model('Sale', SaleSchema);
 const Company = mongoose.model('Company', CompanySchema);
 const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
 const Customer = mongoose.model('Customer', CustomerSchema);
+const SellerSession = mongoose.model('SellerSession', SellerSessionSchema);
 
 // ==================== SEED DATA ====================
 
@@ -641,14 +649,39 @@ const mockDb = {
             prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 }
         }
     ],
-    auditLogs: []
+    auditLogs: [],
+    sellerSessions: []
 };
 
 function useMock() {
     return mongoose.connection.readyState !== 1;
 }
 
+// In-memory fallback for local dev (when MongoDB is not available)
+const _mockSessions = new Map();
+
 module.exports = {
+    // Session handlers
+    getSellerSession: async (sellerId) => {
+        if (useMock()) return _mockSessions.get(sellerId) || null;
+        return SellerSession.findOne({ sellerId });
+    },
+    getAllSellerSessions: async () => {
+        if (useMock()) return Array.from(_mockSessions.values());
+        return SellerSession.find({});
+    },
+    setSellerSession: async (sellerId, data) => {
+        if (useMock()) { _mockSessions.set(sellerId, { ...data, sellerId }); return data; }
+        return SellerSession.findOneAndUpdate(
+            { sellerId }, 
+            { ...data, sellerId }, 
+            { upsert: true, new: true }
+        );
+    },
+    deleteSellerSession: async (sellerId) => {
+        if (useMock()) { _mockSessions.delete(sellerId); return true; }
+        return SellerSession.deleteOne({ sellerId });
+    },
     // Models
     Event,
     User,
@@ -656,6 +689,7 @@ module.exports = {
     Company,
     AuditLog,
     Customer,
+    SellerSession,
 
     // Sale Helpers
     createSaleRecord: async (saleData) => {

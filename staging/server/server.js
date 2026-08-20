@@ -44,9 +44,7 @@ const SELLER_ACCOUNTS = {
     'SELLER-C': process.env.SELLER_C_PASS || 'nexus-wave-7k2',
 };
 
-// In-memory session store: sellerId -> { token, loginAt, ip }
-// On server restart sessions clear (force re-login).
-const sellerSessions = {};
+// In-memory session store replaced with MongoDB for Vercel Serverless persistence
 
 function generateToken() {
     return crypto.randomBytes(32).toString('hex');
@@ -54,9 +52,10 @@ function generateToken() {
 
 // Returns sellerId if token is valid AND IP matches, null otherwise
 // Pass requestIp to enforce IP lock; omit to skip IP check (e.g. logout)
-function authenticateSeller(token, requestIp) {
+async function authenticateSeller(token, requestIp) {
     if (!token) return null;
-    for (const [id, session] of Object.entries(sellerSessions)) {
+    const sessions = await db.getAllSellerSessions();
+    for (const session of sessions) {
         if (session && session.token === token) {
             // IP lock: if requestIp provided, it must match the login IP
             if (requestIp && session.ip && session.ip !== 'unknown') {
@@ -64,16 +63,16 @@ function authenticateSeller(token, requestIp) {
                     return '__IP_MISMATCH__';
                 }
             }
-            return id;
+            return session.sellerId;
         }
     }
     return null;
 }
 
-function requireSeller(req, res, next) {
+async function requireSeller(req, res, next) {
     const token = req.headers['x-seller-token'] || req.query.sellerToken;
-    const requestIp = req.ip || req.connection?.remoteAddress || 'unknown';
-    const sellerId = authenticateSeller(token, requestIp);
+    const requestIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.connection?.remoteAddress || 'unknown';
+    const sellerId = await authenticateSeller(token, requestIp);
     if (!sellerId) {
         return res.status(401).json({ success: false, message: 'Seller not authenticated. Please log in.' });
     }
@@ -386,7 +385,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         const sellerToken = req.headers['x-seller-token'] || req.query.sellerToken;
         let resolvedBy = 'Admin';
         if (sellerToken) {
-            const sid = authenticateSeller(sellerToken);
+            const sid = await authenticateSeller(sellerToken);
             if (sid) resolvedBy = sid;
         } else if (adminKeyHdr === ADMIN_KEY) {
             resolvedBy = generatedBy || 'Admin';
@@ -643,9 +642,9 @@ app.get('/api/health', (req, res) => res.json({ success: true, event: EVENT.name
 // ==================== ACTIVE EVENTS (seller-readable, master-admin-writable) ====================
 
 // GET /api/active-events — sellers fetch which events are currently active
-app.get('/api/active-events', (req, res) => {
+app.get('/api/active-events', async (req, res) => {
     const token = req.headers['x-seller-token'] || req.query.sellerToken;
-    const sellerId = authenticateSeller(token);
+    const sellerId = await authenticateSeller(token);
     if (!sellerId) return res.status(401).json({ success: false, message: 'Not authenticated.' });
     const visible = ACTIVE_EVENTS.filter(e => e.active);
     res.json({ success: true, events: visible });
@@ -702,11 +701,11 @@ app.delete('/api/master/active-events/:id', (req, res) => {
 
 // ==================== LITTX SELLER LOGIN SYSTEM ====================
 
-// POST /api/seller/login — validate credentials, issue token, enforce 1-session-per-seller
-app.post('/api/seller/login', (req, res) => {
+// POST /api/seller/login — returns a session token
+app.post('/api/seller/login', async (req, res) => {
     const { sellerId, password } = req.body || {};
     if (!sellerId || !password) {
-        return res.status(400).json({ success: false, message: 'Seller ID and password are required.' });
+        return res.status(400).json({ success: false, message: 'Missing credentials.' });
     }
     const expected = SELLER_ACCOUNTS[sellerId.toUpperCase()];
     if (!expected || expected !== password) {
@@ -714,9 +713,9 @@ app.post('/api/seller/login', (req, res) => {
     }
     const sid = sellerId.toUpperCase();
     const token = generateToken();
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.connection?.remoteAddress || 'unknown';
     // Check if already locked to a different IP
-    const existing = sellerSessions[sid];
+    const existing = await db.getSellerSession(sid);
     if (existing && existing.ip && existing.ip !== 'unknown' && existing.ip !== ip) {
         console.log(`[Seller Login BLOCKED] ${sid} attempted from ${ip}, locked to ${existing.ip}`);
         return res.status(403).json({
@@ -726,27 +725,28 @@ app.post('/api/seller/login', (req, res) => {
             message: `This account is already logged in from another device (${existing.ip}). Ask admin to unlock.`
         });
     }
-    sellerSessions[sid] = { token, loginAt: new Date().toISOString(), ip };
+    const loginAt = existing?.loginAt || new Date().toISOString();
+    await db.setSellerSession(sid, { token, loginAt, ip });
     console.log(`[Seller Login] ${sid} logged in from ${ip} — session IP-locked`);
-    res.json({ success: true, sellerId: sid, token, loginAt: sellerSessions[sid].loginAt, lockedIp: ip });
+    res.json({ success: true, sellerId: sid, token, loginAt, lockedIp: ip });
 });
 
 // POST /api/seller/logout — invalidate session
-app.post('/api/seller/logout', (req, res) => {
+app.post('/api/seller/logout', async (req, res) => {
     const token = req.headers['x-seller-token'] || req.body?.token;
-    const sid = authenticateSeller(token);
+    const sid = await authenticateSeller(token);
     if (sid) {
-        delete sellerSessions[sid];
+        await db.deleteSellerSession(sid);
         console.log(`[Seller Logout] ${sid} logged out`);
     }
     res.json({ success: true });
 });
 
 // GET /api/seller/verify — check if session is still valid + enforce IP lock
-app.get('/api/seller/verify', (req, res) => {
+app.get('/api/seller/verify', async (req, res) => {
     const token = req.headers['x-seller-token'] || req.query.token;
-    const requestIp = req.ip || req.connection?.remoteAddress || 'unknown';
-    const sid = authenticateSeller(token, requestIp);
+    const requestIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.connection?.remoteAddress || 'unknown';
+    const sid = await authenticateSeller(token, requestIp);
     if (!sid) {
         return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
     }
@@ -757,19 +757,21 @@ app.get('/api/seller/verify', (req, res) => {
             message: 'Session locked to another device. Contact admin to unlock.'
         });
     }
-    res.json({ success: true, sellerId: sid, loginAt: sellerSessions[sid]?.loginAt, lockedIp: sellerSessions[sid]?.ip });
+    const session = await db.getSellerSession(sid);
+    res.json({ success: true, sellerId: sid, loginAt: session?.loginAt, lockedIp: session?.ip });
 });
 
 // ==================== MASTER ADMIN — SELLER SESSION CONTROL ====================
 
 // GET /api/master/seller-sessions — view all active seller sessions + their locked IPs
-app.get('/api/master/seller-sessions', (req, res) => {
+app.get('/api/master/seller-sessions', async (req, res) => {
     const masterToken = req.headers['x-master-token'] || req.query.masterToken;
     if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
         return res.status(401).json({ success: false, message: 'Not authorized.' });
     }
-    const sessions = Object.entries(sellerSessions).map(([sid, s]) => ({
-        sellerId: sid,
+    const all = await db.getAllSellerSessions();
+    const sessions = all.map(s => ({
+        sellerId: s.sellerId,
         lockedIp: s.ip,
         loginAt: s.loginAt,
         active: true
@@ -778,7 +780,7 @@ app.get('/api/master/seller-sessions', (req, res) => {
 });
 
 // DELETE /api/master/seller-sessions/:sellerId — kick/unlock a seller (force logout + clear IP lock)
-app.delete('/api/master/seller-sessions/:sellerId', (req, res) => {
+app.delete('/api/master/seller-sessions/:sellerId', async (req, res) => {
     const masterToken = req.headers['x-master-token'] || req.query.masterToken;
     if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
         return res.status(401).json({ success: false, message: 'Not authorized.' });
@@ -787,8 +789,9 @@ app.delete('/api/master/seller-sessions/:sellerId', (req, res) => {
     if (!SELLER_ACCOUNTS[sid]) {
         return res.status(404).json({ success: false, message: 'Seller not found.' });
     }
-    const wasLocked = !!sellerSessions[sid];
-    delete sellerSessions[sid];
+    const existing = await db.getSellerSession(sid);
+    const wasLocked = !!existing;
+    await db.deleteSellerSession(sid);
     console.log(`[Master Admin] Kicked & unlocked ${sid}`);
     res.json({ success: true, message: `${sid} session cleared. They can now log in from any device.`, wasActive: wasLocked });
 });
