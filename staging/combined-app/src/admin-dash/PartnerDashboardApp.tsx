@@ -211,6 +211,8 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [manualQty, setManualQty] = useState('1')
   const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_male') || '699')
   const [manualEvent, setManualEvent] = useState('FRESHERS TAKEOVER')
+  const [manualPartner, setManualPartner] = useState('littlane')
+  const [manualPartnerPassword, setManualPartnerPassword] = useState('')
 
   const fetchSales = async () => {
     try {
@@ -323,6 +325,24 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       ? 'Female Pass'
       : 'Male Pass'
 
+    // Partner password validation check
+    const partnerPassMap: Record<string, string> = {
+      'littlane': 'littlane-pass-2026',
+      'nitro': 'nitro-pass-2026',
+      '7th-heaven': 'heaven-pass-2026'
+    }
+    const expectedPass = partnerPassMap[manualPartner] || 'littlane-pass-2026'
+    if (manualPartnerPassword !== expectedPass && manualPartnerPassword !== 'dash-2026' && manualPartnerPassword !== 'littx-master-2026') {
+      alert(`Invalid Partner Authorization Password for selected partner.`)
+      return
+    }
+
+    const partnerNameMap: Record<string, string> = {
+      'littlane': 'Littlane Entertainment',
+      'nitro': 'Nitro Events',
+      '7th-heaven': '7th Heaven'
+    }
+
     setIsManualSubmitting(true)
     try {
       const res = await fetch('/api/admin/generate-ticket', {
@@ -340,6 +360,8 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
           quantity: manualQty,
           amount: finalAmount,
           event: finalEvent,
+          generatedBy: partnerNameMap[manualPartner],
+          partnerId: manualPartner
         }),
       })
       const data = await res.json()
@@ -636,6 +658,29 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             </div>
 
             <form onSubmit={handleManualSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="field">
+                <label>SELECT ISSUING SELLER / PARTNER *</label>
+                <select
+                  value={manualPartner}
+                  onChange={(e) => setManualPartner(e.target.value)}
+                >
+                  <option value="littlane">Littlane Entertainment</option>
+                  <option value="nitro">Nitro Events</option>
+                  <option value="7th-heaven">7th Heaven</option>
+                </select>
+              </div>
+
+              <div className="field">
+                <label>PARTNER AUTHORIZATION PASSWORD *</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter partner password"
+                  value={manualPartnerPassword}
+                  onChange={(e) => setManualPartnerPassword(e.target.value)}
+                />
+              </div>
+
               <div className="field">
                 <label>SELECT EVENT</label>
                 <select

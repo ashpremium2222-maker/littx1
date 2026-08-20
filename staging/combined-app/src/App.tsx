@@ -8,7 +8,7 @@ import LoginPage from './components/LoginPage'
 import PublicWebsite from './components/PublicWebsite'
 import CustomerLogin from './components/CustomerLogin'
 import CustomerRegister from './components/CustomerRegister'
-import CustomerDashboard from './components/CustomerDashboard'
+import SellerPortalApp from './seller-portal/SellerPortalApp'
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
@@ -158,14 +158,18 @@ function MainAppShell() {
 
   // ── Admin / Dashboard routes ───────────────────────────────────────────────
   
-  const isAdminRoute = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/dashhboard') || path.startsWith('/seller') || path.startsWith('/company');
+  if (path.startsWith('/seller')) {
+    return <SellerPortalApp />
+  }
+
+  const isAdminRoute = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/dashhboard') || path.startsWith('/company');
   
   if (isAdminRoute && !userSession) {
     window.location.href = '/admin-login'
     return null
   }
 
-  if (path.startsWith('/admin') || path.startsWith('/seller') || path.startsWith('/company')) {
+  if (path.startsWith('/admin') || path.startsWith('/company')) {
     return <DevAdminApp isPresentation={false} />
   }
 
