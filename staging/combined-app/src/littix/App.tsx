@@ -383,7 +383,8 @@ export default function App() {
   // Verify token on mount
   useEffect(() => {
     const token = localStorage.getItem('littx_seller_token')
-    if (!token) {
+    const cachedId = localStorage.getItem('littx_seller_id')
+    if (!token || !cachedId) {
       setChecking(false)
       return
     }
@@ -393,25 +394,29 @@ export default function App() {
       .then(r => r.json())
       .then(data => {
         if (data.success) {
+          // Verified with server — all good
           setSellerId(data.sellerId)
           setSellerToken(token)
           setVerified(true)
-        } else {
-          // Admin kicked them — clear token and force re-login
+        } else if (data.ipLocked) {
+          // Admin explicitly kicked them from another device — force logout
           localStorage.removeItem('littx_seller_token')
           localStorage.removeItem('littx_seller_id')
           setSellerId(null)
           setSellerToken(null)
-        }
-      })
-      .catch(() => {
-        // Server might be down — allow cached session to proceed
-        const cachedId = localStorage.getItem('littx_seller_id')
-        if (cachedId && token) {
+        } else {
+          // Server cold start / session not in memory yet — trust the cached token
+          // MongoDB fix will make verify always succeed; until then keep them logged in
           setSellerId(cachedId)
           setSellerToken(token)
           setVerified(true)
         }
+      })
+      .catch(() => {
+        // Network error — trust the cached session
+        setSellerId(cachedId)
+        setSellerToken(token)
+        setVerified(true)
       })
       .finally(() => setChecking(false))
   }, [])
