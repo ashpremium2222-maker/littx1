@@ -158,6 +158,13 @@ function MainAppShell() {
 
   // ── Admin / Dashboard routes ───────────────────────────────────────────────
   
+  const isAdminRoute = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/dashhboard') || path.startsWith('/seller') || path.startsWith('/company');
+  
+  if (isAdminRoute && !userSession) {
+    window.location.href = '/admin-login'
+    return null
+  }
+
   if (path.startsWith('/admin')) {
     return <DevAdminApp isPresentation={false} />
   }

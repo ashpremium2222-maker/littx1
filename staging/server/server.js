@@ -230,15 +230,27 @@ function computeAmount(gender, quantity) {
     return { amount: rate * qty, qty };
 }
 
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
     const key = req.headers['x-admin-key'] || req.query.key || req.body?.key;
     const managerToken = process.env.MANAGER_TOKEN || 'dash-2026';
     if (key === ADMIN_KEY || key === managerToken) {
         req.isManager = key === managerToken; // Flag if it's the manager
-        next();
-    } else {
-        res.status(401).json({ success: false, message: 'Unauthorized. Invalid admin key.' });
+        return next();
     }
+    
+    // Check unified auth token
+    const token = req.headers['x-auth-token'] || req.query.authToken || key;
+    if (token) {
+        try {
+            const session = await db.getUserSessionByToken(token);
+            if (session && (session.role === 'master_admin' || session.role === 'company_admin' || session.role === 'seller')) {
+                req.isManager = session.role === 'company_admin';
+                return next();
+            }
+        } catch(e) {}
+    }
+    
+    res.status(401).json({ success: false, message: 'Unauthorized. Invalid admin key or session.' });
 }
 
 // ==================== 1. CREATE ORDER (start of checkout) ====================

@@ -193,10 +193,10 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [dark, setDark] = useState(true)
   const [search, setSearch] = useState('')
   const [adminKey, setAdminKey] = useState(
-    isManager ? 'dash-2026' : (sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key') || '')
+    sessionStorage.getItem('littx_token') || ''
   )
   const [keyInput, setKeyInput] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(isManager ? true : false)
+  const [isAuthenticated, setIsAuthenticated] = useState(true)
   const [authChecking, setAuthChecking] = useState(false)
   const [authError, setAuthError] = useState('')
   const [sales, setSales] = useState<any[]>([])
@@ -235,8 +235,10 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
   const fetchSales = async () => {
     try {
+      const token = sessionStorage.getItem('littx_token') || ''
       const res = await fetch(
-        `/api/admin/sales?${isPresentation ? 'pres=true' : ''}`
+        `/api/admin/sales?${isPresentation ? 'pres=true' : ''}`,
+        { headers: { 'x-auth-token': token } }
       )
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.success) {
@@ -399,96 +401,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     }
   }
 
-  // Auth checking screen
-  if (authChecking && adminKey) {
-    return (
-      <div className="app-canvas flex flex-col items-center justify-center min-h-screen gap-4">
-        <div className="w-8 h-8 rounded-full border-2 border-violet-500/30 border-t-violet-500 animate-spin" />
-        <p className="text-xs text-slate-400 font-medium">Authenticating admin workspace...</p>
-      </div>
-    )
-  }
 
-  // Login screen (matching reference login.html split layout)
-  if (!isAuthenticated) {
-    return (
-      <div className={`login-canvas ${dark ? '' : 'theme-light'}`}>
-        {/* Left Art Panel */}
-        <div className="login-art">
-          <div className="brand">
-            <div className="mark"><img src="/logo.png" alt="LITTX" style={{ height: 24, width: 'auto', filter: 'brightness(0) invert(1)' }} /></div>
-            <span style={{ fontSize: '15px', fontWeight: 800 }}>LITTX</span>
-          </div>
-
-          <div style={{ margin: 'auto 0' }}>
-            <h1 style={{ fontSize: '32px', fontWeight: 800, lineHeight: 1.25, letterSpacing: '-.02em', margin: '0 0 16px' }}>
-              Run every gate, order and payout from one clear screen.
-            </h1>
-            <p style={{ fontSize: '13px', color: 'var(--ink-faint)', margin: 0, maxWidth: '420px', lineHeight: 1.5 }}>
-              Live ticketing operations for Pune's premier college fests & events. Zero delay, instant validation.
-            </p>
-          </div>
-
-          <div className="mock-graph-container" style={{ 
-            background: 'var(--panel-2)', 
-            border: '1px solid var(--line)',
-            borderRadius: '16px',
-            padding: '20px',
-            marginTop: 'auto'
-          }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ink-soft)', marginBottom: '16px', letterSpacing: '0.05em' }}>
-              LIVE TRAFFIC SENSORS
-            </div>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end', height: '64px' }}>
-              {[30, 45, 25, 60, 80, 55, 90, 70, 100, 65, 85, 40, 75, 50, 95].map((h, i) => (
-                <div key={i} style={{ 
-                  flex: 1, 
-                  height: `${h}%`, 
-                  background: i % 3 === 0 ? 'var(--grad-orange)' : i % 2 === 0 ? 'var(--grad-teal)' : 'var(--grad-violet)',
-                  borderRadius: '3px',
-                  opacity: 0.8
-                }} />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Right Login Form */}
-        <div className="login-form-wrap">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              handleLogin()
-            }}
-            className="login-form"
-          >
-            <div>
-              <h1>Welcome back</h1>
-              <p className="lead">LOGIN TO THE NEXORACULT Experience</p>
-            </div>
-
-            {authError && <div className="banner">{authError}</div>}
-
-            <div className="field">
-              <label>Admin Key</label>
-              <input
-                type="password"
-                value={keyInput}
-                onChange={(e) => setKeyInput(e.target.value)}
-                placeholder="Enter workspace key"
-                autoFocus
-              />
-            </div>
-
-            <button type="submit" disabled={authChecking} className="btn-primary">
-              {authChecking ? 'Verifying...' : 'Log in'}
-            </button>
-
-          </form>
-        </div>
-      </div>
-    )
-  }
 
   function renderPage(page: Page) {
     switch (page) {
