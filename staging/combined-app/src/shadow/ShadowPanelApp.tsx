@@ -24,8 +24,14 @@ export default function ShadowPanelApp() {
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loginLoading, setLoginLoading] = useState(false)
 
-  // Active Tab
+  // Active Tab: 'dashboard' | 'create' | 'orders' | 'customers' | 'events' | 'reports' | 'settings'
   const [activeTab, setActiveTab] = useState<'dashboard' | 'create' | 'orders' | 'customers' | 'events' | 'reports' | 'settings'>('dashboard')
+
+  // Search & Filter States
+  const [orderSearch, setOrderSearch] = useState('')
+  const [orderEventFilter, setOrderEventFilter] = useState('all')
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all')
+  const [customerSearch, setCustomerSearch] = useState('')
 
   // Live Shadow Data
   const [shadowOrders, setShadowOrders] = useState<ShadowOrder[]>([])
@@ -122,14 +128,12 @@ export default function ShadowPanelApp() {
         sessionStorage.setItem('littx_shadow_token', data.shadowToken)
         setPassword('')
       } else {
-        // Fallback for valid password
         const token = `shadow_local_${Date.now()}`
         setShadowToken(token)
         sessionStorage.setItem('littx_shadow_token', token)
         setPassword('')
       }
     } catch (err) {
-      // Fallback for valid password when backend API network is unreachable
       const token = `shadow_local_${Date.now()}`
       setShadowToken(token)
       sessionStorage.setItem('littx_shadow_token', token)
@@ -218,6 +222,53 @@ export default function ShadowPanelApp() {
       setSubmitting(false)
     }
   }
+
+  // Filtered Orders Calculation
+  const filteredOrders = shadowOrders.filter((o) => {
+    const matchesSearch =
+      !orderSearch ||
+      o.orderId?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+      o.name?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+      o.email?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+      o.phone?.toLowerCase().includes(orderSearch.toLowerCase()) ||
+      o.ticketId?.toLowerCase().includes(orderSearch.toLowerCase())
+
+    const matchesEvent = orderEventFilter === 'all' || o.event === orderEventFilter
+    const matchesStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter
+
+    return matchesSearch && matchesEvent && matchesStatus
+  })
+
+  // Unique Customers Aggregation
+  const customerMap = new Map<string, { name: string; email: string; phone?: string; ordersCount: number; ticketsCount: number; totalSpent: number; lastDate: string }>()
+  shadowOrders.forEach((o) => {
+    const key = o.email?.toLowerCase() || o.name?.toLowerCase() || 'unknown'
+    const existing = customerMap.get(key)
+    if (existing) {
+      existing.ordersCount += 1
+      existing.ticketsCount += o.quantity || 1
+      existing.totalSpent += o.amount || 0
+      if (new Date(o.createdAt) > new Date(existing.lastDate)) {
+        existing.lastDate = o.createdAt
+      }
+    } else {
+      customerMap.set(key, {
+        name: o.name,
+        email: o.email,
+        phone: o.phone,
+        ordersCount: 1,
+        ticketsCount: o.quantity || 1,
+        totalSpent: o.amount || 0,
+        lastDate: o.createdAt
+      })
+    }
+  })
+  const customerList = Array.from(customerMap.values()).filter(c =>
+    !customerSearch ||
+    c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+    c.email.toLowerCase().includes(customerSearch.toLowerCase()) ||
+    (c.phone && c.phone.includes(customerSearch))
+  )
 
   // PASSWORD AUTH MODAL
   if (!shadowToken) {
@@ -403,53 +454,258 @@ export default function ShadowPanelApp() {
 
           {/* Body Workspace */}
           <div className="shadow-content">
-            {/* Top KPI Chrome Cards */}
-            <div className="shadow-kpi-grid">
-              <div className="shadow-kpi-card">
-                <div className="shadow-kpi-icon-circle">🎟️</div>
-                <div className="shadow-kpi-info">
-                  <div className="shadow-kpi-label">SHADOW ORDERS</div>
-                  <div className="shadow-kpi-value">{stats.totalOrders}</div>
-                  <div className="shadow-kpi-sub">Total Orders</div>
-                </div>
-              </div>
+            {/* TAB 1: DASHBOARD (MAIN VIEW) */}
+            {activeTab === 'dashboard' && (
+              <>
+                {/* Top KPI Chrome Cards */}
+                <div className="shadow-kpi-grid">
+                  <div className="shadow-kpi-card" onClick={() => setActiveTab('orders')} style={{ cursor: 'pointer' }}>
+                    <div className="shadow-kpi-icon-circle">🎟️</div>
+                    <div className="shadow-kpi-info">
+                      <div className="shadow-kpi-label">SHADOW ORDERS</div>
+                      <div className="shadow-kpi-value">{stats.totalOrders}</div>
+                      <div className="shadow-kpi-sub">Total Orders</div>
+                    </div>
+                  </div>
 
-              <div className="shadow-kpi-card">
-                <div className="shadow-kpi-icon-circle">💰</div>
-                <div className="shadow-kpi-info">
-                  <div className="shadow-kpi-label">SHADOW REVENUE</div>
-                  <div className="shadow-kpi-value">₹{stats.totalRevenue.toLocaleString()}</div>
-                  <div className="shadow-kpi-sub">Total Revenue</div>
-                </div>
-              </div>
+                  <div className="shadow-kpi-card" onClick={() => setActiveTab('reports')} style={{ cursor: 'pointer' }}>
+                    <div className="shadow-kpi-icon-circle">💰</div>
+                    <div className="shadow-kpi-info">
+                      <div className="shadow-kpi-label">SHADOW REVENUE</div>
+                      <div className="shadow-kpi-value">₹{stats.totalRevenue.toLocaleString()}</div>
+                      <div className="shadow-kpi-sub">Total Revenue</div>
+                    </div>
+                  </div>
 
-              <div className="shadow-kpi-card">
-                <div className="shadow-kpi-icon-circle">👥</div>
-                <div className="shadow-kpi-info">
-                  <div className="shadow-kpi-label">TICKETS SOLD</div>
-                  <div className="shadow-kpi-value">{stats.totalTickets}</div>
-                  <div className="shadow-kpi-sub">Total Tickets</div>
-                </div>
-              </div>
+                  <div className="shadow-kpi-card" onClick={() => setActiveTab('customers')} style={{ cursor: 'pointer' }}>
+                    <div className="shadow-kpi-icon-circle">👥</div>
+                    <div className="shadow-kpi-info">
+                      <div className="shadow-kpi-label">TICKETS SOLD</div>
+                      <div className="shadow-kpi-value">{stats.totalTickets}</div>
+                      <div className="shadow-kpi-sub">Total Tickets</div>
+                    </div>
+                  </div>
 
-              <div className="shadow-kpi-card">
-                <div className="shadow-kpi-icon-circle">📈</div>
-                <div className="shadow-kpi-info">
-                  <div className="shadow-kpi-label">TODAY'S SALES</div>
-                  <div className="shadow-kpi-value">₹{stats.todaySales.toLocaleString()}</div>
-                  <div className="shadow-kpi-sub">Today's Revenue</div>
+                  <div className="shadow-kpi-card" onClick={() => setActiveTab('reports')} style={{ cursor: 'pointer' }}>
+                    <div className="shadow-kpi-icon-circle">📈</div>
+                    <div className="shadow-kpi-info">
+                      <div className="shadow-kpi-label">TODAY'S SALES</div>
+                      <div className="shadow-kpi-value">₹{stats.todaySales.toLocaleString()}</div>
+                      <div className="shadow-kpi-sub">Today's Revenue</div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Two Column Grid */}
-            <div className="shadow-two-col">
-              {/* Left Form Box: CREATE TICKET */}
-              <div className="shadow-box">
+                {/* Two Column Grid */}
+                <div className="shadow-two-col">
+                  {/* Left Form Box: CREATE TICKET */}
+                  <div className="shadow-box">
+                    <div className="shadow-box-header">
+                      <div className="shadow-box-title">
+                        <span>🗝️</span> CREATE TICKET
+                      </div>
+                    </div>
+
+                    {feedback && (
+                      <div
+                        style={{
+                          padding: '12px 14px',
+                          borderRadius: '10px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          background: feedback.type === 'success' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                          border: `1px solid ${feedback.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                          color: feedback.type === 'success' ? '#4ade80' : '#f87171'
+                        }}
+                      >
+                        {feedback.msg}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleGenerateTicket} className="shadow-form">
+                      <div className="shadow-form-field">
+                        <label className="shadow-form-label">Select Event</label>
+                        <select
+                          className="shadow-select"
+                          value={event}
+                          onChange={(e) => handleEventChange(e.target.value)}
+                        >
+                          <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
+                          <option value="AURA GENESIS">AURA GENESIS</option>
+                        </select>
+                      </div>
+
+                      <div className="shadow-form-field">
+                        <label className="shadow-form-label">Ticket Type</label>
+                        <select
+                          className="shadow-select"
+                          value={ticketType}
+                          onChange={(e) => setTicketType(e.target.value)}
+                        >
+                          <option value="Male Pass">Male Pass</option>
+                          <option value="Female Pass">Female Pass</option>
+                          <option value="Exclusive VIP Pass">Exclusive VIP Pass</option>
+                        </select>
+                      </div>
+
+                      <div className="shadow-form-field">
+                        <label className="shadow-form-label">Quantity</label>
+                        <select
+                          className="shadow-select"
+                          value={quantity}
+                          onChange={(e) => setQuantity(e.target.value)}
+                        >
+                          <option value="1">1</option>
+                          <option value="2">2</option>
+                          <option value="3">3</option>
+                          <option value="4">4</option>
+                          <option value="5">5</option>
+                        </select>
+                      </div>
+
+                      <div className="shadow-form-field">
+                        <label className="shadow-form-label">Customer Name</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Enter Customer Name"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          className="shadow-input"
+                        />
+                      </div>
+
+                      <div className="shadow-form-field">
+                        <label className="shadow-form-label">Customer Email</label>
+                        <input
+                          type="email"
+                          required
+                          placeholder="Enter Customer Email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="shadow-input"
+                        />
+                      </div>
+
+                      <div className="shadow-form-field">
+                        <label className="shadow-form-label">Customer Phone</label>
+                        <input
+                          type="tel"
+                          placeholder="Enter Customer Phone"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          className="shadow-input"
+                        />
+                      </div>
+
+                      <div className="shadow-form-field">
+                        <label className="shadow-form-label">Payment Status</label>
+                        <select
+                          className="shadow-select"
+                          value={paymentStatus}
+                          onChange={(e) => setPaymentStatus(e.target.value)}
+                        >
+                          <option value="Paid">Paid</option>
+                          <option value="Pending">Pending</option>
+                        </select>
+                      </div>
+
+                      <div className="shadow-form-field">
+                        <label className="shadow-form-label">Total Amount</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={`₹${amount}`}
+                          className="shadow-input"
+                          style={{ fontWeight: 800, color: '#4ade80' }}
+                        />
+                      </div>
+
+                      <button type="submit" disabled={submitting} className="shadow-primary-btn">
+                        {submitting ? 'CREATING TICKET...' : 'CREATE & SEND TICKET 🚀'}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Right Table Box: RECENT SHADOW ORDERS */}
+                  <div className="shadow-box">
+                    <div className="shadow-box-header">
+                      <div className="shadow-box-title">
+                        <span>📑</span> RECENT SHADOW ORDERS
+                      </div>
+                      <button className="shadow-sec-btn" onClick={() => setActiveTab('orders')}>
+                        View All Orders
+                      </button>
+                    </div>
+
+                    <div className="shadow-table-wrap">
+                      <table className="shadow-table">
+                        <thead>
+                          <tr>
+                            <th>ORDER ID</th>
+                            <th>CUSTOMER</th>
+                            <th>EVENT</th>
+                            <th>AMOUNT</th>
+                            <th>STATUS</th>
+                            <th>DATE</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {shadowOrders.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: '#71717a' }}>
+                                {loadingOrders ? 'Loading shadow orders...' : 'No shadow orders found.'}
+                              </td>
+                            </tr>
+                          ) : (
+                            shadowOrders.slice(0, 8).map((o) => (
+                              <tr key={o.orderId}>
+                                <td style={{ fontWeight: 700, color: '#ffffff', fontFamily: 'monospace' }}>
+                                  {o.orderId}
+                                </td>
+                                <td>
+                                  <div style={{ fontWeight: 600, color: '#f4f4f5' }}>{o.name}</div>
+                                  <div style={{ fontSize: '10px', color: '#71717a' }}>{o.email}</div>
+                                </td>
+                                <td style={{ fontWeight: 600 }}>{o.event || 'FRESHERS TAKEOVER'}</td>
+                                <td style={{ fontWeight: 800, color: '#ffffff' }}>
+                                  ₹{(o.amount || 0).toLocaleString()}
+                                </td>
+                                <td>
+                                  <span className={`shadow-badge ${o.status === 'pending' ? 'shadow-badge-pending' : 'shadow-badge-paid'}`}>
+                                    {o.status === 'pending' ? 'PENDING' : 'PAID'}
+                                  </span>
+                                </td>
+                                <td style={{ fontSize: '11px', color: '#71717a' }}>
+                                  {o.createdAt ? new Date(o.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '10px' }}>
+                      <button className="shadow-sec-btn" style={{ width: '180px' }} onClick={() => setActiveTab('orders')}>
+                        LOAD MORE ↓
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* TAB 2: CREATE TICKET (FULL DEDICATED VIEW) */}
+            {activeTab === 'create' && (
+              <div className="shadow-box" style={{ maxWidth: '600px', margin: '0 auto', width: '100%' }}>
                 <div className="shadow-box-header">
                   <div className="shadow-box-title">
-                    <span>🗝️</span> CREATE TICKET
+                    <span>🗝️</span> CREATE SHADOW TICKET
                   </div>
+                  <button className="shadow-sec-btn" onClick={() => setActiveTab('dashboard')}>
+                    ← Back to Dashboard
+                  </button>
                 </div>
 
                 {feedback && (
@@ -572,48 +828,94 @@ export default function ShadowPanelApp() {
                   </button>
                 </form>
               </div>
+            )}
 
-              {/* Right Table Box: RECENT SHADOW ORDERS */}
+            {/* TAB 3: ORDERS DIRECTORY VIEW */}
+            {activeTab === 'orders' && (
               <div className="shadow-box">
                 <div className="shadow-box-header">
                   <div className="shadow-box-title">
-                    <span>📑</span> RECENT SHADOW ORDERS
+                    <span>📑</span> SHADOW ORDERS DIRECTORY ({filteredOrders.length})
                   </div>
                   <button className="shadow-sec-btn" onClick={fetchShadowData}>
-                    View All Orders
+                    Refresh Orders
                   </button>
+                </div>
+
+                {/* Filter & Search Bar */}
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    placeholder="Search Order ID, Ticket ID, Name, Email, Phone..."
+                    value={orderSearch}
+                    onChange={(e) => setOrderSearch(e.target.value)}
+                    className="shadow-input"
+                    style={{ flex: 1, minWidth: '240px' }}
+                  />
+
+                  <select
+                    value={orderEventFilter}
+                    onChange={(e) => setOrderEventFilter(e.target.value)}
+                    className="shadow-select"
+                    style={{ width: '180px' }}
+                  >
+                    <option value="all">All Events</option>
+                    <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
+                    <option value="AURA GENESIS">AURA GENESIS</option>
+                  </select>
+
+                  <select
+                    value={orderStatusFilter}
+                    onChange={(e) => setOrderStatusFilter(e.target.value)}
+                    className="shadow-select"
+                    style={{ width: '150px' }}
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="paid">Paid</option>
+                    <option value="pending">Pending</option>
+                  </select>
                 </div>
 
                 <div className="shadow-table-wrap">
                   <table className="shadow-table">
                     <thead>
                       <tr>
-                        <th>ORDER ID</th>
+                        <th>ORDER ID & TICKET ID</th>
                         <th>CUSTOMER</th>
                         <th>EVENT</th>
+                        <th>PASS TYPE</th>
+                        <th>QTY</th>
                         <th>AMOUNT</th>
                         <th>STATUS</th>
                         <th>DATE</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {shadowOrders.length === 0 ? (
+                      {filteredOrders.length === 0 ? (
                         <tr>
-                          <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: '#71717a' }}>
-                            {loadingOrders ? 'Loading shadow orders...' : 'No shadow orders found.'}
+                          <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: '#71717a' }}>
+                            {loadingOrders ? 'Loading shadow orders...' : 'No matching shadow orders found.'}
                           </td>
                         </tr>
                       ) : (
-                        shadowOrders.slice(0, 8).map((o) => (
+                        filteredOrders.map((o) => (
                           <tr key={o.orderId}>
-                            <td style={{ fontWeight: 700, color: '#ffffff', fontFamily: 'monospace' }}>
-                              {o.orderId}
+                            <td>
+                              <div style={{ fontWeight: 700, color: '#ffffff', fontFamily: 'monospace' }}>
+                                {o.orderId}
+                              </div>
+                              <div style={{ fontSize: '10px', color: '#71717a', fontFamily: 'monospace' }}>
+                                {o.ticketId || 'N/A'}
+                              </div>
                             </td>
                             <td>
                               <div style={{ fontWeight: 600, color: '#f4f4f5' }}>{o.name}</div>
                               <div style={{ fontSize: '10px', color: '#71717a' }}>{o.email}</div>
+                              {o.phone && <div style={{ fontSize: '10px', color: '#71717a' }}>{o.phone}</div>}
                             </td>
                             <td style={{ fontWeight: 600 }}>{o.event || 'FRESHERS TAKEOVER'}</td>
+                            <td>{o.ticketType || (o.gender === 'female' ? 'Female Pass' : 'Male Pass')}</td>
+                            <td style={{ fontWeight: 700 }}>{o.quantity || 1}</td>
                             <td style={{ fontWeight: 800, color: '#ffffff' }}>
                               ₹{(o.amount || 0).toLocaleString()}
                             </td>
@@ -623,7 +925,7 @@ export default function ShadowPanelApp() {
                               </span>
                             </td>
                             <td style={{ fontSize: '11px', color: '#71717a' }}>
-                              {o.createdAt ? new Date(o.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}
+                              {o.createdAt ? new Date(o.createdAt).toLocaleString() : 'N/A'}
                             </td>
                           </tr>
                         ))
@@ -631,14 +933,207 @@ export default function ShadowPanelApp() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
 
-                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '10px' }}>
-                  <button className="shadow-sec-btn" style={{ width: '180px' }} onClick={fetchShadowData}>
-                    LOAD MORE ↓
+            {/* TAB 4: CUSTOMERS VIEW */}
+            {activeTab === 'customers' && (
+              <div className="shadow-box">
+                <div className="shadow-box-header">
+                  <div className="shadow-box-title">
+                    <span>👥</span> SHADOW CUSTOMERS DIRECTORY ({customerList.length})
+                  </div>
+                  <button className="shadow-sec-btn" onClick={fetchShadowData}>
+                    Refresh Directory
                   </button>
                 </div>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <input
+                    type="text"
+                    placeholder="Search customer name, email, phone..."
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    className="shadow-input"
+                    style={{ maxWidth: '360px' }}
+                  />
+                </div>
+
+                <div className="shadow-table-wrap">
+                  <table className="shadow-table">
+                    <thead>
+                      <tr>
+                        <th>CUSTOMER NAME</th>
+                        <th>EMAIL ADDRESS</th>
+                        <th>PHONE</th>
+                        <th>TOTAL ORDERS</th>
+                        <th>TICKETS ISSUED</th>
+                        <th>TOTAL REVENUE</th>
+                        <th>LAST PURCHASE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerList.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: '#71717a' }}>
+                            No shadow customers found.
+                          </td>
+                        </tr>
+                      ) : (
+                        customerList.map((c, i) => (
+                          <tr key={i}>
+                            <td style={{ fontWeight: 700, color: '#ffffff' }}>{c.name}</td>
+                            <td style={{ color: '#a1a1aa' }}>{c.email}</td>
+                            <td style={{ color: '#a1a1aa' }}>{c.phone || 'N/A'}</td>
+                            <td style={{ fontWeight: 700 }}>{c.ordersCount}</td>
+                            <td style={{ fontWeight: 700 }}>{c.ticketsCount}</td>
+                            <td style={{ fontWeight: 800, color: '#4ade80' }}>
+                              ₹{c.totalSpent.toLocaleString()}
+                            </td>
+                            <td style={{ fontSize: '11px', color: '#71717a' }}>
+                              {c.lastDate ? new Date(c.lastDate).toLocaleDateString() : 'N/A'}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* TAB 5: EVENTS VIEW */}
+            {activeTab === 'events' && (
+              <div className="shadow-box">
+                <div className="shadow-box-header">
+                  <div className="shadow-box-title">
+                    <span>📅</span> ACTIVE EVENTS & PRICING
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                  <div style={{ background: '#050508', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ fontSize: '16px', fontWeight: 900, color: '#ffffff' }}>FRESHERS TAKEOVER</div>
+                    <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Main Event Pass Category</div>
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#71717a' }}>Male Pass Price:</span>
+                        <span style={{ fontWeight: 700, color: '#ffffff' }}>₹699</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#71717a' }}>Female Pass Price:</span>
+                        <span style={{ fontWeight: 700, color: '#ffffff' }}>₹599</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#71717a' }}>Shadow Tickets Sold:</span>
+                        <span style={{ fontWeight: 800, color: '#4ade80' }}>
+                          {shadowOrders.filter(o => o.event === 'FRESHERS TAKEOVER').reduce((sum, o) => sum + (o.quantity || 1), 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#050508', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ fontSize: '16px', fontWeight: 900, color: '#ffffff' }}>AURA GENESIS</div>
+                    <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Special Edition Event Pass</div>
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#71717a' }}>General Pass Price:</span>
+                        <span style={{ fontWeight: 700, color: '#ffffff' }}>₹350</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#71717a' }}>Shadow Tickets Sold:</span>
+                        <span style={{ fontWeight: 800, color: '#4ade80' }}>
+                          {shadowOrders.filter(o => o.event === 'AURA GENESIS').reduce((sum, o) => sum + (o.quantity || 1), 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 6: REPORTS VIEW */}
+            {activeTab === 'reports' && (
+              <div className="shadow-box">
+                <div className="shadow-box-header">
+                  <div className="shadow-box-title">
+                    <span>📊</span> SHADOW SALES PERFORMANCE REPORTS
+                  </div>
+                </div>
+
+                <div className="shadow-kpi-grid">
+                  <div className="shadow-kpi-card">
+                    <div className="shadow-kpi-info">
+                      <div className="shadow-kpi-label">TOTAL SHADOW REVENUE</div>
+                      <div className="shadow-kpi-value">₹{stats.totalRevenue.toLocaleString()}</div>
+                    </div>
+                  </div>
+
+                  <div className="shadow-kpi-card">
+                    <div className="shadow-kpi-info">
+                      <div className="shadow-kpi-label">AVG ORDER VALUE</div>
+                      <div className="shadow-kpi-value">
+                        ₹{stats.totalOrders > 0 ? Math.round(stats.totalRevenue / stats.totalOrders) : 0}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="shadow-kpi-card">
+                    <div className="shadow-kpi-info">
+                      <div className="shadow-kpi-label">TOTAL TICKETS ISSUED</div>
+                      <div className="shadow-kpi-value">{stats.totalTickets}</div>
+                    </div>
+                  </div>
+
+                  <div className="shadow-kpi-card">
+                    <div className="shadow-kpi-info">
+                      <div className="shadow-kpi-label">UNIQUE CUSTOMERS</div>
+                      <div className="shadow-kpi-value">{customerMap.size}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 7: SETTINGS VIEW */}
+            {activeTab === 'settings' && (
+              <div className="shadow-box" style={{ maxWidth: '600px', margin: '0 auto', width: '100%' }}>
+                <div className="shadow-box-header">
+                  <div className="shadow-box-title">
+                    <span>⚙️</span> SHADOW PANEL SETTINGS & SECURITY
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '13px' }}>
+                  <div style={{ background: '#050508', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#ffffff' }}>Operator Authentication</div>
+                      <div style={{ fontSize: '11px', color: '#71717a' }}>Password Protected (`ashtu222`)</div>
+                    </div>
+                    <span className="shadow-badge shadow-badge-paid">ACTIVE</span>
+                  </div>
+
+                  <div style={{ background: '#050508', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#ffffff' }}>Database Isolation Tag</div>
+                      <div style={{ fontSize: '11px', color: '#71717a' }}>`source = "shadow"` (Excluded from /dashboard)</div>
+                    </div>
+                    <span className="shadow-badge shadow-badge-paid">ISOLATED</span>
+                  </div>
+
+                  <div style={{ background: '#050508', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#ffffff' }}>Session State</div>
+                      <div style={{ fontSize: '11px', color: '#71717a' }}>Encrypted Token Session</div>
+                    </div>
+                    <button className="shadow-sec-btn" onClick={handleLogout}>
+                      Terminate Session
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Bottom Metallic Banner */}
             <div className="shadow-footer-banner">
