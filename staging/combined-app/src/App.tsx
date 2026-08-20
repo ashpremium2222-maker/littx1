@@ -148,7 +148,7 @@ function MainAppShell() {
   }
 
   // ── Gate staff (default) ───────────────────────────────────────────────────
-  return <PasswordGateApp />
+  return <LittixApp />
 }
 
 function DashboardGateApp() {
