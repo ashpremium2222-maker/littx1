@@ -32,11 +32,31 @@ export default function PublicWebsite({ onLoginSuccess }: PublicWebsiteProps) {
           <span className="badge-pro">PLATFORM</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <a href="#features" style={{ color: 'var(--ink-soft)', textDecoration: 'none', fontSize: '13px', fontWeight: 600 }}>Features</a>
           <a href="#companies" style={{ color: 'var(--ink-soft)', textDecoration: 'none', fontSize: '13px', fontWeight: 600 }}>Event Companies</a>
           <a href="/master-admin" style={{ color: 'var(--ink-faint)', textDecoration: 'none', fontSize: '11px', fontWeight: 600 }}>Master Admin</a>
-          
+
+          {/* Customer Portal CTA */}
+          <a
+            href="/customer/login"
+            style={{
+              padding: '8px 18px',
+              borderRadius: 10,
+              background: 'rgba(216,255,63,0.1)',
+              border: '1px solid rgba(216,255,63,0.3)',
+              color: '#D8FF3F',
+              fontSize: '12px',
+              fontWeight: 800,
+              textDecoration: 'none',
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              transition: 'all 0.2s',
+            }}
+          >
+            🎟 Customer Login
+          </a>
+
           <button
             onClick={() => setShowSignInModal(true)}
             className="btn btn-primary"
@@ -61,7 +81,7 @@ export default function PublicWebsite({ onLoginSuccess }: PublicWebsiteProps) {
           Run every gate, order, PR network, and ticket payout from one unified SaaS engine. Zero delay gate validation, automated cash workflows, and enterprise multi-tenant security.
         </p>
 
-        <div style={{ display: 'flex', gap: '16px', marginTop: '12px' }}>
+        <div style={{ display: 'flex', gap: '16px', marginTop: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
           <button
             onClick={() => setShowSignInModal(true)}
             className="btn btn-primary"
@@ -69,6 +89,24 @@ export default function PublicWebsite({ onLoginSuccess }: PublicWebsiteProps) {
           >
             SIGN IN TO PORTAL ➔
           </button>
+          <a
+            href="/customer/login"
+            style={{
+              padding: '14px 32px',
+              borderRadius: 'var(--radius-lg)',
+              background: 'rgba(216,255,63,0.08)',
+              border: '1px solid rgba(216,255,63,0.25)',
+              color: '#D8FF3F',
+              fontSize: '1rem',
+              fontWeight: 800,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            🎟 Book Event Tickets
+          </a>
         </div>
       </section>
 

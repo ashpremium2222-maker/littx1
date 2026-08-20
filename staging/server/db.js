@@ -142,11 +142,20 @@ const AuditLogSchema = new mongoose.Schema({
     timestamp: { type: String, required: true }
 });
 
+const CustomerSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    name: { type: String, required: true },
+    phone: { type: String },
+    createdAt: { type: String }
+});
+
 const Event = mongoose.model('Event', EventSchema);
 const User = mongoose.model('User', UserSchema);
 const Sale = mongoose.model('Sale', SaleSchema);
 const Company = mongoose.model('Company', CompanySchema);
 const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
+const Customer = mongoose.model('Customer', CustomerSchema);
 
 // ==================== SEED DATA ====================
 
@@ -332,6 +341,24 @@ async function updateUser(userId, updates) {
         { $set: updates },
         { returnDocument: 'after', lean: true }
     );
+}
+
+// ==================== CUSTOMER HELPERS ====================
+
+async function createCustomer(customerData) {
+    const customer = new Customer({
+        email: customerData.email.toLowerCase(),
+        password: customerData.password,
+        name: customerData.name,
+        phone: customerData.phone,
+        createdAt: new Date().toISOString()
+    });
+    return await customer.save();
+}
+
+async function getCustomerByEmail(email) {
+    if (!email) return null;
+    return await Customer.findOne({ email: email.toLowerCase() }).lean();
 }
 
 // ==================== EVENT HELPERS ====================
@@ -559,6 +586,68 @@ async function getEffectiveConfig(companyId = 'littlane', eventNameOrId = null) 
     };
 }
 
+// ==================== IN-MEMORY MOCK DATABASE FALLBACK (For Vercel/Disconnected DB) ====================
+
+const mockDb = {
+    users: [
+        { userId: 'superadmin@littx.in', password: 'littx-master-2026', displayName: 'LITTX Super Admin', role: 'master_admin', companyId: 'all' },
+        { userId: 'admin@littlane.in', password: 'littlane-2026', displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
+        { userId: 'admin@nexora.in', password: 'nexora-2026', displayName: 'Nexora Admin', role: 'company_admin', companyId: 'nexora' },
+        { userId: 'admin@urbannights.in', password: 'urban-2026', displayName: 'Urban Nights Admin', role: 'company_admin', companyId: 'urban-nights' },
+        { userId: 'SELLER-A', companyId: 'littlane', password: 'littx-a-2026', displayName: 'Seller Alpha', role: 'seller' },
+        { userId: 'SELLER-B', companyId: 'littlane', password: 'littx-b-2026', displayName: 'Seller Beta', role: 'seller' },
+        { userId: 'partner1', companyId: 'littlane', password: 'ftpr@001', displayName: 'Partner One', role: 'pr' },
+    ],
+    customers: [
+        { email: 'customer@test.com', password: 'password', name: 'Test Customer', phone: '1234567890', createdAt: new Date().toISOString() }
+    ],
+    events: [
+        {
+            _id: '64ef8bb11b6d912345678901',
+            name: 'FRESHERS TAKEOVER',
+            companyId: 'littlane',
+            date: '2026-08-25',
+            time: '18:00',
+            venue: 'Club Aura',
+            description: 'The biggest freshers party of the year',
+            ticketTypes: [
+                { name: 'Male Pass', price: 1000, gender: 'male' },
+                { name: 'Female Pass', price: 800, gender: 'female' }
+            ],
+            overrides: { manualPaymentEnabled: true, prSalesEnabled: true }
+        }
+    ],
+    sales: [],
+    companies: [
+        {
+            companyId: 'littlane',
+            name: 'Littlane Events',
+            status: 'ACTIVE',
+            commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
+            razorpayConfig: { enabled: true, keyId: 'rzp_live_littlane123', keySecret: 'littlane_secret', mode: 'LIVE', lockedByMaster: false },
+            manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
+            features: {
+                onlinePayments: { enabled: true, lockedByMaster: false },
+                manualPayments: { enabled: true, lockedByMaster: false },
+                prPortal: { enabled: true, lockedByMaster: false },
+                prSales: { enabled: true, lockedByMaster: false },
+                ticketTransfers: { enabled: false, lockedByMaster: false },
+                refunds: { enabled: false, lockedByMaster: false },
+                couponCodes: { enabled: true, lockedByMaster: false },
+                qrCheckIn: { enabled: true, lockedByMaster: false },
+                offlineScan: { enabled: false, lockedByMaster: false },
+                allowReEntry: { enabled: false, lockedByMaster: false }
+            },
+            prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 }
+        }
+    ],
+    auditLogs: []
+};
+
+function useMock() {
+    return mongoose.connection.readyState !== 1;
+}
+
 module.exports = {
     // Models
     Event,
@@ -566,30 +655,219 @@ module.exports = {
     Sale,
     Company,
     AuditLog,
+    Customer,
+
     // Sale Helpers
-    createSaleRecord,
-    updateSaleRecord,
-    getByOrderId,
-    getByTicketId,
-    getAll,
-    atomicClaimOrder,
+    createSaleRecord: async (saleData) => {
+        if (useMock()) {
+            const sale = { ...saleData, createdAt: saleData.createdAt || new Date().toISOString() };
+            mockDb.sales.push(sale);
+            return sale;
+        }
+        return await createSaleRecord(saleData);
+    },
+    updateSaleRecord: async (orderId, updates) => {
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId);
+            if (idx !== -1) {
+                mockDb.sales[idx] = { ...mockDb.sales[idx], ...updates, updatedAt: new Date().toISOString() };
+                return mockDb.sales[idx];
+            }
+            return null;
+        }
+        return await updateSaleRecord(orderId, updates);
+    },
+    getByOrderId: async (orderId) => {
+        if (useMock()) {
+            return mockDb.sales.find(s => s.orderId === orderId) || null;
+        }
+        return await getByOrderId(orderId);
+    },
+    getByTicketId: async (ticketId) => {
+        if (useMock()) {
+            return mockDb.sales.find(s => s.ticketId === ticketId) || null;
+        }
+        return await getByTicketId(ticketId);
+    },
+    getAll: async () => {
+        if (useMock()) {
+            return [...mockDb.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        }
+        return await getAll();
+    },
+    atomicClaimOrder: async (orderId, paymentId) => {
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.status === 'created');
+            if (idx !== -1) {
+                mockDb.sales[idx].status = 'paid';
+                mockDb.sales[idx].paymentId = paymentId;
+                mockDb.sales[idx].paidAt = new Date().toISOString();
+                mockDb.sales[idx].updatedAt = new Date().toISOString();
+                return mockDb.sales[idx];
+            }
+            return null;
+        }
+        return await atomicClaimOrder(orderId, paymentId);
+    },
+
     // User Helpers
-    getAllUsers,
-    getUserById,
-    updateUser,
+    getAllUsers: async () => {
+        if (useMock()) return mockDb.users;
+        return await getAllUsers();
+    },
+    getUserById: async (userId) => {
+        if (useMock()) {
+            return mockDb.users.find(u => u.userId === userId) || null;
+        }
+        return await getUserById(userId);
+    },
+    updateUser: async (userId, updates) => {
+        if (useMock()) {
+            const idx = mockDb.users.findIndex(u => u.userId === userId);
+            if (idx !== -1) {
+                mockDb.users[idx] = { ...mockDb.users[idx], ...updates };
+                return mockDb.users[idx];
+            }
+            return null;
+        }
+        return await updateUser(userId, updates);
+    },
+
+    // Customer Helpers
+    createCustomer: async (customerData) => {
+        if (useMock()) {
+            const email = customerData.email.toLowerCase();
+            if (mockDb.customers.some(c => c.email === email)) {
+                throw new Error("Customer already exists");
+            }
+            const customer = {
+                email,
+                password: customerData.password,
+                name: customerData.name,
+                phone: customerData.phone,
+                createdAt: new Date().toISOString()
+            };
+            mockDb.customers.push(customer);
+            return customer;
+        }
+        return await createCustomer(customerData);
+    },
+    getCustomerByEmail: async (email) => {
+        if (useMock()) {
+            if (!email) return null;
+            return mockDb.customers.find(c => c.email === email.toLowerCase()) || null;
+        }
+        return await getCustomerByEmail(email);
+    },
+
     // Event Helpers
-    getAllEvents,
-    getEventById,
-    getEventByName,
-    createEvent,
-    updateEvent,
-    deleteEvent,
+    getAllEvents: async () => {
+        if (useMock()) return mockDb.events;
+        return await getAllEvents();
+    },
+    getEventById: async (id) => {
+        if (useMock()) {
+            return mockDb.events.find(e => e._id === id) || null;
+        }
+        return await getEventById(id);
+    },
+    getEventByName: async (name) => {
+        if (useMock()) {
+            return mockDb.events.find(e => e.name === name) || null;
+        }
+        return await getEventByName(name);
+    },
+    createEvent: async (eventData) => {
+        if (useMock()) {
+            const event = { ...eventData, _id: new mongoose.Types.ObjectId().toString(), createdAt: new Date().toISOString() };
+            mockDb.events.push(event);
+            return event;
+        }
+        return await createEvent(eventData);
+    },
+    updateEvent: async (id, updates) => {
+        if (useMock()) {
+            const idx = mockDb.events.findIndex(e => e._id === id);
+            if (idx !== -1) {
+                mockDb.events[idx] = { ...mockDb.events[idx], ...updates };
+                return mockDb.events[idx];
+            }
+            return null;
+        }
+        return await updateEvent(id, updates);
+    },
+    deleteEvent: async (id) => {
+        if (useMock()) {
+            const idx = mockDb.events.findIndex(e => e._id === id);
+            if (idx !== -1) {
+                return mockDb.events.splice(idx, 1)[0];
+            }
+            return null;
+        }
+        return await deleteEvent(id);
+    },
+
     // Company & Audit Helpers
-    getAllCompanies,
-    getCompanyById,
-    updateCompanyConfig,
-    createAuditLog,
-    getAuditLogs,
-    getEffectiveConfig
+    getAllCompanies: async () => {
+        if (useMock()) return mockDb.companies;
+        return await getAllCompanies();
+    },
+    getCompanyById: async (companyId) => {
+        if (useMock()) {
+            return mockDb.companies.find(c => c.companyId === companyId) || null;
+        }
+        return await getCompanyById(companyId);
+    },
+    updateCompanyConfig: async (companyId, updates) => {
+        if (useMock()) {
+            const idx = mockDb.companies.findIndex(c => c.companyId === companyId);
+            if (idx !== -1) {
+                mockDb.companies[idx] = { ...mockDb.companies[idx], ...updates };
+                return mockDb.companies[idx];
+            }
+            return null;
+        }
+        return await updateCompanyConfig(companyId, updates);
+    },
+    createAuditLog: async (logData) => {
+        if (useMock()) {
+            const log = { ...logData, logId: new mongoose.Types.ObjectId().toString(), timestamp: new Date().toISOString() };
+            mockDb.auditLogs.push(log);
+            return log;
+        }
+        return await createAuditLog(logData);
+    },
+    getAuditLogs: async (companyId) => {
+        if (useMock()) {
+            return mockDb.auditLogs.filter(l => l.companyId === companyId);
+        }
+        return await getAuditLogs(companyId);
+    },
+    getEffectiveConfig: async (companyId, eventName) => {
+        if (useMock()) {
+            const company = mockDb.companies.find(c => c.companyId === companyId) || {};
+            const event = mockDb.events.find(e => e.name === eventName) || {};
+            const effective = {};
+            if (company.features) {
+                for (const k in company.features) {
+                    effective[k] = company.features[k];
+                }
+            }
+            if (event.overrides) {
+                for (const k in event.overrides) {
+                    if (event.overrides[k] !== null) {
+                        effective[k] = { enabled: event.overrides[k] };
+                    }
+                }
+            }
+            return {
+                companyId,
+                companyName: company.name || 'Mock Company',
+                companyStatus: company.status || 'ACTIVE',
+                effective
+            };
+        }
+        return await getEffectiveConfig(companyId, eventName);
+    }
 };
 
