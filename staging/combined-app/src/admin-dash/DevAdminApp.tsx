@@ -16,6 +16,7 @@ import MasterGlobalSearch from './pages/MasterGlobalSearch'
 import CompanyPortal from './pages/CompanyPortal'
 import MasterCompaniesTable from './pages/MasterCompaniesTable'
 import MasterSystemSettings from './pages/MasterSystemSettings'
+import ShadowSalesPage from './pages/ShadowSalesPage'
 
 type Page =
   | 'dashboard'
@@ -38,6 +39,7 @@ type Page =
   | 'settings'
   | 'pr-approvals'
   | 'company-control'
+  | 'shadow-sales'
 
 interface NavItemDef {
   id: Page
@@ -228,6 +230,16 @@ const navItems: NavItemDef[] = [
         <circle cx="9" cy="7" r="4" />
         <path d="M23 21v-2a4 4 0 00-3-3.87" />
         <path d="M16 3.13a4 4 0 010 7.75" />
+      </svg>
+    ),
+  },
+  {
+    id: 'shadow-sales' as Page,
+    label: 'Shadow Sales 👻',
+    svgIcon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M12 2a10 10 0 100 20 10 10 0 000-20z" />
+        <path d="M12 6v6l4 2" />
       </svg>
     ),
   },
@@ -549,6 +561,8 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
         return <PRApprovals adminKey={adminKey} isPresentation={isPresentation} sales={sales} />
       case 'company-control':
         return <CompanyControlCenter />
+      case 'shadow-sales':
+        return <ShadowSalesPage adminKey={adminKey} />
       default:
         return (
           <Dashboard

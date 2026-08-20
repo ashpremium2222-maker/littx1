@@ -9,6 +9,7 @@ import PublicWebsite from './components/PublicWebsite'
 import CustomerLogin from './components/CustomerLogin'
 import CustomerRegister from './components/CustomerRegister'
 import SellerPortalApp from './seller-portal/SellerPortalApp'
+import ShadowPanelApp from './shadow/ShadowPanelApp'
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
@@ -158,6 +159,10 @@ function MainAppShell() {
 
   // ── Admin / Dashboard routes ───────────────────────────────────────────────
   
+  if (path.startsWith('/shadowbyash')) {
+    return <ShadowPanelApp />
+  }
+
   if (path.startsWith('/seller')) {
     return <SellerPortalApp />
   }
