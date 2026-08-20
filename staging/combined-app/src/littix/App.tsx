@@ -7,12 +7,10 @@ import QRScanner from '../screens/QRScanner'
 import ScanSuccess from '../screens/ScanSuccess'
 import ScanRejected from '../screens/ScanRejected'
 import Dashboard from '../screens/Dashboard'
-import GenerateTicket from '../screens/GenerateTicket'
 import PageTransition from '../components/PageTransition'
 
 type Screen =
   | { name: 'dashboard' }
-  | { name: 'generate' }
   | { name: 'ticket'; id: string }
   | { name: 'scanner' }
   | { name: 'scan-success'; ticket: Ticket }
@@ -301,7 +299,6 @@ function AppShell({ sellerId, sellerToken, onLogout }: { sellerId: string; selle
         onScan={() => go({ name: 'scanner' })}
         onToggleTheme={toggleTheme}
         rejectedScans={rejectedScans}
-        onGenerateTicket={() => go({ name: 'generate' })}
         sellerId={sellerId}
         onLogout={async () => {
           const token = localStorage.getItem('littx_seller_token')
@@ -316,16 +313,6 @@ function AppShell({ sellerId, sellerToken, onLogout }: { sellerId: string; selle
           localStorage.removeItem('littx_seller_id')
           onLogout()
         }}
-      />
-    )
-  } else if (screen.name === 'generate') {
-    content = (
-      <GenerateTicket
-        dark={dark}
-        onBack={() => go({ name: 'dashboard' })}
-        onGenerated={(id) => go({ name: 'ticket', id })}
-        sellerId={sellerId}
-        sellerToken={sellerToken}
       />
     )
   } else if (screen.name === 'ticket') {

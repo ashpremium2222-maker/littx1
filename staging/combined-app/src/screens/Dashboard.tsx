@@ -11,12 +11,11 @@ interface Props {
   onScan: () => void
   onToggleTheme: () => void
   rejectedScans: RejectedScan[]
-  onGenerateTicket?: () => void
   sellerId?: string
   onLogout?: () => void
 }
 
-export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, rejectedScans, onGenerateTicket, sellerId, onLogout }: Props) {
+export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, rejectedScans, sellerId, onLogout }: Props) {
   const { tickets } = useStore()
   const [activeTab, setActiveTab] = useState<'scanned' | 'failed'>('scanned')
   const [search, setSearch] = useState('')
@@ -321,21 +320,6 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
 
       {/* Floating/Sticky Action Buttons */}
       <div className={`px-4 py-4 border-t ${navBg} safe-bottom`}>
-        {onGenerateTicket && (
-          <motion.button
-            onClick={onGenerateTicket}
-            whileTap={{ scale: 0.96 }}
-            className="w-full text-white text-sm font-black py-3.5 rounded-2xl flex items-center justify-center gap-2 mb-3"
-            style={{
-              background: 'linear-gradient(135deg, #6366F1, #4338CA)',
-              boxShadow: '0 4px 18px rgba(99,102,241,0.35)',
-              willChange: 'transform',
-              height: '50px'
-            }}
-          >
-            🎟️ GENERATE TICKET
-          </motion.button>
-        )}
         <motion.button
           onClick={onScan}
           whileTap={{ scale: 0.96 }}
