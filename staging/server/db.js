@@ -191,10 +191,24 @@ const PartnerLockSchema = new mongoose.Schema({
     partnerId: { type: String, required: true, unique: true },
     name: { type: String, required: true },
     password: { type: String, required: true },
+    
+    // WebAuthn / Passkey Cryptographic Credential
+    webauthnCredentialId: { type: String, default: null },
+    webauthnPublicKey: { type: String, default: null },
+    webauthnCounter: { type: Number, default: 0 },
+    webauthnTransports: { type: [String], default: [] },
+    deviceRegisteredAt: { type: String, default: null },
+    registeredDeviceId: { type: String, default: null },
+
+    // Device IP & Session Versioning
     boundIp: { type: String, default: null },
     boundAt: { type: String, default: null },
     sessionVersion: { type: Number, default: 1 },
     lastSeenAt: { type: String, default: null },
+
+    // Temporary Challenge
+    currentChallenge: { type: String, default: null },
+
     loginAttemptLog: [{
         timestamp: { type: String },
         ip: { type: String },
@@ -1172,6 +1186,13 @@ module.exports = {
                 ...current,
                 boundIp: null,
                 boundAt: null,
+                webauthnCredentialId: null,
+                webauthnPublicKey: null,
+                webauthnCounter: 0,
+                webauthnTransports: [],
+                deviceRegisteredAt: null,
+                registeredDeviceId: null,
+                currentChallenge: null,
                 sessionVersion: (current.sessionVersion || 1) + 1
             };
             _mockPartnerLocks.set(partnerId, updated);
@@ -1181,7 +1202,20 @@ module.exports = {
         const newVersion = ((current?.sessionVersion) || 1) + 1;
         return PartnerLock.findOneAndUpdate(
             { partnerId },
-            { $set: { boundIp: null, boundAt: null, sessionVersion: newVersion } },
+            {
+                $set: {
+                    boundIp: null,
+                    boundAt: null,
+                    webauthnCredentialId: null,
+                    webauthnPublicKey: null,
+                    webauthnCounter: 0,
+                    webauthnTransports: [],
+                    deviceRegisteredAt: null,
+                    registeredDeviceId: null,
+                    currentChallenge: null,
+                    sessionVersion: newVersion
+                }
+            },
             { new: true, lean: true }
         );
     },

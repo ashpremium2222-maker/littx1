@@ -257,6 +257,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                   <tr>
                     <th>Partner Name</th>
                     <th>Partner ID</th>
+                    <th>WebAuthn Passkey Credential</th>
                     <th>Bound IP Address</th>
                     <th>Bound Timestamp</th>
                     <th>Session Version</th>
@@ -273,6 +274,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                       <tr key={p.partnerId}>
                         <td style={{ fontWeight: 'bold' }}>{p.name}</td>
                         <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{p.partnerId}</td>
+                        <td><span className="badge badge-dark">Passkey Unbound</span></td>
                         <td><span className="badge badge-dark">Not Bound (First Login Pending)</span></td>
                         <td style={{ fontSize: '0.8rem', color: 'var(--ink-faint)' }}>N/A</td>
                         <td>1</td>
@@ -293,10 +295,19 @@ export default function Settings({ adminKey }: SettingsProps) {
                         <td style={{ fontWeight: 'bold', color: 'var(--ink)' }}>{p.name}</td>
                         <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--ink-faint)' }}>{p.partnerId}</td>
                         <td>
+                          {p.webauthnCredentialId ? (
+                            <span className="badge badge-violet" style={{ fontFamily: 'monospace', fontSize: '10px' }}>
+                              🔐 {p.registeredDeviceId || 'Passkey Bound'}
+                            </span>
+                          ) : (
+                            <span className="badge badge-dark">Passkey Unbound</span>
+                          )}
+                        </td>
+                        <td>
                           {p.boundIp ? (
                             <span className="badge badge-teal"><span className="badge-dot" />🔒 {p.boundIp}</span>
                           ) : (
-                            <span className="badge badge-dark">Not Bound (First Login Pending)</span>
+                            <span className="badge badge-dark">Not Bound</span>
                           )}
                         </td>
                         <td style={{ fontSize: '0.8rem', color: 'var(--ink-faint)' }}>

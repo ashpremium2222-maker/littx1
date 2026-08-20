@@ -9,9 +9,27 @@ const { atomicClaimOrder } = db;
 const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
 const { sendTicketEmail } = require('./mailer');
 
+const {
+    generateRegistrationOptions,
+    verifyRegistrationResponse,
+    generateAuthenticationOptions,
+    verifyAuthenticationResponse,
+} = require('@simplewebauthn/server');
+
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const RP_NAME = 'LITTX Seller Portal';
+function getRPID(req) {
+    const host = (req.headers.host || '').split(':')[0];
+    return host || 'localhost';
+}
+function getOrigin(req) {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers.host || 'localhost:3000';
+    return `${protocol}://${host}`;
+}
 
 // ==================== EVENT & PRICING ====================
 const EVENT = { name: EVENT_NAME };
@@ -1048,8 +1066,8 @@ app.delete('/api/master/sessions/:userId', async (req, res) => {
 
 // ==================== SELLER PORTAL — STRICT SINGLE-DEVICE LOCK ENDPOINTS ====================
 
-// POST /api/seller/partner-login — Strict single-device lock login
-app.post('/api/seller/partner-login', async (req, res) => {
+// POST /api/seller/login-step1 — Validate password and issue WebAuthn registration/authentication challenge
+app.post('/api/seller/login-step1', async (req, res) => {
     const { partnerId, password } = req.body || {};
     const requestIp = getIp(req);
     const userAgent = req.headers['user-agent'] || 'unknown';
@@ -1062,7 +1080,6 @@ app.post('/api/seller/partner-login', async (req, res) => {
     try {
         let partner = await db.getPartnerLock(partnerId);
         if (!partner) {
-            // Fallback for partners not yet seeded
             const defaultNameMap = {
                 'littlane': 'Littlane Entertainment',
                 'nitro': 'Nitro Events',
@@ -1077,72 +1094,216 @@ app.post('/api/seller/partner-login', async (req, res) => {
                 partnerId,
                 name: defaultNameMap[partnerId] || partnerId,
                 password: defaultPassMap[partnerId] || `${partnerId}-pass-2026`,
+                webauthnCredentialId: null,
+                webauthnPublicKey: null,
                 boundIp: null,
-                boundAt: null,
-                sessionVersion: 1,
-                lastSeenAt: null,
-                loginAttemptLog: []
+                sessionVersion: 1
             };
         }
 
-        // 1. Password Verification
+        // 1. Validate Password
         if (partner.password !== password && password !== 'dash-2026' && password !== 'littx-master-2026') {
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-password-incorrect' });
             return res.status(401).json({ success: false, message: `Invalid password for ${partner.name}.` });
         }
 
-        // 2. Single-Device IP Lock Verification
-        if (!partner.boundIp) {
-            // FIRST LOGIN: Bind to this IP permanently until admin resets
-            partner.boundIp = requestIp;
-            partner.boundAt = now;
-            partner.lastSeenAt = now;
-            await db.savePartnerLock(partnerId, { boundIp: requestIp, boundAt: now, lastSeenAt: now });
-            await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'success' });
-            console.log(`🔒 [Partner Device Bound] ${partner.name} permanently bound to IP: ${requestIp}`);
-        } else if (partner.boundIp !== requestIp) {
-            // REJECTED: Current IP does not match permanent boundIp
-            await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-ip-mismatch' });
-            console.log(`⛔ [Partner Device Blocked] ${partner.name} login attempt from ${requestIp} rejected (bound to ${partner.boundIp})`);
-            return res.status(403).json({
-                success: false,
-                ipLocked: true,
-                boundIp: partner.boundIp,
-                boundAt: partner.boundAt,
-                message: 'This account is locked to a different device. Contact admin to reset access.'
+        const rpID = getRPID(req);
+
+        if (!partner.webauthnCredentialId) {
+            // WebAuthn REGISTRATION required (First Device Binding)
+            const options = await generateRegistrationOptions({
+                rpName: RP_NAME,
+                rpID,
+                userID: Buffer.from(partnerId),
+                userName: partner.name,
+                attestationType: 'none',
+                authenticatorSelection: {
+                    userVerification: 'preferred',
+                    residentKey: 'discouraged'
+                }
+            });
+
+            await db.savePartnerLock(partnerId, { currentChallenge: options.challenge });
+
+            return res.json({
+                success: true,
+                isRegistration: true,
+                options,
+                partnerId
             });
         } else {
-            // IP MATCHES: Login allowed
-            partner.lastSeenAt = now;
-            await db.savePartnerLock(partnerId, { lastSeenAt: now });
-            await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'success' });
+            // WebAuthn AUTHENTICATION required (Strict Device Verification)
+            const options = await generateAuthenticationOptions({
+                rpID,
+                allowCredentials: [{
+                    id: partner.webauthnCredentialId,
+                    transports: partner.webauthnTransports || ['internal']
+                }],
+                userVerification: 'preferred'
+            });
+
+            await db.savePartnerLock(partnerId, { currentChallenge: options.challenge });
+
+            return res.json({
+                success: true,
+                isRegistration: false,
+                options,
+                partnerId
+            });
+        }
+    } catch (err) {
+        console.error('[WebAuthn Step1 Error]', err);
+        res.status(500).json({ success: false, message: 'Server error generating WebAuthn challenge.' });
+    }
+});
+
+// POST /api/seller/login-step2 — Verify WebAuthn signature & issue bound session token
+app.post('/api/seller/login-step2', async (req, res) => {
+    const { partnerId, response } = req.body || {};
+    const requestIp = getIp(req);
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const now = new Date().toISOString();
+
+    if (!partnerId || !response) {
+        return res.status(400).json({ success: false, message: 'Partner ID and WebAuthn response are required.' });
+    }
+
+    try {
+        const partner = await db.getPartnerLock(partnerId);
+        if (!partner || !partner.currentChallenge) {
+            return res.status(400).json({ success: false, message: 'Invalid or expired WebAuthn challenge session.' });
         }
 
-        // 3. Issue non-expiring session token
-        const token = generateToken();
-        await db.setUserSession(`partner:${partnerId}`, {
-            token,
-            role: 'seller_partner',
-            partnerId: partner.partnerId,
-            sessionVersion: partner.sessionVersion || 1,
-            loginAt: now,
-            ip: requestIp
-        });
+        const expectedChallenge = partner.currentChallenge;
+        const expectedOrigin = getOrigin(req);
+        const expectedRPID = getRPID(req);
 
-        res.json({
-            success: true,
-            token,
-            partner: {
-                id: partner.partnerId,
-                name: partner.name,
-                boundIp: partner.boundIp,
-                boundAt: partner.boundAt,
-                sessionVersion: partner.sessionVersion || 1
+        // Clear challenge immediately to prevent replay
+        await db.savePartnerLock(partnerId, { currentChallenge: null });
+
+        if (!partner.webauthnCredentialId) {
+            // VERIFY REGISTRATION (Bind first device)
+            const verification = await verifyRegistrationResponse({
+                response,
+                expectedChallenge,
+                expectedOrigin,
+                expectedRPID
+            });
+
+            if (!verification.verified || !verification.registrationInfo) {
+                await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-webauthn-registration-failed' });
+                return res.status(400).json({ success: false, message: 'WebAuthn device registration failed.' });
             }
-        });
+
+            const { credential } = verification.registrationInfo;
+            const newCredentialId = credential.id;
+            const newPublicKey = Buffer.from(credential.publicKey).toString('base64url');
+            const newDeviceId = 'DEV-' + crypto.randomBytes(8).toString('hex').toUpperCase();
+
+            await db.savePartnerLock(partnerId, {
+                webauthnCredentialId: newCredentialId,
+                webauthnPublicKey: newPublicKey,
+                webauthnCounter: credential.counter || 0,
+                webauthnTransports: credential.transports || ['internal'],
+                deviceRegisteredAt: now,
+                registeredDeviceId: newDeviceId,
+                boundIp: requestIp,
+                boundAt: now,
+                lastSeenAt: now
+            });
+
+            await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'webauthn-registered-and-bound' });
+            console.log(`🔐 [WebAuthn Device Registered & Bound] ${partner.name} bound to Credential ID: ${newCredentialId}`);
+
+            const token = generateToken();
+            await db.setUserSession(`partner:${partnerId}`, {
+                token,
+                role: 'seller_partner',
+                partnerId: partner.partnerId,
+                sessionVersion: partner.sessionVersion || 1,
+                loginAt: now,
+                ip: requestIp
+            });
+
+            return res.json({
+                success: true,
+                token,
+                partner: {
+                    id: partner.partnerId,
+                    name: partner.name,
+                    boundIp: requestIp,
+                    registeredDeviceId: newDeviceId,
+                    webauthnCredentialId: newCredentialId
+                }
+            });
+        } else {
+            // VERIFY AUTHENTICATION (Verify signature against account's registered credential)
+            const verification = await verifyAuthenticationResponse({
+                response,
+                expectedChallenge,
+                expectedOrigin,
+                expectedRPID,
+                credential: {
+                    id: partner.webauthnCredentialId,
+                    publicKey: Buffer.from(partner.webauthnPublicKey, 'base64url'),
+                    counter: partner.webauthnCounter || 0,
+                    transports: partner.webauthnTransports || ['internal']
+                }
+            });
+
+            if (!verification.verified) {
+                await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-webauthn-signature-invalid' });
+                return res.status(403).json({
+                    success: false,
+                    accessDenied: true,
+                    message: 'ACCESS DENIED: WebAuthn cryptographic signature verification failed. This device is not authorized.'
+                });
+            }
+
+            // Also check IP lock if boundIp is present
+            if (partner.boundIp && partner.boundIp !== requestIp) {
+                await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-ip-mismatch' });
+                return res.status(403).json({
+                    success: false,
+                    accessDenied: true,
+                    message: 'ACCESS DENIED: Account is bound to a different registered device network.'
+                });
+            }
+
+            const newCounter = verification.authenticationInfo?.newCounter || 0;
+            await db.savePartnerLock(partnerId, { webauthnCounter: newCounter, lastSeenAt: now });
+            await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'success' });
+
+            const token = generateToken();
+            await db.setUserSession(`partner:${partnerId}`, {
+                token,
+                role: 'seller_partner',
+                partnerId: partner.partnerId,
+                sessionVersion: partner.sessionVersion || 1,
+                loginAt: now,
+                ip: requestIp
+            });
+
+            return res.json({
+                success: true,
+                token,
+                partner: {
+                    id: partner.partnerId,
+                    name: partner.name,
+                    boundIp: partner.boundIp,
+                    registeredDeviceId: partner.registeredDeviceId,
+                    webauthnCredentialId: partner.webauthnCredentialId
+                }
+            });
+        }
     } catch (err) {
-        console.error('[Partner Login Error]', err);
-        res.status(500).json({ success: false, message: 'Server error during partner authentication.' });
+        console.error('[WebAuthn Step2 Error]', err);
+        await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-webauthn-error' }).catch(() => {});
+        return res.status(403).json({
+            success: false,
+            accessDenied: true,
+            message: 'ACCESS DENIED: Device credential mismatch or WebAuthn failure. Only the account\'s registered device can log in.'
+        });
     }
 });
 

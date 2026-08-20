@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 
 export interface PartnerOption {
   id: string
@@ -16,7 +17,8 @@ interface PartnerSessionData {
   id: string
   name: string
   boundIp?: string | null
-  boundAt?: string | null
+  registeredDeviceId?: string | null
+  webauthnCredentialId?: string | null
   sessionVersion?: number
 }
 
@@ -36,6 +38,7 @@ export default function SellerPortalApp() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('littx_seller_token'))
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loginLoading, setLoginLoading] = useState<boolean>(false)
+  const [webauthnStatus, setWebauthnStatus] = useState<string | null>(null)
 
   // Ticket generation form state
   const [event, setEvent] = useState('FRESHERS TAKEOVER')
@@ -84,31 +87,77 @@ export default function SellerPortalApp() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError(null)
+    setWebauthnStatus(null)
     setLoginLoading(true)
 
     try {
-      const res = await fetch('/api/seller/partner-login', {
+      // Step 1: Validate Password & Get WebAuthn Options
+      const step1Res = await fetch('/api/seller/login-step1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ partnerId: selectedPartnerId, password: passwordInput })
       })
 
-      const data = await res.json()
+      const step1Data = await step1Res.json()
 
-      if (res.ok && data.success) {
-        setAuthenticatedPartner(data.partner)
-        setToken(data.token)
-        localStorage.setItem('littx_seller_token', data.token)
-        localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
+      if (!step1Res.ok || !step1Data.success) {
+        setLoginError(step1Data.message || 'Password authentication failed.')
+        setLoginLoading(false)
+        return
+      }
+
+      let webauthnResponse: any = null
+
+      if (step1Data.isRegistration) {
+        // FIRST LOGIN: Bind device WebAuthn Passkey
+        setWebauthnStatus('🔑 Registering Hardware Device Passkey... Touch TouchID / FaceID / YubiKey')
+        try {
+          webauthnResponse = await startRegistration({ optionsJSON: step1Data.options })
+        } catch (err: any) {
+          console.error('WebAuthn Registration Error:', err)
+          setLoginError(`Device Binding Failed: ${err.message || 'User cancelled or device unsupported'}`)
+          setLoginLoading(false)
+          setWebauthnStatus(null)
+          return
+        }
+      } else {
+        // RECURRING LOGIN: Verify WebAuthn Hardware Passkey Signature
+        setWebauthnStatus('🔒 Verifying Hardware Passkey Device Signature...')
+        try {
+          webauthnResponse = await startAuthentication({ optionsJSON: step1Data.options })
+        } catch (err: any) {
+          console.error('WebAuthn Authentication Error:', err)
+          setLoginError('ACCESS DENIED: WebAuthn Device Credential Mismatch. This device is not the registered passkey hardware.')
+          setLoginLoading(false)
+          setWebauthnStatus(null)
+          return
+        }
+      }
+
+      // Step 2: Send WebAuthn Response to Server for Cryptographic Signature Verification
+      setWebauthnStatus('🛡️ Verifying Cryptographic Proof on Server...')
+      const step2Res = await fetch('/api/seller/login-step2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partnerId: selectedPartnerId, response: webauthnResponse })
+      })
+
+      const step2Data = await step2Res.json()
+
+      if (step2Res.ok && step2Data.success) {
+        setAuthenticatedPartner(step2Data.partner)
+        setToken(step2Data.token)
+        localStorage.setItem('littx_seller_token', step2Data.token)
+        localStorage.setItem('littx_seller_partner', JSON.stringify(step2Data.partner))
         setPasswordInput('')
       } else {
-        // Persistent error message (especially for IP Mismatch)
-        setLoginError(data.message || 'Authentication failed.')
+        setLoginError(step2Data.message || 'ACCESS DENIED: WebAuthn device verification failed.')
       }
     } catch (err) {
       setLoginError('Network error connecting to authentication server.')
     } finally {
       setLoginLoading(false)
+      setWebauthnStatus(null)
     }
   }
 
@@ -192,15 +241,25 @@ export default function SellerPortalApp() {
             <span className="text-xl font-extrabold tracking-wider text-violet-400">SELLER PORTAL</span>
           </div>
 
+          <div className="inline-block bg-violet-500/10 border border-violet-500/30 text-violet-300 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md mb-3 text-center w-full">
+            🔐 WEBAUTHN HARDWARE DEVICE LOCK ACTIVE
+          </div>
+
           <h2 className="text-lg font-bold text-center mb-1">Partner Authentication</h2>
-          <p className="text-xs text-slate-400 text-center mb-6">Select your organization & enter password</p>
+          <p className="text-xs text-slate-400 text-center mb-6">Select organization, enter password & verify registered Passkey</p>
 
           {loginError && (
             <div className="bg-red-500/15 border-2 border-red-500/40 text-red-300 text-xs p-4 rounded-xl mb-6 text-center font-medium leading-relaxed shadow-lg">
               <div className="text-sm font-bold text-red-400 mb-1 flex items-center justify-center gap-1.5">
-                <span>⛔</span> ACCESS BLOCKED
+                <span>⛔</span> ACCESS DENIED
               </div>
               {loginError}
+            </div>
+          )}
+
+          {webauthnStatus && (
+            <div className="bg-indigo-500/15 border border-indigo-500/40 text-indigo-300 text-xs p-3 rounded-xl mb-6 text-center font-medium animate-pulse">
+              {webauthnStatus}
             </div>
           )}
 
@@ -246,9 +305,15 @@ export default function SellerPortalApp() {
             <button
               type="submit"
               disabled={loginLoading}
-              className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-lg shadow-violet-600/25"
+              className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-lg shadow-violet-600/25 flex items-center justify-center gap-2"
             >
-              {loginLoading ? 'Verifying Device Lock...' : `Log In as ${currentPartner.name}`}
+              {loginLoading ? (
+                'Verifying Passkey Device...'
+              ) : (
+                <>
+                  <span>🔐 Log In & Verify Hardware Passkey</span>
+                </>
+              )}
             </button>
           </form>
         </div>
@@ -272,12 +337,12 @@ export default function SellerPortalApp() {
             {authenticatedPartner.name}
           </div>
 
-          {/* Read-only Device Lock Indicator */}
-          {authenticatedPartner.boundIp && (
+          {/* Read-only Device & Passkey Lock Indicator */}
+          {authenticatedPartner.webauthnCredentialId && (
             <div className="hidden sm:flex text-[11px] text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg items-center gap-1.5">
-              <span>🔒 Locked to Device</span>
+              <span>🔐 WebAuthn Bound</span>
               <span className="text-slate-500">•</span>
-              <span className="font-mono text-slate-300">{authenticatedPartner.boundIp}</span>
+              <span className="font-mono text-violet-400">{authenticatedPartner.registeredDeviceId || 'Passkey Device'}</span>
             </div>
           )}
         </div>
@@ -288,7 +353,7 @@ export default function SellerPortalApp() {
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
           <div>
             <div className="inline-block bg-indigo-500/10 text-indigo-400 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md mb-2">
-              PERMANENT DEVICE BOUND PORTAL
+              HARDWARE WEBAUTHN BOUND PORTAL
             </div>
             <h1 className="text-2xl font-black text-white">Generate Partner Ticket</h1>
             <p className="text-xs text-slate-400">
