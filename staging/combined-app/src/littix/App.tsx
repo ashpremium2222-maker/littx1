@@ -58,8 +58,8 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
       })
       const data = await res.json()
       if (data.success) {
-        sessionStorage.setItem('littx_seller_token', data.token)
-        sessionStorage.setItem('littx_seller_id', data.sellerId)
+        localStorage.setItem('littx_seller_token', data.token)
+        localStorage.setItem('littx_seller_id', data.sellerId)
         onLogin(data.sellerId, data.token)
       } else if (data.ipLocked) {
         setError(`🔒 Device locked — this ID is already active on another device. Ask master admin to unlock it.`)
@@ -304,7 +304,7 @@ function AppShell({ sellerId, sellerToken, onLogout }: { sellerId: string; selle
         onGenerateTicket={() => go({ name: 'generate' })}
         sellerId={sellerId}
         onLogout={async () => {
-          const token = sessionStorage.getItem('littx_seller_token')
+          const token = localStorage.getItem('littx_seller_token')
           if (token) {
             await fetch('/api/seller/logout', {
               method: 'POST',
@@ -312,8 +312,8 @@ function AppShell({ sellerId, sellerToken, onLogout }: { sellerId: string; selle
               body: JSON.stringify({ token })
             }).catch(() => {})
           }
-          sessionStorage.removeItem('littx_seller_token')
-          sessionStorage.removeItem('littx_seller_id')
+          localStorage.removeItem('littx_seller_token')
+          localStorage.removeItem('littx_seller_id')
           onLogout()
         }}
       />
@@ -375,14 +375,14 @@ function AppShell({ sellerId, sellerToken, onLogout }: { sellerId: string; selle
 
 // ==================== ROOT: handles seller auth ====================
 export default function App() {
-  const [sellerId, setSellerId] = useState<string | null>(() => sessionStorage.getItem('littx_seller_id'))
-  const [sellerToken, setSellerToken] = useState<string | null>(() => sessionStorage.getItem('littx_seller_token'))
+  const [sellerId, setSellerId] = useState<string | null>(() => localStorage.getItem('littx_seller_id'))
+  const [sellerToken, setSellerToken] = useState<string | null>(() => localStorage.getItem('littx_seller_token'))
   const [verified, setVerified] = useState(false)
   const [checking, setChecking] = useState(true)
 
   // Verify token on mount
   useEffect(() => {
-    const token = sessionStorage.getItem('littx_seller_token')
+    const token = localStorage.getItem('littx_seller_token')
     if (!token) {
       setChecking(false)
       return
@@ -397,15 +397,16 @@ export default function App() {
           setSellerToken(token)
           setVerified(true)
         } else {
-          sessionStorage.removeItem('littx_seller_token')
-          sessionStorage.removeItem('littx_seller_id')
+          // Admin kicked them — clear token and force re-login
+          localStorage.removeItem('littx_seller_token')
+          localStorage.removeItem('littx_seller_id')
           setSellerId(null)
           setSellerToken(null)
         }
       })
       .catch(() => {
         // Server might be down — allow cached session to proceed
-        const cachedId = sessionStorage.getItem('littx_seller_id')
+        const cachedId = localStorage.getItem('littx_seller_id')
         if (cachedId && token) {
           setSellerId(cachedId)
           setSellerToken(token)

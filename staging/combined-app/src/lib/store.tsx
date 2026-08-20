@@ -80,7 +80,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     try {
       // Prefer seller token (combined view of all tickets for all sellers)
-      const sellerToken = sessionStorage.getItem('littx_seller_token')
+      const sellerToken = localStorage.getItem('littx_seller_token')
       let res: Response
       if (sellerToken) {
         res = await fetch('/api/seller/all-tickets', {
