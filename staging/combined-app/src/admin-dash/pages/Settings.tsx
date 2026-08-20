@@ -102,7 +102,6 @@ export default function Settings({ adminKey }: SettingsProps) {
               { id: 'profile', label: 'Profile & Workspace' },
               { id: 'smtp', label: 'SMTP Config' },
               { id: 'payments', label: 'Payment Gateways' },
-              { id: 'roles', label: 'Roles & Audit' },
             ] as const
           ).map((t) => (
             <button
@@ -402,33 +401,7 @@ export default function Settings({ adminKey }: SettingsProps) {
         </div>
       )}
 
-      {tab === 'roles' && (
-        <div className="card">
-          <div className="card-head">
-            <h3>Danger Zone & Data Reset</h3>
-          </div>
-          <p style={{ fontSize: '12px', color: 'var(--red)', marginBottom: '16px' }}>
-            Wiping test data permanently removes mock bookings and resets financial statistics.
-          </p>
-          <button
-            onClick={handleWipe}
-            disabled={wiping}
-            style={{
-              padding: '10px 18px',
-              borderRadius: 'var(--radius-md)',
-              border: 'none',
-              backgroundColor: 'var(--red)',
-              color: '#fff',
-              fontWeight: 700,
-              fontSize: '12.5px',
-              cursor: wiping ? 'not-allowed' : 'pointer',
-              opacity: wiping ? 0.6 : 1,
-            }}
-          >
-            {wiping ? 'Wiping...' : '⚠️ Danger Wipe Test Data'}
-          </button>
-        </div>
-      )}
+
     </div>
   )
 }
