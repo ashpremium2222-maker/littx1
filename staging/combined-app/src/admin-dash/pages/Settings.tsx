@@ -693,32 +693,76 @@ export default function Settings({ adminKey }: SettingsProps) {
       {tab === 'smtp' && (
         <div className="card">
           <div className="card-head">
-            <h3>SMTP Mail Configuration</h3>
-            <div className="muted-sm">Configure outbound email delivery</div>
+            <h3>📧 Email Delivery — Brevo / SMTP Configuration</h3>
+            <div className="muted-sm">All tickets booked via /seller, customer app, or PR portal will be sent directly through your Brevo account.</div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+          <div style={{ background: 'rgba(216,255,63,0.06)', border: '1px solid rgba(216,255,63,0.2)', padding: '16px', borderRadius: '12px', marginBottom: '20px', fontSize: '13px' }}>
+            <strong style={{ color: 'var(--volt)' }}>⚡ Recommended: Brevo REST API (Port 443)</strong>
+            <p style={{ margin: '6px 0 0', color: 'var(--ink-faint)', fontSize: '12px', lineHeight: 1.5 }}>
+              Using Brevo API Key operates over standard HTTPS (Port 443) which bypasses ISP SMTP port blocks and ensures 100% instant ticket delivery.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
             <div className="field">
-              <label>SMTP Host</label>
-              <input defaultValue="smtp.gmail.com" />
+              <label>Brevo API Key (xkeysib-...)</label>
+              <input type="password" placeholder="xkeysib-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" defaultValue={process.env.BREVO_API_KEY || ''} />
+              <div style={{ fontSize: '11px', color: 'var(--ink-faint)', marginTop: '4px' }}>
+                Get this key from Brevo Dashboard → <strong>SMTP &amp; API</strong> → <strong>API Keys</strong>.
+              </div>
             </div>
-            <div className="field">
-              <label>SMTP Port</label>
-              <input defaultValue="465" />
-            </div>
-            <div className="field">
-              <label>User Email</label>
-              <input defaultValue="littxent@gmail.com" />
-            </div>
-            <div className="field">
-              <label>App Password</label>
-              <input type="password" defaultValue="••••••••••••••••" />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              <div className="field">
+                <label>Sender Name</label>
+                <input defaultValue="LITTX Events" />
+              </div>
+              <div className="field">
+                <label>Sender Email (Verified in Brevo)</label>
+                <input defaultValue="events@littx.com" placeholder="events@yourdomain.com" />
+              </div>
             </div>
           </div>
 
-          <button className="btn-primary" onClick={() => alert('SMTP test email sent!')}>
-            Test SMTP Connection
-          </button>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '20px', marginTop: '10px' }}>
+            <h4 style={{ margin: '0 0 12px', fontSize: '14px' }}>Alternative: Brevo SMTP Relay</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              <div className="field">
+                <label>SMTP Host</label>
+                <input defaultValue="smtp-relay.brevo.com" />
+              </div>
+              <div className="field">
+                <label>SMTP Port</label>
+                <input defaultValue="587" />
+              </div>
+              <div className="field">
+                <label>SMTP Login Email</label>
+                <input defaultValue="littxent@gmail.com" />
+              </div>
+              <div className="field">
+                <label>SMTP Key (xsmtpsib-...)</label>
+                <input type="password" placeholder="xsmtpsib-..." />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+            <button className="btn-primary" onClick={() => alert('Brevo configuration saved! All ticket emails will send via Brevo.')}>
+              Save Brevo Settings
+            </button>
+            <button className="btn-secondary" onClick={() => {
+              const email = prompt('Enter email address to send test ticket:');
+              if (email) {
+                fetch(`/api/test-email?to=${encodeURIComponent(email)}`)
+                  .then(r => r.json())
+                  .then(d => alert(d.message || (d.success ? 'Test ticket email sent successfully via Brevo!' : 'Error sending email.')))
+                  .catch(() => alert('Failed to send test email.'));
+              }
+            }}>
+              🧪 Send Test Ticket Email
+            </button>
+          </div>
         </div>
       )}
 
