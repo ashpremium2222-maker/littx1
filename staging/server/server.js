@@ -1477,6 +1477,58 @@ app.get('/api/seller/verify-session', async (req, res) => {
     }
 });
 
+// POST /api/seller/reissue-session — Silent cold-start recovery (NEVER forces logout)
+// Called automatically by client when token is lost from DB (Vercel cold start).
+// Only works if the partner still has an active WebAuthn device lock.
+// Admin can still force-logout by bumping sessionVersion via reset-partner-lock.
+app.post('/api/seller/reissue-session', async (req, res) => {
+    const { partnerId } = req.body || {};
+    if (!partnerId) return res.status(400).json({ success: false, message: 'Partner ID required.' });
+
+    try {
+        const partner = await db.getPartnerLock(partnerId);
+        if (!partner) {
+            return res.status(404).json({ success: false, message: 'Partner not found.' });
+        }
+
+        // Refuse if admin has reset the lock (sessionVersion bump = forced logout signal)
+        // We detect this by checking if the partner has no credential (lock was reset)
+        if (!partner.webauthnCredentialId) {
+            return res.status(403).json({ success: false, adminReset: true, message: 'Device lock was reset by admin. Please re-register.' });
+        }
+
+        // Issue a fresh token — device is still hardware-bound, no re-auth needed
+        const token = generateToken();
+        const now = new Date().toISOString();
+        await db.setUserSession(`partner:${partnerId}`, {
+            token,
+            role: 'seller_partner',
+            partnerId: partner.partnerId,
+            sessionVersion: partner.sessionVersion || 1,
+            loginAt: now,
+            ip: getIp(req)
+        });
+        await db.savePartnerLock(partnerId, { lastSeenAt: now });
+
+        console.log(`[Seller] Session silently reissued for ${partner.name} (cold start recovery).`);
+        return res.json({
+            success: true,
+            token,
+            partner: {
+                id: partner.partnerId,
+                name: partner.name,
+                boundIp: partner.boundIp,
+                registeredDeviceId: partner.registeredDeviceId,
+                webauthnCredentialId: partner.webauthnCredentialId,
+                sessionVersion: partner.sessionVersion
+            }
+        });
+    } catch (err) {
+        console.error('[Reissue Session Error]', err);
+        res.status(500).json({ success: false, message: 'Server error during session reissue.' });
+    }
+});
+
 // GET /api/master/partner-locks — Admin view of all partner device locks
 app.get('/api/master/partner-locks', async (req, res) => {
     const masterToken = req.headers['x-master-token'] || req.headers['x-admin-key'] || req.query.masterToken;

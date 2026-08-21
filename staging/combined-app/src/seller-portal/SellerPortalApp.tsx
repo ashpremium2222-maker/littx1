@@ -55,9 +55,14 @@ export default function SellerPortalApp() {
   const currentPartner = PARTNERS.find((p) => p.id === selectedPartnerId) || PARTNERS[0]
 
   // Silent session re-validation on app load / refresh
+  // RULE: NEVER log out unless admin explicitly resets (adminReset: true)
   useEffect(() => {
     const existingToken = localStorage.getItem('littx_seller_token')
-    if (!existingToken) return
+    const cachedPartner = localStorage.getItem('littx_seller_partner')
+    if (!existingToken || !cachedPartner) return
+
+    let cachedPartnerId: string | null = null
+    try { cachedPartnerId = JSON.parse(cachedPartner)?.id || null } catch { /* ignore */ }
 
     const verifySession = async () => {
       try {
@@ -65,19 +70,45 @@ export default function SellerPortalApp() {
           headers: { 'x-seller-token': existingToken }
         })
         const data = await res.json()
+
         if (res.ok && data.success) {
+          // Normal: server confirmed session
           setAuthenticatedPartner(data.partner)
           localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
-        } else if (res.status === 401 && data.adminReset) {
-          // Admin reset device lock -> invalidate lingering token
+
+        } else if (data.adminReset) {
+          // ONLY case where we log out: admin explicitly reset this device
           localStorage.removeItem('littx_seller_token')
           localStorage.removeItem('littx_seller_partner')
           setAuthenticatedPartner(null)
           setToken(null)
+
+        } else if ((res.status === 401 || res.status === 500) && cachedPartnerId) {
+          // Cold start / token lost from DB — silently reissue without forcing login
+          console.warn('[Seller] Session token lost (cold start), silently reissuing...')
+          try {
+            const reissueRes = await fetch('/api/seller/reissue-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ partnerId: cachedPartnerId, oldToken: existingToken })
+            })
+            const reissueData = await reissueRes.json()
+            if (reissueRes.ok && reissueData.success) {
+              localStorage.setItem('littx_seller_token', reissueData.token)
+              setToken(reissueData.token)
+              setAuthenticatedPartner(reissueData.partner)
+              localStorage.setItem('littx_seller_partner', JSON.stringify(reissueData.partner))
+              console.log('[Seller] Session silently reissued after cold start.')
+            }
+            // If reissue fails too (e.g. adminReset), still don't log out — admin must do it explicitly
+          } catch {
+            console.warn('[Seller] Reissue pending — keeping cached session.')
+          }
         }
-        // NOTE: On network failure, we intentionally do NOT clear state/log out.
+        // Any other case: keep cached session, do NOT log out
       } catch (err) {
-        console.warn('Background session verification pending network connection...')
+        // Network error: keep cached session alive, do NOT log out
+        console.warn('[Seller] Background session check pending network connection...')
       }
     }
 
