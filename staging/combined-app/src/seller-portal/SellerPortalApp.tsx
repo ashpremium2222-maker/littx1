@@ -160,43 +160,24 @@ export default function SellerPortalApp() {
         })
         const data = await res.json()
 
-        if (data.success && data.partner) {
-          setAuthenticatedPartner(data.partner)
-          localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
-          if (data.token) {
-            setToken(data.token)
-            localStorage.setItem('littx_seller_token', data.token)
-          }
-        } else if (data.kickedByAdmin || data.adminReset) {
+        if (data.kickedByAdmin || data.adminReset) {
           // Explicit admin kick: purge local session and logout
           console.warn('[Seller] Kicked by admin, logging out...', data.message)
           localStorage.removeItem('littx_seller_token')
           localStorage.removeItem('littx_seller_partner')
           setAuthenticatedPartner(null)
           setToken(null)
-        } else {
-          // Attempt reissue endpoint before giving up
-          const reissueRes = await fetch('/api/seller/reissue-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ partnerId: cachedPartner.id })
-          })
-          const reissueData = await reissueRes.json()
-          if (reissueData.success && reissueData.token) {
-            setAuthenticatedPartner(reissueData.partner)
-            setToken(reissueData.token)
-            localStorage.setItem('littx_seller_token', reissueData.token)
-            localStorage.setItem('littx_seller_partner', JSON.stringify(reissueData.partner))
-          } else if (reissueData.kickedByAdmin || reissueData.adminReset) {
-            localStorage.removeItem('littx_seller_token')
-            localStorage.removeItem('littx_seller_partner')
-            setAuthenticatedPartner(null)
-            setToken(null)
+        } else if (data.success && data.partner) {
+          setAuthenticatedPartner(data.partner)
+          localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
+          if (data.token) {
+            setToken(data.token)
+            localStorage.setItem('littx_seller_token', data.token)
           }
         }
+        // ANY OTHER RESPONSE OR ERROR: DO NOT LOG OUT!
       } catch (err) {
-        // Network/connection error: keep cached session alive, NEVER log out
-        console.warn('[Seller] Background session check pending network connection...', err)
+        console.warn('[Seller] Session check pending connection...', err)
       }
     }
 

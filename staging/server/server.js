@@ -1225,7 +1225,8 @@ app.delete('/api/master/sessions/:userId', async (req, res) => {
         const existing = await db.getUserSession(userId) || await db.getUserSession(`partner:${userId}`) || await db.getUserSession(userId.replace('partner:', ''));
         await db.deleteUserSession(userId);
         await db.deleteUserSession(`partner:${userId}`).catch(() => {});
-        const plainId = userId.replace('partner:', '');
+        const plainId = userId.replace('partner:', '').toLowerCase();
+        await db.savePartnerLock(plainId, { kicked: true, activeToken: null, lastSeenAt: null }).catch(() => {});
         await db.deleteUserSession(plainId).catch(() => {});
         await db.deleteSellerSession(plainId.toUpperCase()).catch(() => {});
 
@@ -1408,7 +1409,9 @@ app.post('/api/seller/login-step2', async (req, res) => {
                 deviceName,
                 boundIp: requestIp,
                 boundAt: now,
-                lastSeenAt: now
+                lastSeenAt: now,
+                kicked: false,
+                activeToken: token
             });
 
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'webauthn-registered-and-bound' });
@@ -1470,7 +1473,7 @@ app.post('/api/seller/login-step2', async (req, res) => {
             }
 
             const newCounter = verification.authenticationInfo?.newCounter || 0;
-            await db.savePartnerLock(partnerId, { webauthnCounter: newCounter, lastSeenAt: now });
+            await db.savePartnerLock(partnerId, { webauthnCounter: newCounter, lastSeenAt: now, kicked: false, activeToken: token });
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'success' });
 
             const token = generateToken();
@@ -1512,90 +1515,63 @@ app.get('/api/seller/verify-session', async (req, res) => {
     const partnerIdHeader = req.headers['x-partner-id'] || req.query.partnerId;
 
     try {
+        let partnerId = partnerIdHeader?.toLowerCase();
         let session = null;
         if (token) {
             session = await db.getUserSessionByToken(token);
-        }
-
-        // If no user session by token, check legacy seller session by token
-        if (!session && token) {
-            const allSellerSessions = await db.getAllSellerSessions();
-            const legacy = allSellerSessions.find(s => s.token === token);
-            if (legacy) {
-                session = {
-                    partnerId: legacy.sellerId.toLowerCase(),
-                    userId: `partner:${legacy.sellerId.toLowerCase()}`,
-                    token: legacy.token,
-                    sessionVersion: 1
-                };
-            }
-        }
-
-        let partnerId = session?.partnerId || partnerIdHeader;
-        if (!partnerId && session?.userId) {
-            partnerId = session.userId.replace('partner:', '').toLowerCase();
+            if (session?.partnerId) partnerId = session.partnerId.toLowerCase();
+            if (session?.userId) partnerId = session.userId.replace('partner:', '').toLowerCase();
         }
 
         if (!partnerId) {
-            return res.status(401).json({ success: false, message: 'No session found.' });
+            return res.status(401).json({ success: false, message: 'No seller session or partner ID.' });
         }
 
-        const partner = await db.getPartnerLock(partnerId);
+        let partner = await db.getPartnerLock(partnerId);
         if (!partner) {
-            return res.status(404).json({ success: false, message: 'Partner record not found.' });
+            partner = { partnerId, name: partnerId, kicked: false };
         }
 
-        // Check if admin explicitly kicked or reset device lock
-        if (session && partner.sessionVersion && session.sessionVersion !== partner.sessionVersion) {
+        // ONLY LOG OUT IF ADMIN EXPLICITLY KICKED
+        if (partner.kicked === true) {
             return res.status(401).json({
                 success: false,
                 kickedByAdmin: true,
-                adminReset: true,
-                message: 'Session invalidated by admin reset.'
+                message: 'Kicked by admin.'
             });
         }
 
-        const userSessionCheck = await db.getUserSession(`partner:${partnerId}`) || await db.getUserSession(partnerId);
-
-        // Auto-refresh/reissue token if token expired/cold-started but partner is still valid and not kicked by admin
         let activeToken = token;
-        if (!session || !userSessionCheck) {
-            // If device lock was completely reset by admin, refuse reissue
-            if (!partner.webauthnCredentialId && !partner.boundIp) {
-                return res.status(401).json({
-                    success: false,
-                    kickedByAdmin: true,
-                    message: 'Kicked by admin.'
+        if (!session || session.token !== token) {
+            const existing = await db.getUserSession(`partner:${partnerId}`) || await db.getUserSession(partnerId);
+            if (existing && existing.token) {
+                activeToken = existing.token;
+            } else {
+                activeToken = partner.activeToken || generateToken();
+                const now = new Date().toISOString();
+                await db.setUserSession(`partner:${partnerId}`, {
+                    token: activeToken,
+                    role: 'seller_partner',
+                    partnerId,
+                    sessionVersion: partner.sessionVersion || 1,
+                    loginAt: now,
+                    ip: getIp(req)
                 });
+                await db.savePartnerLock(partnerId, { activeToken, kicked: false, lastSeenAt: now });
             }
-
-            activeToken = generateToken();
-            const now = new Date().toISOString();
-            await db.setUserSession(`partner:${partnerId}`, {
-                token: activeToken,
-                role: 'seller_partner',
-                partnerId: partner.partnerId,
-                sessionVersion: partner.sessionVersion || 1,
-                loginAt: now,
-                ip: getIp(req)
-            });
         } else {
-            activeToken = userSessionCheck?.token || token;
+            await db.savePartnerLock(partnerId, { lastSeenAt: new Date().toISOString() });
         }
-
-        // Update last seen timestamp
-        const now = new Date().toISOString();
-        await db.savePartnerLock(partner.partnerId, { lastSeenAt: now });
 
         res.json({
             success: true,
             token: activeToken,
             partner: {
-                id: partner.partnerId,
-                name: partner.name,
+                id: partnerId,
+                name: partner.name || partnerId,
                 boundIp: partner.boundIp,
                 boundAt: partner.boundAt,
-                sessionVersion: partner.sessionVersion
+                sessionVersion: partner.sessionVersion || 1
             }
         });
     } catch (err) {
@@ -1685,7 +1661,7 @@ app.post('/api/master/reset-partner-lock', async (req, res) => {
             await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
             await db.deleteUserSession(partnerId).catch(() => {});
             await db.deleteSellerSession(partnerId.toUpperCase()).catch(() => {});
-            await db.savePartnerLock(partnerId, { lastSeenAt: null });
+            await db.savePartnerLock(partnerId, { kicked: true, activeToken: null, lastSeenAt: null });
             await db.createAuditLog({
                 adminUser: 'master_admin', companyId: 'all', category: 'AUTH',
                 fieldChanged: 'FORCE_LOGOUT_SESSION_ONLY', previousValue: partnerId, newValue: null,
@@ -1700,6 +1676,7 @@ app.post('/api/master/reset-partner-lock', async (req, res) => {
 
         // FULL RESET — wipes WebAuthn credential + session (allows any device to re-register)
         const updated = await db.resetPartnerLock(partnerId);
+        await db.savePartnerLock(partnerId, { kicked: true, activeToken: null, lastSeenAt: null });
         await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
         await db.deleteUserSession(partnerId).catch(() => {});
         await db.deleteSellerSession(partnerId.toUpperCase()).catch(() => {});
