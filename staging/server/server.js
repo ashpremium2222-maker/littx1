@@ -1550,32 +1550,45 @@ app.post('/api/master/reset-partner-lock', async (req, res) => {
         return res.status(401).json({ success: false, message: 'Not authorized.' });
     }
 
-    const { partnerId } = req.body || {};
+    const { partnerId, sessionOnly } = req.body || {};
     if (!partnerId) return res.status(400).json({ success: false, message: 'Partner ID required.' });
 
     try {
+        if (sessionOnly) {
+            // FORCE LOGOUT ONLY — clears session token but keeps hardware device lock intact
+            await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
+            await db.savePartnerLock(partnerId, { lastSeenAt: null });
+            await db.createAuditLog({
+                adminUser: 'master_admin', companyId: 'all', category: 'AUTH',
+                fieldChanged: 'FORCE_LOGOUT_SESSION_ONLY', previousValue: partnerId, newValue: null,
+                reason: `Admin force-logged-out seller ${partnerId} (device lock preserved)`
+            }).catch(() => {});
+            console.log(`⏏ [Master Admin] Force-logged-out ${partnerId} (device lock intact).`);
+            return res.json({
+                success: true,
+                message: `${partnerId} has been force-logged out. Their device lock is still active — the same device can log back in.`
+            });
+        }
+
+        // FULL RESET — wipes WebAuthn credential + session (allows any device to re-register)
         const updated = await db.resetPartnerLock(partnerId);
         await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
         await db.createAuditLog({
-            adminUser: 'master_admin',
-            companyId: 'all',
-            category: 'AUTH',
-            fieldChanged: 'RESET_DEVICE_LOCK',
-            previousValue: partnerId,
-            newValue: null,
+            adminUser: 'master_admin', companyId: 'all', category: 'AUTH',
+            fieldChanged: 'RESET_DEVICE_LOCK', previousValue: partnerId, newValue: null,
             reason: `Admin reset device lock for partner ${partnerId}`
         }).catch(() => {});
-
         console.log(`🔓 [Master Admin] Reset device lock for ${partnerId}`);
         res.json({
             success: true,
-            message: `Device lock reset for ${partnerId}. Next login from ANY device will set the new permanent bound IP.`,
+            message: `Device lock fully reset for ${partnerId}. Next login from ANY device will set the new permanent bound device.`,
             partner: updated
         });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 });
+
 
 // GET /api/seller/all-tickets — returns ALL tickets from ALL sellers combined (excludes shadow sales)
 app.get('/api/seller/all-tickets', requireSeller, async (req, res) => {

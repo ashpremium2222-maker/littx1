@@ -1,6 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller-locks'
+
+const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
+  littlane:    { name: 'LITTLANE',    emoji: '🏟️' },
+  nitro:       { name: 'NITRO',       emoji: '⚡' },
+  '7th-heaven':{ name: '7TH HEAVEN', emoji: '🌟' },
+}
 
 interface SettingsProps {
   adminKey: string
@@ -15,6 +21,10 @@ export default function Settings({ adminKey }: SettingsProps) {
 
   const [partnerLocks, setPartnerLocks] = useState<any[]>([])
   const [loadingPartners, setLoadingPartners] = useState(false)
+
+  const [sellerSessions, setSellerSessions] = useState<any[]>([])
+  const [loadingSellerSessions, setLoadingSellerSessions] = useState(false)
+  const [kickingId, setKickingId] = useState<string | null>(null)
 
   // Notification toggle states
   const [notifs, setNotifs] = useState({
@@ -63,6 +73,51 @@ export default function Settings({ adminKey }: SettingsProps) {
       setLoadingPartners(false)
     }
   }
+
+  const loadSellerSessions = async () => {
+    setLoadingSellerSessions(true)
+    try {
+      const res = await fetch('/api/master/partner-locks', {
+        headers: { 'x-master-token': 'littx-master-2026' }
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSellerSessions(data.locks || [])
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingSellerSessions(false)
+    }
+  }
+
+  const forceLogoutSeller = async (partnerId: string, name: string) => {
+    if (!confirm(`Force logout ${name}? They will be kicked immediately. Their device lock stays — only the session token is cleared.`)) return
+    setKickingId(partnerId)
+    try {
+      const res = await fetch(`/api/master/reset-partner-lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-master-token': 'littx-master-2026' },
+        body: JSON.stringify({ partnerId, sessionOnly: true })
+      })
+      const data = await res.json()
+      alert(data.message || (data.success ? 'Logged out.' : 'Failed.'))
+      loadSellerSessions()
+    } catch {
+      alert('Error forcing logout.')
+    } finally {
+      setKickingId(null)
+    }
+  }
+
+  // Auto-load all data when Active Sessions tab is shown
+  useEffect(() => {
+    if (tab === 'seller-locks') {
+      loadSessions()
+      loadPartnerLocks()
+      loadSellerSessions()
+    }
+  }, [tab])
 
   const handleResetPartnerLock = async (partnerId: string, name: string) => {
     if (!confirm(`Reset permanent device lock for ${name}? The next successful login from ANY device will set the new bound IP.`)) return
@@ -152,10 +207,6 @@ export default function Settings({ adminKey }: SettingsProps) {
               className={tab === t.id ? 'active' : ''}
               onClick={() => {
                 setTab(t.id as SettingsTab)
-                if (t.id === 'seller-locks') {
-                  loadSessions()
-                  loadPartnerLocks()
-                }
               }}
             >
               {t.label}
@@ -235,6 +286,104 @@ export default function Settings({ adminKey }: SettingsProps) {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* ── SELLER DEVICES LIVE STATUS CARD ── */}
+          <div className="card" style={{ marginTop: '24px' }}>
+            <div className="card-head">
+              <h3>🏪 /seller — Outlet Device Sessions</h3>
+              <div className="muted-sm">
+                Live status of all 3 outlet devices. Force Logout kicks the session immediately — device hardware lock stays intact.
+              </div>
+            </div>
+            <div style={{ marginTop: '16px' }}>
+              <button className="btn-secondary" onClick={loadSellerSessions} disabled={loadingSellerSessions}>
+                {loadingSellerSessions ? 'Refreshing...' : '↻ Refresh'}
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', marginTop: '20px' }}>
+              {(['littlane', 'nitro', '7th-heaven'] as const).map((pid) => {
+                const outlet = OUTLET_MAP[pid]
+                const lock = sellerSessions.find((l: any) => l.partnerId === pid)
+                const isLoggedIn = !!(lock?.lastSeenAt)
+                const hasDevice = !!(lock?.webauthnCredentialId)
+
+                return (
+                  <div key={pid} style={{
+                    background: 'var(--surface)',
+                    border: `1px solid ${isLoggedIn ? 'rgba(100,220,150,0.25)' : 'rgba(255,255,255,0.07)'}`,
+                    borderRadius: '16px',
+                    padding: '20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '22px' }}>{outlet.emoji}</span>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '14px' }}>{outlet.name}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--ink-faint)', fontFamily: 'monospace' }}>{pid}</div>
+                        </div>
+                      </div>
+                      <span className={`badge ${isLoggedIn ? 'badge-teal' : 'badge-dark'}`}>
+                        {isLoggedIn ? <><span className="badge-dot" />ONLINE</> : 'OFFLINE'}
+                      </span>
+                    </div>
+
+                    {/* Device Lock Status */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--ink-faint)' }}>Hardware Lock</span>
+                        <span className={`badge ${hasDevice ? 'badge-violet' : 'badge-dark'}`} style={{ fontSize: '10px' }}>
+                          {hasDevice ? `🔐 ${lock.registeredDeviceId || 'Passkey Bound'}` : 'Not Bound'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--ink-faint)' }}>Bound IP</span>
+                        <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>
+                          {lock?.boundIp || '—'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--ink-faint)' }}>Last Seen</span>
+                        <span style={{ fontSize: '11px' }}>
+                          {lock?.lastSeenAt ? new Date(lock.lastSeenAt).toLocaleString() : '—'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--ink-faint)' }}>Bound Since</span>
+                        <span style={{ fontSize: '11px' }}>
+                          {lock?.boundAt ? new Date(lock.boundAt).toLocaleString() : '—'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Action */}
+                    <button
+                      disabled={!isLoggedIn || kickingId === pid}
+                      onClick={() => forceLogoutSeller(pid, outlet.name)}
+                      style={{
+                        marginTop: '4px',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        border: isLoggedIn ? '1px solid rgba(255,107,107,0.35)' : '1px solid rgba(255,255,255,0.08)',
+                        backgroundColor: isLoggedIn ? 'rgba(255,107,107,0.12)' : 'rgba(255,255,255,0.04)',
+                        color: isLoggedIn ? 'var(--red)' : 'var(--ink-faint)',
+                        fontWeight: 700,
+                        fontSize: '13px',
+                        cursor: isLoggedIn ? 'pointer' : 'not-allowed',
+                        width: '100%',
+                      }}
+                    >
+                      {kickingId === pid ? '⏳ Logging out...' : isLoggedIn ? '⏏ Force Logout' : 'Not Logged In'}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
