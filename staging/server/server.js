@@ -1473,10 +1473,10 @@ app.post('/api/seller/login-step2', async (req, res) => {
             }
 
             const newCounter = verification.authenticationInfo?.newCounter || 0;
+            const token = generateToken();
             await db.savePartnerLock(partnerId, { webauthnCounter: newCounter, lastSeenAt: now, kicked: false, activeToken: token });
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'success' });
 
-            const token = generateToken();
             await db.setUserSession(`partner:${partnerId}`, {
                 token,
                 role: 'seller_partner',
@@ -1541,10 +1541,19 @@ app.get('/api/seller/verify-session', async (req, res) => {
             });
         }
 
+        // Single-device active token enforcement: if token doesn't match active token, kick/logout device
+        if (partner.activeToken && token && session && session.token !== partner.activeToken) {
+            return res.status(401).json({
+                success: false,
+                kickedByAdmin: true,
+                message: 'Logged out: account accessed from another device.'
+            });
+        }
+
         let activeToken = token;
         if (!session || session.token !== token) {
             const existing = await db.getUserSession(`partner:${partnerId}`) || await db.getUserSession(partnerId);
-            if (existing && existing.token) {
+            if (existing && existing.token && partner.activeToken && existing.token === partner.activeToken) {
                 activeToken = existing.token;
             } else {
                 activeToken = partner.activeToken || generateToken();
