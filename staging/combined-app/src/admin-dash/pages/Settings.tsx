@@ -103,6 +103,7 @@ export default function Settings({ adminKey }: SettingsProps) {
       const data = await res.json()
       alert(data.message || (data.success ? 'Logged out.' : 'Failed.'))
       loadSellerSessions()
+      loadSessions()
     } catch {
       alert('Error forcing logout.')
     } finally {
@@ -154,6 +155,7 @@ export default function Settings({ adminKey }: SettingsProps) {
       if (data.success) {
         alert(data.message)
         loadSessions()
+        loadSellerSessions()
       } else {
         alert(data.message || 'Failed to unlock')
       }
@@ -307,7 +309,8 @@ export default function Settings({ adminKey }: SettingsProps) {
               {(['littlane', 'nitro', '7th-heaven'] as const).map((pid) => {
                 const outlet = OUTLET_MAP[pid]
                 const lock = sellerSessions.find((l: any) => l.partnerId === pid)
-                const isLoggedIn = !!(lock?.lastSeenAt)
+                const activeSession = sessions.find((s: any) => s.userId === `partner:${pid}`)
+                const isLoggedIn = !!activeSession
                 const hasDevice = !!(lock?.webauthnCredentialId)
 
                 return (
@@ -351,13 +354,13 @@ export default function Settings({ adminKey }: SettingsProps) {
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--ink-faint)' }}>Bound IP</span>
                         <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                          {lock?.boundIp || '—'}
+                          {activeSession?.lockedIp || lock?.boundIp || '—'}
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--ink-faint)' }}>Last Seen</span>
                         <span style={{ fontSize: '11px' }}>
-                          {lock?.lastSeenAt ? new Date(lock.lastSeenAt).toLocaleString() : '—'}
+                          {activeSession?.loginAt ? new Date(activeSession.loginAt).toLocaleString() : (lock?.lastSeenAt ? new Date(lock.lastSeenAt).toLocaleString() : '—')}
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
