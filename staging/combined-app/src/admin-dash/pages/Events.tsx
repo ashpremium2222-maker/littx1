@@ -85,13 +85,11 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
     try {
       const res  = await fetch('/api/admin/events', { headers: { 'x-admin-key': adminKey || 'dash-2026' } })
       const data = await res.json()
-      if (res.ok && data.success && Array.isArray(data.events) && data.events.length > 0) {
+      if (res.ok && data.success && Array.isArray(data.events)) {
         setEventsList(data.events)
-      } else {
-        setEventsList(DEFAULT_EVENTS)
       }
     } catch {
-      setEventsList(DEFAULT_EVENTS)
+      setEventsList([])
     } finally {
       setLoading(false)
     }
@@ -155,16 +153,28 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
   // ── Delete event ────────────────────────────────────────────────────────
   const handleDelete = async (evt: EventItem, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!confirm(`Delete "${evt.name}"? This cannot be undone.`)) return
+    if (!confirm(`Are you sure you want to delete "${evt.name}"? This action cannot be undone.`)) return
+
+    // Optimistic UI update — remove immediately from screen
+    setEventsList(prev => prev.filter(item => item.id !== evt.id && item.name !== evt.name))
+    if (selectedEvent?.id === evt.id || selectedEvent?.name === evt.name) {
+      setSelectedEvent(null)
+    }
+
     try {
-      const res = await fetch(`/api/admin/events/${encodeURIComponent(evt.id)}`, {
-        method: 'DELETE', headers: { 'x-admin-key': adminKey || 'dash-2026' }
+      const res = await fetch(`/api/admin/events/${encodeURIComponent(evt.id)}?name=${encodeURIComponent(evt.name)}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-key': adminKey || 'dash-2026' }
       })
-      if ((await res.json()).success) {
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        alert(data.message || 'Failed to delete event.')
         fetchEvents()
-        if (selectedEvent?.id === evt.id) setSelectedEvent(null)
       }
-    } catch { alert('Network error deleting event.') }
+    } catch {
+      alert('Network error deleting event.')
+      fetchEvents()
+    }
   }
 
   // ── Sales aggregation ───────────────────────────────────────────────────
