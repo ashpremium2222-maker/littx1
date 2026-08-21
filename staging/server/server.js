@@ -480,9 +480,11 @@ app.post('/api/admin/events', requireAdmin, async (req, res) => {
 app.delete('/api/admin/events/:id', requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        if (!id) return res.status(400).json({ success: false, message: 'Event ID required.' });
-        await db.deleteEvent(id);
-        res.json({ success: true, message: `Event ${id} deleted.` });
+        const name = req.query.name; // frontend sends ?name= as a fallback
+        if (!id && !name) return res.status(400).json({ success: false, message: 'Event ID or name required.' });
+        // Pass both id and name — deleteEvent will try _id, custom id field, and name
+        await db.deleteEvent(id, name);
+        res.json({ success: true, message: `Event deleted.` });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -1399,6 +1401,8 @@ app.post('/api/seller/login-step2', async (req, res) => {
             const newDeviceId = 'DEV-' + crypto.randomBytes(8).toString('hex').toUpperCase();
             const deviceName = parseDeviceName(userAgent);
 
+            const token = generateToken();
+
             await db.savePartnerLock(partnerId, {
                 webauthnCredentialId: newCredentialId,
                 webauthnPublicKey: newPublicKey,
@@ -1417,7 +1421,6 @@ app.post('/api/seller/login-step2', async (req, res) => {
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'webauthn-registered-and-bound' });
             console.log(`🔐 [WebAuthn Device Registered & Bound] ${partner.name} bound to Credential ID: ${newCredentialId}`);
 
-            const token = generateToken();
             await db.setUserSession(`partner:${partnerId}`, {
                 token,
                 role: 'seller_partner',
@@ -1676,7 +1679,7 @@ app.post('/api/master/reset-partner-lock', async (req, res) => {
 
         // FULL RESET — wipes WebAuthn credential + session (allows any device to re-register)
         const updated = await db.resetPartnerLock(partnerId);
-        await db.savePartnerLock(partnerId, { kicked: true, activeToken: null, lastSeenAt: null });
+        await db.savePartnerLock(partnerId, { kicked: false, activeToken: null, lastSeenAt: null });
         await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
         await db.deleteUserSession(partnerId).catch(() => {});
         await db.deleteSellerSession(partnerId.toUpperCase()).catch(() => {});

@@ -15,12 +15,27 @@ mongoose.connect(MONGODB_URI)
 const EventSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true },
     companyId: { type: String, default: 'littlane' },
+    // Custom string ID (for frontend reference)
+    id: { type: String },
     date: { type: String },
     time: { type: String },
     venue: { type: String },
     stage: { type: String },
     description: { type: String },
+    tagline: { type: String },
+    icon: { type: String, default: '🎉' },
+    gradient: { type: String },
+    active: { type: Boolean, default: true },
+    isVip: { type: Boolean, default: false },
     archived: { type: Boolean, default: false },
+    // Tiers (VIP, Normal, Male Pass, etc.) — used by admin/seller/shadow portals
+    tiers: [{
+        id: { type: String },
+        name: { type: String },
+        price: { type: Number },
+        gender: { type: String },
+        description: { type: String }
+    }],
     ticketTypes: [{
         name: { type: String }, // e.g. "Male Pass", "Female Pass"
         price: { type: Number },
@@ -1301,8 +1316,13 @@ module.exports = {
         let events = [];
         if (!useMock()) {
             try {
-                events = await Event.find({}).lean();
-            } catch (e) {}
+                const raw = await Event.find({}).lean();
+                // Normalize: always expose a string 'id' field (fallback to _id)
+                events = raw.map(e => ({
+                    ...e,
+                    id: e.id || (e._id ? e._id.toString() : undefined)
+                }));
+            } catch (e) { console.error('[getAllEvents DB error]', e.message); }
         }
         if (events && events.length > 0) return events;
 
@@ -1320,7 +1340,7 @@ module.exports = {
     },
     saveEvent: async (eventData) => {
         const id = eventData.id || `event_${Date.now()}`;
-        const name = eventData.name || 'Untitled Event';
+        const name = (eventData.name || 'Untitled Event').trim();
         const doc = {
             ...eventData, id, name,
             companyId: eventData.companyId || 'littlane',
@@ -1344,28 +1364,45 @@ module.exports = {
         }
         return doc;
     },
-    deleteEvent: async (idOrName) => {
-        if (!idOrName) return false;
-        const searchKey = String(idOrName).toLowerCase();
+    deleteEvent: async (idOrName, nameHint) => {
+        if (!idOrName && !nameHint) return false;
+
+        // Clear from in-memory mock (try both id and name)
+        const searchKeys = [String(idOrName || '').toLowerCase(), String(nameHint || '').toLowerCase()].filter(Boolean);
         for (const [k, v] of Array.from(_mockEvents.entries())) {
-            if (
-                String(k).toLowerCase() === searchKey ||
-                (v && v.id && String(v.id).toLowerCase() === searchKey) ||
-                (v && v.name && String(v.name).toLowerCase() === searchKey)
-            ) {
-                _mockEvents.delete(k);
+            for (const searchKey of searchKeys) {
+                if (
+                    String(k).toLowerCase() === searchKey ||
+                    (v && v.id && String(v.id).toLowerCase() === searchKey) ||
+                    (v && v.name && String(v.name).toLowerCase() === searchKey)
+                ) {
+                    _mockEvents.delete(k);
+                    break;
+                }
             }
         }
+
         if (!useMock()) {
             try {
-                await Event.deleteMany({
-                    $or: [
-                        { id: idOrName },
-                        { name: idOrName },
-                        { name: new RegExp('^' + idOrName + '$', 'i') },
-                        { id: new RegExp('^' + idOrName + '$', 'i') }
-                    ]
-                });
+                const orClauses = [];
+                // Try by MongoDB _id if valid ObjectId
+                if (idOrName && mongoose.Types.ObjectId.isValid(String(idOrName))) {
+                    orClauses.push({ _id: new mongoose.Types.ObjectId(String(idOrName)) });
+                }
+                // Try by custom id field and name field
+                for (const key of [idOrName, nameHint].filter(Boolean)) {
+                    const k = String(key);
+                    if (k && k !== 'undefined' && k !== 'null') {
+                        orClauses.push(
+                            { id: k },
+                            { name: k },
+                            { name: new RegExp('^' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') }
+                        );
+                    }
+                }
+                if (orClauses.length > 0) {
+                    await Event.deleteMany({ $or: orClauses });
+                }
             } catch (e) { console.error('[deleteEvent DB error]', e.message); }
         }
         return true;
