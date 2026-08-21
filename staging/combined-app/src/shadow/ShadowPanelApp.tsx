@@ -120,6 +120,11 @@ export default function ShadowPanelApp() {
     if (shadowToken) {
       fetchShadowData()
       fetchDynamicEvents()
+      const timer = setInterval(() => {
+        fetchDynamicEvents()
+        fetchShadowData()
+      }, 4000)
+      return () => clearInterval(timer)
     }
   }, [shadowToken])
 

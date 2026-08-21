@@ -47,34 +47,56 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const ticketFailures = sales.filter(s => s.status === 'ticket_generation_failed').length
   const qrScannedCount = sales.filter(s => s.status === 'scanned' || !!s.scannedAt).length
 
-  // Event breakdown
-  const freshersMale = paidSales.filter(
-    s =>
-      (s.event || '').toUpperCase().includes('FRESHERS') &&
-      (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male'))
-  )
-  const freshersFemale = paidSales.filter(
-    s =>
-      (s.event || '').toUpperCase().includes('FRESHERS') &&
-      (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female'))
-  )
-  const auraGenesis = paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
-  const ftInvite = paidSales.filter(
-    s =>
-      (s.gender || '').toLowerCase().includes('exclusive') ||
-      (s.ticketType || '').toLowerCase().includes('exclusive')
-  )
+  const [dynamicEvents, setDynamicEvents] = useState<any[]>([])
 
-  const maleCount = freshersMale.reduce((acc, s) => acc + (s.quantity || 1), 0)
-  const femaleCount = freshersFemale.reduce((acc, s) => acc + (s.quantity || 1), 0)
-  const auraCount = auraGenesis.reduce((acc, s) => acc + (s.quantity || 1), 0)
-  const inviteCount = ftInvite.reduce((acc, s) => acc + (s.quantity || 1), 0)
+  useEffect(() => {
+    const loadEvents = () => {
+      fetch('/api/events')
+        .then(r => r.json())
+        .then(d => { if (d.success && Array.isArray(d.events)) setDynamicEvents(d.events) })
+        .catch(() => {})
+    }
+    loadEvents()
+    const timer = setInterval(loadEvents, 4000)
+    return () => clearInterval(timer)
+  }, [])
+
   const grandTotal = Math.max(1, totalTickets)
 
-  const malePct = Math.round((maleCount / grandTotal) * 100)
-  const femalePct = Math.round((femaleCount / grandTotal) * 100)
-  const auraPct = Math.round((auraCount / grandTotal) * 100)
-  const invitePct = Math.round((inviteCount / grandTotal) * 100)
+  // Dynamic Event Breakdown based on master admin /api/events
+  const eventBreakdown = useMemo(() => {
+    if (dynamicEvents.length === 0) {
+      const freshersMale = paidSales.filter(s => (s.event || '').toUpperCase().includes('FRESHERS') && (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male')))
+      const freshersFemale = paidSales.filter(s => (s.event || '').toUpperCase().includes('FRESHERS') && (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female')))
+      const auraGenesis = paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
+      const ftInvite = paidSales.filter(s => (s.gender || '').toLowerCase().includes('exclusive') || (s.ticketType || '').toLowerCase().includes('exclusive'))
+      
+      const maleCount = freshersMale.reduce((acc, s) => acc + (s.quantity || 1), 0)
+      const femaleCount = freshersFemale.reduce((acc, s) => acc + (s.quantity || 1), 0)
+      const auraCount = auraGenesis.reduce((acc, s) => acc + (s.quantity || 1), 0)
+      const inviteCount = ftInvite.reduce((acc, s) => acc + (s.quantity || 1), 0)
+
+      return [
+        { name: 'Male Pass (₹699)', count: maleCount, pct: Math.round((maleCount / grandTotal) * 100), color: 'var(--grad-violet)' },
+        { name: 'Female Pass (₹599)', count: femaleCount, pct: Math.round((femaleCount / grandTotal) * 100), color: 'var(--grad-teal)' },
+        { name: 'Aura Genesis', count: auraCount, pct: Math.round((auraCount / grandTotal) * 100), color: 'var(--grad-gold)' },
+        { name: 'FT Lineup VIP Invite', count: inviteCount, pct: Math.round((inviteCount / grandTotal) * 100), color: 'var(--grad-orange)' },
+      ]
+    }
+
+    const COLORS = ['var(--grad-violet)', 'var(--grad-teal)', 'var(--grad-gold)', 'var(--grad-orange)', 'linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%)']
+    return dynamicEvents.map((evt, idx) => {
+      const matchingSales = paidSales.filter(s => s.event === evt.name)
+      const count = matchingSales.reduce((acc, s) => acc + (s.quantity || 1), 0)
+      const pct = Math.round((count / grandTotal) * 100)
+      return {
+        name: evt.name,
+        count,
+        pct,
+        color: evt.gradient || COLORS[idx % COLORS.length]
+      }
+    })
+  }, [dynamicEvents, paidSales, grandTotal])
 
   // ==================== SELLER BREAKDOWN ====================
   const KNOWN_SELLERS = ['SELLER-A', 'SELLER-B', 'SELLER-C', 'Admin']
@@ -565,57 +587,20 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>Male Pass (₹699)</span>
-                    <span className="muted">{maleCount} ({malePct}%)</span>
+                {eventBreakdown.map((item, idx) => (
+                  <div className="tier-row" key={idx}>
+                    <div className="h">
+                      <span style={{ color: 'var(--ink)' }}>{item.name}</span>
+                      <span className="muted">{item.count} passes ({item.pct}%)</span>
+                    </div>
+                    <div className="bar">
+                      <div
+                        className="fill"
+                        style={{ width: `${Math.max(2, item.pct)}%`, background: item.color }}
+                      />
+                    </div>
                   </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${malePct}%`, background: 'var(--grad-violet)' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>Female Pass (₹599)</span>
-                    <span className="muted">{femaleCount} ({femalePct}%)</span>
-                  </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${femalePct}%`, background: 'var(--grad-teal)' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>Aura Genesis</span>
-                    <span className="muted">{auraCount} ({auraPct}%)</span>
-                  </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${auraPct}%`, background: 'var(--grad-gold)' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>FT Lineup VIP Invite</span>
-                    <span className="muted">{inviteCount} ({invitePct}%)</span>
-                  </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${invitePct}%`, background: 'var(--grad-orange)' }}
-                    />
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </div>

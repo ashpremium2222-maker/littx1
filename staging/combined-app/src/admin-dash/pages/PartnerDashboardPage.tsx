@@ -47,34 +47,21 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const ticketFailures = sales.filter(s => s.status === 'ticket_generation_failed').length
   const qrScannedCount = sales.filter(s => s.status === 'scanned' || !!s.scannedAt).length
 
-  // Event breakdown
-  const freshersMale = paidSales.filter(
-    s =>
-      (s.event || '').toUpperCase().includes('FRESHERS') &&
-      (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male'))
-  )
-  const freshersFemale = paidSales.filter(
-    s =>
-      (s.event || '').toUpperCase().includes('FRESHERS') &&
-      (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female'))
-  )
-  const auraGenesis = paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
-  const ftInvite = paidSales.filter(
-    s =>
-      (s.gender || '').toLowerCase().includes('exclusive') ||
-      (s.ticketType || '').toLowerCase().includes('exclusive')
-  )
+  const [dynamicEvents, setDynamicEvents] = useState<any[]>([])
 
-  const maleCount = freshersMale.reduce((acc, s) => acc + (s.quantity || 1), 0)
-  const femaleCount = freshersFemale.reduce((acc, s) => acc + (s.quantity || 1), 0)
-  const auraCount = auraGenesis.reduce((acc, s) => acc + (s.quantity || 1), 0)
-  const inviteCount = ftInvite.reduce((acc, s) => acc + (s.quantity || 1), 0)
+  useEffect(() => {
+    const loadEvents = () => {
+      fetch('/api/events')
+        .then(r => r.json())
+        .then(d => { if (d.success && Array.isArray(d.events)) setDynamicEvents(d.events) })
+        .catch(() => {})
+    }
+    loadEvents()
+    const timer = setInterval(loadEvents, 4000)
+    return () => clearInterval(timer)
+  }, [])
+
   const grandTotal = Math.max(1, totalTickets)
-
-  const malePct = Math.round((maleCount / grandTotal) * 100)
-  const femalePct = Math.round((femaleCount / grandTotal) * 100)
-  const auraPct = Math.round((auraCount / grandTotal) * 100)
-  const invitePct = Math.round((inviteCount / grandTotal) * 100)
 
   // ==================== SELLER BREAKDOWN ====================
   const KNOWN_SELLERS = ['SELLER-A', 'SELLER-B', 'SELLER-C', 'Admin']
@@ -515,129 +502,50 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         <div className="right-col">
           {/* Creative Event Overview Cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' }}>
-            {/* Event 1: Freshers Takeover Male */}
-            <div
-              className="card lt-hover-lift"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'freshers male', top: rect.top + window.scrollY, left: rect.left - 520 })
-              }}
-              style={{
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, rgba(108, 76, 224, 0.12) 0%, rgba(59, 99, 232, 0.03) 100%)',
-                border: '1px solid var(--line)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '15px' }}>🎉</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Freshers Takeover (Male)</h4>
-                </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Male Passes Sold</p>
+            {/* Dynamic Active Events List */}
+            {dynamicEvents.length > 0 ? (
+              dynamicEvents.map((evt) => {
+                const count = paidSales
+                  .filter(s => s.event === evt.name)
+                  .reduce((acc, s) => acc + (s.quantity || 1), 0)
+                return (
+                  <div
+                    key={evt.id || evt.name}
+                    className="card lt-hover-lift"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      setPopupEvent({ name: evt.name, top: rect.top + window.scrollY, left: rect.left - 520 })
+                    }}
+                    style={{
+                      cursor: 'pointer',
+                      background: 'linear-gradient(135deg, rgba(124, 92, 250, 0.12) 0%, rgba(56, 217, 196, 0.03) 100%)',
+                      border: '1px solid var(--line)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '14px 18px',
+                      borderRadius: 'var(--radius-md)'
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '15px' }}>{evt.icon || '🎉'}</span>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>{evt.name}</h4>
+                      </div>
+                      <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>{evt.tagline || evt.venue || 'Live Event'}</p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '20px', fontWeight: 800, color: '#7C5CFA', fontFamily: 'monospace' }}>{count}</div>
+                      <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
+                    </div>
+                  </div>
+                )
+              })
+            ) : (
+              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--ink-faint)', fontSize: '12px' }}>
+                No active events configured.
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#7C5CFA', fontFamily: 'monospace' }}>{maleCount}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
-              </div>
-            </div>
-
-            {/* Event 2: Freshers Takeover Female */}
-            <div
-              className="card lt-hover-lift"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'freshers female', top: rect.top + window.scrollY, left: rect.left - 520 })
-              }}
-              style={{
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(244, 63, 94, 0.03) 100%)',
-                border: '1px solid var(--line)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '15px' }}>👩</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Freshers Takeover (Female)</h4>
-                </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Female Passes Sold</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#EC4899', fontFamily: 'monospace' }}>{femaleCount}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
-              </div>
-            </div>
-
-            {/* Event 3: Aura Genesis */}
-            <div
-              className="card lt-hover-lift"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'aura genesis', top: rect.top + window.scrollY, left: rect.left - 520 })
-              }}
-              style={{
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, rgba(56, 217, 196, 0.12) 0%, rgba(59, 130, 246, 0.03) 100%)',
-                border: '1px solid var(--line)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '15px' }}>✨</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Aura Genesis</h4>
-                </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Electronic Skyline Showcase</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#38D9C4', fontFamily: 'monospace' }}>{auraCount}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
-              </div>
-            </div>
-
-            {/* Event 4: FT Lineup Invite */}
-            <div
-              className="card lt-hover-lift"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'ft lineup invite', top: rect.top + window.scrollY, left: rect.left - 520 })
-              }}
-              style={{
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, rgba(245, 197, 66, 0.12) 0%, rgba(245, 133, 77, 0.03) 100%)',
-                border: '1px solid var(--line)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '15px' }}>⭐</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>FT Lineup Invite</h4>
-                </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>VIP Exclusive Passes</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#F5B942', fontFamily: 'monospace' }}>{inviteCount}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Activity Timeline Card */}
