@@ -36,8 +36,11 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
 
       const data = await res.json()
       if (data.success && data.user) {
+        const tokenVal = data.token || 'dash-2026'
+        localStorage.setItem('littx_user', JSON.stringify(data.user))
+        localStorage.setItem('littx_token', tokenVal)
         sessionStorage.setItem('littx_user', JSON.stringify(data.user))
-        sessionStorage.setItem('littx_token', data.token)
+        sessionStorage.setItem('littx_token', tokenVal)
         onLoginSuccess(data.user)
       } else if (data.ipLocked) {
         // Distinct handling — this is a device lock, not a password error
