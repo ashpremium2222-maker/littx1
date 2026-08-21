@@ -123,12 +123,17 @@ export default function Settings({ adminKey }: SettingsProps) {
     }
   }
 
-  // Auto-load all data when Active Sessions tab is shown
+  // Auto-load & REAL-TIME LIVE POLLING when Active Sessions tab is shown
   useEffect(() => {
     if (tab === 'seller-locks') {
-      loadSessions()
-      loadPartnerLocks()
-      loadSellerSessions()
+      const pollAll = () => {
+        loadSessions()
+        loadPartnerLocks()
+        loadSellerSessions()
+      }
+      pollAll()
+      const interval = setInterval(pollAll, 2500) // Fast real-time live sync
+      return () => clearInterval(interval)
     }
   }, [tab])
 
@@ -320,10 +325,20 @@ export default function Settings({ adminKey }: SettingsProps) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', marginTop: '20px' }}>
               {(['littlane', 'nitro', '7th-heaven'] as const).map((pid) => {
                 const outlet = OUTLET_MAP[pid]
-                const lock = sellerSessions.find((l: any) => l.partnerId === pid)
-                const activeSession = sessions.find((s: any) => s.userId === `partner:${pid}`)
+                const lock = sellerSessions.find((l: any) => l.partnerId?.toLowerCase() === pid.toLowerCase())
+                const activeSession = sessions.find((s: any) => {
+                  const u = String(s.userId || s.sellerId || '').toLowerCase()
+                  const p = pid.toLowerCase()
+                  return (
+                    u === p ||
+                    u === `partner:${p}` ||
+                    u === `partner-${p}` ||
+                    s.partnerId?.toLowerCase() === p ||
+                    s.sellerId?.toLowerCase() === p
+                  )
+                })
                 const isLoggedIn = !!activeSession
-    const onlineDurationMs = isLoggedIn && activeSession?.loginAt ? Date.now() - new Date(activeSession.loginAt).getTime() : 0
+                const onlineDurationMs = isLoggedIn && activeSession?.loginAt ? Date.now() - new Date(activeSession.loginAt).getTime() : 0
                 const hasDevice = !!(lock?.webauthnCredentialId)
 
                 return (

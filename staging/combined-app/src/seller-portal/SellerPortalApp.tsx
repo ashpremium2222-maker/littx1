@@ -136,34 +136,66 @@ export default function SellerPortalApp() {
   }
 
   // Silent session re-validation on app load / refresh
-  // RULE: Log out if session is invalid (401), but keep cached session on network errors.
+  // STRICT LIFETIME PERSISTENCE: Sellers stay logged in across refreshes & cold starts.
+  // ONLY log out if explicitly kicked by admin (kickedByAdmin / adminReset).
   useEffect(() => {
     const existingToken = localStorage.getItem('littx_seller_token')
-    const cachedPartner = localStorage.getItem('littx_seller_partner')
-    if (!existingToken || !cachedPartner) return
+    const cachedPartnerStr = localStorage.getItem('littx_seller_partner')
+    if (!cachedPartnerStr) return
+
+    let cachedPartner: any = null
+    try {
+      cachedPartner = JSON.parse(cachedPartnerStr)
+    } catch {
+      return
+    }
 
     const verifySession = async () => {
       try {
         const res = await fetch('/api/seller/verify-session', {
-          headers: { 'x-seller-token': existingToken }
+          headers: {
+            'x-seller-token': existingToken || '',
+            'x-partner-id': cachedPartner.id || ''
+          }
         })
         const data = await res.json()
 
-        if (res.ok && data.success) {
-          // Normal: server confirmed session
+        if (data.success && data.partner) {
           setAuthenticatedPartner(data.partner)
           localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
-        } else {
-          // Any failure response (e.g. 401, session invalid, or kicked by admin)
-          // Clean state and force logout
-          console.warn('[Seller] Session invalid, logging out...', data.message)
+          if (data.token) {
+            setToken(data.token)
+            localStorage.setItem('littx_seller_token', data.token)
+          }
+        } else if (data.kickedByAdmin || data.adminReset) {
+          // Explicit admin kick: purge local session and logout
+          console.warn('[Seller] Kicked by admin, logging out...', data.message)
           localStorage.removeItem('littx_seller_token')
           localStorage.removeItem('littx_seller_partner')
           setAuthenticatedPartner(null)
           setToken(null)
+        } else {
+          // Attempt reissue endpoint before giving up
+          const reissueRes = await fetch('/api/seller/reissue-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ partnerId: cachedPartner.id })
+          })
+          const reissueData = await reissueRes.json()
+          if (reissueData.success && reissueData.token) {
+            setAuthenticatedPartner(reissueData.partner)
+            setToken(reissueData.token)
+            localStorage.setItem('littx_seller_token', reissueData.token)
+            localStorage.setItem('littx_seller_partner', JSON.stringify(reissueData.partner))
+          } else if (reissueData.kickedByAdmin || reissueData.adminReset) {
+            localStorage.removeItem('littx_seller_token')
+            localStorage.removeItem('littx_seller_partner')
+            setAuthenticatedPartner(null)
+            setToken(null)
+          }
         }
       } catch (err) {
-        // Network/connection error: keep cached session alive, do NOT log out
+        // Network/connection error: keep cached session alive, NEVER log out
         console.warn('[Seller] Background session check pending network connection...', err)
       }
     }
