@@ -72,16 +72,34 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
   }
 
   return (
-    <div className="container-fluid min-vh-100 bg-dark text-white d-flex flex-column align-items-center justify-content-center p-3 p-sm-4" style={{ fontFamily: 'Inter, sans-serif' }}>
+    <div style={{
+      minHeight: '100vh',
+      background: '#09090b',
+      color: '#fff',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontFamily: 'Inter, sans-serif',
+      padding: '20px',
+    }}>
       <motion.div
         initial={{ opacity: 0, y: 24, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="card bg-slate-900 border-purple-800 rounded-4 p-4 p-sm-5 shadow-lg w-100"
-        style={{ maxWidth: '400px', background: 'rgba(26,26,26,0.95)', backdropFilter: 'blur(20px)' }}
+        style={{
+          background: 'rgba(26,26,26,0.9)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(168,85,247,0.2)',
+          borderRadius: 24,
+          padding: '40px 32px',
+          width: '100%',
+          maxWidth: 380,
+          boxShadow: '0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(168,85,247,0.1)',
+        }}
       >
         {/* Logo */}
-        <div className="text-center mb-4">
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <motion.img
             src="/logo.png"
             alt="LITTX"
@@ -90,25 +108,42 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.1, duration: 0.5 }}
           />
-          <div className="text-uppercase small text-secondary fw-bold mt-2 tracking-wider">Gate Staff Login</div>
+          <div style={{
+            marginTop: 12,
+            fontSize: 11,
+            color: '#9a9a9a',
+            letterSpacing: '2px',
+            textTransform: 'uppercase',
+            fontWeight: 600,
+          }}>Gate Staff Login</div>
         </div>
 
-        <form onSubmit={handleLogin} className="row g-3">
+        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Seller ID selector */}
-          <div className="col-12">
-            <label className="form-label text-uppercase small text-secondary fw-semibold">
+          <div>
+            <label style={{ fontSize: 11, color: '#9a9a9a', letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 8 }}>
               Seller ID
             </label>
-            <div className="d-flex gap-2">
+            <div style={{ display: 'flex', gap: 8 }}>
               {SELLER_IDS.map(id => (
                 <motion.button
                   key={id}
                   type="button"
                   onClick={() => { setSelected(id); setError('') }}
                   whileTap={{ scale: 0.93 }}
-                  className={`btn flex-fill py-2.5 rounded-3 border transition-all text-xs font-semibold ${
-                    selected === id ? 'btn-outline-primary bg-primary-subtle text-white border-primary' : 'btn-outline-secondary text-secondary'
-                  }`}
+                  style={{
+                    flex: 1,
+                    padding: '12px 8px',
+                    borderRadius: 14,
+                    border: selected === id ? '2px solid #A855F7' : '1px solid #2A2A2A',
+                    background: selected === id ? 'rgba(168,85,247,0.15)' : '#111',
+                    color: selected === id ? '#A855F7' : '#888',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    outline: 'none',
+                    letterSpacing: '0.5px',
+                  }}
                 >
                   {id}
                 </motion.button>
@@ -116,39 +151,66 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
             </div>
           </div>
 
-          <div className="col-12">
-            <label className="form-label text-uppercase small text-secondary fw-semibold">Password</label>
+          <div>
+            <label style={{ fontSize: 11, color: '#9a9a9a', letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 8 }}>
+              Password
+            </label>
             <input
               type="password"
               placeholder="Enter gate staff password"
               value={password}
               onChange={e => { setPassword(e.target.value); setError('') }}
-              className="form-control form-control-lg bg-dark text-white border-secondary rounded-3 text-sm"
+              style={{
+                width: '100%',
+                background: '#111',
+                border: '1px solid #2A2A2A',
+                borderRadius: 14,
+                color: '#fff',
+                padding: '14px 16px',
+                fontSize: 14,
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontFamily: 'Inter, sans-serif',
+              }}
               autoComplete="current-password"
             />
           </div>
 
           {error && (
-            <div className="col-12 text-center text-danger small fw-semibold">
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{ color: '#EF4444', fontSize: 12, fontWeight: 600, textAlign: 'center' }}
+            >
               {error}
-            </div>
+            </motion.div>
           )}
 
-          <div className="col-12">
-            <motion.button
-              type="submit"
-              disabled={loading}
-              whileTap={{ scale: 0.97 }}
-              className="btn btn-primary btn-lg w-100 fw-bold py-3 text-sm shadow-sm"
-            >
-              {loading ? 'Verifying...' : 'Access Portal →'}
-            </motion.button>
-          </div>
+          <motion.button
+            type="submit"
+            disabled={loading}
+            whileTap={{ scale: 0.97 }}
+            style={{
+              width: '100%',
+              background: loading ? '#6B21A8' : 'linear-gradient(135deg, #A855F7, #7C3AED)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 14,
+              padding: '15px',
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 24px rgba(168,85,247,0.35)',
+              letterSpacing: '0.5px',
+            }}
+          >
+            {loading ? 'Verifying...' : 'Access Portal →'}
+          </motion.button>
         </form>
       </motion.div>
 
       {/* Footer */}
-      <div className="text-center text-muted small mt-4 tracking-wider text-uppercase">
+      <div style={{ marginTop: 20, color: '#444', fontSize: 11, letterSpacing: '1px', textTransform: 'uppercase' }}>
         LITTX · Gate Staff System
       </div>
     </div>

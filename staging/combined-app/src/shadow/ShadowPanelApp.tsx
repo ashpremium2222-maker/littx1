@@ -299,28 +299,28 @@ export default function ShadowPanelApp() {
   // PASSWORD AUTH MODAL
   if (!shadowToken) {
     return (
-      <div className="shadow-panel-root container-fluid min-vh-100 d-flex align-items-center justify-content-center p-3 p-sm-4">
-        <div className="shadow-auth-modal w-100" style={{ maxWidth: '440px' }}>
-          <div className="shadow-auth-card card p-4 p-sm-5 shadow-lg border-secondary rounded-4 bg-dark text-white">
-            <div className="shadow-brand text-center mb-3">
-              <div className="shadow-logo-title h2 font-bold mb-0 text-cyan-400">SHADOW</div>
-              <div className="shadow-logo-sub text-muted small">BY ASH</div>
-              <div className="shadow-logo-badge badge bg-purple-900 border border-purple-700 text-purple-300 mt-2 px-3 py-1">SHADOW SALES PANEL</div>
+      <div className="shadow-panel-root">
+        <div className="shadow-auth-modal">
+          <div className="shadow-auth-card">
+            <div className="shadow-brand">
+              <div className="shadow-logo-title">SHADOW</div>
+              <div className="shadow-logo-sub">BY ASH</div>
+              <div className="shadow-logo-badge">SHADOW SALES PANEL</div>
             </div>
 
-            <p className="small text-secondary text-center mb-4">
+            <p style={{ fontSize: '12px', color: '#a1a1aa' }}>
               Restricted Operator Access. Enter authentication key to proceed.
             </p>
 
             {loginError && (
-              <div className="alert alert-danger border-2 text-center p-3 rounded-3 mb-4 small">
+              <div style={{ padding: '12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', borderRadius: '10px', fontSize: '12px', fontWeight: 600 }}>
                 {loginError}
               </div>
             )}
 
-            <form onSubmit={handleLogin} className="row g-3">
-              <div className="col-12">
-                <label className="form-label text-uppercase small text-secondary fw-semibold">Access Password</label>
+            <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div className="shadow-form-field">
+                <label className="shadow-form-label">Access Password</label>
                 <input
                   type="password"
                   required
@@ -328,18 +328,16 @@ export default function ShadowPanelApp() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password..."
-                  className="form-control form-control-lg bg-dark text-white border-secondary rounded-3 text-sm"
+                  className="shadow-input"
                 />
               </div>
 
-              <div className="col-12">
-                <button type="submit" disabled={loginLoading} className="btn btn-primary btn-lg w-100 fw-bold py-3 text-sm shadow-sm">
-                  {loginLoading ? 'Authenticating...' : 'AUTHENTICATE SHADOW ACCESS'}
-                </button>
-              </div>
+              <button type="submit" disabled={loginLoading} className="shadow-primary-btn">
+                {loginLoading ? 'Authenticating...' : 'AUTHENTICATE SHADOW ACCESS'}
+              </button>
             </form>
 
-            <div className="text-center text-muted small mt-4">
+            <div className="shadow-status-pill" style={{ justifyContent: 'center' }}>
               <span>🔒 Password Protected & Server Verified</span>
             </div>
           </div>
