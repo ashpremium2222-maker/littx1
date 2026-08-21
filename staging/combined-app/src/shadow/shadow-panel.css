@@ -570,8 +570,20 @@
     width: 100%;
     border-right: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 16px 12px;
+  }
+  .shadow-nav-item {
+    padding: 10px 14px;
+    font-size: 13px;
   }
   .shadow-kpi-grid {
     grid-template-columns: 1fr;
+  }
+  .shadow-content {
+    padding: 16px 12px !important;
+  }
+  .shadow-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }

@@ -318,39 +318,37 @@ export default function SellerPortalApp() {
   // LOGIN SCREEN
   if (!authenticatedPartner) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl">
-          <div className="flex items-center justify-center gap-3 mb-6">
-            <img src="/logo.png" alt="LITTX Logo" className="h-8 w-auto brightness-200" />
-            <span className="text-xl font-extrabold tracking-wider text-violet-400">SELLER PORTAL</span>
+      <div className="container-fluid min-vh-100 bg-dark text-white d-flex flex-column align-items-center justify-content-center p-3 p-sm-4">
+        <div className="card bg-slate-900 border-secondary rounded-4 p-4 p-sm-5 shadow-lg w-100" style={{ maxWidth: '440px' }}>
+          <div className="d-flex align-items-center justify-content-center gap-2 mb-4">
+            <img src="/logo.png" alt="LITTX Logo" className="img-fluid" style={{ height: '32px' }} />
+            <span className="h5 mb-0 fw-extrabold text-violet-400 tracking-wider">SELLER PORTAL</span>
           </div>
 
-          <div className="inline-block bg-violet-500/10 border border-violet-500/30 text-violet-300 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md mb-3 text-center w-full">
+          <div className="badge bg-purple-900 text-purple-300 border border-purple-700 text-uppercase tracking-widest py-2 px-3 rounded-3 mb-3 w-100 text-wrap text-center" style={{ fontSize: '10px' }}>
             🔐 WEBAUTHN HARDWARE DEVICE LOCK ACTIVE
           </div>
 
-          <h2 className="text-lg font-bold text-center mb-1">Partner Authentication</h2>
-          <p className="text-xs text-slate-400 text-center mb-6">Select organization, enter password & verify registered Passkey</p>
+          <h2 className="h5 font-bold text-center mb-1">Partner Authentication</h2>
+          <p className="small text-secondary text-center mb-4">Select organization, enter password & verify registered Passkey</p>
 
           {loginError && (
-            <div className="bg-red-500/15 border-2 border-red-500/40 text-red-300 text-xs p-4 rounded-xl mb-6 text-center font-medium leading-relaxed shadow-lg">
-              <div className="text-sm font-bold text-red-400 mb-1 flex items-center justify-center gap-1.5">
-                <span>⛔</span> ACCESS DENIED
-              </div>
+            <div className="alert alert-danger border-2 text-center p-3 rounded-3 mb-4 small">
+              <strong className="d-block text-danger mb-1">⛔ ACCESS DENIED</strong>
               {loginError}
             </div>
           )}
 
           {webauthnStatus && (
-            <div className="bg-indigo-500/15 border border-indigo-500/40 text-indigo-300 text-xs p-3 rounded-xl mb-6 text-center font-medium animate-pulse">
+            <div className="alert alert-info border-info text-center p-3 rounded-3 mb-4 small animate-pulse">
               {webauthnStatus}
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Select Partner</label>
-              <div className="grid grid-cols-1 gap-2">
+          <form onSubmit={handleLogin} className="row g-3">
+            <div className="col-12">
+              <label className="form-label text-uppercase small text-secondary fw-semibold">Select Partner</label>
+              <div className="d-grid gap-2">
                 {PARTNERS.map((p) => (
                   <button
                     key={p.id}
@@ -359,21 +357,21 @@ export default function SellerPortalApp() {
                       setSelectedPartnerId(p.id)
                       setLoginError(null)
                     }}
-                    className={`flex items-center justify-between p-3 rounded-xl border text-sm font-medium transition-all ${
+                    className={`btn d-flex align-items-center justify-between p-3 text-start rounded-3 transition-all ${
                       selectedPartnerId === p.id
-                        ? 'border-violet-500 bg-violet-500/10 text-white ring-1 ring-violet-500'
-                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
+                        ? 'btn-outline-primary bg-primary-subtle text-white border-primary'
+                        : 'btn-outline-secondary text-secondary'
                     }`}
                   >
                     <span>{p.name}</span>
-                    {selectedPartnerId === p.id && <span className="text-violet-400 text-xs font-bold">● Selected</span>}
+                    {selectedPartnerId === p.id && <span className="badge bg-primary text-white ms-auto">Selected</span>}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">
+            <div className="col-12">
+              <label className="form-label text-uppercase small text-secondary fw-semibold">
                 {currentPartner.name} Password
               </label>
               <input
@@ -382,23 +380,19 @@ export default function SellerPortalApp() {
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 placeholder={`Enter password for ${currentPartner.name}`}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
+                className="form-control form-control-lg bg-dark text-white border-secondary rounded-3 text-sm"
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={loginLoading}
-              className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-lg shadow-violet-600/25 flex items-center justify-center gap-2"
-            >
-              {loginLoading ? (
-                'Verifying Passkey Device...'
-              ) : (
-                <>
-                  <span>🔐 Log In & Verify Hardware Passkey</span>
-                </>
-              )}
-            </button>
+            <div className="col-12">
+              <button
+                type="submit"
+                disabled={loginLoading}
+                className="btn btn-primary btn-lg w-100 fw-bold py-3 text-sm shadow-sm"
+              >
+                {loginLoading ? 'Verifying Passkey Device...' : '🔐 Log In & Verify Hardware Passkey'}
+              </button>
+            </div>
           </form>
         </div>
       </div>
@@ -407,45 +401,44 @@ export default function SellerPortalApp() {
 
   // AUTHENTICATED SELLER PORTAL — NO LOGOUT BUTTON ANYWHERE (PER SPEC)
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+    <div className="min-vh-100 bg-dark text-white d-flex flex-column">
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="LITTX Logo" className="h-6 w-auto brightness-200" />
-          <span className="font-black text-sm tracking-wider text-violet-400">SELLER PORTAL</span>
+      <header className="border-bottom border-secondary bg-dark-subtle px-3 px-sm-4 py-3 d-flex align-items-center justify-content-between">
+        <div className="d-flex align-items-center gap-2">
+          <img src="/logo.png" alt="LITTX Logo" className="img-fluid" style={{ height: '24px' }} />
+          <span className="fw-black small tracking-wider text-violet-400">SELLER PORTAL</span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="d-flex align-items-center gap-2">
           {deferredPrompt && (
             <button
               onClick={handleInstallApp}
-              className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 text-xs px-3 py-1.5 rounded-full font-bold transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/10"
+              className="btn btn-sm btn-outline-success rounded-pill fw-bold text-xs"
             >
-              <span>📱 Install Android App</span>
+              📱 Install App
             </button>
           )}
 
-          <div className="bg-violet-500/10 border border-violet-500/30 text-violet-300 text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <div className="badge bg-primary-subtle text-primary border border-primary px-3 py-2 rounded-pill fw-semibold">
+            <span className="spinner-grow spinner-grow-sm text-success me-1" style={{ width: '8px', height: '8px' }}></span>
             {authenticatedPartner.name}
           </div>
 
-          {/* Read-only Device & Passkey Lock Indicator */}
           {authenticatedPartner.webauthnCredentialId && (
-            <div className="hidden sm:flex text-[11px] text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg items-center gap-1.5">
+            <div className="d-none d-md-flex text-muted small bg-dark border border-secondary px-3 py-1.5 rounded-3 align-items-center gap-2">
               <span>🔐 WebAuthn Bound</span>
-              <span className="text-slate-500">•</span>
-              <span className="font-mono text-violet-400">{authenticatedPartner.registeredDeviceId || 'Passkey Device'}</span>
+              <span>•</span>
+              <span className="font-monospace text-info">{authenticatedPartner.registeredDeviceId || 'Passkey Device'}</span>
             </div>
           )}
         </div>
       </header>
 
       {/* Main Content — Ticket Generator Only */}
-      <main className="flex-1 max-w-xl w-full mx-auto p-4 sm:p-6 flex flex-col justify-center">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+      <main className="flex-grow-1 container py-4 px-3 d-flex flex-column justify-content-center" style={{ maxWidth: '600px' }}>
+        <div className="card bg-slate-900 border-secondary rounded-4 p-4 p-sm-5 shadow-lg">
           <div>
-            <div className="inline-block bg-indigo-500/10 text-indigo-400 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md mb-2">
+            <div className="badge bg-info-subtle text-info border border-info uppercase text-xs mb-2">
               HARDWARE WEBAUTHN BOUND PORTAL
             </div>
             <h1 className="text-2xl font-black text-white">Generate Partner Ticket</h1>
