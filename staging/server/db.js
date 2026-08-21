@@ -1298,11 +1298,25 @@ module.exports = {
 
     // ==================== DYNAMIC EVENT & TIER HELPERS ====================
     getAllEvents: async () => {
-        try {
-            const events = await Event.find({}).lean();
-            if (events && events.length > 0) return events;
-        } catch (e) {}
-        return Array.from(_mockEvents.values()).filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+        let events = [];
+        if (!useMock()) {
+            try {
+                events = await Event.find({}).lean();
+            } catch (e) {}
+        }
+        if (events && events.length > 0) return events;
+
+        const mockList = Array.from(_mockEvents.values());
+        const unique = [];
+        const seen = new Set();
+        for (const item of mockList) {
+            if (item && item.name && !seen.has(item.name.toLowerCase()) && !seen.has(item.id)) {
+                seen.add(item.name.toLowerCase());
+                seen.add(item.id);
+                unique.push(item);
+            }
+        }
+        return unique;
     },
     saveEvent: async (eventData) => {
         const id = eventData.id || `event_${Date.now()}`;
@@ -1319,23 +1333,41 @@ module.exports = {
         };
         _mockEvents.set(name, doc);
         _mockEvents.set(id, doc);
-        try {
-            await Event.findOneAndUpdate(
-                { $or: [{ id }, { name }] },
-                { $set: doc },
-                { upsert: true, new: true, lean: true }
-            );
-        } catch (e) { console.error('[saveEvent DB error]', e.message); }
+        if (!useMock()) {
+            try {
+                await Event.findOneAndUpdate(
+                    { $or: [{ id }, { name }] },
+                    { $set: doc },
+                    { upsert: true, new: true, lean: true }
+                );
+            } catch (e) { console.error('[saveEvent DB error]', e.message); }
+        }
         return doc;
     },
     deleteEvent: async (idOrName) => {
-        _mockEvents.delete(idOrName);
-        for (const [k, v] of _mockEvents.entries()) {
-            if (v.id === idOrName || v.name === idOrName) _mockEvents.delete(k);
+        if (!idOrName) return false;
+        const searchKey = String(idOrName).toLowerCase();
+        for (const [k, v] of Array.from(_mockEvents.entries())) {
+            if (
+                String(k).toLowerCase() === searchKey ||
+                (v && v.id && String(v.id).toLowerCase() === searchKey) ||
+                (v && v.name && String(v.name).toLowerCase() === searchKey)
+            ) {
+                _mockEvents.delete(k);
+            }
         }
-        try {
-            await Event.deleteOne({ $or: [{ id: idOrName }, { name: idOrName }] });
-        } catch (e) { console.error('[deleteEvent DB error]', e.message); }
+        if (!useMock()) {
+            try {
+                await Event.deleteMany({
+                    $or: [
+                        { id: idOrName },
+                        { name: idOrName },
+                        { name: new RegExp('^' + idOrName + '$', 'i') },
+                        { id: new RegExp('^' + idOrName + '$', 'i') }
+                    ]
+                });
+            } catch (e) { console.error('[deleteEvent DB error]', e.message); }
+        }
         return true;
     }
 };
