@@ -780,7 +780,8 @@ const _mockPartnerLocks = new Map([
     ['littlane', { partnerId: 'littlane', name: 'Littlane Entertainment', password: 'littlane-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['nitro', { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: 'heaven-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
-]);\n
+]);
+
 const _mockDevices = new Map();
 const _mockChallenges = new Map();
 
