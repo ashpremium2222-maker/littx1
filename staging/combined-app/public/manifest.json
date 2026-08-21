@@ -1,0 +1,25 @@
+{
+  "short_name": "LITTX Seller",
+  "name": "LITTX Seller Portal",
+  "description": "LITTX Partner & Seller Portal for Fast Ticket Issuance & Device Lock Security",
+  "icons": [
+    {
+      "src": "/pwa-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/seller",
+  "background_color": "#020617",
+  "theme_color": "#6D28D9",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/"
+}

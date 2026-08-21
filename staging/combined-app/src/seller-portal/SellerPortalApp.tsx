@@ -57,8 +57,28 @@ export default function SellerPortalApp() {
 
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
 
   const currentPartner = PARTNERS.find((p) => p.id === selectedPartnerId) || PARTNERS[0]
+
+  // Android PWA install listener
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return
+    deferredPrompt.prompt()
+    const { outcome } = await deferredPrompt.userChoice
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null)
+    }
+  }
 
   // Fetch dynamic events on mount
   useEffect(() => {
@@ -370,6 +390,15 @@ export default function SellerPortalApp() {
         </div>
 
         <div className="flex items-center gap-3">
+          {deferredPrompt && (
+            <button
+              onClick={handleInstallApp}
+              className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 text-xs px-3 py-1.5 rounded-full font-bold transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/10"
+            >
+              <span>📱 Install Android App</span>
+            </button>
+          )}
+
           <div className="bg-violet-500/10 border border-violet-500/30 text-violet-300 text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             {authenticatedPartner.name}
