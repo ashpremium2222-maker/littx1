@@ -139,10 +139,9 @@ async function requireSeller(req, res, next) {
 }
 
 // ==================== REQUIRE AUTH MIDDLEWARE (unified session, all roles) ====================
-// Validates x-auth-token header against UserSession store and enforces IP lock.
+// Validates x-auth-token header against UserSession store.
 async function requireAuth(req, res, next) {
     const token = req.headers['x-auth-token'] || req.query.authToken;
-    const requestIp = getIp(req);
     if (!token) {
         return res.status(401).json({ success: false, message: 'Authentication required.' });
     }
@@ -150,13 +149,6 @@ async function requireAuth(req, res, next) {
         const session = await db.getUserSessionByToken(token);
         if (!session) {
             return res.status(401).json({ success: false, message: 'Session expired or invalid. Please log in again.' });
-        }
-        if (session.ip && session.ip !== 'unknown' && session.ip !== requestIp) {
-            return res.status(403).json({
-                success: false,
-                ipLocked: true,
-                message: 'Access denied. Session is locked to another device. Contact admin to unlock.'
-            });
         }
         req.authUser = { userId: session.userId, role: session.role, companyId: session.companyId, displayName: session.displayName };
         next();
@@ -1051,21 +1043,13 @@ app.post('/api/auth/logout', async (req, res) => {
     res.json({ success: true });
 });
 
-// GET /api/auth/verify — checks x-auth-token against UserSession + IP (all roles)
+// GET /api/auth/verify — checks x-auth-token against UserSession (all roles)
 app.get('/api/auth/verify', async (req, res) => {
     const token = req.headers['x-auth-token'] || req.query.authToken;
-    const requestIp = getIp(req);
     if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
     try {
         const session = await db.getUserSessionByToken(token);
         if (!session) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
-        if (session.ip && session.ip !== 'unknown' && session.ip !== requestIp) {
-            return res.status(403).json({
-                success: false,
-                ipLocked: true,
-                message: 'Session locked to another device. Contact admin to unlock.'
-            });
-        }
         res.json({ success: true, userId: session.userId, role: session.role, companyId: session.companyId, displayName: session.displayName, loginAt: session.loginAt, lockedIp: session.ip });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -1835,16 +1819,6 @@ app.post('/api/auth/login', async (req, res) => {
             // Check legacy SELLER_ACCOUNTS fallback
             const sid = username.toUpperCase();
             if (SELLER_ACCOUNTS[sid] && SELLER_ACCOUNTS[sid] === password) {
-                // Route through unified session for legacy sellers too
-                const existingSession = await db.getUserSession(sid);
-                if (existingSession && existingSession.ip && existingSession.ip !== 'unknown' && existingSession.ip !== requestIp) {
-                    return res.status(403).json({
-                        success: false,
-                        ipLocked: true,
-                        lockedIp: existingSession.ip,
-                        message: `This account is already active on another device (${existingSession.ip}). Ask admin to unlock.`
-                    });
-                }
                 const token = generateToken();
                 const loginAt = new Date().toISOString();
                 await db.setUserSession(sid, { token, ip: requestIp, loginAt, role: 'seller', companyId: 'littlane', displayName: `Seller ${sid}` });
@@ -1875,32 +1849,6 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ success: false, message: 'Invalid password.' });
         }
 
-        // ==================== UNIFIED IP LOCK CHECK ====================
-        // Customer accounts are excluded from device locking (see implementation plan).
-        const lockableRoles = ['master_admin', 'company_admin', 'seller', 'pr'];
-        if (lockableRoles.includes(user.role)) {
-            const existingSession = await db.getUserSession(user.userId);
-            if (existingSession && existingSession.ip && existingSession.ip !== 'unknown' && existingSession.ip !== requestIp) {
-                // Log the rejected attempt
-                await db.createAuditLog({
-                    adminUser: user.userId,
-                    companyId: user.companyId || 'littlane',
-                    category: 'AUTH',
-                    fieldChanged: 'IP_LOCKED_REJECT',
-                    previousValue: existingSession.ip,
-                    newValue: requestIp,
-                    reason: `Login blocked: account already active on ${existingSession.ip}`
-                }).catch(() => {});
-                console.log(`[Auth Login BLOCKED] ${user.userId} (${user.role}) from ${requestIp}, locked to ${existingSession.ip}`);
-                return res.status(403).json({
-                    success: false,
-                    ipLocked: true,
-                    lockedIp: existingSession.ip,
-                    message: `This account is already active on another device (${existingSession.ip}). Contact your admin to unlock.`
-                });
-            }
-        }
-
         // Log successful login
         await db.createAuditLog({
             adminUser: user.userId,
@@ -1915,18 +1863,16 @@ app.post('/api/auth/login', async (req, res) => {
         const token = generateToken();
         const loginAt = new Date().toISOString();
 
-        // Create/update unified UserSession (only for lockable roles)
-        if (lockableRoles.includes(user.role)) {
-            await db.setUserSession(user.userId, {
-                token,
-                ip: requestIp,
-                loginAt,
-                role: user.role,
-                companyId: user.companyId || 'littlane',
-                displayName: user.displayName || user.userId
-            });
-            console.log(`[Auth Login] ${user.userId} (${user.role}) from ${requestIp} — session IP-locked`);
-        }
+        // Track active UserSession for status dashboard
+        await db.setUserSession(user.userId, {
+            token,
+            ip: requestIp,
+            loginAt,
+            role: user.role,
+            companyId: user.companyId || 'littlane',
+            displayName: user.displayName || user.userId
+        });
+        console.log(`[Auth Login] ${user.userId} (${user.role}) logged in from ${requestIp}`);
 
         res.json({
             success: true,
