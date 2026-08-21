@@ -428,7 +428,7 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
     } catch (e) {
         console.error('[admin/sales scanStats]', e.message);
     }
-    res.json({ success: true, summary, sales, scanStats });
+    res.json({ success: true, summary, sales, scanStats, testMode: false });
 });
 
 app.get('/api/admin/config', requireAdmin, (req, res) => {

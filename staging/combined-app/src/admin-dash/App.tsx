@@ -260,7 +260,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     emailFailures: 0,
     ticketFailures: 0,
   })
-  const [testMode, setTestMode] = useState(true)
+  const [testMode, setTestMode] = useState(false)
   const [showManualModal, setShowManualModal] = useState(false)
   const [isManualSubmitting, setIsManualSubmitting] = useState(false)
   const [manualSuccessMsg, setManualSuccessMsg] = useState<string | null>(null)
@@ -320,7 +320,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       setSales(filteredSales)
       setAllSales(fetchedSales)
       setSummary(activeSummary)
-      setTestMode(data.testMode)
+      setTestMode(data.testMode ?? false)
       // Extract scan stats from backend response (avoids separate poll from admin UI)
       if (data.scanStats) setScanStats(data.scanStats)
       setIsAuthenticated(true)
