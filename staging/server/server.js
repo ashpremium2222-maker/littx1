@@ -1283,6 +1283,22 @@ app.post('/api/seller/login-step1', async (req, res) => {
     }
 });
 
+// Helper: extract a human-readable device name from User-Agent string
+function parseDeviceName(ua) {
+    if (!ua || ua === 'unknown') return 'Unknown Device';
+    if (/iPhone/i.test(ua)) return 'iPhone';
+    if (/iPad/i.test(ua)) return 'iPad';
+    if (/Android/i.test(ua)) {
+        const m = ua.match(/Android[^;]*;\s*([^)]+)/i);
+        return m ? m[1].trim() : 'Android';
+    }
+    if (/Windows Phone/i.test(ua)) return 'Windows Phone';
+    if (/Windows NT/i.test(ua)) return 'Windows PC';
+    if (/Macintosh/i.test(ua)) return 'Mac';
+    if (/Linux/i.test(ua)) return 'Linux';
+    return 'Unknown Device';
+}
+
 // POST /api/seller/login-step2 — Verify WebAuthn signature & issue bound session token
 app.post('/api/seller/login-step2', async (req, res) => {
     const { partnerId, response } = req.body || {};
@@ -1325,6 +1341,7 @@ app.post('/api/seller/login-step2', async (req, res) => {
             const newCredentialId = credential.id;
             const newPublicKey = Buffer.from(credential.publicKey).toString('base64url');
             const newDeviceId = 'DEV-' + crypto.randomBytes(8).toString('hex').toUpperCase();
+            const deviceName = parseDeviceName(userAgent);
 
             await db.savePartnerLock(partnerId, {
                 webauthnCredentialId: newCredentialId,
@@ -1333,6 +1350,7 @@ app.post('/api/seller/login-step2', async (req, res) => {
                 webauthnTransports: credential.transports || ['internal'],
                 deviceRegisteredAt: now,
                 registeredDeviceId: newDeviceId,
+                deviceName,
                 boundIp: requestIp,
                 boundAt: now,
                 lastSeenAt: now

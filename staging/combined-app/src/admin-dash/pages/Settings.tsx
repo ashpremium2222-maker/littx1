@@ -342,6 +342,12 @@ export default function Settings({ adminKey }: SettingsProps) {
                           {hasDevice ? `🔐 ${lock.registeredDeviceId || 'Passkey Bound'}` : 'Not Bound'}
                         </span>
                       </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--ink-faint)' }}>Device Name</span>
+                        <span style={{ fontWeight: 600, fontSize: '12px' }}>
+                          {lock?.deviceName || (hasDevice ? 'Unknown Device' : '—')}
+                        </span>
+                      </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--ink-faint)' }}>Bound IP</span>
                         <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>
