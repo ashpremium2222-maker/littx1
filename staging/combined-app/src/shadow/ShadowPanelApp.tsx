@@ -43,19 +43,42 @@ export default function ShadowPanelApp() {
   })
   const [loadingOrders, setLoadingOrders] = useState(false)
 
+  // Dynamic events & tiers
+  const [eventsList, setEventsList]             = useState<any[]>([])
+  const [selectedEventObj, setSelectedEventObj] = useState<any>(null)
+  const [selectedTierObj, setSelectedTierObj]   = useState<any>(null)
+
   // Ticket creation form state
-  const [event, setEvent] = useState('FRESHERS TAKEOVER')
+  const [event, setEvent]           = useState('FRESHERS TAKEOVER')
   const [ticketType, setTicketType] = useState('Male Pass')
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-  const [gender, setGender] = useState('male')
-  const [quantity, setQuantity] = useState('1')
+  const [name, setName]             = useState('')
+  const [email, setEmail]           = useState('')
+  const [phone, setPhone]           = useState('')
+  const [gender, setGender]         = useState('male')
+  const [quantity, setQuantity]     = useState('1')
   const [paymentStatus, setPaymentStatus] = useState('Paid')
-  const [amount, setAmount] = useState('699')
+  const [amount, setAmount]         = useState('699')
 
   const [submitting, setSubmitting] = useState(false)
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [feedback, setFeedback]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+
+  // Fetch dynamic events from API
+  const fetchDynamicEvents = async () => {
+    try {
+      const res  = await fetch('/api/events')
+      const data = await res.json()
+      if (res.ok && data.success && Array.isArray(data.events) && data.events.length > 0) {
+        setEventsList(data.events)
+        const first = data.events[0]
+        setSelectedEventObj(first); setEvent(first.name)
+        if (first.tiers?.length > 0) {
+          setSelectedTierObj(first.tiers[0])
+          setTicketType(first.tiers[0].name)
+          setAmount(String(first.tiers[0].price))
+        }
+      }
+    } catch (e) {}
+  }
 
   // Fetch Live Shadow Data from backend
   const fetchShadowData = async () => {
@@ -84,12 +107,7 @@ export default function ShadowPanelApp() {
           .filter((s) => new Date(s.createdAt).toDateString() === todayStr)
           .reduce((sum, s) => sum + (s.amount || 0), 0)
 
-        setStats({
-          totalOrders,
-          totalRevenue,
-          totalTickets,
-          todaySales,
-        })
+        setStats({ totalOrders, totalRevenue, totalTickets, todaySales })
       }
     } catch (err) {
       console.error('Failed to load shadow sales data:', err)
@@ -101,6 +119,7 @@ export default function ShadowPanelApp() {
   useEffect(() => {
     if (shadowToken) {
       fetchShadowData()
+      fetchDynamicEvents()
     }
   }, [shadowToken])
 
@@ -148,24 +167,26 @@ export default function ShadowPanelApp() {
     setShadowToken(null)
   }
 
-  const handleGenderChange = (newGender: string) => {
-    setGender(newGender)
-    if (event === 'FRESHERS TAKEOVER') {
-      setAmount(newGender === 'male' ? '699' : '599')
-    } else {
-      setAmount('350')
+  const handleEventChange = (evtName: string) => {
+    setEvent(evtName)
+    const evt = eventsList.find((e: any) => e.name === evtName)
+    if (evt) {
+      setSelectedEventObj(evt)
+      if (evt.tiers?.length > 0) {
+        const t = evt.tiers[0]
+        setSelectedTierObj(t); setTicketType(t.name)
+        setAmount(String(t.price * (parseInt(quantity, 10) || 1)))
+      }
     }
   }
-
-  const handleEventChange = (newEvent: string) => {
-    setEvent(newEvent)
-    if (newEvent === 'AURA GENESIS') {
-      setAmount('350')
-      setTicketType('Aura Genesis')
-    } else {
-      setAmount(gender === 'male' ? '699' : '599')
-      setTicketType(gender === 'male' ? 'Male Pass' : 'Female Pass')
-    }
+  const handleTierChange = (tierName: string) => {
+    setTicketType(tierName)
+    const t = selectedEventObj?.tiers?.find((t: any) => t.name === tierName)
+    if (t) { setSelectedTierObj(t); setAmount(String(t.price * (parseInt(quantity, 10) || 1))) }
+  }
+  const handleQuantityChange = (val: string) => {
+    setQuantity(val)
+    if (selectedTierObj) setAmount(String(selectedTierObj.price * (parseInt(val, 10) || 1)))
   }
 
   const handleGenerateTicket = async (e: React.FormEvent) => {
@@ -530,21 +551,34 @@ export default function ShadowPanelApp() {
                           value={event}
                           onChange={(e) => handleEventChange(e.target.value)}
                         >
-                          <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
-                          <option value="AURA GENESIS">AURA GENESIS</option>
+                          {eventsList.length > 0 ? (
+                            eventsList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)
+                          ) : (
+                            <>
+                              <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
+                              <option value="AURA GENESIS">AURA GENESIS</option>
+                            </>
+                          )}
                         </select>
                       </div>
 
                       <div className="shadow-form-field">
-                        <label className="shadow-form-label">Ticket Type</label>
+                        <label className="shadow-form-label">Pass Category / Tier</label>
                         <select
                           className="shadow-select"
                           value={ticketType}
-                          onChange={(e) => setTicketType(e.target.value)}
+                          onChange={(e) => handleTierChange(e.target.value)}
                         >
-                          <option value="Male Pass">Male Pass</option>
-                          <option value="Female Pass">Female Pass</option>
-                          <option value="Exclusive VIP Pass">Exclusive VIP Pass</option>
+                          {selectedEventObj?.tiers?.length > 0 ? (
+                            selectedEventObj.tiers.map((t: any, i: number) => (
+                              <option key={i} value={t.name}>{t.name} {t.price > 0 ? `(₹${t.price})` : '(FREE)'}</option>
+                            ))
+                          ) : (
+                            <>
+                              <option value="Male Pass">Male Pass (₹699)</option>
+                              <option value="Female Pass">Female Pass (₹599)</option>
+                            </>
+                          )}
                         </select>
                       </div>
 
@@ -553,7 +587,7 @@ export default function ShadowPanelApp() {
                         <select
                           className="shadow-select"
                           value={quantity}
-                          onChange={(e) => setQuantity(e.target.value)}
+                          onChange={(e) => handleQuantityChange(e.target.value)}
                         >
                           <option value="1">1</option>
                           <option value="2">2</option>
@@ -732,21 +766,34 @@ export default function ShadowPanelApp() {
                       value={event}
                       onChange={(e) => handleEventChange(e.target.value)}
                     >
-                      <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
-                      <option value="AURA GENESIS">AURA GENESIS</option>
+                      {eventsList.length > 0 ? (
+                        eventsList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)
+                      ) : (
+                        <>
+                          <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
+                          <option value="AURA GENESIS">AURA GENESIS</option>
+                        </>
+                      )}
                     </select>
                   </div>
 
                   <div className="shadow-form-field">
-                    <label className="shadow-form-label">Ticket Type</label>
+                    <label className="shadow-form-label">Pass Category / Tier</label>
                     <select
                       className="shadow-select"
                       value={ticketType}
-                      onChange={(e) => setTicketType(e.target.value)}
+                      onChange={(e) => handleTierChange(e.target.value)}
                     >
-                      <option value="Male Pass">Male Pass</option>
-                      <option value="Female Pass">Female Pass</option>
-                      <option value="Exclusive VIP Pass">Exclusive VIP Pass</option>
+                      {selectedEventObj?.tiers?.length > 0 ? (
+                        selectedEventObj.tiers.map((t: any, i: number) => (
+                          <option key={i} value={t.name}>{t.name} {t.price > 0 ? `(₹${t.price})` : '(FREE)'}</option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="Male Pass">Male Pass (₹699)</option>
+                          <option value="Female Pass">Female Pass (₹599)</option>
+                        </>
+                      )}
                     </select>
                   </div>
 
@@ -755,7 +802,7 @@ export default function ShadowPanelApp() {
                     <select
                       className="shadow-select"
                       value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
+                      onChange={(e) => handleQuantityChange(e.target.value)}
                     >
                       <option value="1">1</option>
                       <option value="2">2</option>
@@ -1002,53 +1049,43 @@ export default function ShadowPanelApp() {
               </div>
             )}
 
-            {/* TAB 5: EVENTS VIEW */}
+            {/* TAB 5: EVENTS VIEW - dynamic from API */}
             {activeTab === 'events' && (
               <div className="shadow-box">
                 <div className="shadow-box-header">
                   <div className="shadow-box-title">
-                    <span>📅</span> ACTIVE EVENTS & PRICING
+                    <span>📅</span> ACTIVE EVENTS & PRICING ({eventsList.length})
                   </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-                  <div style={{ background: '#050508', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 900, color: '#ffffff' }}>FRESHERS TAKEOVER</div>
-                    <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Main Event Pass Category</div>
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#71717a' }}>Male Pass Price:</span>
-                        <span style={{ fontWeight: 700, color: '#ffffff' }}>₹699</span>
+                  {eventsList.map((e: any) => (
+                    <div key={e.id || e.name} style={{ background: '#050508', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '20px' }}>{e.icon || '🎉'}</span>
+                        <div>
+                          <div style={{ fontSize: '16px', fontWeight: 900, color: '#ffffff' }}>{e.name}</div>
+                          <div style={{ fontSize: '11px', color: '#a1a1aa' }}>{e.tagline || e.venue || 'Live Event'}</div>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#71717a' }}>Female Pass Price:</span>
-                        <span style={{ fontWeight: 700, color: '#ffffff' }}>₹599</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#71717a' }}>Shadow Tickets Sold:</span>
-                        <span style={{ fontWeight: 800, color: '#4ade80' }}>
-                          {shadowOrders.filter(o => o.event === 'FRESHERS TAKEOVER').reduce((sum, o) => sum + (o.quantity || 1), 0)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ background: '#050508', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 900, color: '#ffffff' }}>AURA GENESIS</div>
-                    <div style={{ fontSize: '11px', color: '#a1a1aa' }}>Special Edition Event Pass</div>
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#71717a' }}>General Pass Price:</span>
-                        <span style={{ fontWeight: 700, color: '#ffffff' }}>₹350</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#71717a' }}>Shadow Tickets Sold:</span>
-                        <span style={{ fontWeight: 800, color: '#4ade80' }}>
-                          {shadowOrders.filter(o => o.event === 'AURA GENESIS').reduce((sum, o) => sum + (o.quantity || 1), 0)}
-                        </span>
+                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                        {e.tiers?.length > 0 ? e.tiers.map((t: any, i: number) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#71717a' }}>{t.name}:</span>
+                            <span style={{ fontWeight: 700, color: '#ffffff' }}>{t.price > 0 ? `₹${t.price}` : 'FREE'}</span>
+                          </div>
+                        )) : (
+                          <div style={{ fontSize: '11px', color: '#71717a' }}>No tiers configured</div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '6px', marginTop: '4px' }}>
+                          <span style={{ color: '#71717a' }}>Shadow Tickets Sold:</span>
+                          <span style={{ fontWeight: 800, color: '#4ade80' }}>
+                            {shadowOrders.filter(o => o.event === e.name).reduce((sum, o) => sum + (o.quantity || 1), 0)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
               </div>
             )}

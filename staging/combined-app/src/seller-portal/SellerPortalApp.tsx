@@ -40,19 +40,87 @@ export default function SellerPortalApp() {
   const [loginLoading, setLoginLoading] = useState<boolean>(false)
   const [webauthnStatus, setWebauthnStatus] = useState<string | null>(null)
 
+  // Dynamic events & tiers
+  const [eventsList, setEventsList]     = useState<any[]>([])
+  const [selectedEventObj, setSelectedEventObj] = useState<any>(null)
+  const [selectedTierObj, setSelectedTierObj]   = useState<any>(null)
+
   // Ticket generation form state
-  const [event, setEvent] = useState('FRESHERS TAKEOVER')
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-  const [gender, setGender] = useState('male')
+  const [event, setEvent]       = useState('FRESHERS TAKEOVER')
+  const [ticketType, setTicketType] = useState('Male Pass')
+  const [name, setName]         = useState('')
+  const [email, setEmail]       = useState('')
+  const [phone, setPhone]       = useState('')
+  const [gender, setGender]     = useState('male')
   const [quantity, setQuantity] = useState('1')
-  const [amount, setAmount] = useState('699')
+  const [amount, setAmount]     = useState('699')
 
   const [submitting, setSubmitting] = useState(false)
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [feedback, setFeedback]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
 
   const currentPartner = PARTNERS.find((p) => p.id === selectedPartnerId) || PARTNERS[0]
+
+  // Android PWA install listener
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return
+    deferredPrompt.prompt()
+    const { outcome } = await deferredPrompt.userChoice
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null)
+    }
+  }
+
+  // Fetch dynamic events on mount
+  useEffect(() => {
+    fetch('/api/events')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && Array.isArray(d.events) && d.events.length > 0) {
+          setEventsList(d.events)
+          const first = d.events[0]
+          setSelectedEventObj(first)
+          setEvent(first.name)
+          if (first.tiers?.length > 0) {
+            setSelectedTierObj(first.tiers[0])
+            setTicketType(first.tiers[0].name)
+            setAmount(String(first.tiers[0].price))
+          }
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleEventChange = (evtName: string) => {
+    setEvent(evtName)
+    const evt = eventsList.find((e: any) => e.name === evtName)
+    if (evt) {
+      setSelectedEventObj(evt)
+      if (evt.tiers?.length > 0) {
+        const t = evt.tiers[0]
+        setSelectedTierObj(t); setTicketType(t.name)
+        setAmount(String(t.price * (parseInt(quantity, 10) || 1)))
+      }
+    }
+  }
+  const handleTierChange = (tierName: string) => {
+    setTicketType(tierName)
+    const t = selectedEventObj?.tiers?.find((t: any) => t.name === tierName)
+    if (t) { setSelectedTierObj(t); setAmount(String(t.price * (parseInt(quantity, 10) || 1))) }
+  }
+  const handleQuantityChange = (val: string) => {
+    setQuantity(val)
+    if (selectedTierObj) setAmount(String(selectedTierObj.price * (parseInt(val, 10) || 1)))
+  }
 
   // Silent session re-validation on app load / refresh
   // RULE: Log out if session is invalid (401), but keep cached session on network errors.
@@ -167,23 +235,7 @@ export default function SellerPortalApp() {
     }
   }
 
-  const handleGenderChange = (newGender: string) => {
-    setGender(newGender)
-    if (event === 'FRESHERS TAKEOVER') {
-      setAmount(newGender === 'male' ? '699' : '599')
-    } else {
-      setAmount('350')
-    }
-  }
 
-  const handleEventChange = (newEvent: string) => {
-    setEvent(newEvent)
-    if (newEvent === 'AURA GENESIS') {
-      setAmount('350')
-    } else {
-      setAmount(gender === 'male' ? '699' : '599')
-    }
-  }
 
   const handleGenerateTicket = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -338,6 +390,15 @@ export default function SellerPortalApp() {
         </div>
 
         <div className="flex items-center gap-3">
+          {deferredPrompt && (
+            <button
+              onClick={handleInstallApp}
+              className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 text-xs px-3 py-1.5 rounded-full font-bold transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/10"
+            >
+              <span>📱 Install Android App</span>
+            </button>
+          )}
+
           <div className="bg-violet-500/10 border border-violet-500/30 text-violet-300 text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             {authenticatedPartner.name}
@@ -387,8 +448,14 @@ export default function SellerPortalApp() {
                 onChange={(e) => handleEventChange(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500"
               >
-                <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
-                <option value="AURA GENESIS">AURA GENESIS</option>
+                {eventsList.length > 0 ? (
+                  eventsList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)
+                ) : (
+                  <>
+                    <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
+                    <option value="AURA GENESIS">AURA GENESIS</option>
+                  </>
+                )}
               </select>
             </div>
 
@@ -431,14 +498,22 @@ export default function SellerPortalApp() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Pass Category</label>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Pass Category / Tier</label>
                 <select
-                  value={gender}
-                  onChange={(e) => handleGenderChange(e.target.value)}
+                  value={ticketType}
+                  onChange={(e) => handleTierChange(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500"
                 >
-                  <option value="male">Male Pass</option>
-                  <option value="female">Female Pass</option>
+                  {selectedEventObj?.tiers?.length > 0 ? (
+                    selectedEventObj.tiers.map((t: any, i: number) => (
+                      <option key={i} value={t.name}>{t.name} {t.price > 0 ? `(₹${t.price})` : '(FREE)'}</option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Male Pass">Male Pass (₹699)</option>
+                      <option value="Female Pass">Female Pass (₹599)</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -449,7 +524,7 @@ export default function SellerPortalApp() {
                   min="1"
                   max="10"
                   value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
+                  onChange={(e) => handleQuantityChange(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500"
                 />
               </div>

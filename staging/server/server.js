@@ -435,6 +435,59 @@ app.get('/api/admin/config', requireAdmin, (req, res) => {
     res.json({ success: true, event: EVENT.name, pricing: PRICING });
 });
 
+// ==================== DYNAMIC EVENT & TIER MANAGEMENT ====================
+
+app.get('/api/events', async (req, res) => {
+    try {
+        const events = await db.getAllEvents();
+        res.json({ success: true, events });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.get('/api/admin/events', requireAdmin, async (req, res) => {
+    try {
+        const events = await db.getAllEvents();
+        res.json({ success: true, events });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/admin/events', requireAdmin, async (req, res) => {
+    try {
+        const { name, tagline, date, venue, icon, gradient, tiers } = req.body || {};
+        if (!name) return res.status(400).json({ success: false, message: 'Event Name is required.' });
+        const saved = await db.saveEvent({
+            id: req.body.id || `event_${Date.now()}`,
+            name, tagline: tagline || venue || 'Live Event',
+            date: date || '', venue: venue || '', location: venue || '',
+            icon: icon || '🎉',
+            gradient: gradient || 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',
+            tiers: Array.isArray(tiers) && tiers.length > 0 ? tiers : [
+                { id: 'tier_gen', name: 'General Entry', price: 499 },
+                { id: 'tier_vip', name: 'VIP Entry',     price: 999 }
+            ],
+            active: true
+        });
+        res.json({ success: true, message: `Event "${name}" saved.`, event: saved });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.delete('/api/admin/events/:id', requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id) return res.status(400).json({ success: false, message: 'Event ID required.' });
+        await db.deleteEvent(id);
+        res.json({ success: true, message: `Event ${id} deleted.` });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ==================== PRESENTATION CONFIG ====================
 app.post('/api/admin/toggle-presentation', requireAdmin, async (req, res) => {
     try {

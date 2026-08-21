@@ -1294,6 +1294,86 @@ module.exports = {
         } catch (e) {
             console.error('Failed to log partner attempt:', e.message);
         }
+    },
+
+    // ==================== DYNAMIC EVENT & TIER HELPERS ====================
+    getAllEvents: async () => {
+        try {
+            const events = await Event.find({}).lean();
+            if (events && events.length > 0) return events;
+        } catch (e) {}
+        return Array.from(_mockEvents.values()).filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+    },
+    saveEvent: async (eventData) => {
+        const id = eventData.id || `event_${Date.now()}`;
+        const name = eventData.name || 'Untitled Event';
+        const doc = {
+            ...eventData, id, name,
+            companyId: eventData.companyId || 'littlane',
+            active: eventData.active !== undefined ? eventData.active : true,
+            tiers: eventData.tiers || [],
+            gradient: eventData.gradient || 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',
+            icon: eventData.icon || '🎉',
+            tagline: eventData.tagline || eventData.venue || 'Live Event',
+            updatedAt: new Date().toISOString()
+        };
+        _mockEvents.set(name, doc);
+        _mockEvents.set(id, doc);
+        try {
+            await Event.findOneAndUpdate(
+                { $or: [{ id }, { name }] },
+                { $set: doc },
+                { upsert: true, new: true, lean: true }
+            );
+        } catch (e) { console.error('[saveEvent DB error]', e.message); }
+        return doc;
+    },
+    deleteEvent: async (idOrName) => {
+        _mockEvents.delete(idOrName);
+        for (const [k, v] of _mockEvents.entries()) {
+            if (v.id === idOrName || v.name === idOrName) _mockEvents.delete(k);
+        }
+        try {
+            await Event.deleteOne({ $or: [{ id: idOrName }, { name: idOrName }] });
+        } catch (e) { console.error('[deleteEvent DB error]', e.message); }
+        return true;
     }
 };
+
+// ==================== IN-MEMORY MOCK EVENTS (fallback) ====================
+const _mockEvents = new Map([
+    ['FRESHERS TAKEOVER', {
+        id: 'event_freshers', name: 'FRESHERS TAKEOVER', companyId: 'littlane',
+        date: '2026-09-15', time: '07:00 PM', venue: 'The Orchid, Pune',
+        tagline: 'Pune College Fest · Main Event',
+        gradient: 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',
+        icon: '🎉', active: true,
+        tiers: [
+            { id: 't_female', name: 'Female Pass', price: 599, gender: 'female' },
+            { id: 't_male',   name: 'Male Pass',   price: 699, gender: 'male'   },
+            { id: 't_vip',    name: 'VIP Entry',   price: 1299, gender: 'unisex' }
+        ]
+    }],
+    ['AURA GENESIS', {
+        id: 'event_aura', name: 'AURA GENESIS', companyId: 'littlane',
+        date: '2026-10-20', time: '06:30 PM', venue: 'JW Marriott Ground',
+        tagline: 'Skyline Electronic Showcase',
+        gradient: 'linear-gradient(135deg, #38D9C4 0%, #3B82F6 100%)',
+        icon: '✨', active: true,
+        tiers: [
+            { id: 't_general',  name: 'General Entry', price: 350, gender: 'unisex' },
+            { id: 't_vip_aura', name: 'VIP Entry',      price: 799, gender: 'unisex' }
+        ]
+    }],
+    ['FT LINEUP INVITE', {
+        id: 'event_vip', name: 'FT LINEUP INVITE', companyId: 'littlane',
+        date: '2026-09-15', time: '08:00 PM', venue: 'Main Arena VIP Lounge',
+        tagline: 'Exclusive VIP Access · Invite Only',
+        gradient: 'linear-gradient(135deg, #F5C542 0%, #F5854D 100%)',
+        icon: '⭐', active: true, isVip: true,
+        tiers: [
+            { id: 't_vip_invite', name: 'VIP Access Pass', price: 0, gender: 'unisex' }
+        ]
+    }]
+]);
 
