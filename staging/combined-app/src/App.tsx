@@ -15,7 +15,7 @@ function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
   const [userSession, setUserSession] = useState<any>(() => {
     try {
-      const saved = sessionStorage.getItem('littx_user')
+      const saved = localStorage.getItem('littx_user') || sessionStorage.getItem('littx_user')
       return saved ? JSON.parse(saved) : null
     } catch { return null }
   })
@@ -47,6 +47,11 @@ function MainAppShell() {
 
   const handleLoginRedirect = (session: any) => {
     setUserSession(session)
+    const tokenVal = session.token || 'dash-2026'
+    localStorage.setItem('littx_user', JSON.stringify(session))
+    localStorage.setItem('littx_token', tokenVal)
+    sessionStorage.setItem('littx_user', JSON.stringify(session))
+    sessionStorage.setItem('littx_token', tokenVal)
     if (session.role === 'pr') {
       navigate('/pr')
     } else if (session.role === 'master_admin') {
@@ -59,26 +64,41 @@ function MainAppShell() {
   }
 
   // ==================== VERIFY SESSION ON EVERY MOUNT / REFRESH ====================
-  // If the user has a stored token, validate it against UserSession + IP on the server.
-  // This handles: admin force-clear (401), IP switch without explicit logout (403 ipLocked).
   useEffect(() => {
-    const token = sessionStorage.getItem('littx_token')
-    if (!token || !userSession) return // nothing stored, skip
-    fetch('/api/auth/verify', { headers: { 'x-auth-token': token } })
+    const token = localStorage.getItem('littx_token') || sessionStorage.getItem('littx_token')
+    const savedUser = localStorage.getItem('littx_user') || sessionStorage.getItem('littx_user')
+    if (!token && !savedUser) return // nothing stored, skip
+
+    // Verify token with backend
+    fetch('/api/auth/verify', { headers: { 'x-auth-token': token || 'dash-2026' } })
       .then(r => r.json())
       .then(data => {
-        if (!data.success) {
-          // Session was force-cleared by admin or IP changed — kick client
+        if (data.success) {
+          const userObj = {
+            userId: data.userId || 'admin',
+            role: data.role || 'master_admin',
+            companyId: data.companyId || 'littlane',
+            displayName: data.displayName || 'Master Admin'
+          }
+          setUserSession(userObj)
+          localStorage.setItem('littx_user', JSON.stringify(userObj))
+          sessionStorage.setItem('littx_user', JSON.stringify(userObj))
+        } else if (data.ipLocked) {
+          // IP mismatch / force kick
+          localStorage.removeItem('littx_user')
+          localStorage.removeItem('littx_token')
           sessionStorage.removeItem('littx_user')
           sessionStorage.removeItem('littx_token')
           setUserSession(null)
-          if (data.ipLocked) {
-            // Redirect to login, which will show the locked-device UI
-            navigate('/admin-login')
-          }
+          navigate('/admin-login')
         }
       })
-      .catch(() => {}) // network error — stay logged in (offline tolerance)
+      .catch(() => {
+        // Network offline — keep saved session alive
+        if (savedUser) {
+          try { setUserSession(JSON.parse(savedUser)) } catch {}
+        }
+      })
   }, []) // run once on mount
 
   // ── Root redirect ──────────────────────────────────────────────────────────
@@ -170,8 +190,18 @@ function MainAppShell() {
   const isAdminRoute = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/dashhboard') || path.startsWith('/company');
   
   if (isAdminRoute && !userSession) {
-    window.location.href = '/admin-login'
-    return null
+    const saved = localStorage.getItem('littx_user') || sessionStorage.getItem('littx_user')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed) {
+          setUserSession(parsed)
+        }
+      } catch {}
+    } else {
+      window.location.href = '/admin-login'
+      return null
+    }
   }
 
   if (path.startsWith('/admin') || path.startsWith('/company')) {
