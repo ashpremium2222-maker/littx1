@@ -1178,17 +1178,37 @@ app.get('/api/master/sessions', async (req, res) => {
         return res.status(401).json({ success: false, message: 'Not authorized.' });
     }
     try {
-        const all = await db.getAllUserSessions();
-        const sessions = all.map(s => ({
-            userId: s.userId,
-            displayName: s.displayName || s.userId,
-            role: s.role || 'unknown',
-            companyId: s.companyId || 'littlane',
-            lockedIp: s.ip,
-            loginAt: s.loginAt,
-            active: true
-        }));
-        res.json({ success: true, sessions });
+        const userSessions = await db.getAllUserSessions();
+        const sellerSessions = await db.getAllSellerSessions();
+        const map = new Map();
+
+        for (const s of userSessions) {
+            map.set(s.userId, {
+                userId: s.userId,
+                displayName: s.displayName || s.userId,
+                role: s.role || 'unknown',
+                companyId: s.companyId || 'littlane',
+                lockedIp: s.ip,
+                loginAt: s.loginAt,
+                active: true
+            });
+        }
+        for (const s of sellerSessions) {
+            const sid = s.sellerId?.toLowerCase();
+            const key = `partner:${sid}`;
+            if (!map.has(key) && !map.has(s.sellerId) && !map.has(sid)) {
+                map.set(key, {
+                    userId: key,
+                    displayName: s.sellerId,
+                    role: 'seller',
+                    companyId: 'littlane',
+                    lockedIp: s.ip,
+                    loginAt: s.loginAt,
+                    active: true
+                });
+            }
+        }
+        res.json({ success: true, sessions: Array.from(map.values()) });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -1202,25 +1222,23 @@ app.delete('/api/master/sessions/:userId', async (req, res) => {
     }
     const userId = req.params.userId;
     try {
-        const existing = await db.getUserSession(userId);
-        if (!existing) {
-            return res.status(404).json({ success: false, message: `No active session found for ${userId}.` });
-        }
+        const existing = await db.getUserSession(userId) || await db.getUserSession(`partner:${userId}`) || await db.getUserSession(userId.replace('partner:', ''));
         await db.deleteUserSession(userId);
-        // If it's a legacy seller, also clear SellerSession
-        if (SELLER_ACCOUNTS[userId.toUpperCase()]) {
-            await db.deleteSellerSession(userId.toUpperCase()).catch(() => {});
-        }
+        await db.deleteUserSession(`partner:${userId}`).catch(() => {});
+        const plainId = userId.replace('partner:', '');
+        await db.deleteUserSession(plainId).catch(() => {});
+        await db.deleteSellerSession(plainId.toUpperCase()).catch(() => {});
+
         await db.createAuditLog({
             adminUser: 'master_admin',
-            companyId: existing.companyId || 'all',
+            companyId: existing?.companyId || 'all',
             category: 'AUTH',
             fieldChanged: 'FORCE_LOGOUT_BY_ADMIN',
-            previousValue: { ip: existing.ip, role: existing.role },
+            previousValue: existing ? { ip: existing.ip, role: existing.role } : null,
             newValue: null,
-            reason: `Admin force-cleared session for ${userId} (${existing.role})`
+            reason: `Admin force-cleared session for ${userId}`
         }).catch(() => {});
-        console.log(`[Master Admin] Force-cleared session for ${userId} (${existing.role})`);
+        console.log(`[Master Admin] Force-cleared session for ${userId}`);
         res.json({ success: true, message: `${userId} session cleared. They can now log in from any device.` });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -1488,29 +1506,81 @@ app.post('/api/seller/login-step2', async (req, res) => {
     }
 });
 
-// GET /api/seller/verify-session — Silent re-validation on load/refresh
+// GET /api/seller/verify-session — Silent re-validation on load/refresh (persists FOREVER unless admin kicks)
 app.get('/api/seller/verify-session', async (req, res) => {
     const token = req.headers['x-seller-token'] || req.headers['x-auth-token'] || req.query.token;
-    if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
+    const partnerIdHeader = req.headers['x-partner-id'] || req.query.partnerId;
 
     try {
-        const session = await db.getUserSessionByToken(token);
-        if (!session || !session.partnerId) {
-            return res.status(401).json({ success: false, message: 'Session invalid or expired.' });
+        let session = null;
+        if (token) {
+            session = await db.getUserSessionByToken(token);
         }
 
-        const partner = await db.getPartnerLock(session.partnerId);
+        // If no user session by token, check legacy seller session by token
+        if (!session && token) {
+            const allSellerSessions = await db.getAllSellerSessions();
+            const legacy = allSellerSessions.find(s => s.token === token);
+            if (legacy) {
+                session = {
+                    partnerId: legacy.sellerId.toLowerCase(),
+                    userId: `partner:${legacy.sellerId.toLowerCase()}`,
+                    token: legacy.token,
+                    sessionVersion: 1
+                };
+            }
+        }
+
+        let partnerId = session?.partnerId || partnerIdHeader;
+        if (!partnerId && session?.userId) {
+            partnerId = session.userId.replace('partner:', '').toLowerCase();
+        }
+
+        if (!partnerId) {
+            return res.status(401).json({ success: false, message: 'No session found.' });
+        }
+
+        const partner = await db.getPartnerLock(partnerId);
         if (!partner) {
             return res.status(404).json({ success: false, message: 'Partner record not found.' });
         }
 
-        // Check if admin reset the device lock (bumped sessionVersion)
-        if (session.sessionVersion !== partner.sessionVersion) {
+        // Check if admin explicitly kicked or reset device lock
+        if (session && partner.sessionVersion && session.sessionVersion !== partner.sessionVersion) {
             return res.status(401).json({
                 success: false,
+                kickedByAdmin: true,
                 adminReset: true,
                 message: 'Session invalidated by admin reset.'
             });
+        }
+
+        const userSessionCheck = await db.getUserSession(`partner:${partnerId}`) || await db.getUserSession(partnerId);
+
+        // Auto-refresh/reissue token if token expired/cold-started but partner is still valid and not kicked by admin
+        let activeToken = token;
+        if (!session || !userSessionCheck) {
+            // If device lock was completely reset by admin, refuse reissue
+            if (!partner.webauthnCredentialId && !partner.boundIp) {
+                return res.status(401).json({
+                    success: false,
+                    kickedByAdmin: true,
+                    message: 'Kicked by admin.'
+                });
+            }
+
+            activeToken = generateToken();
+            const now = new Date().toISOString();
+            await db.setUserSession(`partner:${partnerId}`, {
+                token: activeToken,
+                role: 'seller_partner',
+                partnerId: partner.partnerId,
+                sessionVersion: partner.sessionVersion || 1,
+                loginAt: now,
+                ip: getIp(req)
+            });
+        } else {
+            activeToken = userSessionCheck?.token || token;
         }
 
         // Update last seen timestamp
@@ -1519,6 +1589,7 @@ app.get('/api/seller/verify-session', async (req, res) => {
 
         res.json({
             success: true,
+            token: activeToken,
             partner: {
                 id: partner.partnerId,
                 name: partner.name,
@@ -1612,6 +1683,8 @@ app.post('/api/master/reset-partner-lock', async (req, res) => {
         if (sessionOnly) {
             // FORCE LOGOUT ONLY — clears session token but keeps hardware device lock intact
             await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
+            await db.deleteUserSession(partnerId).catch(() => {});
+            await db.deleteSellerSession(partnerId.toUpperCase()).catch(() => {});
             await db.savePartnerLock(partnerId, { lastSeenAt: null });
             await db.createAuditLog({
                 adminUser: 'master_admin', companyId: 'all', category: 'AUTH',
@@ -1628,6 +1701,8 @@ app.post('/api/master/reset-partner-lock', async (req, res) => {
         // FULL RESET — wipes WebAuthn credential + session (allows any device to re-register)
         const updated = await db.resetPartnerLock(partnerId);
         await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
+        await db.deleteUserSession(partnerId).catch(() => {});
+        await db.deleteSellerSession(partnerId.toUpperCase()).catch(() => {});
         await db.createAuditLog({
             adminUser: 'master_admin', companyId: 'all', category: 'AUTH',
             fieldChanged: 'RESET_DEVICE_LOCK', previousValue: partnerId, newValue: null,
