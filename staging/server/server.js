@@ -1307,7 +1307,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 }
             });
 
-            await db.savePartnerLock(partnerId, { currentChallenge: options.challenge });
+            await db.savePartnerLock(partnerId, { currentChallenge: options.challenge, _lastChallenge: options.challenge });
 
             return res.json({
                 success: true,
@@ -1326,7 +1326,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 userVerification: 'preferred'
             });
 
-            await db.savePartnerLock(partnerId, { currentChallenge: options.challenge });
+            await db.savePartnerLock(partnerId, { currentChallenge: options.challenge, _lastChallenge: options.challenge });
 
             return res.json({
                 success: true,
@@ -1374,12 +1374,9 @@ app.post('/api/seller/login-step2', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid or expired WebAuthn challenge session.' });
         }
 
-        const expectedChallenge = partner.currentChallenge;
+        const expectedChallenge = partner.currentChallenge || partner._lastChallenge;
         const expectedOrigin = getOrigin(req);
         const expectedRPID = getRPID(req);
-
-        // Clear challenge immediately to prevent replay
-        await db.savePartnerLock(partnerId, { currentChallenge: null });
 
         if (!partner.webauthnCredentialId) {
             // VERIFY REGISTRATION (Bind first device)
