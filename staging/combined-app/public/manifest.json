@@ -22,9 +22,14 @@
   ],
   "categories": ["business", "finance", "productivity"],
   "start_url": "/seller",
+  "scope": "/seller",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
   "background_color": "#020617",
   "theme_color": "#020617",
-  "display": "standalone",
-  "orientation": "portrait",
-  "scope": "/"
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  }
 }
