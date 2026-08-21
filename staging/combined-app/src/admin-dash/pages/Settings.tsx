@@ -1,5 +1,17 @@
 import { useState, useEffect } from 'react'
 
+function formatDuration(ms: number) {
+  const totalSec = Math.floor(ms / 1000);
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  const parts = [];
+  if (hrs) parts.push(`${hrs}h`);
+  if (mins) parts.push(`${mins}m`);
+  if (secs || (!hrs && !mins)) parts.push(`${secs}s`);
+  return parts.join(' ');
+}
+
 type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller-locks'
 
 const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
@@ -311,6 +323,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                 const lock = sellerSessions.find((l: any) => l.partnerId === pid)
                 const activeSession = sessions.find((s: any) => s.userId === `partner:${pid}`)
                 const isLoggedIn = !!activeSession
+    const onlineDurationMs = isLoggedIn && activeSession?.loginAt ? Date.now() - new Date(activeSession.loginAt).getTime() : 0
                 const hasDevice = !!(lock?.webauthnCredentialId)
 
                 return (
@@ -357,11 +370,16 @@ export default function Settings({ adminKey }: SettingsProps) {
                           {activeSession?.lockedIp || lock?.boundIp || '—'}
                         </span>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: 'var(--ink-faint)' }}>Last Seen</span>
-                        <span style={{ fontSize: '11px' }}>
-                          {activeSession?.loginAt ? new Date(activeSession.loginAt).toLocaleString() : (lock?.lastSeenAt ? new Date(lock.lastSeenAt).toLocaleString() : '—')}
-                        </span>
+                        <div style={{ textAlign: 'right', fontSize: '11px' }}>
+                          <div>{activeSession?.loginAt ? new Date(activeSession.loginAt).toLocaleString() : (lock?.lastSeenAt ? new Date(lock.lastSeenAt).toLocaleString() : '—')}</div>
+                          {isLoggedIn && onlineDurationMs > 0 && (
+                            <div style={{ color: 'var(--ink-faint)', fontSize: '10px' }}>
+                              Online for {formatDuration(onlineDurationMs)}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--ink-faint)' }}>Bound Since</span>
