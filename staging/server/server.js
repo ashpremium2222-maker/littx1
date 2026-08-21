@@ -911,6 +911,99 @@ app.post('/api/seller/login', async (req, res) => {
     res.json({ success: true, sellerId: sid, token, loginAt, lockedIp: requestIp });
 });
 
+// ==================== WEBAUTHN HARDWARE DEVICE LOCK ====================
+
+// Cryptographic helper to verify WebAuthn assertion signature
+function verifyWebAuthnAssertion(publicKeySpkiDerHex, clientDataJSONBase64, authenticatorDataBase64, signatureBase64) {
+    try {
+        const publicKeyBuffer = Buffer.from(publicKeySpkiDerHex, 'hex');
+        const clientDataJSONBuffer = Buffer.from(clientDataJSONBase64, 'base64');
+        const authenticatorDataBuffer = Buffer.from(authenticatorDataBase64, 'base64');
+        const signatureBuffer = Buffer.from(signatureBase64, 'base64');
+        const clientDataHash = crypto.createHash('sha256').update(clientDataJSONBuffer).digest();
+        const verifyData = Buffer.concat([authenticatorDataBuffer, clientDataHash]);
+        const pubKey = crypto.createPublicKey({ key: publicKeyBuffer, format: 'der', type: 'spki' });
+        return crypto.verify('sha256', verifyData, pubKey, signatureBuffer);
+    } catch (err) {
+        console.error('WebAuthn assertion verify error:', err.message);
+        return false;
+    }
+}
+
+// POST /api/seller/login-pre — Step 1: validate password, issue challenge, return device status
+app.post('/api/seller/login-pre', async (req, res) => {
+    const { sellerId, password } = req.body || {};
+    if (!sellerId || !password) return res.status(400).json({ success: false, message: 'Missing credentials.' });
+    const expected = SELLER_ACCOUNTS[sellerId.toUpperCase()];
+    if (!expected || expected !== password) return res.status(401).json({ success: false, message: 'Invalid Seller ID or password.' });
+    const sid = sellerId.toUpperCase();
+    const challenge = crypto.randomBytes(32).toString('hex');
+    await db.saveSellerChallenge(sid, challenge);
+    const device = await db.getSellerDevice(sid);
+    if (!device) {
+        return res.json({ success: true, status: 'registration_required', challenge, rpId: req.headers.host.split(':')[0] });
+    }
+    return res.json({ success: true, status: 'authentication_required', challenge, credentialId: device.credentialId, rpId: req.headers.host.split(':')[0] });
+});
+
+// POST /api/seller/login-register — Step 2a: register new hardware device key and complete login
+app.post('/api/seller/login-register', async (req, res) => {
+    const { sellerId, credentialId, publicKeySpki } = req.body || {};
+    if (!sellerId || !credentialId || !publicKeySpki) return res.status(400).json({ success: false, message: 'Missing WebAuthn registration params.' });
+    const sid = sellerId.toUpperCase();
+    const savedChallenge = await db.getSellerChallenge(sid);
+    if (!savedChallenge) return res.status(400).json({ success: false, message: 'Login challenge expired. Please restart login.' });
+    await db.setSellerDevice(sid, credentialId, publicKeySpki);
+    await db.saveSellerChallenge(sid, null);
+    const token = generateToken();
+    const ip = getIp(req);
+    const loginAt = new Date().toISOString();
+    await db.setSellerSession(sid, { token, loginAt, ip });
+    console.log(`[WebAuthn REGISTERED] ${sid} hardware device locked.`);
+    res.json({ success: true, sellerId: sid, token, loginAt, lockedIp: ip });
+});
+
+// POST /api/seller/login-verify — Step 2b: verify biometric signature on existing device
+app.post('/api/seller/login-verify', async (req, res) => {
+    const { sellerId, credentialId, clientDataJSON, authenticatorData, signature } = req.body || {};
+    if (!sellerId || !credentialId || !clientDataJSON || !authenticatorData || !signature) {
+        return res.status(400).json({ success: false, message: 'Missing WebAuthn verification params.' });
+    }
+    const sid = sellerId.toUpperCase();
+    const device = await db.getSellerDevice(sid);
+    if (!device || device.credentialId !== credentialId) {
+        return res.status(403).json({ success: false, message: 'Access denied. Device not registered for this account.' });
+    }
+    const savedChallenge = await db.getSellerChallenge(sid);
+    if (!savedChallenge) return res.status(400).json({ success: false, message: 'Login challenge expired. Please restart login.' });
+    let clientData;
+    try {
+        clientData = JSON.parse(Buffer.from(clientDataJSON, 'base64').toString('utf8'));
+    } catch { return res.status(400).json({ success: false, message: 'Invalid clientDataJSON.' }); }
+    const expectedChallenge = Buffer.from(savedChallenge, 'hex').toString('base64url');
+    if (clientData.challenge !== expectedChallenge) {
+        return res.status(403).json({ success: false, message: 'Access denied. Challenge mismatch.' });
+    }
+    try {
+        const parsedOrigin = new URL(clientData.origin);
+        if (parsedOrigin.host !== req.headers.host) {
+            return res.status(403).json({ success: false, message: 'Access denied. Origin mismatch.' });
+        }
+    } catch { return res.status(400).json({ success: false, message: 'Invalid origin.' }); }
+    const valid = verifyWebAuthnAssertion(device.publicKeySpki, clientDataJSON, authenticatorData, signature);
+    if (!valid) {
+        console.log(`[WebAuthn FAILED] ${sid} biometric signature invalid.`);
+        return res.status(403).json({ success: false, message: 'Access denied. Hardware biometric verification failed.' });
+    }
+    await db.saveSellerChallenge(sid, null);
+    const token = generateToken();
+    const ip = getIp(req);
+    const loginAt = new Date().toISOString();
+    await db.setSellerSession(sid, { token, loginAt, ip });
+    console.log(`[WebAuthn VERIFIED] ${sid} hardware key verified. Token issued.`);
+    res.json({ success: true, sellerId: sid, token, loginAt, lockedIp: ip });
+});
+
 // POST /api/seller/logout — invalidate session
 app.post('/api/seller/logout', async (req, res) => {
     const token = req.headers['x-seller-token'] || req.body?.token;
@@ -1014,6 +1107,29 @@ app.delete('/api/master/seller-sessions/:sellerId', async (req, res) => {
     await db.createAuditLog({ adminUser: 'master_admin', companyId: 'all', category: 'AUTH', fieldChanged: 'FORCE_LOGOUT_BY_ADMIN', previousValue: existing?.ip, newValue: null, reason: `Admin force-kicked seller ${sid}` }).catch(() => {});
     console.log(`[Master Admin] Kicked & unlocked ${sid}`);
     res.json({ success: true, message: `${sid} session cleared. They can now log in from any device.`, wasActive: wasLocked });
+});
+
+// GET /api/master/seller-devices — view all WebAuthn hardware device locks
+app.get('/api/master/seller-devices', async (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const all = await db.getAllSellerDevices();
+    res.json({ success: true, devices: all.map(d => ({ sellerId: d.sellerId, registeredAt: d.registeredAt })) });
+});
+
+// DELETE /api/master/seller-devices/:sellerId — reset WebAuthn hardware lock
+app.delete('/api/master/seller-devices/:sellerId', async (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026')) {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const sid = req.params.sellerId.toUpperCase();
+    if (!SELLER_ACCOUNTS[sid]) return res.status(404).json({ success: false, message: 'Seller not found.' });
+    await db.deleteSellerDevice(sid);
+    console.log(`[Master Admin] Reset WebAuthn Device Lock for ${sid}`);
+    res.json({ success: true, message: `Hardware Device Lock for ${sid} has been reset. A new device can now register.` });
 });
 
 // ==================== MASTER ADMIN — UNIVERSAL SESSION CONTROL (all roles) ====================

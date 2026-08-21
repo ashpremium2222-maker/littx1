@@ -228,6 +228,16 @@ const ScanLog = mongoose.model('ScanLog', ScanLogSchema);
 const UserSession = mongoose.model('UserSession', UserSessionSchema);
 const PartnerLock = mongoose.model('PartnerLock', PartnerLockSchema);
 
+const SellerDeviceSchema = new mongoose.Schema({
+    sellerId: { type: String, required: true, unique: true },
+    credentialId: { type: String, required: true },
+    publicKeySpki: { type: String, required: true },
+    challenge: { type: String },
+    registeredAt: { type: String, default: () => new Date().toISOString() }
+});
+
+const SellerDevice = mongoose.model('SellerDevice', SellerDeviceSchema);
+
 // ==================== SEED DATA ====================
 
 async function seedDefaultUsers() {
@@ -770,7 +780,9 @@ const _mockPartnerLocks = new Map([
     ['littlane', { partnerId: 'littlane', name: 'Littlane Entertainment', password: 'littlane-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['nitro', { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: 'heaven-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
-]);
+]);\n
+const _mockDevices = new Map();
+const _mockChallenges = new Map();
 
 module.exports = {
     // Session handlers
@@ -804,6 +816,50 @@ module.exports = {
     SellerSession,
     ScanLog,
     UserSession,
+    SellerDevice,
+
+    // WebAuthn Device Lock handlers
+    getSellerDevice: async (sellerId) => {
+        if (useMock()) return _mockDevices.get(sellerId) || null;
+        return SellerDevice.findOne({ sellerId });
+    },
+    getAllSellerDevices: async () => {
+        if (useMock()) return Array.from(_mockDevices.values());
+        return SellerDevice.find({});
+    },
+    setSellerDevice: async (sellerId, credentialId, publicKeySpki) => {
+        if (useMock()) {
+            const dev = { sellerId, credentialId, publicKeySpki, registeredAt: new Date().toISOString() };
+            _mockDevices.set(sellerId, dev);
+            return dev;
+        }
+        return SellerDevice.findOneAndUpdate(
+            { sellerId },
+            { credentialId, publicKeySpki, registeredAt: new Date().toISOString() },
+            { upsert: true, new: true }
+        );
+    },
+    deleteSellerDevice: async (sellerId) => {
+        if (useMock()) { _mockDevices.delete(sellerId); return true; }
+        return SellerDevice.deleteOne({ sellerId });
+    },
+    saveSellerChallenge: async (sellerId, challenge) => {
+        if (useMock()) {
+            if (challenge === null) { _mockChallenges.delete(sellerId); } 
+            else { _mockChallenges.set(sellerId, challenge); }
+            return challenge;
+        }
+        return SellerDevice.findOneAndUpdate(
+            { sellerId },
+            { challenge },
+            { upsert: true, new: true }
+        );
+    },
+    getSellerChallenge: async (sellerId) => {
+        if (useMock()) return _mockChallenges.get(sellerId) || null;
+        const dev = await SellerDevice.findOne({ sellerId });
+        return dev ? dev.challenge : null;
+    },
 
     // Sale Helpers
     createSaleRecord: async (saleData) => {
