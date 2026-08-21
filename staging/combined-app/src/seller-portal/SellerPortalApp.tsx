@@ -80,25 +80,38 @@ export default function SellerPortalApp() {
     }
   }
 
-  // Fetch dynamic events on mount
+  // Fetch dynamic events on mount and poll every 5s so /admin edits sync everywhere in real time
   useEffect(() => {
-    fetch('/api/events')
-      .then(r => r.json())
-      .then(d => {
-        if (d.success && Array.isArray(d.events) && d.events.length > 0) {
-          setEventsList(d.events)
-          const first = d.events[0]
-          setSelectedEventObj(first)
-          setEvent(first.name)
-          if (first.tiers?.length > 0) {
-            setSelectedTierObj(first.tiers[0])
-            setTicketType(first.tiers[0].name)
-            setAmount(String(first.tiers[0].price))
+    const loadEvents = () => {
+      fetch('/api/events')
+        .then(r => r.json())
+        .then(d => {
+          if (d.success && Array.isArray(d.events) && d.events.length > 0) {
+            setEventsList(d.events)
+            // If current selected event no longer exists, select first event
+            setEvent((prevEvent) => {
+              const exists = d.events.some((e: any) => e.name === prevEvent)
+              if (!exists) {
+                const first = d.events[0]
+                setSelectedEventObj(first)
+                if (first.tiers?.length > 0) {
+                  setSelectedTierObj(first.tiers[0])
+                  setTicketType(first.tiers[0].name)
+                  setAmount(String(first.tiers[0].price * (parseInt(quantity, 10) || 1)))
+                }
+                return first.name
+              }
+              return prevEvent
+            })
           }
-        }
-      })
-      .catch(() => {})
-  }, [])
+        })
+        .catch(() => {})
+    }
+
+    loadEvents()
+    const timer = setInterval(loadEvents, 4000)
+    return () => clearInterval(timer)
+  }, [quantity])
 
   const handleEventChange = (evtName: string) => {
     setEvent(evtName)
