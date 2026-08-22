@@ -223,10 +223,13 @@ const PartnerLockSchema = new mongoose.Schema({
 
     // Admin Block & Approval
     blocked: { type: Boolean, default: false },
+    blockedAt: { type: String, default: null },
     pendingApproval: { type: Boolean, default: false },
     pendingApprovalAt: { type: String, default: null },
     pendingApprovalIp: { type: String, default: null },
     pendingApprovalDevice: { type: String, default: null },
+    approvalType: { type: String, default: null }, // 'registration' or 'login'
+    approvedForReg: { type: Boolean, default: false },
     kicked: { type: Boolean, default: false },
     activeToken: { type: String, default: null },
     deviceName: { type: String, default: null },

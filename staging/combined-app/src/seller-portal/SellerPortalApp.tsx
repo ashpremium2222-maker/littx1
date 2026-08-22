@@ -203,6 +203,8 @@ export default function SellerPortalApp() {
       if (!step1Res.ok || !step1Data.success) {
         if (step1Data.blocked) {
           setLoginError('🚫 ACCOUNT BLOCKED: Your account has been blocked by admin. A login approval request has been sent automatically. Please wait for admin to approve your access before trying again.')
+        } else if (step1Data.registrationPending) {
+          setLoginError('🔑 DEVICE REGISTRATION PENDING: A new device registration request has been sent to admin. Please wait for admin to approve this device before completing registration.')
         } else {
           setLoginError(step1Data.message || 'Password authentication failed.')
         }

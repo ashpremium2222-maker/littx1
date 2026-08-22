@@ -164,6 +164,23 @@ export default function Settings({ adminKey }: SettingsProps) {
     }
   }
 
+  const changePartnerPassword = async (partnerId: string, name: string) => {
+    const newPassword = prompt(`Enter new password for ${name}:`)
+    if (!newPassword || !newPassword.trim()) return
+    try {
+      const res = await fetch(`/api/master/change-partner-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-master-token': 'littx-master-2026' },
+        body: JSON.stringify({ partnerId, newPassword: newPassword.trim() })
+      })
+      const data = await res.json()
+      alert(data.message || (data.success ? 'Password updated.' : 'Failed.'))
+      loadPartnerLocks()
+    } catch {
+      alert('Error updating password.')
+    }
+  }
+
   const loadPendingApprovals = async () => {
     try {
       const res = await fetch('/api/master/pending-approvals', {
@@ -462,7 +479,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                     {lock?.blocked ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
                         <div style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid rgba(255,60,60,0.4)', backgroundColor: 'rgba(255,60,60,0.1)', color: '#ff5555', fontWeight: 700, fontSize: '13px', textAlign: 'center' }}>
-                          🚫 BLOCKED
+                          🚫 BLOCKED {lock.blockedAt ? `at ${new Date(lock.blockedAt).toLocaleTimeString()}` : ''}
                         </div>
                         <button
                           onClick={() => unblockSeller(pid, outlet.name)}
@@ -480,42 +497,76 @@ export default function Settings({ adminKey }: SettingsProps) {
                         >
                           ✅ Approve & Unblock
                         </button>
+                        <button
+                          onClick={() => changePartnerPassword(pid, outlet.name)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            backgroundColor: 'rgba(255,255,255,0.05)',
+                            color: 'var(--ink)',
+                            fontWeight: 600,
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            width: '100%',
+                          }}
+                        >
+                          🔑 Change Password
+                        </button>
                       </div>
                     ) : (
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            disabled={!isLoggedIn || kickingId === pid}
+                            onClick={() => forceLogoutSeller(pid, outlet.name)}
+                            style={{
+                              flex: 1,
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              border: isLoggedIn ? '1px solid rgba(255,200,50,0.35)' : '1px solid rgba(255,255,255,0.08)',
+                              backgroundColor: isLoggedIn ? 'rgba(255,200,50,0.12)' : 'rgba(255,255,255,0.04)',
+                              color: isLoggedIn ? '#ffc832' : 'var(--ink-faint)',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              cursor: isLoggedIn ? 'pointer' : 'not-allowed',
+                            }}
+                          >
+                            {kickingId === pid ? '⏳...' : '⏏ Logout'}
+                          </button>
+                          <button
+                            disabled={blockingId === pid}
+                            onClick={() => blockSeller(pid, outlet.name)}
+                            style={{
+                              flex: 1,
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              border: '1px solid rgba(255,60,60,0.35)',
+                              backgroundColor: 'rgba(255,60,60,0.12)',
+                              color: '#ff5555',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {blockingId === pid ? '⏳...' : '🚫 Block'}
+                          </button>
+                        </div>
                         <button
-                          disabled={!isLoggedIn || kickingId === pid}
-                          onClick={() => forceLogoutSeller(pid, outlet.name)}
+                          onClick={() => changePartnerPassword(pid, outlet.name)}
                           style={{
-                            flex: 1,
-                            padding: '8px 10px',
+                            padding: '6px 12px',
                             borderRadius: '8px',
-                            border: isLoggedIn ? '1px solid rgba(255,200,50,0.35)' : '1px solid rgba(255,255,255,0.08)',
-                            backgroundColor: isLoggedIn ? 'rgba(255,200,50,0.12)' : 'rgba(255,255,255,0.04)',
-                            color: isLoggedIn ? '#ffc832' : 'var(--ink-faint)',
-                            fontWeight: 700,
-                            fontSize: '12px',
-                            cursor: isLoggedIn ? 'pointer' : 'not-allowed',
-                          }}
-                        >
-                          {kickingId === pid ? '⏳...' : '⏏ Logout'}
-                        </button>
-                        <button
-                          disabled={blockingId === pid}
-                          onClick={() => blockSeller(pid, outlet.name)}
-                          style={{
-                            flex: 1,
-                            padding: '8px 10px',
-                            borderRadius: '8px',
-                            border: '1px solid rgba(255,60,60,0.35)',
-                            backgroundColor: 'rgba(255,60,60,0.12)',
-                            color: '#ff5555',
-                            fontWeight: 700,
-                            fontSize: '12px',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            backgroundColor: 'rgba(255,255,255,0.05)',
+                            color: 'var(--ink)',
+                            fontWeight: 600,
+                            fontSize: '11px',
                             cursor: 'pointer',
+                            width: '100%',
                           }}
                         >
-                          {blockingId === pid ? '⏳...' : '🚫 Block'}
+                          🔑 Change Password
                         </button>
                       </div>
                     )}
@@ -529,18 +580,19 @@ export default function Settings({ adminKey }: SettingsProps) {
           {pendingApprovals.length > 0 && (
             <div className="card" style={{ marginTop: '24px', border: '1px solid rgba(255,200,50,0.3)' }}>
               <div className="card-head">
-                <h3>⚠️ Pending Login Approval Requests</h3>
+                <h3>⚠️ Pending Login &amp; Registration Approvals</h3>
                 <div className="muted-sm">
-                  These blocked sellers tried to log in and are waiting for your approval.
+                  These sellers require your explicit approval before they can register a device or log in.
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', marginTop: '16px' }}>
                 {pendingApprovals.map((p: any) => {
                   const outlet = OUTLET_MAP[p.partnerId] || { name: p.partnerId, emoji: '🏪' }
+                  const isReg = p.approvalType === 'registration'
                   return (
                     <div key={p.partnerId} style={{
-                      background: 'rgba(255,200,50,0.06)',
-                      border: '1px solid rgba(255,200,50,0.2)',
+                      background: isReg ? 'rgba(100,220,150,0.05)' : 'rgba(255,200,50,0.06)',
+                      border: isReg ? '1px solid rgba(100,220,150,0.2)' : '1px solid rgba(255,200,50,0.2)',
                       borderRadius: '16px',
                       padding: '20px',
                       display: 'flex',
@@ -555,9 +607,17 @@ export default function Settings({ adminKey }: SettingsProps) {
                             <div style={{ fontSize: '11px', color: 'var(--ink-faint)', fontFamily: 'monospace' }}>{p.partnerId}</div>
                           </div>
                         </div>
-                        <span className="badge badge-amber">⏳ PENDING</span>
+                        <span className={`badge ${isReg ? 'badge-teal' : 'badge-amber'}`}>
+                          {isReg ? '🔑 NEW DEVICE' : '🚫 RE-LOGIN'}
+                        </span>
                       </div>
                       <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {!isReg && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--ink-faint)' }}>Blocked At</span>
+                            <span style={{ color: '#ff5555', fontWeight: 600 }}>{p.blockedAt ? new Date(p.blockedAt).toLocaleString() : '—'}</span>
+                          </div>
+                        )}
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ color: 'var(--ink-faint)' }}>Request Time</span>
                           <span>{p.pendingApprovalAt ? new Date(p.pendingApprovalAt).toLocaleString() : '—'}</span>
@@ -578,15 +638,15 @@ export default function Settings({ adminKey }: SettingsProps) {
                             flex: 1,
                             padding: '8px 14px',
                             borderRadius: '8px',
-                            border: '1px solid rgba(100,220,150,0.35)',
-                            backgroundColor: 'rgba(100,220,150,0.12)',
-                            color: '#64dc96',
+                            border: isReg ? '1px solid rgba(100,220,150,0.35)' : '1px solid rgba(255,200,50,0.35)',
+                            backgroundColor: isReg ? 'rgba(100,220,150,0.12)' : 'rgba(255,200,50,0.12)',
+                            color: isReg ? '#64dc96' : '#ffc832',
                             fontWeight: 700,
-                            fontSize: '13px',
+                            fontSize: '12px',
                             cursor: 'pointer',
                           }}
                         >
-                          ✅ Approve
+                          {isReg ? '✅ Approve Reg' : '✅ Approve Login'}
                         </button>
                         <button
                           onClick={() => alert(`${p.partnerId} remains blocked.`)}
@@ -598,7 +658,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                             backgroundColor: 'rgba(255,60,60,0.12)',
                             color: '#ff5555',
                             fontWeight: 700,
-                            fontSize: '13px',
+                            fontSize: '12px',
                             cursor: 'pointer',
                           }}
                         >
@@ -653,13 +713,22 @@ export default function Settings({ adminKey }: SettingsProps) {
                         <td style={{ fontSize: '0.8rem', color: 'var(--ink-faint)' }}>N/A</td>
                         <td>1</td>
                         <td>
-                          <button
-                            onClick={() => handleResetPartnerLock(p.partnerId, p.name)}
-                            className="btn-secondary"
-                            style={{ fontSize: '11px', padding: '4px 10px' }}
-                          >
-                            Reset Lock
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              onClick={() => handleResetPartnerLock(p.partnerId, p.name)}
+                              className="btn-secondary"
+                              style={{ fontSize: '11px', padding: '4px 10px' }}
+                            >
+                              Reset Lock
+                            </button>
+                            <button
+                              onClick={() => changePartnerPassword(p.partnerId, p.name)}
+                              className="btn-secondary"
+                              style={{ fontSize: '11px', padding: '4px 10px' }}
+                            >
+                              Change Password
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -689,20 +758,36 @@ export default function Settings({ adminKey }: SettingsProps) {
                         </td>
                         <td style={{ fontWeight: 'bold' }}>v{p.sessionVersion || 1}</td>
                         <td>
-                          <button
-                            onClick={() => handleResetPartnerLock(p.partnerId, p.name)}
-                            style={{
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              border: '1px solid rgba(216,255,63,0.3)',
-                              backgroundColor: 'rgba(216,255,63,0.12)',
-                              color: 'var(--volt)',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Reset Device Lock
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button
+                              onClick={() => handleResetPartnerLock(p.partnerId, p.name)}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(216,255,63,0.3)',
+                                backgroundColor: 'rgba(216,255,63,0.12)',
+                                color: 'var(--volt)',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Reset Device Lock
+                            </button>
+                            <button
+                              onClick={() => changePartnerPassword(p.partnerId, p.name)}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                backgroundColor: 'rgba(255,255,255,0.05)',
+                                color: 'var(--ink)',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              🔑 Change Password
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
