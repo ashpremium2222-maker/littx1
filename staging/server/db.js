@@ -49,7 +49,9 @@ const EventSchema = new mongoose.Schema({
         ticketTransfersEnabled: { type: Boolean, default: null },
         maxCapacity: { type: Number, default: null }
     },
-    createdAt: { type: String }
+    createdAt: { type: String },
+    updatedAt: { type: String },
+    location: { type: String }
 });
 
 const UserSchema = new mongoose.Schema({
