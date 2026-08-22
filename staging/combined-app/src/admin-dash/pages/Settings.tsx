@@ -37,6 +37,8 @@ export default function Settings({ adminKey }: SettingsProps) {
   const [sellerSessions, setSellerSessions] = useState<any[]>([])
   const [loadingSellerSessions, setLoadingSellerSessions] = useState(false)
   const [kickingId, setKickingId] = useState<string | null>(null)
+  const [blockingId, setBlockingId] = useState<string | null>(null)
+  const [pendingApprovals, setPendingApprovals] = useState<any[]>([])
 
   // Notification toggle states
   const [notifs, setNotifs] = useState({
@@ -123,6 +125,57 @@ export default function Settings({ adminKey }: SettingsProps) {
     }
   }
 
+  const blockSeller = async (partnerId: string, name: string) => {
+    if (!confirm(`BLOCK ${name}? They will be logged out and CANNOT log in again until you approve. Are you sure?`)) return
+    setBlockingId(partnerId)
+    try {
+      const res = await fetch(`/api/master/block-partner`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-master-token': 'littx-master-2026' },
+        body: JSON.stringify({ partnerId })
+      })
+      const data = await res.json()
+      alert(data.message || (data.success ? 'Blocked.' : 'Failed.'))
+      loadSellerSessions()
+      loadSessions()
+      loadPendingApprovals()
+    } catch {
+      alert('Error blocking seller.')
+    } finally {
+      setBlockingId(null)
+    }
+  }
+
+  const unblockSeller = async (partnerId: string, name: string) => {
+    if (!confirm(`APPROVE & UNBLOCK ${name}? They will be able to log in again.`)) return
+    try {
+      const res = await fetch(`/api/master/unblock-partner`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-master-token': 'littx-master-2026' },
+        body: JSON.stringify({ partnerId })
+      })
+      const data = await res.json()
+      alert(data.message || (data.success ? 'Unblocked.' : 'Failed.'))
+      loadSellerSessions()
+      loadSessions()
+      loadPendingApprovals()
+    } catch {
+      alert('Error unblocking seller.')
+    }
+  }
+
+  const loadPendingApprovals = async () => {
+    try {
+      const res = await fetch('/api/master/pending-approvals', {
+        headers: { 'x-master-token': 'littx-master-2026' }
+      })
+      const data = await res.json()
+      if (data.success) setPendingApprovals(data.pending || [])
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   // Auto-load & REAL-TIME LIVE POLLING when Active Sessions tab is shown
   useEffect(() => {
     if (tab === 'seller-locks') {
@@ -130,6 +183,7 @@ export default function Settings({ adminKey }: SettingsProps) {
         loadSessions()
         loadPartnerLocks()
         loadSellerSessions()
+        loadPendingApprovals()
       }
       pollAll()
       const interval = setInterval(pollAll, 2500) // Fast real-time live sync
@@ -404,30 +458,159 @@ export default function Settings({ adminKey }: SettingsProps) {
                       </div>
                     </div>
 
-                    {/* Action */}
-                    <button
-                      disabled={!isLoggedIn || kickingId === pid}
-                      onClick={() => forceLogoutSeller(pid, outlet.name)}
-                      style={{
-                        marginTop: '4px',
-                        padding: '8px 14px',
-                        borderRadius: '8px',
-                        border: isLoggedIn ? '1px solid rgba(255,107,107,0.35)' : '1px solid rgba(255,255,255,0.08)',
-                        backgroundColor: isLoggedIn ? 'rgba(255,107,107,0.12)' : 'rgba(255,255,255,0.04)',
-                        color: isLoggedIn ? 'var(--red)' : 'var(--ink-faint)',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                        cursor: isLoggedIn ? 'pointer' : 'not-allowed',
-                        width: '100%',
-                      }}
-                    >
-                      {kickingId === pid ? '⏳ Logging out...' : isLoggedIn ? '⏏ Force Logout' : 'Not Logged In'}
-                    </button>
+                    {/* Actions */}
+                    {lock?.blocked ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                        <div style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid rgba(255,60,60,0.4)', backgroundColor: 'rgba(255,60,60,0.1)', color: '#ff5555', fontWeight: 700, fontSize: '13px', textAlign: 'center' }}>
+                          🚫 BLOCKED
+                        </div>
+                        <button
+                          onClick={() => unblockSeller(pid, outlet.name)}
+                          style={{
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(100,220,150,0.35)',
+                            backgroundColor: 'rgba(100,220,150,0.12)',
+                            color: '#64dc96',
+                            fontWeight: 700,
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                            width: '100%',
+                          }}
+                        >
+                          ✅ Approve & Unblock
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                        <button
+                          disabled={!isLoggedIn || kickingId === pid}
+                          onClick={() => forceLogoutSeller(pid, outlet.name)}
+                          style={{
+                            flex: 1,
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            border: isLoggedIn ? '1px solid rgba(255,200,50,0.35)' : '1px solid rgba(255,255,255,0.08)',
+                            backgroundColor: isLoggedIn ? 'rgba(255,200,50,0.12)' : 'rgba(255,255,255,0.04)',
+                            color: isLoggedIn ? '#ffc832' : 'var(--ink-faint)',
+                            fontWeight: 700,
+                            fontSize: '12px',
+                            cursor: isLoggedIn ? 'pointer' : 'not-allowed',
+                          }}
+                        >
+                          {kickingId === pid ? '⏳...' : '⏏ Logout'}
+                        </button>
+                        <button
+                          disabled={blockingId === pid}
+                          onClick={() => blockSeller(pid, outlet.name)}
+                          style={{
+                            flex: 1,
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255,60,60,0.35)',
+                            backgroundColor: 'rgba(255,60,60,0.12)',
+                            color: '#ff5555',
+                            fontWeight: 700,
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {blockingId === pid ? '⏳...' : '🚫 Block'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )
               })}
             </div>
           </div>
+
+          {/* ── PENDING APPROVAL REQUESTS ── */}
+          {pendingApprovals.length > 0 && (
+            <div className="card" style={{ marginTop: '24px', border: '1px solid rgba(255,200,50,0.3)' }}>
+              <div className="card-head">
+                <h3>⚠️ Pending Login Approval Requests</h3>
+                <div className="muted-sm">
+                  These blocked sellers tried to log in and are waiting for your approval.
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', marginTop: '16px' }}>
+                {pendingApprovals.map((p: any) => {
+                  const outlet = OUTLET_MAP[p.partnerId] || { name: p.partnerId, emoji: '🏪' }
+                  return (
+                    <div key={p.partnerId} style={{
+                      background: 'rgba(255,200,50,0.06)',
+                      border: '1px solid rgba(255,200,50,0.2)',
+                      borderRadius: '16px',
+                      padding: '20px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '22px' }}>{outlet.emoji}</span>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '14px' }}>{outlet.name}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--ink-faint)', fontFamily: 'monospace' }}>{p.partnerId}</div>
+                          </div>
+                        </div>
+                        <span className="badge badge-amber">⏳ PENDING</span>
+                      </div>
+                      <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: 'var(--ink-faint)' }}>Request Time</span>
+                          <span>{p.pendingApprovalAt ? new Date(p.pendingApprovalAt).toLocaleString() : '—'}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: 'var(--ink-faint)' }}>From IP</span>
+                          <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>{p.pendingApprovalIp || '—'}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: 'var(--ink-faint)' }}>Device</span>
+                          <span>{p.pendingApprovalDevice || '—'}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                        <button
+                          onClick={() => unblockSeller(p.partnerId, outlet.name)}
+                          style={{
+                            flex: 1,
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(100,220,150,0.35)',
+                            backgroundColor: 'rgba(100,220,150,0.12)',
+                            color: '#64dc96',
+                            fontWeight: 700,
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ✅ Approve
+                        </button>
+                        <button
+                          onClick={() => alert(`${p.partnerId} remains blocked.`)}
+                          style={{
+                            flex: 1,
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255,60,60,0.35)',
+                            backgroundColor: 'rgba(255,60,60,0.12)',
+                            color: '#ff5555',
+                            fontWeight: 700,
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ❌ Deny
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Partner Device Locks Card */}
           <div className="card" style={{ marginTop: '24px' }}>

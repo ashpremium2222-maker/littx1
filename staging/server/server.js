@@ -1226,7 +1226,7 @@ app.delete('/api/master/sessions/:userId', async (req, res) => {
         await db.deleteUserSession(userId);
         await db.deleteUserSession(`partner:${userId}`).catch(() => {});
         const plainId = userId.replace('partner:', '').toLowerCase();
-        await db.savePartnerLock(plainId, { kicked: true, activeToken: null, lastSeenAt: null }).catch(() => {});
+        await db.savePartnerLock(plainId, { kicked: true, activeToken: null }).catch(() => {});
         await db.deleteUserSession(plainId).catch(() => {});
         await db.deleteSellerSession(plainId.toUpperCase()).catch(() => {});
 
@@ -1241,6 +1241,86 @@ app.delete('/api/master/sessions/:userId', async (req, res) => {
         }).catch(() => {});
         console.log(`[Master Admin] Force-cleared session for ${userId}`);
         res.json({ success: true, message: `${userId} session cleared. They can now log in from any device.` });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/master/block-partner — Admin permanently blocks a seller from logging in
+app.post('/api/master/block-partner', async (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.headers['x-admin-key'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026') && masterToken !== 'dash-2026') {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const { partnerId } = req.body || {};
+    if (!partnerId) return res.status(400).json({ success: false, message: 'Partner ID required.' });
+
+    try {
+        // Block the partner + force logout
+        await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
+        await db.deleteUserSession(partnerId).catch(() => {});
+        await db.deleteSellerSession(partnerId.toUpperCase()).catch(() => {});
+        await db.savePartnerLock(partnerId, {
+            blocked: true,
+            kicked: true,
+            activeToken: null,
+            pendingApproval: false,
+            pendingApprovalAt: null,
+            pendingApprovalIp: null,
+            pendingApprovalDevice: null
+        });
+        await db.createAuditLog({
+            adminUser: 'master_admin', companyId: 'all', category: 'AUTH',
+            fieldChanged: 'BLOCK_PARTNER', previousValue: partnerId, newValue: 'blocked',
+            reason: `Admin blocked seller ${partnerId} from logging in`
+        }).catch(() => {});
+        console.log(`🚫 [Master Admin] Blocked seller ${partnerId}`);
+        res.json({ success: true, message: `${partnerId} has been BLOCKED. They cannot log in until you approve.` });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/master/unblock-partner — Admin approves a blocked seller to log in again
+app.post('/api/master/unblock-partner', async (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.headers['x-admin-key'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026') && masterToken !== 'dash-2026') {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const { partnerId } = req.body || {};
+    if (!partnerId) return res.status(400).json({ success: false, message: 'Partner ID required.' });
+
+    try {
+        await db.savePartnerLock(partnerId, {
+            blocked: false,
+            kicked: false,
+            pendingApproval: false,
+            pendingApprovalAt: null,
+            pendingApprovalIp: null,
+            pendingApprovalDevice: null
+        });
+        await db.createAuditLog({
+            adminUser: 'master_admin', companyId: 'all', category: 'AUTH',
+            fieldChanged: 'UNBLOCK_PARTNER', previousValue: 'blocked', newValue: partnerId,
+            reason: `Admin unblocked/approved seller ${partnerId}`
+        }).catch(() => {});
+        console.log(`✅ [Master Admin] Unblocked/approved seller ${partnerId}`);
+        res.json({ success: true, message: `${partnerId} has been UNBLOCKED. They can now log in.` });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/master/pending-approvals — Get all sellers waiting for admin approval
+app.get('/api/master/pending-approvals', async (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.headers['x-admin-key'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026') && masterToken !== 'dash-2026') {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    try {
+        const locks = await db.getAllPartnerLocks();
+        const pending = locks.filter(l => l.pendingApproval === true);
+        res.json({ success: true, pending });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -1287,6 +1367,28 @@ app.post('/api/seller/login-step1', async (req, res) => {
         if (partner.password !== password && password !== 'dash-2026' && password !== 'littx-master-2026') {
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-password-incorrect' });
             return res.status(401).json({ success: false, message: `Invalid password for ${partner.name}.` });
+        }
+
+        // 2. Check if partner is BLOCKED by admin
+        if (partner.blocked === true) {
+            // Raise a pending approval request for admin
+            await db.savePartnerLock(partnerId, {
+                pendingApproval: true,
+                pendingApprovalAt: now,
+                pendingApprovalIp: requestIp,
+                pendingApprovalDevice: parseDeviceName(userAgent)
+            });
+            await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'blocked-pending-approval' });
+            console.log(`🚫 [Seller] ${partnerId} is BLOCKED — login attempt raised pending approval.`);
+            return res.status(403).json({
+                success: false,
+                blocked: true,
+                message: 'Your account has been blocked by admin. A login approval request has been sent. Please wait for admin to approve your access.'
+            });
+        }
+
+        if (partner.kicked === true) {
+            await db.savePartnerLock(partnerId, { kicked: false });
         }
 
         const rpID = getRPID(req);
@@ -1462,15 +1564,7 @@ app.post('/api/seller/login-step2', async (req, res) => {
                 });
             }
 
-            // Also check IP lock if boundIp is present
-            if (partner.boundIp && partner.boundIp !== requestIp) {
-                await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-ip-mismatch' });
-                return res.status(403).json({
-                    success: false,
-                    accessDenied: true,
-                    message: 'ACCESS DENIED: Account is bound to a different registered device network.'
-                });
-            }
+            // IP lock removed — hardware WebAuthn passkey is the ONLY device lock
 
             const newCounter = verification.authenticationInfo?.newCounter || 0;
             await db.savePartnerLock(partnerId, { webauthnCounter: newCounter, lastSeenAt: now, kicked: false, activeToken: token });
@@ -1533,11 +1627,22 @@ app.get('/api/seller/verify-session', async (req, res) => {
         }
 
         // ONLY LOG OUT IF ADMIN EXPLICITLY KICKED
+        // Check if BLOCKED (permanent ban until admin approves)
+        if (partner.blocked === true) {
+            return res.status(401).json({
+                success: false,
+                kickedByAdmin: true,
+                blocked: true,
+                message: 'Your account has been blocked by admin.'
+            });
+        }
+
+        // Check if kicked (session cleared, can re-login)
         if (partner.kicked === true) {
             return res.status(401).json({
                 success: false,
                 kickedByAdmin: true,
-                message: 'Kicked by admin.'
+                message: 'Session ended by admin.'
             });
         }
 

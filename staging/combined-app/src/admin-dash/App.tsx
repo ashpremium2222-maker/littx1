@@ -285,10 +285,17 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_male') || '699')
   const [manualEvent, setManualEvent] = useState('FRESHERS TAKEOVER')
 
-  const fetchSales = async () => {
+  const fetchSales = async (overrideKey?: string) => {
     try {
+      const activeKey = overrideKey || adminKey
       const res = await fetch(
-        `/api/admin/sales?${isPresentation ? 'pres=true' : ''}`
+        `/api/admin/sales?${isPresentation ? 'pres=true' : ''}`,
+        {
+          headers: {
+            'x-admin-key': activeKey || '',
+            'x-auth-token': activeKey || ''
+          }
+        }
       )
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.success) {

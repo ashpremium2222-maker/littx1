@@ -206,6 +206,16 @@ const PartnerLockSchema = new mongoose.Schema({
     sessionVersion: { type: Number, default: 1 },
     lastSeenAt: { type: String, default: null },
 
+    // Admin Block & Approval
+    blocked: { type: Boolean, default: false },
+    pendingApproval: { type: Boolean, default: false },
+    pendingApprovalAt: { type: String, default: null },
+    pendingApprovalIp: { type: String, default: null },
+    pendingApprovalDevice: { type: String, default: null },
+    kicked: { type: Boolean, default: false },
+    activeToken: { type: String, default: null },
+    deviceName: { type: String, default: null },
+
     // Temporary Challenge
     currentChallenge: { type: String, default: null },
 

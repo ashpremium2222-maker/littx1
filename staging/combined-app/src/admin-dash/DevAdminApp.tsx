@@ -299,9 +299,9 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [manualPartner, setManualPartner] = useState('littlane')
   const [manualPartnerPassword, setManualPartnerPassword] = useState('')
 
-  const fetchSales = async () => {
+  const fetchSales = async (overrideKey?: string) => {
     try {
-      const token = sessionStorage.getItem('littx_token') || ''
+      const token = overrideKey || sessionStorage.getItem('littx_token') || ''
       const res = await fetch(
         `/api/admin/sales?${isPresentation ? 'pres=true' : ''}`,
         { headers: { 'x-auth-token': token } }

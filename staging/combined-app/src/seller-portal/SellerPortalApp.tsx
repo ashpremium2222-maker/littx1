@@ -201,7 +201,11 @@ export default function SellerPortalApp() {
       const step1Data = await step1Res.json()
 
       if (!step1Res.ok || !step1Data.success) {
-        setLoginError(step1Data.message || 'Password authentication failed.')
+        if (step1Data.blocked) {
+          setLoginError('🚫 ACCOUNT BLOCKED: Your account has been blocked by admin. A login approval request has been sent automatically. Please wait for admin to approve your access before trying again.')
+        } else {
+          setLoginError(step1Data.message || 'Password authentication failed.')
+        }
         setLoginLoading(false)
         return
       }
