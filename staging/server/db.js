@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 
 // We fall back to a local mongodb URI if none is set in env
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/littx';
@@ -7,6 +9,7 @@ mongoose.connect(MONGODB_URI)
   .then(async () => {
       console.log('✅ Connected to MongoDB');
       await seedDefaultUsers();
+      await seedDefaultEvents();
   })
   .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
@@ -341,84 +344,81 @@ async function seedDefaultPartnerLocks() {
 
 async function seedDefaultEvents() {
     try {
-        const count = await Event.countDocuments();
-        if (count > 0) return;
-
-        console.log('🌱 Seeding multi-tenant events across companies...');
+        console.log('🌱 Ensuring canonical events exist in MongoDB...');
         const now = new Date().toISOString();
+
+        // These exactly match the _mockEvents hardcoded below.
+        // Using upsert-per-event so this is fully idempotent — safe to run on every startup.
+        // If an event with that id/name already exists, it won't be overwritten.
         const defaultEvents = [
             {
-                name: 'Freshers Takeover 2026',
+                id: 'event_freshers',
+                name: 'FRESHERS TAKEOVER',
                 companyId: 'littlane',
-                date: '2026-09-15',
-                time: '07:00 PM',
+                date: '2026-09-15', time: '07:00 PM',
                 venue: 'The Orchid, Pune',
-                stage: 'Main Arena',
-                description: 'The biggest freshers party of the year!',
-                archived: false,
-                ticketTypes: [
-                    { name: 'Male Pass', price: 699, gender: 'male' },
-                    { name: 'Female Pass', price: 599, gender: 'female' }
+                tagline: 'Pune College Fest · Main Event',
+                gradient: 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',
+                icon: '🎉', active: true, isVip: false, archived: false,
+                tiers: [
+                    { id: 't_female', name: 'Female Pass', price: 599, gender: 'female' },
+                    { id: 't_male',   name: 'Male Pass',   price: 699, gender: 'male'   },
+                    { id: 't_vip',    name: 'VIP Entry',   price: 1299, gender: 'unisex' }
                 ],
-                overrides: { razorpayEnabled: null, manualPaymentEnabled: null, prSalesEnabled: null },
                 createdAt: now
             },
             {
-                name: 'Aura Genesis Fest',
+                id: 'event_aura',
+                name: 'AURA GENESIS',
                 companyId: 'littlane',
-                date: '2026-10-20',
-                time: '06:30 PM',
+                date: '2026-10-20', time: '06:30 PM',
                 venue: 'JW Marriott Ground',
-                stage: 'EDM Stage',
-                description: 'Annual cultural extravaganza',
-                archived: false,
-                ticketTypes: [
-                    { name: 'General Entry', price: 499, gender: 'unisex' },
-                    { name: 'VIP Pass', price: 999, gender: 'unisex' }
+                tagline: 'Skyline Electronic Showcase',
+                gradient: 'linear-gradient(135deg, #38D9C4 0%, #3B82F6 100%)',
+                icon: '✨', active: true, isVip: false, archived: false,
+                tiers: [
+                    { id: 't_general',  name: 'General Entry', price: 350, gender: 'unisex' },
+                    { id: 't_vip_aura', name: 'VIP Entry',     price: 799, gender: 'unisex' }
                 ],
-                overrides: { razorpayEnabled: null, manualPaymentEnabled: null, prSalesEnabled: null },
                 createdAt: now
             },
             {
-                name: 'Nexora Summer Rave',
-                companyId: 'nexora',
-                date: '2026-08-30',
-                time: '08:00 PM',
-                venue: 'Sunburn Arena',
-                stage: 'Open Air',
-                description: 'Electronic music festival by Nexora Events',
-                archived: false,
-                ticketTypes: [
-                    { name: 'Early Bird', price: 899, gender: 'unisex' },
-                    { name: 'VIP Access', price: 1500, gender: 'unisex' }
+                id: 'event_vip',
+                name: 'FT LINEUP INVITE',
+                companyId: 'littlane',
+                date: '2026-09-15', time: '08:00 PM',
+                venue: 'Main Arena VIP Lounge',
+                tagline: 'Exclusive VIP Access · Invite Only',
+                gradient: 'linear-gradient(135deg, #F5C542 0%, #F5854D 100%)',
+                icon: '⭐', active: true, isVip: true, archived: false,
+                tiers: [
+                    { id: 't_vip_invite', name: 'VIP Access Pass', price: 0, gender: 'unisex' }
                 ],
-                overrides: { razorpayEnabled: true, manualPaymentEnabled: false, prSalesEnabled: true },
-                createdAt: now
-            },
-            {
-                name: 'Urban Night Bash',
-                companyId: 'urban-nights',
-                date: '2026-09-05',
-                time: '09:00 PM',
-                venue: 'High Spirits Club',
-                stage: 'Club Indoor',
-                description: 'Exclusive club night by Urban Nights',
-                archived: false,
-                ticketTypes: [
-                    { name: 'Couple Pass', price: 1200, gender: 'unisex' },
-                    { name: 'Stag Male', price: 800, gender: 'male' }
-                ],
-                overrides: { razorpayEnabled: false, manualPaymentEnabled: true, prSalesEnabled: false },
                 createdAt: now
             }
         ];
 
-        await Event.insertMany(defaultEvents);
-        console.log('✅ Multi-tenant events seeded successfully.');
+        let seeded = 0;
+        for (const evt of defaultEvents) {
+            // Only insert if this exact event (by id) does not exist yet — never overwrite admin changes
+            const exists = await Event.findOne({ $or: [{ id: evt.id }, { name: evt.name }] });
+            if (!exists) {
+                await Event.create(evt);
+                seeded++;
+                console.log(`  ✅ Seeded: ${evt.name}`);
+            }
+        }
+        if (seeded === 0) {
+            console.log('ℹ️  All canonical events already present in MongoDB.');
+        } else {
+            console.log(`✅ Seeded ${seeded} default event(s) into MongoDB.`);
+        }
     } catch (err) {
         console.error('❌ Failed to seed default events:', err.message);
     }
 }
+
+
 
 // ==================== SALE HELPERS ====================
 
@@ -800,6 +800,31 @@ function useMock() {
 }
 
 // In-memory fallback for local dev (when MongoDB is not available)
+
+// ── Mock-mode deleted events persistence ─────────────────────────────────────
+// When MongoDB is offline, deletions are stored in this file so they survive
+// server restarts. On startup we filter _mockEvents to exclude deleted entries.
+const MOCK_DELETED_FILE = path.join(__dirname, 'mock_deleted_events.json');
+
+function _loadMockDeleted() {
+    try {
+        if (fs.existsSync(MOCK_DELETED_FILE)) {
+            const raw = fs.readFileSync(MOCK_DELETED_FILE, 'utf8');
+            return new Set(JSON.parse(raw));
+        }
+    } catch (e) { /* ignore */ }
+    return new Set();
+}
+
+function _saveMockDeleted(deletedSet) {
+    try {
+        fs.writeFileSync(MOCK_DELETED_FILE, JSON.stringify([...deletedSet]), 'utf8');
+    } catch (e) { console.error('[mock deleted] Failed to persist:', e.message); }
+}
+
+// IDs/names that have been admin-deleted in mock mode
+const _mockDeletedIds = _loadMockDeleted();
+
 const _mockSessions = new Map();
 const _mockUserSessions = new Map();
 const _mockScanLogs = [];
@@ -1325,19 +1350,24 @@ module.exports = {
 
     // ==================== DYNAMIC EVENT & TIER HELPERS ====================
     getAllEvents: async () => {
-        let events = [];
+        // When MongoDB is connected, it is the ONLY authoritative source.
+        // We NEVER fall back to _mockEvents when connected — otherwise deleted
+        // events would reappear (from the in-memory hardcoded map) whenever
+        // the DB collection happens to be empty after all events are deleted.
         if (!useMock()) {
             try {
                 const raw = await Event.find({}).lean();
-                // Normalize: always expose a string 'id' field (fallback to _id)
-                events = raw.map(e => ({
+                return raw.map(e => ({
                     ...e,
                     id: e.id || (e._id ? e._id.toString() : undefined)
                 }));
-            } catch (e) { console.error('[getAllEvents DB error]', e.message); }
+            } catch (e) {
+                console.error('[getAllEvents DB error]', e.message);
+                // Only fall back to mock on a genuine DB error (not on empty collection)
+            }
         }
-        if (events && events.length > 0) return events;
 
+        // Offline / disconnected fallback only
         const mockList = Array.from(_mockEvents.values());
         const unique = [];
         const seen = new Set();
@@ -1379,20 +1409,33 @@ module.exports = {
     deleteEvent: async (idOrName, nameHint) => {
         if (!idOrName && !nameHint) return false;
 
-        // Clear from in-memory mock (try both id and name)
+        // Clear ALL matching keys from in-memory mock.
+        // Events are stored under TWO keys: their name AND their id.
+        // We must delete both, otherwise the event survives with the second key.
         const searchKeys = [String(idOrName || '').toLowerCase(), String(nameHint || '').toLowerCase()].filter(Boolean);
+        const keysToDelete = [];
         for (const [k, v] of Array.from(_mockEvents.entries())) {
             for (const searchKey of searchKeys) {
                 if (
                     String(k).toLowerCase() === searchKey ||
-                    (v && v.id && String(v.id).toLowerCase() === searchKey) ||
+                    (v && v.id   && String(v.id).toLowerCase()   === searchKey) ||
                     (v && v.name && String(v.name).toLowerCase() === searchKey)
                 ) {
-                    _mockEvents.delete(k);
-                    break;
+                    keysToDelete.push(k);
+                    break; // matched this entry — no need to check other searchKeys for same entry
                 }
             }
         }
+        for (const k of keysToDelete) {
+            _mockEvents.delete(k);
+            // Record in the deleted set so it survives server restarts
+            _mockDeletedIds.add(k.toLowerCase());
+        }
+        // Also record id and name of the deleted event for robust restart filtering
+        if (idOrName) _mockDeletedIds.add(String(idOrName).toLowerCase());
+        if (nameHint) _mockDeletedIds.add(String(nameHint).toLowerCase());
+        if (keysToDelete.length > 0) _saveMockDeleted(_mockDeletedIds);
+        console.log(`[deleteEvent mock] Removed keys: ${JSON.stringify(keysToDelete)}`);
 
         if (!useMock()) {
             try {
@@ -1422,7 +1465,10 @@ module.exports = {
 };
 
 // ==================== IN-MEMORY MOCK EVENTS (fallback) ====================
-const _mockEvents = new Map([
+// NOTE: _mockEvents is only used when MongoDB is unavailable (offline/dev mode).
+// Entries that were admin-deleted are recorded in mock_deleted_events.json and
+// filtered out here on startup so deletions survive server restarts.
+const _mockEventsRaw = new Map([
     ['FRESHERS TAKEOVER', {
         id: 'event_freshers', name: 'FRESHERS TAKEOVER', companyId: 'littlane',
         date: '2026-09-15', time: '07:00 PM', venue: 'The Orchid, Pune',
@@ -1458,3 +1504,16 @@ const _mockEvents = new Map([
     }]
 ]);
 
+// Filter out previously admin-deleted events
+const _mockEvents = new Map();
+for (const [k, v] of _mockEventsRaw) {
+    const isDeleted = _mockDeletedIds.has(k.toLowerCase()) ||
+                     _mockDeletedIds.has((v.id  || '').toLowerCase()) ||
+                     _mockDeletedIds.has((v.name|| '').toLowerCase());
+    if (!isDeleted) {
+        _mockEvents.set(k, v);
+    }
+}
+if (_mockDeletedIds.size > 0) {
+    console.log(`[mock] Filtered out ${_mockDeletedIds.size} previously deleted event(s).`);
+}
