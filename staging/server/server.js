@@ -1459,8 +1459,8 @@ app.post('/api/seller/login-step1', async (req, res) => {
 
         if (!partner.webauthnCredentialId) {
             // WebAuthn REGISTRATION required (First Device Binding)
-            // Check if admin has approved this registration
-            if (partner.approvedForReg !== true) {
+            // Check if admin has explicitly reset this device, requiring approval to bind a new one
+            if (partner.requireRegApproval === true && partner.approvedForReg !== true) {
                 await db.savePartnerLock(partnerId, {
                     pendingApproval: true,
                     approvalType: 'registration',
@@ -1595,7 +1595,8 @@ app.post('/api/seller/login-step2', async (req, res) => {
                 lastSeenAt: now,
                 kicked: false,
                 activeToken: token,
-                approvedForReg: false
+                approvedForReg: false,
+                requireRegApproval: false
             });
 
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'webauthn-registered-and-bound' });

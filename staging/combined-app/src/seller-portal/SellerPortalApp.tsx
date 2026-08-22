@@ -218,6 +218,8 @@ export default function SellerPortalApp() {
   // Direct login trigger (used by approval poll — bypasses form event)
   const handleLoginDirect = async (overridePartnerId?: string) => {
     const pid = overridePartnerId || selectedPartnerId
+    stopApprovalPoll()
+    setAwaitingApproval(null)
     setLoginError(null)
     setWebauthnStatus(null)
     setLoginLoading(true)
@@ -283,6 +285,8 @@ export default function SellerPortalApp() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    stopApprovalPoll()
+    setAwaitingApproval(null)
     setLoginError(null)
     setWebauthnStatus(null)
     setLoginLoading(true)

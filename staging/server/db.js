@@ -232,6 +232,7 @@ const PartnerLockSchema = new mongoose.Schema({
     pendingApprovalDevice: { type: String, default: null },
     approvalType: { type: String, default: null }, // 'registration' or 'login'
     approvedForReg: { type: Boolean, default: false },
+    requireRegApproval: { type: Boolean, default: false },
     kicked: { type: Boolean, default: false },
     activeToken: { type: String, default: null },
     deviceName: { type: String, default: null },
@@ -1280,7 +1281,9 @@ module.exports = {
                 deviceRegisteredAt: null,
                 registeredDeviceId: null,
                 currentChallenge: null,
-                sessionVersion: (current.sessionVersion || 1) + 1
+                sessionVersion: (current.sessionVersion || 1) + 1,
+                requireRegApproval: true,
+                approvedForReg: false
             };
             _mockPartnerLocks.set(partnerId, updated);
             return updated;
@@ -1300,7 +1303,9 @@ module.exports = {
                     deviceRegisteredAt: null,
                     registeredDeviceId: null,
                     currentChallenge: null,
-                    sessionVersion: newVersion
+                    sessionVersion: newVersion,
+                    requireRegApproval: true,
+                    approvedForReg: false
                 }
             },
             { new: true, lean: true }
