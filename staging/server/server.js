@@ -480,9 +480,11 @@ app.post('/api/admin/events', requireAdmin, async (req, res) => {
 app.delete('/api/admin/events/:id', requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        if (!id) return res.status(400).json({ success: false, message: 'Event ID required.' });
-        await db.deleteEvent(id);
-        res.json({ success: true, message: `Event ${id} deleted.` });
+        const name = req.query.name; // frontend sends ?name= as a fallback
+        if (!id && !name) return res.status(400).json({ success: false, message: 'Event ID or name required.' });
+        // Pass both id and name — deleteEvent will try _id, custom id field, and name
+        await db.deleteEvent(id, name);
+        res.json({ success: true, message: `Event deleted.` });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -1407,7 +1409,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 }
             });
 
-            await db.savePartnerLock(partnerId, { currentChallenge: options.challenge });
+            await db.savePartnerLock(partnerId, { currentChallenge: options.challenge, _lastChallenge: options.challenge });
 
             return res.json({
                 success: true,
@@ -1426,7 +1428,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 userVerification: 'preferred'
             });
 
-            await db.savePartnerLock(partnerId, { currentChallenge: options.challenge });
+            await db.savePartnerLock(partnerId, { currentChallenge: options.challenge, _lastChallenge: options.challenge });
 
             return res.json({
                 success: true,
@@ -1474,12 +1476,9 @@ app.post('/api/seller/login-step2', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid or expired WebAuthn challenge session.' });
         }
 
-        const expectedChallenge = partner.currentChallenge;
+        const expectedChallenge = partner.currentChallenge || partner._lastChallenge;
         const expectedOrigin = getOrigin(req);
         const expectedRPID = getRPID(req);
-
-        // Clear challenge immediately to prevent replay
-        await db.savePartnerLock(partnerId, { currentChallenge: null });
 
         if (!partner.webauthnCredentialId) {
             // VERIFY REGISTRATION (Bind first device)
@@ -1501,6 +1500,8 @@ app.post('/api/seller/login-step2', async (req, res) => {
             const newDeviceId = 'DEV-' + crypto.randomBytes(8).toString('hex').toUpperCase();
             const deviceName = parseDeviceName(userAgent);
 
+            const token = generateToken();
+
             await db.savePartnerLock(partnerId, {
                 webauthnCredentialId: newCredentialId,
                 webauthnPublicKey: newPublicKey,
@@ -1519,7 +1520,6 @@ app.post('/api/seller/login-step2', async (req, res) => {
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'webauthn-registered-and-bound' });
             console.log(`🔐 [WebAuthn Device Registered & Bound] ${partner.name} bound to Credential ID: ${newCredentialId}`);
 
-            const token = generateToken();
             await db.setUserSession(`partner:${partnerId}`, {
                 token,
                 role: 'seller_partner',
@@ -1567,10 +1567,10 @@ app.post('/api/seller/login-step2', async (req, res) => {
             // IP lock removed — hardware WebAuthn passkey is the ONLY device lock
 
             const newCounter = verification.authenticationInfo?.newCounter || 0;
+            const token = generateToken();
             await db.savePartnerLock(partnerId, { webauthnCounter: newCounter, lastSeenAt: now, kicked: false, activeToken: token });
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'success' });
 
-            const token = generateToken();
             await db.setUserSession(`partner:${partnerId}`, {
                 token,
                 role: 'seller_partner',
@@ -1646,10 +1646,19 @@ app.get('/api/seller/verify-session', async (req, res) => {
             });
         }
 
+        // Single-device active token enforcement: if token doesn't match active token, kick/logout device
+        if (partner.activeToken && token && session && session.token !== partner.activeToken) {
+            return res.status(401).json({
+                success: false,
+                kickedByAdmin: true,
+                message: 'Logged out: account accessed from another device.'
+            });
+        }
+
         let activeToken = token;
         if (!session || session.token !== token) {
             const existing = await db.getUserSession(`partner:${partnerId}`) || await db.getUserSession(partnerId);
-            if (existing && existing.token) {
+            if (existing && existing.token && partner.activeToken && existing.token === partner.activeToken) {
                 activeToken = existing.token;
             } else {
                 activeToken = partner.activeToken || generateToken();
@@ -1781,7 +1790,7 @@ app.post('/api/master/reset-partner-lock', async (req, res) => {
 
         // FULL RESET — wipes WebAuthn credential + session (allows any device to re-register)
         const updated = await db.resetPartnerLock(partnerId);
-        await db.savePartnerLock(partnerId, { kicked: true, activeToken: null, lastSeenAt: null });
+        await db.savePartnerLock(partnerId, { kicked: false, activeToken: null, lastSeenAt: null });
         await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
         await db.deleteUserSession(partnerId).catch(() => {});
         await db.deleteSellerSession(partnerId.toUpperCase()).catch(() => {});

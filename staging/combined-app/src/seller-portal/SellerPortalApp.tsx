@@ -434,7 +434,6 @@ export default function SellerPortalApp() {
             {authenticatedPartner.name}
           </div>
 
-          {/* Read-only Device & Passkey Lock Indicator */}
           {authenticatedPartner.webauthnCredentialId && (
             <div className="hidden sm:flex text-[11px] text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg items-center gap-1.5">
               <span>🔐 WebAuthn Bound</span>

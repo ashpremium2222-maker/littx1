@@ -74,7 +74,8 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0D0D0D 0%, #1a0a2e 100%)',
+      background: '#09090b',
+      color: '#fff',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -139,31 +140,29 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
                     color: selected === id ? '#A855F7' : '#888',
                     fontSize: 12,
                     fontWeight: 700,
-                    letterSpacing: '0.5px',
                     cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    boxShadow: selected === id ? '0 0 20px rgba(168,85,247,0.2)' : 'none',
+                    outline: 'none',
+                    letterSpacing: '0.5px',
                   }}
                 >
-                  {id.replace('SELLER-', 'S-')}
+                  {id}
                 </motion.button>
               ))}
             </div>
           </div>
 
-          {/* Password */}
           <div>
             <label style={{ fontSize: 11, color: '#9a9a9a', letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 8 }}>
               Password
             </label>
             <input
               type="password"
+              placeholder="Enter gate staff password"
               value={password}
               onChange={e => { setPassword(e.target.value); setError('') }}
-              placeholder="Enter access code"
               style={{
                 width: '100%',
-                background: '#0D0D0D',
+                background: '#111',
                 border: '1px solid #2A2A2A',
                 borderRadius: 14,
                 color: '#fff',

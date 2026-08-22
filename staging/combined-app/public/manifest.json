@@ -1,25 +1,35 @@
 {
+  "id": "in.littx.seller",
   "short_name": "LITTX Seller",
   "name": "LITTX Seller Portal",
   "description": "LITTX Partner & Seller Portal for Fast Ticket Issuance & Device Lock Security",
   "icons": [
     {
-      "src": "/pwa-192.png",
+      "src": "/logo.png",
       "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/pwa-512.png",
-      "type": "image/png",
-      "sizes": "512x512",
+      "sizes": "192x192 512x512",
       "purpose": "any maskable"
     }
   ],
+  "screenshots": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Seller Portal Dashboard"
+    }
+  ],
+  "categories": ["business", "finance", "productivity"],
   "start_url": "/seller",
-  "background_color": "#020617",
-  "theme_color": "#6D28D9",
+  "scope": "/seller",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
-  "scope": "/"
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  }
 }
