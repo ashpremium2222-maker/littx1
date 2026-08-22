@@ -482,13 +482,17 @@ app.delete('/api/admin/events/:id', requireAdmin, async (req, res) => {
         const { id } = req.params;
         const name = req.query.name; // frontend sends ?name= as a fallback
         if (!id && !name) return res.status(400).json({ success: false, message: 'Event ID or name required.' });
+        console.log(`[DELETE Event] id="${id}" name="${name}"`);
         // Pass both id and name — deleteEvent will try _id, custom id field, and name
         await db.deleteEvent(id, name);
+        console.log(`[DELETE Event] ✅ Deleted id="${id}" name="${name}"`);
         res.json({ success: true, message: `Event deleted.` });
     } catch (err) {
+        console.error(`[DELETE Event] ❌ Error:`, err.message);
         res.status(500).json({ success: false, message: err.message });
     }
 });
+
 
 // ==================== PRESENTATION CONFIG ====================
 app.post('/api/admin/toggle-presentation', requireAdmin, async (req, res) => {
