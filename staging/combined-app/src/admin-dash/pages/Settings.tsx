@@ -408,8 +408,8 @@ export default function Settings({ adminKey }: SettingsProps) {
                     s.sellerId?.toLowerCase() === p
                   )
                 })
-                const isLoggedIn = !!activeSession
-                const onlineDurationMs = isLoggedIn && activeSession?.loginAt ? Date.now() - new Date(activeSession.loginAt).getTime() : 0
+                const isLoggedIn = !!(lock?.activeToken && !lock?.kicked && !lock?.blocked)
+                const onlineDurationMs = isLoggedIn && (activeSession?.loginAt || lock?.lastSeenAt) ? Date.now() - new Date(activeSession?.loginAt || lock?.lastSeenAt).getTime() : 0
                 const hasDevice = !!(lock?.webauthnCredentialId)
 
                 return (
