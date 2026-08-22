@@ -1262,12 +1262,14 @@ app.post('/api/master/block-partner', async (req, res) => {
     if (!partnerId) return res.status(400).json({ success: false, message: 'Partner ID required.' });
 
     try {
+        const now = new Date().toISOString();
         // Block the partner + force logout
         await db.deleteUserSession(`partner:${partnerId}`).catch(() => {});
         await db.deleteUserSession(partnerId).catch(() => {});
         await db.deleteSellerSession(partnerId.toUpperCase()).catch(() => {});
         await db.savePartnerLock(partnerId, {
             blocked: true,
+            blockedAt: now,
             kicked: true,
             activeToken: null,
             pendingApproval: false,
@@ -1297,21 +1299,56 @@ app.post('/api/master/unblock-partner', async (req, res) => {
     if (!partnerId) return res.status(400).json({ success: false, message: 'Partner ID required.' });
 
     try {
-        await db.savePartnerLock(partnerId, {
-            blocked: false,
-            kicked: false,
+        const partner = await db.getPartnerLock(partnerId);
+        const updates = {
             pendingApproval: false,
+            approvalType: null,
             pendingApprovalAt: null,
             pendingApprovalIp: null,
             pendingApprovalDevice: null
-        });
+        };
+
+        if (partner && partner.approvalType === 'registration') {
+            updates.approvedForReg = true;
+            updates.blocked = false;
+            updates.blockedAt = null;
+        } else {
+            updates.blocked = false;
+            updates.blockedAt = null;
+            updates.kicked = false;
+        }
+
+        await db.savePartnerLock(partnerId, updates);
         await db.createAuditLog({
             adminUser: 'master_admin', companyId: 'all', category: 'AUTH',
-            fieldChanged: 'UNBLOCK_PARTNER', previousValue: 'blocked', newValue: partnerId,
-            reason: `Admin unblocked/approved seller ${partnerId}`
+            fieldChanged: 'UNBLOCK_PARTNER', previousValue: partner?.approvalType || 'blocked', newValue: partnerId,
+            reason: `Admin approved request for seller ${partnerId}`
         }).catch(() => {});
-        console.log(`✅ [Master Admin] Unblocked/approved seller ${partnerId}`);
-        res.json({ success: true, message: `${partnerId} has been UNBLOCKED. They can now log in.` });
+        console.log(`✅ [Master Admin] Approved request for seller ${partnerId}`);
+        res.json({ success: true, message: `Request approved for ${partnerId} successfully.` });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/master/change-partner-password — Admin changes password for a seller
+app.post('/api/master/change-partner-password', async (req, res) => {
+    const masterToken = req.headers['x-master-token'] || req.headers['x-admin-key'] || req.query.masterToken;
+    if (masterToken !== (process.env.MASTER_TOKEN || 'littx-master-2026') && masterToken !== 'dash-2026') {
+        return res.status(401).json({ success: false, message: 'Not authorized.' });
+    }
+    const { partnerId, newPassword } = req.body || {};
+    if (!partnerId || !newPassword) return res.status(400).json({ success: false, message: 'Partner ID and new password are required.' });
+
+    try {
+        await db.savePartnerLock(partnerId, { password: newPassword });
+        await db.createAuditLog({
+            adminUser: 'master_admin', companyId: 'all', category: 'AUTH',
+            fieldChanged: 'CHANGE_PASSWORD', previousValue: partnerId, newValue: 'updated',
+            reason: `Admin changed password for seller ${partnerId}`
+        }).catch(() => {});
+        console.log(`🔑 [Master Admin] Changed password for seller ${partnerId}`);
+        res.json({ success: true, message: `Password for ${partnerId} changed successfully.` });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -1329,6 +1366,30 @@ app.get('/api/master/pending-approvals', async (req, res) => {
         res.json({ success: true, pending });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/seller/approval-status — Lightweight poll: is this partner approved/unblocked yet?
+// Used by seller portal to detect real-time approval without manual retry
+app.get('/api/seller/approval-status', async (req, res) => {
+    const { partnerId } = req.query;
+    if (!partnerId) return res.status(400).json({ approved: false });
+    try {
+        const partner = await db.getPartnerLock(String(partnerId).toLowerCase());
+        if (!partner) {
+            // No lock record = no block, they can proceed
+            return res.json({ approved: true, reason: 'no-lock' });
+        }
+        if (partner.blocked === true) {
+            return res.json({ approved: false, reason: 'blocked', pendingApproval: partner.pendingApproval || false });
+        }
+        if (!partner.webauthnCredentialId && partner.approvedForReg !== true) {
+            return res.json({ approved: false, reason: 'registration-pending', pendingApproval: partner.pendingApproval || false });
+        }
+        // All clear — approved for login/registration
+        return res.json({ approved: true, reason: 'clear' });
+    } catch (err) {
+        res.json({ approved: false, reason: 'error' });
     }
 });
 
@@ -1380,6 +1441,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
             // Raise a pending approval request for admin
             await db.savePartnerLock(partnerId, {
                 pendingApproval: true,
+                approvalType: 'login',
                 pendingApprovalAt: now,
                 pendingApprovalIp: requestIp,
                 pendingApprovalDevice: parseDeviceName(userAgent)
@@ -1401,6 +1463,24 @@ app.post('/api/seller/login-step1', async (req, res) => {
 
         if (!partner.webauthnCredentialId) {
             // WebAuthn REGISTRATION required (First Device Binding)
+            // Check if admin has approved this registration
+            if (partner.approvedForReg !== true) {
+                await db.savePartnerLock(partnerId, {
+                    pendingApproval: true,
+                    approvalType: 'registration',
+                    pendingApprovalAt: now,
+                    pendingApprovalIp: requestIp,
+                    pendingApprovalDevice: parseDeviceName(userAgent)
+                });
+                await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'registration-pending-approval' });
+                console.log(`🔑 [Seller] ${partnerId} new device registration — raised pending approval.`);
+                return res.status(403).json({
+                    success: false,
+                    registrationPending: true,
+                    message: 'New device registration request has been sent to admin. Please wait for admin to approve this device before completing registration.'
+                });
+            }
+
             const options = await generateRegistrationOptions({
                 rpName: RP_NAME,
                 rpID,
@@ -1518,7 +1598,8 @@ app.post('/api/seller/login-step2', async (req, res) => {
                 boundAt: now,
                 lastSeenAt: now,
                 kicked: false,
-                activeToken: token
+                activeToken: token,
+                approvedForReg: false
             });
 
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'webauthn-registered-and-bound' });
