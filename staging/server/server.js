@@ -1609,8 +1609,8 @@ app.post('/api/seller/login-step2', async (req, res) => {
             await db.setUserSession(`partner:${partnerId}`, {
                 token,
                 role: 'seller_partner',
-                partnerId: partner.partnerId,
-                sessionVersion: partner.sessionVersion || 1,
+                displayName: partner.name || partnerId,
+                companyId: partnerId,
                 loginAt: now,
                 ip: requestIp
             });
@@ -1660,8 +1660,8 @@ app.post('/api/seller/login-step2', async (req, res) => {
             await db.setUserSession(`partner:${partnerId}`, {
                 token,
                 role: 'seller_partner',
-                partnerId: partner.partnerId,
-                sessionVersion: partner.sessionVersion || 1,
+                displayName: partner.name || partnerId,
+                companyId: partnerId,
                 loginAt: now,
                 ip: requestIp
             });
@@ -1752,8 +1752,8 @@ app.get('/api/seller/verify-session', async (req, res) => {
                 await db.setUserSession(`partner:${partnerId}`, {
                     token: activeToken,
                     role: 'seller_partner',
-                    partnerId,
-                    sessionVersion: partner.sessionVersion || 1,
+                    displayName: partner.name || partnerId,
+                    companyId: partnerId,
                     loginAt: now,
                     ip: getIp(req)
                 });

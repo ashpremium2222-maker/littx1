@@ -217,7 +217,16 @@ export default function SellerPortalApp() {
 
   // Direct login trigger (used by approval poll — bypasses form event)
   const handleLoginDirect = async (overridePartnerId?: string) => {
-    const pid = overridePartnerId || selectedPartnerId
+    await performLoginFlow(overridePartnerId || selectedPartnerId)
+  }
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await performLoginFlow(selectedPartnerId)
+  }
+
+  // Unified login flow logic to prevent race conditions & double-calling errors
+  const performLoginFlow = async (pid: string) => {
     stopApprovalPoll()
     setAwaitingApproval(null)
     setLoginError(null)
@@ -241,12 +250,14 @@ export default function SellerPortalApp() {
         setLoginLoading(false)
         return
       }
+
       let webauthnResponse: any = null
       if (step1Data.isRegistration) {
         setWebauthnStatus('🔑 Registering Hardware Device Passkey... Touch TouchID / FaceID / YubiKey')
         try {
           webauthnResponse = await startRegistration({ optionsJSON: step1Data.options })
         } catch (err: any) {
+          console.error('WebAuthn Registration Error:', err)
           setLoginError(`Device Binding Failed: ${err.message || 'User cancelled or device unsupported'}`)
           setLoginLoading(false); setWebauthnStatus(null); return
         }
@@ -255,10 +266,12 @@ export default function SellerPortalApp() {
         try {
           webauthnResponse = await startAuthentication({ optionsJSON: step1Data.options })
         } catch (err: any) {
+          console.error('WebAuthn Authentication Error:', err)
           setLoginError('ACCESS DENIED: WebAuthn Device Credential Mismatch. This device is not the registered passkey hardware.')
           setLoginLoading(false); setWebauthnStatus(null); return
         }
       }
+
       setWebauthnStatus('🛡️ Verifying Cryptographic Proof on Server...')
       const step2Res = await fetch('/api/seller/login-step2', {
         method: 'POST',
@@ -266,91 +279,6 @@ export default function SellerPortalApp() {
         body: JSON.stringify({ partnerId: pid, response: webauthnResponse })
       })
       const step2Data = await step2Res.json()
-      if (step2Res.ok && step2Data.success) {
-        setAuthenticatedPartner(step2Data.partner)
-        setToken(step2Data.token)
-        localStorage.setItem('littx_seller_token', step2Data.token)
-        localStorage.setItem('littx_seller_partner', JSON.stringify(step2Data.partner))
-        setPasswordInput('')
-      } else {
-        setLoginError(step2Data.message || 'ACCESS DENIED: WebAuthn device verification failed.')
-      }
-    } catch {
-      setLoginError('Network error connecting to authentication server.')
-    } finally {
-      setLoginLoading(false)
-      setWebauthnStatus(null)
-    }
-  }
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    stopApprovalPoll()
-    setAwaitingApproval(null)
-    setLoginError(null)
-    setWebauthnStatus(null)
-    setLoginLoading(true)
-
-    try {
-      // Step 1: Validate Password & Get WebAuthn Options
-      const step1Res = await fetch('/api/seller/login-step1', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partnerId: selectedPartnerId, password: passwordInput })
-      })
-
-      const step1Data = await step1Res.json()
-
-      if (!step1Res.ok || !step1Data.success) {
-        if (step1Data.blocked) {
-          startApprovalPoll(selectedPartnerId, 'blocked')
-        } else if (step1Data.registrationPending) {
-          startApprovalPoll(selectedPartnerId, 'registration')
-        } else {
-          setLoginError(step1Data.message || 'Password authentication failed.')
-        }
-        setLoginLoading(false)
-        return
-      }
-
-      let webauthnResponse: any = null
-
-      if (step1Data.isRegistration) {
-        // FIRST LOGIN: Bind device WebAuthn Passkey
-        setWebauthnStatus('🔑 Registering Hardware Device Passkey... Touch TouchID / FaceID / YubiKey')
-        try {
-          webauthnResponse = await startRegistration({ optionsJSON: step1Data.options })
-        } catch (err: any) {
-          console.error('WebAuthn Registration Error:', err)
-          setLoginError(`Device Binding Failed: ${err.message || 'User cancelled or device unsupported'}`)
-          setLoginLoading(false)
-          setWebauthnStatus(null)
-          return
-        }
-      } else {
-        // RECURRING LOGIN: Verify WebAuthn Hardware Passkey Signature
-        setWebauthnStatus('🔒 Verifying Hardware Passkey Device Signature...')
-        try {
-          webauthnResponse = await startAuthentication({ optionsJSON: step1Data.options })
-        } catch (err: any) {
-          console.error('WebAuthn Authentication Error:', err)
-          setLoginError('ACCESS DENIED: WebAuthn Device Credential Mismatch. This device is not the registered passkey hardware.')
-          setLoginLoading(false)
-          setWebauthnStatus(null)
-          return
-        }
-      }
-
-      // Step 2: Send WebAuthn Response to Server for Cryptographic Signature Verification
-      setWebauthnStatus('🛡️ Verifying Cryptographic Proof on Server...')
-      const step2Res = await fetch('/api/seller/login-step2', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partnerId: selectedPartnerId, response: webauthnResponse })
-      })
-
-      const step2Data = await step2Res.json()
-
       if (step2Res.ok && step2Data.success) {
         setAuthenticatedPartner(step2Data.partner)
         setToken(step2Data.token)
