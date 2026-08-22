@@ -1365,6 +1365,30 @@ app.get('/api/master/pending-approvals', async (req, res) => {
     }
 });
 
+// GET /api/seller/approval-status — Lightweight poll: is this partner approved/unblocked yet?
+// Used by seller portal to detect real-time approval without manual retry
+app.get('/api/seller/approval-status', async (req, res) => {
+    const { partnerId } = req.query;
+    if (!partnerId) return res.status(400).json({ approved: false });
+    try {
+        const partner = await db.getPartnerLock(String(partnerId).toLowerCase());
+        if (!partner) {
+            // No lock record = no block, they can proceed
+            return res.json({ approved: true, reason: 'no-lock' });
+        }
+        if (partner.blocked === true) {
+            return res.json({ approved: false, reason: 'blocked', pendingApproval: partner.pendingApproval || false });
+        }
+        if (!partner.webauthnCredentialId && partner.approvedForReg !== true) {
+            return res.json({ approved: false, reason: 'registration-pending', pendingApproval: partner.pendingApproval || false });
+        }
+        // All clear — approved for login/registration
+        return res.json({ approved: true, reason: 'clear' });
+    } catch (err) {
+        res.json({ approved: false, reason: 'error' });
+    }
+});
+
 // ==================== SELLER PORTAL — STRICT SINGLE-DEVICE LOCK ENDPOINTS ====================
 
 // POST /api/seller/login-step1 — Validate password and issue WebAuthn registration/authentication challenge

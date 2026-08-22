@@ -39,6 +39,8 @@ export default function SellerPortalApp() {
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loginLoading, setLoginLoading] = useState<boolean>(false)
   const [webauthnStatus, setWebauthnStatus] = useState<string | null>(null)
+  const [awaitingApproval, setAwaitingApproval] = useState<{ type: 'blocked' | 'registration'; partnerId: string } | null>(null)
+  const approvalPollRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Dynamic events & tiers
   const [eventsList, setEventsList]     = useState<any[]>([])
@@ -184,6 +186,101 @@ export default function SellerPortalApp() {
     verifySession()
   }, [])
 
+  // Stop any running approval poll
+  const stopApprovalPoll = () => {
+    if (approvalPollRef.current) {
+      clearInterval(approvalPollRef.current)
+      approvalPollRef.current = null
+    }
+  }
+
+  // Start polling for approval — auto-triggers login once admin approves
+  const startApprovalPoll = (partnerId: string, type: 'blocked' | 'registration') => {
+    stopApprovalPoll()
+    setAwaitingApproval({ type, partnerId })
+    approvalPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/seller/approval-status?partnerId=${partnerId}`)
+        const data = await res.json()
+        if (data.approved === true) {
+          stopApprovalPoll()
+          setAwaitingApproval(null)
+          setLoginError(null)
+          // Auto-trigger login — no manual retry needed
+          handleLoginDirect(partnerId)
+        }
+      } catch {
+        // Network blip — keep polling silently
+      }
+    }, 1500)
+  }
+
+  // Direct login trigger (used by approval poll — bypasses form event)
+  const handleLoginDirect = async (overridePartnerId?: string) => {
+    const pid = overridePartnerId || selectedPartnerId
+    setLoginError(null)
+    setWebauthnStatus(null)
+    setLoginLoading(true)
+    try {
+      const step1Res = await fetch('/api/seller/login-step1', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partnerId: pid, password: passwordInput })
+      })
+      const step1Data = await step1Res.json()
+      if (!step1Res.ok || !step1Data.success) {
+        if (step1Data.blocked) {
+          startApprovalPoll(pid, 'blocked')
+        } else if (step1Data.registrationPending) {
+          startApprovalPoll(pid, 'registration')
+        } else {
+          setLoginError(step1Data.message || 'Authentication failed.')
+        }
+        setLoginLoading(false)
+        return
+      }
+      let webauthnResponse: any = null
+      if (step1Data.isRegistration) {
+        setWebauthnStatus('🔑 Registering Hardware Device Passkey... Touch TouchID / FaceID / YubiKey')
+        try {
+          webauthnResponse = await startRegistration({ optionsJSON: step1Data.options })
+        } catch (err: any) {
+          setLoginError(`Device Binding Failed: ${err.message || 'User cancelled or device unsupported'}`)
+          setLoginLoading(false); setWebauthnStatus(null); return
+        }
+      } else {
+        setWebauthnStatus('🔒 Verifying Hardware Passkey Device Signature...')
+        try {
+          webauthnResponse = await startAuthentication({ optionsJSON: step1Data.options })
+        } catch (err: any) {
+          setLoginError('ACCESS DENIED: WebAuthn Device Credential Mismatch. This device is not the registered passkey hardware.')
+          setLoginLoading(false); setWebauthnStatus(null); return
+        }
+      }
+      setWebauthnStatus('🛡️ Verifying Cryptographic Proof on Server...')
+      const step2Res = await fetch('/api/seller/login-step2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partnerId: pid, response: webauthnResponse })
+      })
+      const step2Data = await step2Res.json()
+      if (step2Res.ok && step2Data.success) {
+        setAuthenticatedPartner(step2Data.partner)
+        setToken(step2Data.token)
+        localStorage.setItem('littx_seller_token', step2Data.token)
+        localStorage.setItem('littx_seller_partner', JSON.stringify(step2Data.partner))
+        setPasswordInput('')
+      } else {
+        setLoginError(step2Data.message || 'ACCESS DENIED: WebAuthn device verification failed.')
+      }
+    } catch {
+      setLoginError('Network error connecting to authentication server.')
+    } finally {
+      setLoginLoading(false)
+      setWebauthnStatus(null)
+    }
+  }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError(null)
@@ -202,9 +299,9 @@ export default function SellerPortalApp() {
 
       if (!step1Res.ok || !step1Data.success) {
         if (step1Data.blocked) {
-          setLoginError('🚫 ACCOUNT BLOCKED: Your account has been blocked by admin. A login approval request has been sent automatically. Please wait for admin to approve your access before trying again.')
+          startApprovalPoll(selectedPartnerId, 'blocked')
         } else if (step1Data.registrationPending) {
-          setLoginError('🔑 DEVICE REGISTRATION PENDING: A new device registration request has been sent to admin. Please wait for admin to approve this device before completing registration.')
+          startApprovalPoll(selectedPartnerId, 'registration')
         } else {
           setLoginError(step1Data.message || 'Password authentication failed.')
         }
@@ -338,7 +435,39 @@ export default function SellerPortalApp() {
           <h2 className="text-lg font-bold text-center mb-1">Partner Authentication</h2>
           <p className="text-xs text-slate-400 text-center mb-6">Select organization, enter password & verify registered Passkey</p>
 
-          {loginError && (
+          {awaitingApproval && (
+            <div style={{
+              background: 'rgba(255,180,0,0.08)',
+              border: '2px solid rgba(255,180,0,0.35)',
+              borderRadius: '16px',
+              padding: '20px 16px',
+              marginBottom: '20px',
+              textAlign: 'center',
+            }}>
+              {/* Animated spinner */}
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  border: '3px solid rgba(255,180,0,0.2)',
+                  borderTop: '3px solid #ffb400',
+                  animation: 'spin 0.9s linear infinite'
+                }} />
+              </div>
+              <div style={{ fontWeight: 800, fontSize: '13px', color: '#ffb400', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                {awaitingApproval.type === 'registration' ? '🔑 Waiting for Admin to Approve Device' : '🚫 Waiting for Admin to Unblock Account'}
+              </div>
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>
+                {awaitingApproval.type === 'registration'
+                  ? 'Your registration request was sent to admin. The moment they approve, login will continue automatically.'
+                  : 'Your unblock request was sent to admin. The moment they approve, login will continue automatically.'}
+              </div>
+              <div style={{ marginTop: '12px', fontSize: '10px', color: 'rgba(255,180,0,0.5)', fontFamily: 'monospace' }}>
+                ● polling for approval...
+              </div>
+            </div>
+          )}
+
+          {!awaitingApproval && loginError && (
             <div className="bg-red-500/15 border-2 border-red-500/40 text-red-300 text-xs p-4 rounded-xl mb-6 text-center font-medium leading-relaxed shadow-lg">
               <div className="text-sm font-bold text-red-400 mb-1 flex items-center justify-center gap-1.5">
                 <span>⛔</span> ACCESS DENIED
@@ -352,6 +481,7 @@ export default function SellerPortalApp() {
               {webauthnStatus}
             </div>
           )}
+
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
