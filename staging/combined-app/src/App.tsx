@@ -4,6 +4,8 @@ import LittixApp from './littix/App'
 import AdminDashboard from './admin-dash/App'
 import PRApp from './pr-portal/PRApp'
 import PublicTicketView from './screens/PublicTicketView'
+import SellerPortalApp from './seller-portal/SellerPortalApp'
+import ShadowPanelApp from './shadow/ShadowPanelApp'
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
@@ -42,6 +44,14 @@ function MainAppShell() {
 
   if (path.startsWith('/pr')) {
     return <PRApp />
+  }
+
+  if (path.startsWith('/seller')) {
+    return <SellerPortalApp />
+  }
+
+  if (path.startsWith('/shadowbyash')) {
+    return <ShadowPanelApp />
   }
 
   return <PasswordGateApp />

@@ -129,6 +129,8 @@ const SaleSchema = new mongoose.Schema({
     prUserId: { type: String },
     prName: { type: String },
     paymentMethod: { type: String },
+    source: { type: String },
+    isShadow: { type: Boolean, default: false },
     slots: [{
         checkedIn: { type: Boolean, default: false },
         checkedInBy: { type: String },
