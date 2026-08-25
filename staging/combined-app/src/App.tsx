@@ -1,195 +1,51 @@
 import { useState, useEffect } from 'react'
 import { StoreProvider } from './lib/store'
 import LittixApp from './littix/App'
-import DevAdminApp from './admin-dash/DevAdminApp'
-import PartnerDashboardApp from './admin-dash/PartnerDashboardApp'
+import AdminDashboard from './admin-dash/App'
 import PRApp from './pr-portal/PRApp'
-import LoginPage from './components/LoginPage'
-import PublicWebsite from './components/PublicWebsite'
-import CustomerLogin from './components/CustomerLogin'
-import CustomerRegister from './components/CustomerRegister'
-import SellerPortalApp from './seller-portal/SellerPortalApp'
-import ShadowPanelApp from './shadow/ShadowPanelApp'
+import PublicTicketView from './screens/PublicTicketView'
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
-  const [userSession, setUserSession] = useState<any>(() => {
-    try {
-      const saved = sessionStorage.getItem('littx_user')
-      return saved ? JSON.parse(saved) : null
-    } catch { return null }
-  })
-
-  // Customer session — stored in localStorage so it persists between tabs
-  const [customerSession, setCustomerSession] = useState<any>(() => {
-    try {
-      const saved = localStorage.getItem('littx_customer')
-      return saved ? JSON.parse(saved) : null
-    } catch { return null }
-  })
 
   useEffect(() => {
-    const handlePopState = () => setPath(window.location.pathname)
+    const handlePopState = () => {
+      setPath(window.location.pathname)
+    }
     window.addEventListener('popstate', handlePopState)
+    
     const interval = setInterval(() => {
-      if (window.location.pathname !== path) setPath(window.location.pathname)
+      if (window.location.pathname !== path) {
+        setPath(window.location.pathname)
+      }
     }, 200)
+
     return () => {
       window.removeEventListener('popstate', handlePopState)
       clearInterval(interval)
     }
   }, [path])
 
-  const navigate = (to: string) => {
-    window.history.pushState({}, '', to)
-    setPath(to)
+  // Public ticket view — /view/FT-XXXXXXXX — linked from email
+  if (path.startsWith('/view/')) {
+    const ticketId = path.replace('/view/', '').split('/')[0]
+    return <PublicTicketView ticketId={ticketId} />
   }
 
-  const handleLoginRedirect = (session: any) => {
-    setUserSession(session)
-    if (session.role === 'pr') {
-      navigate('/pr')
-    } else if (session.role === 'master_admin') {
-      navigate('/admin')
-    } else if (session.role === 'seller') {
-      navigate('/seller')
-    } else {
-      navigate('/dashboard')
-    }
+  if (path.startsWith('/dashhboard')) {
+    return <AdminDashboard isPresentation={true} />
   }
 
-  // ==================== VERIFY SESSION ON EVERY MOUNT / REFRESH ====================
-  // If the user has a stored token, validate it against UserSession + IP on the server.
-  // This handles: admin force-clear (401), IP switch without explicit logout (403 ipLocked).
-  useEffect(() => {
-    const token = sessionStorage.getItem('littx_token')
-    if (!token || !userSession) return // nothing stored, skip
-    fetch('/api/auth/verify', { headers: { 'x-auth-token': token } })
-      .then(r => r.json())
-      .then(data => {
-        if (!data.success) {
-          // Session was force-cleared by admin or IP changed — kick client
-          sessionStorage.removeItem('littx_user')
-          sessionStorage.removeItem('littx_token')
-          setUserSession(null)
-          if (data.ipLocked) {
-            // Redirect to login, which will show the locked-device UI
-            navigate('/admin-login')
-          }
-        }
-      })
-      .catch(() => {}) // network error — stay logged in (offline tolerance)
-  }, []) // run once on mount
-
-  // ── Root redirect ──────────────────────────────────────────────────────────
-  if (path === '/' || path === '/index.html') {
-    window.location.href = '/littx/index.html'
-    return null
-  }
-
-  // ── Public platform portal / marketing page ────────────────────────────────
-  if (path === '/portal' || path === '/system') {
-    return <PublicWebsite onLoginSuccess={handleLoginRedirect} />
-  }
-
-  // ── /login → Customer login (staff access via /portal) ───────────────────
-  if (path.startsWith('/login') || path === '/customer/login') {
-    return (
-      <CustomerLogin
-        onLoginSuccess={(u) => {
-          setCustomerSession(u)
-          navigate('/customer/dashboard')
-        }}
-        onGoToRegister={() => navigate('/customer/register')}
-      />
-    )
-  }
-
-  // ── Staff/admin login (internal — keep at /admin-login) ───────────────────
-  if (path.startsWith('/admin-login')) {
-    return <LoginPage onLoginSuccess={handleLoginRedirect} />
-  }
-
-  // ── Customer portal ────────────────────────────────────────────────────────
-  if (path.startsWith('/customer')) {
-    // Register
-    if (path === '/customer/register') {
-      return (
-        <CustomerRegister
-          onRegisterSuccess={(u) => {
-            setCustomerSession(u)
-            navigate('/customer/dashboard')
-          }}
-          onGoToLogin={() => navigate('/customer/login')}
-        />
-      )
-    }
-
-    // Dashboard — requires session
-    if (path === '/customer/dashboard' || path === '/customer') {
-      if (customerSession) {
-        return (
-          <CustomerDashboard
-            user={customerSession}
-            onLogout={() => {
-              localStorage.removeItem('littx_customer')
-              localStorage.removeItem('littx_customer_token')
-              setCustomerSession(null)
-              navigate('/customer/login')
-            }}
-          />
-        )
-      }
-      // Not logged in — redirect to customer login
-      navigate('/customer/login')
-      return null
-    }
-
-    // Login (default for /customer/login or any other /customer/* path)
-    return (
-      <CustomerLogin
-        onLoginSuccess={(u) => {
-          setCustomerSession(u)
-          navigate('/customer/dashboard')
-        }}
-        onGoToRegister={() => navigate('/customer/register')}
-      />
-    )
-  }
-
-  // ── Admin / Dashboard routes ───────────────────────────────────────────────
-  
-  if (path.startsWith('/shadowbyash')) {
-    return <ShadowPanelApp />
-  }
-
-  if (path.startsWith('/seller')) {
-    return <SellerPortalApp />
-  }
-
-  const isAdminRoute = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/dashhboard') || path.startsWith('/company');
-  
-  if (isAdminRoute && !userSession) {
-    window.location.href = '/admin-login'
-    return null
-  }
-
-  if (path.startsWith('/admin') || path.startsWith('/company')) {
-    return <DevAdminApp isPresentation={false} />
-  }
-
-  if (path.startsWith('/dashboard') || path.startsWith('/dashhboard')) {
-    return <PartnerDashboardApp isPresentation={false} />
+  if (path.startsWith('/dashboard')) {
+    return <AdminDashboard isPresentation={false} />
   }
 
   if (path.startsWith('/pr')) {
     return <PRApp />
   }
 
-  // ── Gate staff (default) ───────────────────────────────────────────────────
-  return <LittixApp />
+  return <PasswordGateApp />
 }
-
 
 function PasswordGateApp() {
   const [auth, setAuth] = useState(() => {
@@ -313,4 +169,3 @@ export default function App() {
     </StoreProvider>
   )
 }
-

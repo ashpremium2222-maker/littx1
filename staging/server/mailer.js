@@ -97,14 +97,9 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
         }
         const fromEmail = `"${envName}" <${envEmail}>`;
 
-        const attachments = [];
-        const resolvedPdfPath = pdfPath ? require('path').resolve(pdfPath) : null;
-        console.log(`[Mailer] Resolved pdfPath: ${resolvedPdfPath}`);
-        if (resolvedPdfPath && fs.existsSync(resolvedPdfPath)) {
-          attachments.push({ filename: `${ticketId}.pdf`, path: resolvedPdfPath });
-        } else {
-          console.warn(`[Mailer] PDF not found at ${pdfPath || 'undefined'}, attachment skipped.`);
-        }
+        const attachments = [
+            { filename: `${ticketId}.pdf`, path: pdfPath }
+        ];
         if (qrBuffer) attachments.push({ filename: 'qr.png', content: qrBuffer, cid: 'ticketqr' });
         const bannerForEmail = (event && event.toUpperCase().includes('AURA') && fs.existsSync(AURA_BANNER_PATH))
             ? AURA_BANNER_PATH : BANNER_PATH;
@@ -117,13 +112,13 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111111; font-size: 15px; line-height: 1.6;">
               <p>Hi ${name},</p>
               <p>Congratulations! 🎉</p>
-              <p>We’re excited to officially welcome you to the Dholida Garba Royale 2026 Influencer Lineup, presented by LITTX.</p>
+              <p>We’re excited to officially welcome you to the Freshers Takeover 2026 Influencer Lineup, presented by LITTX.</p>
               <p>Thank you for being a part of this journey. We’re looking forward to having you with us and creating an unforgettable experience together.</p>
               
               <div style="margin: 25px 0; padding: 20px; border: 2px solid #000000; border-radius: 8px; background-color: #ffffff;">
                 <p style="font-size: 16px; font-weight: bold; margin-top: 0; margin-bottom: 12px; color: #000000; text-transform: uppercase; letter-spacing: 0.05em;">Event Details</p>
                 <ul style="margin: 0; padding-left: 20px; color: #333333; list-style: disc;">
-                  <li style="margin-bottom: 8px;"><strong>Event:</strong> Dholida Garba Royale 2026</li>
+                  <li style="margin-bottom: 8px;"><strong>Event:</strong> Freshers Takeover 2026</li>
                   <li style="margin-bottom: 8px;"><strong>Date:</strong> 5 August 2026</li>
                   <li style="margin-bottom: 8px;"><strong>Time:</strong> 5pm onwards</li>
                   <li style="margin-bottom: 8px;"><strong>Venue:</strong> Flo, Hinjewadi, Pune</li>
@@ -133,44 +128,87 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
               <p>Your official Invitation Pass is attached to this email as a PDF. It contains a unique QR code that will be scanned at the venue for entry. Please keep it safe and avoid sharing it, as each QR code is valid for one time entry only.</p>
               
               <p style="margin-top: 30px;">
-                We can’t wait to see you at Dholida Garba Royale 2026!<br><br>
+                We can’t wait to see you at Freshers Takeover 2026!<br><br>
                 Best Regards,<br>
                 <strong>Team LITTX</strong>
               </p>
             </div>`;
             
-            subject = `Your Invitation: Dholida Garba Royale 2026 Influencer Lineup`;
-            text = `Hi ${name},\n\nCongratulations! 🎉\n\nWe’re excited to officially welcome you to the Dholida Garba Royale 2026 Influencer Lineup, presented by LITTX.\n\nThank you for being a part of this journey. We’re looking forward to having you with us and creating an unforgettable experience together.\n\nEvent Details\n• Event: Dholida Garba Royale 2026\n• Date: 5 August 2026\n• Time: 5pm onwards \n• Venue: Flo, Hinjewadi, Pune\n\nYour official Invitation Pass is attached to this email as a PDF. It contains a unique QR code that will be scanned at the venue for entry. Please keep it safe and avoid sharing it, as each QR code is valid for one time entry only.\n\nWe can’t wait to see you at Dholida Garba Royale 2026!\n\nBest Regards,\nTeam LITTX`;
+            subject = `Your Invitation: Freshers Takeover 2026 Influencer Lineup`;
+            text = `Hi ${name},\n\nCongratulations! 🎉\n\nWe’re excited to officially welcome you to the Freshers Takeover 2026 Influencer Lineup, presented by LITTX.\n\nThank you for being a part of this journey. We’re looking forward to having you with us and creating an unforgettable experience together.\n\nEvent Details\n• Event: Freshers Takeover 2026\n• Date: 5 August 2026\n• Time: 5pm onwards \n• Venue: Flo, Hinjewadi, Pune\n\nYour official Invitation Pass is attached to this email as a PDF. It contains a unique QR code that will be scanned at the venue for entry. Please keep it safe and avoid sharing it, as each QR code is valid for one time entry only.\n\nWe can’t wait to see you at Freshers Takeover 2026!\n\nBest Regards,\nTeam LITTX`;
         } else {
+            const viewUrl = downloadUrl ? downloadUrl.replace('/download', '').replace('/api/ticket/', `${process.env.BASE_URL || ''}/view/`) : null;
+            // Build a clean view URL: BASE_URL/view/:ticketId
+            const ticketViewUrl = `${process.env.BASE_URL || 'https://littx1.vercel.app'}/view/${ticketId}`;
+
             html = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111111; font-size: 15px; line-height: 1.6;">
-              <p>Hi ${name},</p>
-              <p>Thanks for booking your <strong>${eventTitle}</strong> pass! Your Ticket ID is <strong>${ticketId}</strong>.</p>
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #ffffff; border-radius: 24px; overflow: hidden;">
               
-              <div style="margin: 25px 0; padding: 20px; border: 2px solid #000000; border-radius: 8px; background-color: #ffffff;">
-                <p style="font-size: 16px; font-weight: bold; margin-top: 0; margin-bottom: 12px; color: #000000; text-transform: uppercase; letter-spacing: 0.05em;">🎟️ Ticket Guidelines</p>
-                <ul style="margin: 0; padding-left: 20px; color: #333333;">
-                  <li style="margin-bottom: 8px;">Your QR code is unique and valid for one-time entry only.</li>
-                  <li style="margin-bottom: 8px;">Do not share or forward this ticket. If someone else uses it first, your entry will be denied.</li>
-                  <li style="margin-bottom: 8px;">Carry a valid Photo ID and your payment screenshot/receipt for verification at the venue.</li>
-                  <li style="margin-bottom: 8px;">Keep your ticket ready on your phone or as a printed copy.</li>
-                  <li style="margin-bottom: 8px;">Duplicate, tampered, or already-scanned tickets will not be accepted.</li>
-                </ul>
-                <p style="margin: 15px 0 0; font-size: 13px; font-weight: bold; color: #ff0000; line-height: 1.4;">
-                  <strong>NO EXCUSES. All ticket purchases are final. Once booked, tickets are non-refundable and non-transferable under any circumstances.</strong>
+              <!-- Header Banner -->
+              <div style="background: linear-gradient(135deg, #1a0a2e 0%, #0d0d0d 100%); padding: 40px 32px 32px; text-align: center; border-bottom: 1px solid #1e1e1e;">
+                <img src="https://littx1.vercel.app/logo.png" alt="LITTX" style="height: 36px; width: auto; display: block; margin: 0 auto 16px;" />
+                <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">🎉 You're In!</h1>
+                <p style="margin: 8px 0 0; font-size: 14px; color: #a0a0a0;">Your ticket to <strong style="color: #c084fc;">${eventTitle}</strong> is confirmed</p>
+              </div>
+
+              <!-- Ticket Card -->
+              <div style="padding: 28px 24px;">
+                <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 20px; padding: 24px; margin-bottom: 24px;">
+                  <p style="margin: 0 0 6px; font-size: 11px; font-weight: 700; color: #6b6b6b; text-transform: uppercase; letter-spacing: 1px;">Attendee</p>
+                  <p style="margin: 0 0 20px; font-size: 20px; font-weight: 800; color: #ffffff;">${name}</p>
+                  
+                  <p style="margin: 0 0 6px; font-size: 11px; font-weight: 700; color: #6b6b6b; text-transform: uppercase; letter-spacing: 1px;">Ticket ID</p>
+                  <p style="margin: 0 0 20px; font-size: 16px; font-weight: 700; color: #a855f7; font-family: monospace;">${ticketId}</p>
+
+                  <div style="border-top: 1px solid #2a2a2a; padding-top: 16px; display: flex; gap: 24px;">
+                    <div>
+                      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; color: #6b6b6b; text-transform: uppercase; letter-spacing: 1px;">Date</p>
+                      <p style="margin: 0; font-size: 13px; font-weight: 600; color: #e0e0e0;">05 AUG 2026 · 4:00 PM</p>
+                    </div>
+                    <div>
+                      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; color: #6b6b6b; text-transform: uppercase; letter-spacing: 1px;">Venue</p>
+                      <p style="margin: 0; font-size: 13px; font-weight: 600; color: #e0e0e0;">Flo, Hinjewadi, Pune</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CTA Button -->
+                <div style="text-align: center; margin-bottom: 24px;">
+                  <a href="${ticketViewUrl}" style="display: inline-block; background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%); color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 700; padding: 16px 40px; border-radius: 100px; letter-spacing: 0.3px; box-shadow: 0 8px 24px rgba(168,85,247,0.35);">
+                    🎟️ View Your Ticket Online
+                  </a>
+                  <p style="margin: 10px 0 0; font-size: 11px; color: #555555;">Or paste this link: <span style="color: #a855f7;">${ticketViewUrl}</span></p>
+                </div>
+
+                <!-- Guidelines Box -->
+                <div style="background: #111; border: 1px solid #222; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+                  <p style="font-size: 13px; font-weight: 700; margin: 0 0 12px; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em;">🎟️ Ticket Guidelines</p>
+                  <ul style="margin: 0; padding-left: 18px; color: #a0a0a0; font-size: 13px; line-height: 1.7;">
+                    <li>Your QR code is unique — valid for <strong style="color: #fff;">one-time entry only</strong>.</li>
+                    <li>Do not share or forward this ticket. If someone else uses it first, your entry will be denied.</li>
+                    <li>Carry a valid Photo ID and your payment receipt for verification.</li>
+                    <li>Keep your ticket ready on your phone or as a printed copy.</li>
+                    <li>Duplicate, tampered, or already-scanned tickets will not be accepted.</li>
+                  </ul>
+                  <p style="margin: 14px 0 0; font-size: 12px; font-weight: 700; color: #ef4444; line-height: 1.4;">
+                    NO EXCUSES. All purchases are final — non-refundable and non-transferable.
+                  </p>
+                </div>
+
+                <p style="font-size: 14px; color: #555; text-align: center; margin: 0;">
+                  Your PDF ticket is also attached to this email.<br/>
+                  <span style="color: #333;">See you on the dancefloor! 🎶 — <strong style="color: #a855f7;">LITTX</strong></span>
                 </p>
               </div>
 
-              <p style="font-size: 16px; font-weight: bold; color: #000000;">Find your ticket in the PDF attached below.</p>
-              
-              <p style="margin-top: 30px; font-size: 13px; color: #666666;">
-                See you on the dancefloor!<br>
-                <strong>— LITTX</strong>
-              </p>
+              <!-- Footer -->
+              <div style="background: #0d0d0d; border-top: 1px solid #1e1e1e; padding: 20px 24px; text-align: center;">
+                <p style="margin: 0; font-size: 11px; color: #444;">LITTX Events · Pune, India</p>
+              </div>
             </div>`;
 
             subject = `Your ${eventTitle} Pass — ${ticketId}`;
-            text = `Hi ${name},\n\nThanks for booking your ${eventTitle} pass! Your ticket (${ticketId}) is attached as a PDF.\n\n🎟️ Ticket Guidelines\n\n• Your QR code is unique and valid for one-time entry only.\n• Do not share or forward this ticket. If someone else uses it first, your entry will be denied.\n• Carry a valid Photo ID and your payment screenshot/receipt for verification at the venue.\n• Keep your ticket ready on your phone or as a printed copy.\n• Duplicate, tampered, or already-scanned tickets will not be accepted.\n\nNO EXCUSES. All ticket purchases are final. Once booked, tickets are non-refundable and non-transferable under any circumstances.\n\nFind your ticket in the PDF attached below.\n\nSee you on the dancefloor!\n— LITTX`;
+            text = `Hi ${name},\n\nThanks for booking your ${eventTitle} pass! Your ticket (${ticketId}) is confirmed.\n\nView your ticket online: ${ticketViewUrl}\n\n🎟️ Ticket Guidelines\n\n• Your QR code is unique and valid for one-time entry only.\n• Do not share or forward this ticket. If someone else uses it first, your entry will be denied.\n• Carry a valid Photo ID and your payment screenshot/receipt for verification at the venue.\n• Keep your ticket ready on your phone or as a printed copy.\n• Duplicate, tampered, or already-scanned tickets will not be accepted.\n\nNO EXCUSES. All ticket purchases are final. Once booked, tickets are non-refundable and non-transferable under any circumstances.\n\nYour PDF ticket is attached to this email.\n\nSee you on the dancefloor!\n— LITTX`;
         }
 
         // 1. If Brevo API is configured, use Brevo HTTP API (Port 443 — Never Blocked)
