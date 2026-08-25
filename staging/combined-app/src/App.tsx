@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { StoreProvider } from './lib/store'
 import LittixApp from './littix/App'
 import AdminDashboard from './admin-dash/App'
+import DevAdminApp from './admin-dash/DevAdminApp'
+import PartnerDashboardApp from './admin-dash/PartnerDashboardApp'
 import PRApp from './pr-portal/PRApp'
 import SellerPortalApp from './seller-portal/SellerPortalApp'
 
@@ -26,22 +28,49 @@ function MainAppShell() {
     }
   }, [path])
 
+  // Presentation/dashhboard route
   if (path.startsWith('/dashhboard')) {
     return <AdminDashboard isPresentation={true} />
   }
 
+  // Main admin dashboard
   if (path.startsWith('/dashboard')) {
     return <AdminDashboard isPresentation={false} />
   }
 
+  // Master admin (dev) dashboard
+  if (path.startsWith('/master-admin') || path.startsWith('/admin')) {
+    return <DevAdminApp />
+  }
+
+  // Company / partner dashboard
+  if (path.startsWith('/company')) {
+    return <PartnerDashboardApp />
+  }
+
+  // PR portal
   if (path.startsWith('/pr')) {
     return <PRApp />
   }
 
+  // Seller portal
   if (path.startsWith('/seller')) {
     return <SellerPortalApp />
   }
 
+  // /tickets, /scanner, /login, /admin-login, /customer — all go to the main gate staff app (LittixApp)
+  // which has its own seller login, scanner, dashboard etc.
+  if (
+    path.startsWith('/tickets') ||
+    path.startsWith('/scanner') ||
+    path.startsWith('/login') ||
+    path.startsWith('/admin-login') ||
+    path.startsWith('/customer')
+  ) {
+    return <LittixApp />
+  }
+
+  // Root path — gate staff app with password protection
   return <PasswordGateApp />
 }
 
@@ -167,3 +196,5 @@ export default function App() {
     </StoreProvider>
   )
 }
+
+
