@@ -9,7 +9,7 @@ const PDFDocument = require('pdfkit');
 const { randomUUID } = require('crypto');
 
 const TICKETS_DIR = path.join(__dirname, 'tickets');
-if (!fs.existsSync(TICKETS_DIR)) fs.mkdirSync(TICKETS_DIR, { recursive: true });
+try { if (!fs.existsSync(TICKETS_DIR)) fs.mkdirSync(TICKETS_DIR, { recursive: true }); } catch (_) {}
 
 const BANNER_PATH = path.join(__dirname, 'ticket-banner.png');
 const AURA_BANNER_PATH = path.join(__dirname, 'aura-ticket-banner.jpg');
