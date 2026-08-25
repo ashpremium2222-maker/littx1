@@ -1,3 +1,4 @@
+// PublicTicketView v1.1 — animated iOS-style ticket page linked from emails
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import QRCode from '../components/QRCode'
