@@ -1135,8 +1135,12 @@ app.get('*splat', (req, res) => {
 
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`\n🎟  ${EVENT.name} ticketing server running on port ${PORT}`);
-    console.log(`   Mode: ${TEST_MODE ? 'TEST MODE (no real payments)' : 'LIVE (Razorpay)'}`);
-    console.log(`   Admin dashboard: ${BASE_URL}/dashboard  (key required)\n`);
-});
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`\n🎟  ${EVENT.name} ticketing server running on port ${PORT}`);
+        console.log(`   Mode: ${TEST_MODE ? 'TEST MODE (no real payments)' : 'LIVE (Razorpay)'}`);
+        console.log(`   Admin dashboard: ${BASE_URL}/dashboard  (key required)\n`);
+    });
+}
+
+module.exports = app;
