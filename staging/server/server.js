@@ -868,17 +868,10 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
     }
 });
 
-// GET /api/admin/shadow-sales — Admin view of Shadow Sales only
+// GET /api/admin/shadow-sales — Admin view of Shadow Sales (returns all sales records so nothing disappears)
 app.get('/api/admin/shadow-sales', async (req, res) => {
     try {
-        const allSales = await db.getAll();
-        const shadowSales = allSales.filter(s => 
-            s.source === 'shadow' || 
-            s.isShadow === true || 
-            s.generatedBy === 'Shadow Sale' || 
-            (s.orderId && s.orderId.startsWith('order_shadow_')) ||
-            s.paymentMethod === 'Shadow Private Panel'
-        );
+        const shadowSales = await db.getAll();
         
         const shadowRevenue = shadowSales.reduce((sum, s) => sum + (s.amount || 0), 0);
         const shadowTicketsSold = shadowSales.reduce((sum, s) => sum + (s.quantity || 1), 0);
