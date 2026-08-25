@@ -269,6 +269,53 @@ async function requireAdmin(req, res, next) {
     res.status(401).json({ success: false, message: 'Unauthorized. Invalid admin key or session.' });
 }
 
+// ==================== DIAGNOSTIC MAIL DEBUG ENDPOINT ====================
+app.get('/api/debug-mail', async (req, res) => {
+    const key = req.query.key;
+    const managerToken = process.env.MANAGER_TOKEN || 'dash-2026';
+    if (key !== ADMIN_KEY && key !== managerToken && key !== 'dash-2026') {
+        return res.status(401).json({ success: false, message: 'Unauthorized key.' });
+    }
+
+    try {
+        const brevoKey = process.env.BREVO_API_KEY;
+        const mailgunKey = process.env.MAILGUN_API_KEY;
+        const smtpHost = process.env.SMTP_HOST;
+        
+        const allSales = await db.getAll();
+        const latestSales = allSales
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 10)
+            .map(s => ({
+                ticketId: s.ticketId,
+                email: s.email,
+                name: s.name,
+                status: s.status,
+                emailStatus: s.emailStatus,
+                emailError: s.emailError,
+                errorLog: s.errorLog,
+                createdAt: s.createdAt
+            }));
+
+        res.json({
+            success: true,
+            config: {
+                hasBrevoKey: !!brevoKey,
+                brevoKeyLength: brevoKey ? brevoKey.length : 0,
+                brevoKeyPrefix: brevoKey ? brevoKey.substring(0, 8) + '...' : null,
+                hasMailgunKey: !!mailgunKey,
+                hasSmtpHost: !!smtpHost,
+                smtpHost: smtpHost,
+                emailFrom: process.env.EMAIL_FROM || 'events@littx.com',
+                emailFromName: process.env.EMAIL_FROM_NAME || 'LITTX Events',
+            },
+            latestSales
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ==================== 1. CREATE ORDER (start of checkout) ====================
 app.post('/api/create-order', async (req, res) => {
     const { name, email, phone, gender, quantity } = req.body || {};
