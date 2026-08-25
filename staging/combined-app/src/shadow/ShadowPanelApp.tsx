@@ -60,6 +60,7 @@ export default function ShadowPanelApp() {
   const [amount, setAmount]         = useState('699')
 
   const [submitting, setSubmitting] = useState(false)
+  const [resendingTicketId, setResendingTicketId] = useState<string | null>(null)
   const [feedback, setFeedback]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
   // Fetch dynamic events from API
@@ -246,6 +247,33 @@ export default function ShadowPanelApp() {
       setFeedback({ type: 'error', msg: 'Network error creating shadow ticket.' })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleResendTicket = async (ticketId: string | undefined, orderId: string) => {
+    if (!ticketId) {
+      alert('Cannot resend: Ticket ID is missing for this order.')
+      return
+    }
+    setResendingTicketId(ticketId)
+    try {
+      const res = await fetch(`/api/ticket/${ticketId}/resend`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        alert('📧 Ticket successfully re-sent to customer email!')
+        fetchShadowData()
+      } else {
+        alert(`Failed to resend: ${data.message || 'Unknown error'}`)
+      }
+    } catch (e) {
+      alert('Network error trying to resend ticket.')
+    } finally {
+      setResendingTicketId(null)
     }
   }
 
@@ -687,12 +715,13 @@ export default function ShadowPanelApp() {
                             <th>AMOUNT</th>
                             <th>STATUS</th>
                             <th>DATE</th>
+                            <th>ACTIONS</th>
                           </tr>
                         </thead>
                         <tbody>
                           {shadowOrders.length === 0 ? (
                             <tr>
-                              <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: '#71717a' }}>
+                              <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: '#71717a' }}>
                                 {loadingOrders ? 'Loading shadow orders...' : 'No shadow orders found.'}
                               </td>
                             </tr>
@@ -717,6 +746,23 @@ export default function ShadowPanelApp() {
                                 </td>
                                 <td style={{ fontSize: '11px', color: '#71717a' }}>
                                   {o.createdAt ? new Date(o.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}
+                                </td>
+                                <td>
+                                  <button
+                                    className="shadow-sec-btn"
+                                    style={{
+                                      padding: '4px 8px',
+                                      fontSize: '11px',
+                                      width: 'auto',
+                                      background: 'rgba(59, 130, 246, 0.15)',
+                                      color: '#60a5fa',
+                                      border: '1px solid rgba(59, 130, 246, 0.3)'
+                                    }}
+                                    onClick={() => handleResendTicket(o.ticketId, o.orderId)}
+                                    disabled={resendingTicketId === o.ticketId}
+                                  >
+                                    {resendingTicketId === o.ticketId ? 'Sending...' : '📧 Resend'}
+                                  </button>
                                 </td>
                               </tr>
                             ))
@@ -941,12 +987,13 @@ export default function ShadowPanelApp() {
                         <th>AMOUNT</th>
                         <th>STATUS</th>
                         <th>DATE</th>
+                        <th>ACTIONS</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredOrders.length === 0 ? (
                         <tr>
-                          <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: '#71717a' }}>
+                          <td colSpan={9} style={{ textAlign: 'center', padding: '36px', color: '#71717a' }}>
                             {loadingOrders ? 'Loading shadow orders...' : 'No matching shadow orders found.'}
                           </td>
                         </tr>
@@ -979,6 +1026,23 @@ export default function ShadowPanelApp() {
                             </td>
                             <td style={{ fontSize: '11px', color: '#71717a' }}>
                               {o.createdAt ? new Date(o.createdAt).toLocaleString() : 'N/A'}
+                            </td>
+                            <td>
+                              <button
+                                className="shadow-sec-btn"
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '11px',
+                                  width: 'auto',
+                                  background: 'rgba(59, 130, 246, 0.15)',
+                                  color: '#60a5fa',
+                                  border: '1px solid rgba(59, 130, 246, 0.3)'
+                                }}
+                                onClick={() => handleResendTicket(o.ticketId, o.orderId)}
+                                disabled={resendingTicketId === o.ticketId}
+                              >
+                                {resendingTicketId === o.ticketId ? 'Sending...' : '📧 Resend'}
+                              </button>
                             </td>
                           </tr>
                         ))
