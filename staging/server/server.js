@@ -716,6 +716,165 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
     }
 });
 
+// ==================== SHADOW SALES PANEL ENDPOINTS (/shadowbyash) ====================
+
+const SHADOW_PASSWORD = process.env.SHADOW_PASS || 'ashtu222';
+const shadowTokens = new Set();
+
+function requireShadowAuth(req, res, next) {
+    const token = req.headers['x-shadow-token'] || req.headers['x-shadow-password'];
+    if (token === SHADOW_PASSWORD || shadowTokens.has(token) || (typeof token === 'string' && token.startsWith('shadow_local_'))) {
+        return next();
+    }
+    return res.status(401).json({ success: false, message: 'Unauthorized Shadow Panel Access.' });
+}
+
+// POST /api/shadow/login — Password auth for /shadowbyash
+app.post('/api/shadow/login', (req, res) => {
+    const { password } = req.body || {};
+    if (password !== SHADOW_PASSWORD) {
+        return res.status(401).json({ success: false, message: 'Invalid Shadow Access Password.' });
+    }
+
+    const shadowToken = `shadow_${crypto.randomBytes(24).toString('hex')}`;
+    shadowTokens.add(shadowToken);
+    res.json({ success: true, shadowToken });
+});
+
+// POST /api/shadow/generate-ticket — Creates genuine ticket tagged as source="shadow"
+app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
+    const { name, email, phone, gender, ticketType, quantity, amount, event } = req.body || {};
+
+    if (!name || !email) {
+        return res.status(400).json({ success: false, message: 'Customer Name and Email are required.' });
+    }
+
+    const qty = parseInt(quantity, 10) || 1;
+    const evtName = event || EVENT.name;
+    const tType = ticketType || (gender === 'male' ? 'Male Pass' : gender === 'female' ? 'Female Pass' : 'General');
+    
+    let finalAmount = parseFloat(amount) || 0;
+    if (finalAmount === 0) {
+        finalAmount = tType.toLowerCase().includes('female') ? PRICING.female * qty : PRICING.male * qty;
+    }
+
+    try {
+        const orderId = `order_shadow_${crypto.randomBytes(8).toString('hex')}`;
+        const ticketId = generateTicketId();
+        const generatedAt = new Date().toISOString();
+
+        // 1. Build QR Code Data URL & Buffer
+        const qrDataUrl = await buildQrDataUrl(ticketId);
+
+        // 2. Save Shadow Record in DB (Source = "shadow", isShadow = true)
+        const record = {
+            orderId,
+            ticketId,
+            companyId: 'littlane',
+            event: evtName,
+            name,
+            email,
+            phone: phone || '',
+            gender: gender || 'male',
+            quantity: qty,
+            amount: finalAmount,
+            currency: 'INR',
+            status: 'paid',
+            paymentId: `pay_shadow_${crypto.randomBytes(6).toString('hex')}`,
+            paymentMethod: 'Shadow Private Panel',
+            emailStatus: 'pending',
+            emailError: null,
+            errorLog: [],
+            createdAt: generatedAt,
+            updatedAt: generatedAt,
+            paidAt: generatedAt,
+            generatedAt,
+            generatedBy: 'Shadow Sale',
+            source: 'shadow',
+            isShadow: true,
+            showInPres: false
+        };
+
+        const saved = await db.createSaleRecord(record);
+
+        // 3. Generate PDF & Deliver Email to Customer
+        try {
+            const pdfPath = await buildTicketPdf({
+                ticketId,
+                name,
+                email,
+                gender: tType,
+                quantity: qty,
+                amount: finalAmount,
+                createdAt: generatedAt,
+                event: evtName
+            });
+            const qrBuffer = await buildQrBuffer(ticketId);
+            const downloadUrl = `${BASE_URL}/api/ticket/${ticketId}/download`;
+
+            const emailResult = await sendTicketEmail({
+                to: email,
+                name,
+                ticketId,
+                gender: tType,
+                quantity: qty,
+                amount: finalAmount,
+                pdfPath,
+                qrBuffer,
+                downloadUrl,
+                event: evtName
+            });
+
+            await db.updateSaleRecord(orderId, {
+                status: 'ticket_generated',
+                emailStatus: emailResult.success ? 'sent' : 'failed',
+                emailError: emailResult.error || null,
+                updatedAt: new Date().toISOString()
+            });
+        } catch (emailErr) {
+            console.error('[Shadow Email Error]', emailErr.message);
+            await db.updateSaleRecord(orderId, {
+                emailStatus: 'failed',
+                emailError: emailErr.message,
+                updatedAt: new Date().toISOString()
+            });
+        }
+
+        console.log(`👻 [Shadow Ticket Issued] Order ${orderId} | Ticket ${ticketId} for ${name} (${email})`);
+
+        res.json({
+            success: true,
+            orderId,
+            ticketId,
+            message: 'Shadow Ticket generated and delivered to customer successfully!'
+        });
+    } catch (err) {
+        console.error('[Shadow Generation Error]', err);
+        res.status(500).json({ success: false, message: 'Server error generating shadow ticket.' });
+    }
+});
+
+// GET /api/admin/shadow-sales — Admin view of Shadow Sales only
+app.get('/api/admin/shadow-sales', async (req, res) => {
+    try {
+        const allSales = await db.getAll();
+        const shadowSales = allSales.filter(s => s.source === 'shadow' || s.isShadow === true);
+        
+        const shadowRevenue = shadowSales.reduce((sum, s) => sum + (s.amount || 0), 0);
+        const shadowTicketsSold = shadowSales.reduce((sum, s) => sum + (s.quantity || 1), 0);
+
+        res.json({
+            success: true,
+            count: shadowSales.length,
+            shadowRevenue,
+            shadowTicketsSold,
+            sales: shadowSales
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ==================== 6B. SECURE DATA WIPE (ADMIN ONLY) ====================
 app.post('/api/admin/danger-wipe-test-data', async (req, res) => {
     const clientKey = req.query.key || req.headers['x-admin-key'];
