@@ -8,21 +8,8 @@
       "destination": "/api/index.js"
     },
     {
-      "source": "/littx/(.*)",
-      "destination": "/littx/$1"
-    },
-    {
-      "source": "/",
-      "destination": "/littx/index.html"
-    },
-    {
-      "source": "/(dashboard|dashhboard|admin|master-admin|company|seller|pr|tickets|scanner|login|admin-login|customer)(.*)",
-      "destination": "/index.html"
-    },
-    {
       "source": "/(.*)",
-      "destination": "/littx/index.html"
+      "destination": "/index.html"
     }
   ]
 }
-
