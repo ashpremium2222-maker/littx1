@@ -3,6 +3,7 @@ import { StoreProvider } from './lib/store'
 import LittixApp from './littix/App'
 import AdminDashboard from './admin-dash/App'
 import PRApp from './pr-portal/PRApp'
+import SellerPortalApp from './seller-portal/SellerPortalApp'
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
@@ -35,6 +36,10 @@ function MainAppShell() {
 
   if (path.startsWith('/pr')) {
     return <PRApp />
+  }
+
+  if (path.startsWith('/seller')) {
+    return <SellerPortalApp />
   }
 
   return <PasswordGateApp />

@@ -39,246 +39,117 @@ export default function SellerPortalApp() {
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loginLoading, setLoginLoading] = useState<boolean>(false)
   const [webauthnStatus, setWebauthnStatus] = useState<string | null>(null)
-  const [awaitingApproval, setAwaitingApproval] = useState<{ type: 'blocked' | 'registration'; partnerId: string } | null>(null)
-  const approvalPollRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
-
-  // Dynamic events & tiers
-  const [eventsList, setEventsList]     = useState<any[]>([])
-  const [selectedEventObj, setSelectedEventObj] = useState<any>(null)
-  const [selectedTierObj, setSelectedTierObj]   = useState<any>(null)
 
   // Ticket generation form state
-  const [event, setEvent]       = useState('FRESHERS TAKEOVER')
-  const [ticketType, setTicketType] = useState('Male Pass')
-  const [name, setName]         = useState('')
-  const [email, setEmail]       = useState('')
-  const [phone, setPhone]       = useState('')
-  const [gender, setGender]     = useState('male')
+  const [event, setEvent] = useState('FRESHERS TAKEOVER')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [gender, setGender] = useState('male')
   const [quantity, setQuantity] = useState('1')
-  const [amount, setAmount]     = useState('699')
+  const [amount, setAmount] = useState('699')
 
   const [submitting, setSubmitting] = useState(false)
-  const [feedback, setFeedback]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
   const currentPartner = PARTNERS.find((p) => p.id === selectedPartnerId) || PARTNERS[0]
 
-  // Android PWA install listener
-  useEffect(() => {
-    const handler = (e: any) => {
-      e.preventDefault()
-      setDeferredPrompt(e)
-    }
-    window.addEventListener('beforeinstallprompt', handler)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
-
-  const handleInstallApp = async () => {
-    if (!deferredPrompt) return
-    deferredPrompt.prompt()
-    const { outcome } = await deferredPrompt.userChoice
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null)
-    }
-  }
-
-  // Fetch dynamic events on mount and poll every 5s so /admin edits sync everywhere in real time
-  useEffect(() => {
-    const loadEvents = () => {
-      fetch('/api/events')
-        .then(r => r.json())
-        .then(d => {
-          if (d.success && Array.isArray(d.events) && d.events.length > 0) {
-            setEventsList(d.events)
-            // If current selected event no longer exists, select first event
-            setEvent((prevEvent) => {
-              const exists = d.events.some((e: any) => e.name === prevEvent)
-              if (!exists) {
-                const first = d.events[0]
-                setSelectedEventObj(first)
-                if (first.tiers?.length > 0) {
-                  setSelectedTierObj(first.tiers[0])
-                  setTicketType(first.tiers[0].name)
-                  setAmount(String(first.tiers[0].price * (parseInt(quantity, 10) || 1)))
-                }
-                return first.name
-              }
-              return prevEvent
-            })
-          }
-        })
-        .catch(() => {})
-    }
-
-    loadEvents()
-    const timer = setInterval(loadEvents, 4000)
-    return () => clearInterval(timer)
-  }, [quantity])
-
-  const handleEventChange = (evtName: string) => {
-    setEvent(evtName)
-    const evt = eventsList.find((e: any) => e.name === evtName)
-    if (evt) {
-      setSelectedEventObj(evt)
-      if (evt.tiers?.length > 0) {
-        const t = evt.tiers[0]
-        setSelectedTierObj(t); setTicketType(t.name)
-        setAmount(String(t.price * (parseInt(quantity, 10) || 1)))
-      }
-    }
-  }
-  const handleTierChange = (tierName: string) => {
-    setTicketType(tierName)
-    const t = selectedEventObj?.tiers?.find((t: any) => t.name === tierName)
-    if (t) { setSelectedTierObj(t); setAmount(String(t.price * (parseInt(quantity, 10) || 1))) }
-  }
-  const handleQuantityChange = (val: string) => {
-    setQuantity(val)
-    if (selectedTierObj) setAmount(String(selectedTierObj.price * (parseInt(val, 10) || 1)))
-  }
-
   // Silent session re-validation on app load / refresh
-  // STRICT LIFETIME PERSISTENCE: Sellers stay logged in across refreshes & cold starts.
-  // ONLY log out if explicitly kicked by admin (kickedByAdmin / adminReset).
+  // RULE: Log out if session is invalid (401), but keep cached session on network errors.
   useEffect(() => {
     const existingToken = localStorage.getItem('littx_seller_token')
-    const cachedPartnerStr = localStorage.getItem('littx_seller_partner')
-    if (!cachedPartnerStr) return
-
-    let cachedPartner: any = null
-    try {
-      cachedPartner = JSON.parse(cachedPartnerStr)
-    } catch {
-      return
-    }
+    const cachedPartner = localStorage.getItem('littx_seller_partner')
+    if (!existingToken || !cachedPartner) return
 
     const verifySession = async () => {
       try {
         const res = await fetch('/api/seller/verify-session', {
-          headers: {
-            'x-seller-token': existingToken || '',
-            'x-partner-id': cachedPartner.id || ''
-          }
+          headers: { 'x-seller-token': existingToken }
         })
         const data = await res.json()
 
-        if (data.kickedByAdmin || data.adminReset) {
-          // Explicit admin kick: purge local session and logout
-          console.warn('[Seller] Kicked by admin, logging out...', data.message)
+        if (res.ok && data.success) {
+          // Normal: server confirmed session
+          setAuthenticatedPartner(data.partner)
+          localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
+        } else {
+          // Any failure response (e.g. 401, session invalid, or kicked by admin)
+          // Clean state and force logout
+          console.warn('[Seller] Session invalid, logging out...', data.message)
           localStorage.removeItem('littx_seller_token')
           localStorage.removeItem('littx_seller_partner')
           setAuthenticatedPartner(null)
           setToken(null)
-        } else if (data.success && data.partner) {
-          setAuthenticatedPartner(data.partner)
-          localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
-          if (data.token) {
-            setToken(data.token)
-            localStorage.setItem('littx_seller_token', data.token)
-          }
         }
-        // ANY OTHER RESPONSE OR ERROR: DO NOT LOG OUT!
       } catch (err) {
-        console.warn('[Seller] Session check pending connection...', err)
+        // Network/connection error: keep cached session alive, do NOT log out
+        console.warn('[Seller] Background session check pending network connection...', err)
       }
     }
 
     verifySession()
   }, [])
 
-  // Stop any running approval poll
-  const stopApprovalPoll = () => {
-    if (approvalPollRef.current) {
-      clearInterval(approvalPollRef.current)
-      approvalPollRef.current = null
-    }
-  }
-
-  // Start polling for approval — auto-triggers login once admin approves
-  const startApprovalPoll = (partnerId: string, type: 'blocked' | 'registration') => {
-    stopApprovalPoll()
-    setAwaitingApproval({ type, partnerId })
-    approvalPollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/seller/approval-status?partnerId=${partnerId}`)
-        const data = await res.json()
-        if (data.approved === true) {
-          stopApprovalPoll()
-          setAwaitingApproval(null)
-          setLoginError(null)
-          // Auto-trigger login — no manual retry needed
-          handleLoginDirect(partnerId)
-        }
-      } catch {
-        // Network blip — keep polling silently
-      }
-    }, 1500)
-  }
-
-  // Direct login trigger (used by approval poll — bypasses form event)
-  const handleLoginDirect = async (overridePartnerId?: string) => {
-    await performLoginFlow(overridePartnerId || selectedPartnerId)
-  }
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    await performLoginFlow(selectedPartnerId)
-  }
-
-  // Unified login flow logic to prevent race conditions & double-calling errors
-  const performLoginFlow = async (pid: string) => {
-    stopApprovalPoll()
-    setAwaitingApproval(null)
     setLoginError(null)
     setWebauthnStatus(null)
     setLoginLoading(true)
+
     try {
+      // Step 1: Validate Password & Get WebAuthn Options
       const step1Res = await fetch('/api/seller/login-step1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partnerId: pid, password: passwordInput })
+        body: JSON.stringify({ partnerId: selectedPartnerId, password: passwordInput })
       })
+
       const step1Data = await step1Res.json()
+
       if (!step1Res.ok || !step1Data.success) {
-        if (step1Data.blocked) {
-          startApprovalPoll(pid, 'blocked')
-        } else if (step1Data.registrationPending) {
-          startApprovalPoll(pid, 'registration')
-        } else {
-          setLoginError(step1Data.message || 'Authentication failed.')
-        }
+        setLoginError(step1Data.message || 'Password authentication failed.')
         setLoginLoading(false)
         return
       }
 
       let webauthnResponse: any = null
+
       if (step1Data.isRegistration) {
+        // FIRST LOGIN: Bind device WebAuthn Passkey
         setWebauthnStatus('🔑 Registering Hardware Device Passkey... Touch TouchID / FaceID / YubiKey')
         try {
           webauthnResponse = await startRegistration({ optionsJSON: step1Data.options })
         } catch (err: any) {
           console.error('WebAuthn Registration Error:', err)
           setLoginError(`Device Binding Failed: ${err.message || 'User cancelled or device unsupported'}`)
-          setLoginLoading(false); setWebauthnStatus(null); return
+          setLoginLoading(false)
+          setWebauthnStatus(null)
+          return
         }
       } else {
+        // RECURRING LOGIN: Verify WebAuthn Hardware Passkey Signature
         setWebauthnStatus('🔒 Verifying Hardware Passkey Device Signature...')
         try {
           webauthnResponse = await startAuthentication({ optionsJSON: step1Data.options })
         } catch (err: any) {
           console.error('WebAuthn Authentication Error:', err)
           setLoginError('ACCESS DENIED: WebAuthn Device Credential Mismatch. This device is not the registered passkey hardware.')
-          setLoginLoading(false); setWebauthnStatus(null); return
+          setLoginLoading(false)
+          setWebauthnStatus(null)
+          return
         }
       }
 
+      // Step 2: Send WebAuthn Response to Server for Cryptographic Signature Verification
       setWebauthnStatus('🛡️ Verifying Cryptographic Proof on Server...')
       const step2Res = await fetch('/api/seller/login-step2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partnerId: pid, response: webauthnResponse })
+        body: JSON.stringify({ partnerId: selectedPartnerId, response: webauthnResponse })
       })
+
       const step2Data = await step2Res.json()
+
       if (step2Res.ok && step2Data.success) {
         setAuthenticatedPartner(step2Data.partner)
         setToken(step2Data.token)
@@ -296,7 +167,23 @@ export default function SellerPortalApp() {
     }
   }
 
+  const handleGenderChange = (newGender: string) => {
+    setGender(newGender)
+    if (event === 'FRESHERS TAKEOVER') {
+      setAmount(newGender === 'male' ? '699' : '599')
+    } else {
+      setAmount('350')
+    }
+  }
 
+  const handleEventChange = (newEvent: string) => {
+    setEvent(newEvent)
+    if (newEvent === 'AURA GENESIS') {
+      setAmount('350')
+    } else {
+      setAmount(gender === 'male' ? '699' : '599')
+    }
+  }
 
   const handleGenerateTicket = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -367,39 +254,7 @@ export default function SellerPortalApp() {
           <h2 className="text-lg font-bold text-center mb-1">Partner Authentication</h2>
           <p className="text-xs text-slate-400 text-center mb-6">Select organization, enter password & verify registered Passkey</p>
 
-          {awaitingApproval && (
-            <div style={{
-              background: 'rgba(255,180,0,0.08)',
-              border: '2px solid rgba(255,180,0,0.35)',
-              borderRadius: '16px',
-              padding: '20px 16px',
-              marginBottom: '20px',
-              textAlign: 'center',
-            }}>
-              {/* Animated spinner */}
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%',
-                  border: '3px solid rgba(255,180,0,0.2)',
-                  borderTop: '3px solid #ffb400',
-                  animation: 'spin 0.9s linear infinite'
-                }} />
-              </div>
-              <div style={{ fontWeight: 800, fontSize: '13px', color: '#ffb400', letterSpacing: '0.5px', marginBottom: '6px' }}>
-                {awaitingApproval.type === 'registration' ? '🔑 Waiting for Admin to Approve Device' : '🚫 Waiting for Admin to Unblock Account'}
-              </div>
-              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>
-                {awaitingApproval.type === 'registration'
-                  ? 'Your registration request was sent to admin. The moment they approve, login will continue automatically.'
-                  : 'Your unblock request was sent to admin. The moment they approve, login will continue automatically.'}
-              </div>
-              <div style={{ marginTop: '12px', fontSize: '10px', color: 'rgba(255,180,0,0.5)', fontFamily: 'monospace' }}>
-                ● polling for approval...
-              </div>
-            </div>
-          )}
-
-          {!awaitingApproval && loginError && (
+          {loginError && (
             <div className="bg-red-500/15 border-2 border-red-500/40 text-red-300 text-xs p-4 rounded-xl mb-6 text-center font-medium leading-relaxed shadow-lg">
               <div className="text-sm font-bold text-red-400 mb-1 flex items-center justify-center gap-1.5">
                 <span>⛔</span> ACCESS DENIED
@@ -413,7 +268,6 @@ export default function SellerPortalApp() {
               {webauthnStatus}
             </div>
           )}
-
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
@@ -484,20 +338,12 @@ export default function SellerPortalApp() {
         </div>
 
         <div className="flex items-center gap-3">
-          {deferredPrompt && (
-            <button
-              onClick={handleInstallApp}
-              className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 text-xs px-3 py-1.5 rounded-full font-bold transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/10"
-            >
-              <span>📱 Install Android App</span>
-            </button>
-          )}
-
           <div className="bg-violet-500/10 border border-violet-500/30 text-violet-300 text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             {authenticatedPartner.name}
           </div>
 
+          {/* Read-only Device & Passkey Lock Indicator */}
           {authenticatedPartner.webauthnCredentialId && (
             <div className="hidden sm:flex text-[11px] text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg items-center gap-1.5">
               <span>🔐 WebAuthn Bound</span>
@@ -541,14 +387,8 @@ export default function SellerPortalApp() {
                 onChange={(e) => handleEventChange(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500"
               >
-                {eventsList.length > 0 ? (
-                  eventsList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)
-                ) : (
-                  <>
-                    <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
-                    <option value="AURA GENESIS">AURA GENESIS</option>
-                  </>
-                )}
+                <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
+                <option value="AURA GENESIS">AURA GENESIS</option>
               </select>
             </div>
 
@@ -591,22 +431,14 @@ export default function SellerPortalApp() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Pass Category / Tier</label>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Pass Category</label>
                 <select
-                  value={ticketType}
-                  onChange={(e) => handleTierChange(e.target.value)}
+                  value={gender}
+                  onChange={(e) => handleGenderChange(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500"
                 >
-                  {selectedEventObj?.tiers?.length > 0 ? (
-                    selectedEventObj.tiers.map((t: any, i: number) => (
-                      <option key={i} value={t.name}>{t.name} {t.price > 0 ? `(₹${t.price})` : '(FREE)'}</option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="Male Pass">Male Pass (₹699)</option>
-                      <option value="Female Pass">Female Pass (₹599)</option>
-                    </>
-                  )}
+                  <option value="male">Male Pass</option>
+                  <option value="female">Female Pass</option>
                 </select>
               </div>
 
@@ -617,7 +449,7 @@ export default function SellerPortalApp() {
                   min="1"
                   max="10"
                   value={quantity}
-                  onChange={(e) => handleQuantityChange(e.target.value)}
+                  onChange={(e) => setQuantity(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500"
                 />
               </div>
