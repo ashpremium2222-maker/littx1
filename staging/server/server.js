@@ -827,6 +827,8 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
 
             await db.updateSaleRecord(orderId, {
                 status: 'ticket_generated',
+                source: 'shadow',
+                isShadow: true,
                 emailStatus: emailResult.success ? 'sent' : 'failed',
                 emailError: emailResult.error || null,
                 updatedAt: new Date().toISOString()
@@ -834,6 +836,8 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
         } catch (emailErr) {
             console.error('[Shadow Email Error]', emailErr.message);
             await db.updateSaleRecord(orderId, {
+                source: 'shadow',
+                isShadow: true,
                 emailStatus: 'failed',
                 emailError: emailErr.message,
                 updatedAt: new Date().toISOString()
