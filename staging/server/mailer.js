@@ -97,9 +97,12 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
         }
         const fromEmail = `"${envName}" <${envEmail}>`;
 
-        const attachments = [
-            { filename: `${ticketId}.pdf`, path: pdfPath }
-        ];
+        const attachments = [];
+        if (fs.existsSync(pdfPath)) {
+          attachments.push({ filename: `${ticketId}.pdf`, path: pdfPath });
+        } else {
+          console.warn(`[Mailer] PDF not found at ${pdfPath}, attachment skipped.`);
+        }
         if (qrBuffer) attachments.push({ filename: 'qr.png', content: qrBuffer, cid: 'ticketqr' });
         const bannerForEmail = (event && event.toUpperCase().includes('AURA') && fs.existsSync(AURA_BANNER_PATH))
             ? AURA_BANNER_PATH : BANNER_PATH;
