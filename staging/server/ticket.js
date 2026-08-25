@@ -22,13 +22,25 @@ const EVENT_DETAILS = {
     brand: 'FRESHERS TAKEOVER',
     stage: 'Main Stage',
     admission: 'General Admission',
-    date: '05 AUG 2026',
-    time: '4:00 PM',
-    venue: 'Flo The Brewery, Hinjewadi, Pune',
+    date: '17 OCT 2026',
+    time: '4:00 PM onwards',
+    venue: 'Pethkar Ground, Kothrud, Pune',
     generatedBy: 'LITTX Events'
 };
 
-const GENDER_LABEL = { female: 'Female Pass', male: 'Male Pass' };
+// Ticket type display labels — maps internal gender/type value to display string
+const GENDER_LABEL = {
+    // Legacy gendered passes (kept for backward compat)
+    female: 'Female Pass',
+    male: 'Male Pass',
+    // New GA / VIP pass types
+    'GA Single': 'GA Single',
+    'GA Group of 5': 'GA Group of 5',
+    'GA Group of 10': 'GA Group of 10',
+    'VIP Single': 'VIP Single',
+    'VIP Group of 5': 'VIP Group of 5',
+    'VIP Group of 10': 'VIP Group of 10',
+};
 
 function generateTicketId() {
     // Short, human-readable, still unique: FT-XXXXXXXX

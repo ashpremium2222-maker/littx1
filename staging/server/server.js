@@ -34,8 +34,14 @@ function getOrigin(req) {
 // ==================== EVENT & PRICING ====================
 const EVENT = { name: EVENT_NAME };
 const PRICING = {
-    female: 599,
-    male: 699
+    // GA Passes
+    'ga single': 399,
+    'ga group of 5': 1699,
+    'ga group of 10': 2999,
+    // VIP Passes
+    'vip single': 599,
+    'vip group of 5': 2799,
+    'vip group of 10': 4999
 };
 
 // ==================== ACTIVE EVENTS (Master Admin controlled) ====================

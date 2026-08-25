@@ -129,6 +129,12 @@ const SaleSchema = new mongoose.Schema({
     prUserId: { type: String },
     prName: { type: String },
     paymentMethod: { type: String },
+    slots: [{
+        checkedIn: { type: Boolean, default: false },
+        checkedInBy: { type: String },
+        checkedInAt: { type: String }
+    }],
+    scannedCount: { type: Number, default: 0 }
 });
 
 const CompanySchema = new mongoose.Schema({
