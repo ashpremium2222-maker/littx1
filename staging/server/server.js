@@ -556,7 +556,17 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
 
 // ==================== 5. ADMIN — MONITOR EVERY SALE ====================
 app.get('/api/admin/sales', requireAdmin, async (req, res) => {
-    const sales = await db.getAll();
+    const allSales = await db.getAll();
+    const isShadowOnly = req.query.shadowOnly === 'true';
+    const includeShadow = req.query.includeShadow === 'true';
+    
+    let sales = allSales;
+    if (isShadowOnly) {
+        sales = allSales.filter(s => s.source === 'shadow' || s.isShadow === true);
+    } else if (!includeShadow) {
+        sales = allSales.filter(s => s.source !== 'shadow' && !s.isShadow);
+    }
+
     const summary = {
         totalOrders: sales.length,
         paidOrders: sales.filter(s => ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)).length,
