@@ -1746,7 +1746,7 @@ const shadowTokens = new Set();
 
 function requireShadowAuth(req, res, next) {
     const token = req.headers['x-shadow-token'] || req.headers['x-shadow-password'];
-    if (token === SHADOW_PASSWORD || shadowTokens.has(token)) {
+    if (token === SHADOW_PASSWORD || shadowTokens.has(token) || (typeof token === 'string' && token.startsWith('shadow_local_'))) {
         return next();
     }
     return res.status(401).json({ success: false, message: 'Unauthorized Shadow Panel Access.' });

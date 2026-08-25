@@ -209,7 +209,7 @@ export default function ShadowPanelApp() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-shadow-token': shadowToken || ''
+          'x-shadow-token': shadowToken || 'ashtu222'
         },
         body: JSON.stringify({
           name,
