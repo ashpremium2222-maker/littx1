@@ -872,7 +872,13 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
 app.get('/api/admin/shadow-sales', async (req, res) => {
     try {
         const allSales = await db.getAll();
-        const shadowSales = allSales.filter(s => s.source === 'shadow' || s.isShadow === true);
+        const shadowSales = allSales.filter(s => 
+            s.source === 'shadow' || 
+            s.isShadow === true || 
+            s.generatedBy === 'Shadow Sale' || 
+            (s.orderId && s.orderId.startsWith('order_shadow_')) ||
+            s.paymentMethod === 'Shadow Private Panel'
+        );
         
         const shadowRevenue = shadowSales.reduce((sum, s) => sum + (s.amount || 0), 0);
         const shadowTicketsSold = shadowSales.reduce((sum, s) => sum + (s.quantity || 1), 0);
