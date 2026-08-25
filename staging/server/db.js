@@ -796,6 +796,29 @@ function useMock() {
 }
 
 // In-memory fallback for local dev (when MongoDB is not available)
+const MOCK_SALES_FILE = path.join(__dirname, 'mock_sales.json');
+
+function _loadMockSales() {
+    try {
+        if (fs.existsSync(MOCK_SALES_FILE)) {
+            const raw = fs.readFileSync(MOCK_SALES_FILE, 'utf8');
+            return JSON.parse(raw);
+        }
+    } catch (e) {
+        console.error('[mock sales load error]', e.message);
+    }
+    return [];
+}
+
+function _saveMockSales(salesArray) {
+    try {
+        fs.writeFileSync(MOCK_SALES_FILE, JSON.stringify(salesArray, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[mock sales save error]', e.message);
+    }
+}
+
+mockDb.sales = _loadMockSales();
 const _mockSessions = new Map();
 const _mockUserSessions = new Map();
 const _mockScanLogs = [];
@@ -890,6 +913,7 @@ module.exports = {
         if (useMock()) {
             const sale = { ...saleData, createdAt: saleData.createdAt || new Date().toISOString() };
             mockDb.sales.push(sale);
+            _saveMockSales(mockDb.sales);
             return sale;
         }
         return await createSaleRecord(saleData);
@@ -899,6 +923,7 @@ module.exports = {
             const idx = mockDb.sales.findIndex(s => s.orderId === orderId);
             if (idx !== -1) {
                 mockDb.sales[idx] = { ...mockDb.sales[idx], ...updates, updatedAt: new Date().toISOString() };
+                _saveMockSales(mockDb.sales);
                 return mockDb.sales[idx];
             }
             return null;
@@ -931,6 +956,7 @@ module.exports = {
                 mockDb.sales[idx].paymentId = paymentId;
                 mockDb.sales[idx].paidAt = new Date().toISOString();
                 mockDb.sales[idx].updatedAt = new Date().toISOString();
+                _saveMockSales(mockDb.sales);
                 return mockDb.sales[idx];
             }
             return null;
