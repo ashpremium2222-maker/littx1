@@ -1072,18 +1072,11 @@ app.post('/api/seller/logout', async (req, res) => {
 // GET /api/seller/verify — check if session is still valid + enforce IP lock
 app.get('/api/seller/verify', async (req, res) => {
     const token = req.headers['x-seller-token'] || req.query.token;
-    const requestIp = getIp(req);
-    const sid = await authenticateSeller(token, requestIp);
+    const sid = await authenticateSeller(token);
     if (!sid) {
         return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
     }
-    if (sid === '__IP_MISMATCH__') {
-        return res.status(403).json({
-            success: false,
-            ipLocked: true,
-            message: 'Session locked to another device. Contact admin to unlock.'
-        });
-    }
+    // No IP lock enforcement; keep session alive across refreshes
     const session = await db.getSellerSession(sid);
     res.json({ success: true, sellerId: sid, loginAt: session?.loginAt, lockedIp: session?.ip });
 });

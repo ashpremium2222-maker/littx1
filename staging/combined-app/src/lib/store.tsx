@@ -15,7 +15,19 @@ function fmtIST(date: Date | string | null | undefined): string {
   return `${months[ist.getUTCMonth()]} ${ist.getUTCDate()}, ${h12}:${m} ${ampm}`
 }
 
-export type TicketType = 'General' | 'VIP' | 'Backstage' | 'Male Pass' | 'Female Pass' | 'Aura Genesis'
+export type TicketType =
+  | 'GA Single'
+  | 'GA Group of 5'
+  | 'GA Group of 10'
+  | 'VIP Single'
+  | 'VIP Group of 5'
+  | 'VIP Group of 10'
+  | 'General'
+  | 'VIP'
+  | 'Backstage'
+  | 'Male Pass'
+  | 'Female Pass'
+  | 'Aura Genesis'
 export type TicketStatus = 'pending' | 'scanned'
 
 export interface Ticket {

@@ -45,9 +45,9 @@ export default function SellerPortalApp() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
-  const [gender, setGender] = useState('male')
+  const [ticketType, setTicketType] = useState('GA Single')
   const [quantity, setQuantity] = useState('1')
-  const [amount, setAmount] = useState('699')
+  const [amount, setAmount] = useState('399')
 
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
@@ -167,22 +167,22 @@ export default function SellerPortalApp() {
     }
   }
 
-  const handleGenderChange = (newGender: string) => {
-    setGender(newGender)
-    if (event === 'FRESHERS TAKEOVER') {
-      setAmount(newGender === 'male' ? '699' : '599')
-    } else {
-      setAmount('350')
-    }
+  const PASS_PRICES: Record<string, number> = {
+    'GA Single': 399,
+    'GA Group of 5': 1699,
+    'GA Group of 10': 2999,
+    'VIP Single': 599,
+    'VIP Group of 5': 2799,
+    'VIP Group of 10': 4999,
+  }
+
+  const handleTicketTypeChange = (newType: string) => {
+    setTicketType(newType)
+    setAmount(String(PASS_PRICES[newType] || 399))
   }
 
   const handleEventChange = (newEvent: string) => {
     setEvent(newEvent)
-    if (newEvent === 'AURA GENESIS') {
-      setAmount('350')
-    } else {
-      setAmount(gender === 'male' ? '699' : '599')
-    }
   }
 
   const handleGenerateTicket = async (e: React.FormEvent) => {
@@ -208,7 +208,8 @@ export default function SellerPortalApp() {
           name,
           email,
           phone,
-          gender,
+          gender: ticketType,
+          ticketType,
           quantity: parseInt(quantity, 10) || 1,
           amount: parseFloat(amount) || 0,
           event,
@@ -381,15 +382,10 @@ export default function SellerPortalApp() {
 
           <form onSubmit={handleGenerateTicket} className="space-y-4">
             <div>
-              <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Select Event</label>
-              <select
-                value={event}
-                onChange={(e) => handleEventChange(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500"
-              >
-                <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
-                <option value="AURA GENESIS">AURA GENESIS</option>
-              </select>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Event</label>
+              <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white font-semibold">
+                FRESHERS TAKEOVER — 17 Oct 2026 · Pethkar Ground, Kothrud, Pune
+              </div>
             </div>
 
             <div>
@@ -429,29 +425,28 @@ export default function SellerPortalApp() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Pass Category</label>
-                <select
-                  value={gender}
-                  onChange={(e) => handleGenderChange(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500"
-                >
-                  <option value="male">Male Pass</option>
-                  <option value="female">Female Pass</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Quantity</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500"
-                />
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Pass Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['GA Single', 'GA Group of 5', 'GA Group of 10', 'VIP Single', 'VIP Group of 5', 'VIP Group of 10'] as string[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => handleTicketTypeChange(t)}
+                    className={`px-3 py-2.5 rounded-xl border text-xs font-bold transition-all ${
+                      ticketType === t
+                        ? 'border-violet-500 bg-violet-500/15 text-violet-300'
+                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-600'
+                    }`}
+                  >
+                    {t}
+                    <div className={`text-[10px] mt-0.5 ${
+                      ticketType === t ? 'text-violet-400' : 'text-slate-600'
+                    }`}>
+                      ₹{({'GA Single':399,'GA Group of 5':1699,'GA Group of 10':2999,'VIP Single':599,'VIP Group of 5':2799,'VIP Group of 10':4999} as Record<string,number>)[t]}
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
 

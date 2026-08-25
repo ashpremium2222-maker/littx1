@@ -66,15 +66,12 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
   const [attendee, setAttendee] = useState('')
   const [email, setEmail] = useState('')
   const [datetime, setDatetime] = useState('')
-  const [ticketType, setTicketType] = useState<TicketType>('Male Pass')
+  const [ticketType, setTicketType] = useState<TicketType>('GA Single')
   const [error, setError] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success'>('idle')
 
   function handleTicketTypeChange(t: TicketType) {
     setTicketType(t)
-    if (t === 'Aura Genesis' && !datetime) {
-      setDatetime('2026-08-14T16:00')
-    }
   }
 
   // Load real event config from server
@@ -118,10 +115,8 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
     setError('')
     setStatus('loading')
     try {
-      const resolvedEvent = ticketType === 'Aura Genesis' ? 'AURA GENESIS' : event.trim()
-      const resolvedDate = ticketType === 'Aura Genesis'
-        ? 'Aug 14, 2026 · 04:00 PM'
-        : formatDateLabel(datetime)
+      const resolvedEvent = event.trim()
+      const resolvedDate = formatDateLabel(datetime)
 
       // Build headers — use seller token if available, otherwise admin key
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -232,7 +227,7 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
             Ticket Type
           </label>
           <div className="flex gap-2 flex-wrap">
-            {(['Male Pass', 'Female Pass', 'Aura Genesis'] as TicketType[]).map((t) => (
+            {(['GA Single', 'GA Group of 5', 'GA Group of 10', 'VIP Single', 'VIP Group of 5', 'VIP Group of 10'] as TicketType[]).map((t) => (
               <motion.button
                 key={t}
                 onClick={() => handleTicketTypeChange(t)}
