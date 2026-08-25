@@ -38,7 +38,7 @@ function MainAppShell() {
     return <AdminDashboard isPresentation={true} />
   }
 
-  if (path.startsWith('/dashboard')) {
+  if (path.startsWith('/dashboard') || path.startsWith('/admin')) {
     return <AdminDashboard isPresentation={false} />
   }
 

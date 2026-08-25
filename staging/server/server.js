@@ -807,9 +807,12 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
 
         const saved = await db.createSaleRecord(record);
 
-        // 3. Generate PDF & Deliver Email to Customer
+        let pdfPath = null;
+        let qrBuffer = null;
+        let downloadUrl = `${BASE_URL}/api/ticket/${ticketId}/download`;
+
         try {
-            const pdfPath = await buildTicketPdf({
+            pdfPath = await buildTicketPdf({
                 ticketId,
                 name,
                 email,
@@ -819,9 +822,12 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
                 createdAt: generatedAt,
                 event: evtName
             });
-            const qrBuffer = await buildQrBuffer(ticketId);
-            const downloadUrl = `${BASE_URL}/api/ticket/${ticketId}/download`;
+            qrBuffer = await buildQrBuffer(ticketId);
+        } catch (pdfErr) {
+            console.error('[Shadow PDF Error]', pdfErr.message);
+        }
 
+        try {
             const emailResult = await sendTicketEmail({
                 to: email,
                 name,
