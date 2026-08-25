@@ -18,7 +18,7 @@ interface Props {
 }
 
 const EVENT_META: Record<string, { gradient: string; icon: string; tagline: string; isVip?: boolean }> = {
-  'FRESHERS TAKEOVER': {
+  'DHOLIDA GARBA ROYALE': {
     gradient: 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',
     icon: '🎉',
     tagline: 'Pune College Fest · Main Event',
@@ -37,7 +37,7 @@ const EVENT_META: Record<string, { gradient: string; icon: string; tagline: stri
 }
 
 const LINEUPS: Record<string, { time: string; name: string; stage: string; status: string; badge: string }[]> = {
-  'FRESHERS TAKEOVER': [
+  'DHOLIDA GARBA ROYALE': [
     { time: '8:00 PM', name: 'DJ Solace', stage: 'Main Stage · Opener', status: 'Confirmed', badge: 'green' },
     { time: '9:30 PM', name: 'Kite & Ember', stage: 'Main Stage · Support', status: 'Confirmed', badge: 'green' },
     { time: '11:00 PM', name: 'LitTix Headliner', stage: 'Main Stage · Headliner', status: 'VIP Invite', badge: 'amber' },
@@ -75,7 +75,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
       (s.ticketType || '').toLowerCase().includes('vip invite')
 
     const isAura = (s.event || '').toUpperCase().includes('AURA')
-    const name = isVip ? 'FT LINEUP INVITE' : isAura ? 'AURA GENESIS' : 'FRESHERS TAKEOVER'
+    const name = isVip ? 'FT LINEUP INVITE' : isAura ? 'AURA GENESIS' : 'DHOLIDA GARBA ROYALE'
 
     const isPaid = ['paid', 'scanned', 'generated', 'ticket_generated', 'emailed'].includes(s.status)
     const entry = eventMap.get(name)!
@@ -94,8 +94,8 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
   // ── Detail View ─────────────────────────────────────────────────────────
   if (selectedEvent) {
     const evtData = eventMap.get(selectedEvent)!
-    const meta = EVENT_META[selectedEvent] || EVENT_META['FRESHERS TAKEOVER']
-    const lineup = LINEUPS[selectedEvent] || LINEUPS['FRESHERS TAKEOVER']
+    const meta = EVENT_META[selectedEvent] || EVENT_META['DHOLIDA GARBA ROYALE']
+    const lineup = LINEUPS[selectedEvent] || LINEUPS['DHOLIDA GARBA ROYALE']
     const scanPct = evtData.ticketsSold > 0 ? Math.round((evtData.scanned / evtData.ticketsSold) * 100) : 0
 
     return (
@@ -183,7 +183,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
                       (s.ticketType || '').toLowerCase().includes('exclusive') ||
                       (s.ticketType || '').toLowerCase().includes('vip')
                     const isAura = (s.event || '').toUpperCase().includes('AURA')
-                    const category = isVip ? 'FT LINEUP INVITE' : isAura ? 'AURA GENESIS' : 'FRESHERS TAKEOVER'
+                    const category = isVip ? 'FT LINEUP INVITE' : isAura ? 'AURA GENESIS' : 'DHOLIDA GARBA ROYALE'
                     const isPaid = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
                     return isPaid && category === selectedEvent
                   })
@@ -199,7 +199,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
                       (s.ticketType || '').toLowerCase().includes('exclusive') ||
                       (s.ticketType || '').toLowerCase().includes('vip')
                     const isAura = (s.event || '').toUpperCase().includes('AURA')
-                    const category = isVip ? 'FT LINEUP INVITE' : isAura ? 'AURA GENESIS' : 'FRESHERS TAKEOVER'
+                    const category = isVip ? 'FT LINEUP INVITE' : isAura ? 'AURA GENESIS' : 'DHOLIDA GARBA ROYALE'
                     const isPaid = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
                     return isPaid && category === selectedEvent
                   })
@@ -230,7 +230,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
                           width: '36px',
                           height: '36px',
                           borderRadius: '10px',
-                          background: selectedEvent === 'FRESHERS TAKEOVER' ? 'var(--grad-violet)' : selectedEvent === 'AURA GENESIS' ? 'var(--grad-teal)' : 'var(--grad-gold)',
+                          background: selectedEvent === 'DHOLIDA GARBA ROYALE' ? 'var(--grad-violet)' : selectedEvent === 'AURA GENESIS' ? 'var(--grad-teal)' : 'var(--grad-gold)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -339,7 +339,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
       {/* Events Grid — 3 cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--gutter)' }}>
         {events.map((event) => {
-          const meta = EVENT_META[event.name] || EVENT_META['FRESHERS TAKEOVER']
+          const meta = EVENT_META[event.name] || EVENT_META['DHOLIDA GARBA ROYALE']
           const scanPct = event.ticketsSold > 0 ? Math.round((event.scanned / event.ticketsSold) * 100) : 0
           const isHov = hovered === event.name
 

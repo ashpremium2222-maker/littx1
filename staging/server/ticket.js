@@ -1,5 +1,5 @@
 // Generates a unique ticket ID, a QR code, and a downloadable "Littix"-style
-// PDF pass for FRESHERS TAKEOVER — mirrors the reference ticket design
+// PDF pass for DHOLIDA GARBA ROYALE — mirrors the reference ticket design
 // (banner artwork, NOT SCANNED / ACTIVE badges, info pills, QR, Littix mark).
 
 const fs = require('fs');
@@ -15,11 +15,11 @@ const BANNER_PATH = path.join(__dirname, 'ticket-banner.png');
 const AURA_BANNER_PATH = path.join(__dirname, 'aura-ticket-banner.jpg');
 const INVITE_BANNER_PATH = path.join(__dirname, 'invite-banner.png');
 
-const EVENT_NAME = 'FRESHERS TAKEOVER';
+const EVENT_NAME = 'DHOLIDA GARBA ROYALE';
 
 // ---- Edit these to match your actual event details ----
 const EVENT_DETAILS = {
-    brand: 'FRESHERS TAKEOVER',
+    brand: 'DHOLIDA GARBA ROYALE',
     stage: 'Main Stage',
     admission: 'General Admission',
     date: '17 OCT 2026',

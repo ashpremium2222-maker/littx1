@@ -141,7 +141,7 @@ function SellTicketModal({
           amount: data.amount * 100,
           currency: data.currency,
           name: 'LITTX',
-          description: `${gender === 'male' ? 'Male' : 'Female'} Pass — Freshers Takeover`,
+          description: `${gender === 'male' ? 'Male' : 'Female'} Pass — Dholida Garba Royale`,
           order_id: data.orderId,
           prefill: { name, email, contact: phone },
           theme: { color: '#7C5CFA' },
@@ -539,7 +539,7 @@ function PRDashboard({ prUser, onLogout, dark, setDark }: { prUser: PRUser; onLo
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div style={{ background: 'var(--panel-2)', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
                     <div style={{ fontSize: '10px', color: 'var(--ink-soft)', fontWeight: 700 }}>EVENT</div>
-                    <div style={{ fontWeight: 600, marginTop: '2px' }}>{viewSale.event || 'FRESHERS TAKEOVER'}</div>
+                    <div style={{ fontWeight: 600, marginTop: '2px' }}>{viewSale.event || 'DHOLIDA GARBA ROYALE'}</div>
                   </div>
                   <div style={{ background: 'var(--panel-2)', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
                     <div style={{ fontSize: '10px', color: 'var(--ink-soft)', fontWeight: 700 }}>TICKET TYPE</div>

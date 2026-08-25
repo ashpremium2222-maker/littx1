@@ -100,7 +100,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const isScanned = sale.status === 'scanned' || !!sale.scannedAt
             return {
               id: sale.ticketId || sale.orderId,
-              event: sale.event || 'FRESHERS TAKEOVER',
+              event: sale.event || 'DHOLIDA GARBA ROYALE',
               attendee: sale.name,
               email: sale.email,
               phone: sale.phone || '',
@@ -217,7 +217,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // Build a fully-resolved ticket directly from server response
           const resolvedTicket: Ticket = {
             id: t.id,
-            event: t.event || 'FRESHERS TAKEOVER',
+            event: t.event || 'DHOLIDA GARBA ROYALE',
             attendee: t.attendee || t.name || '—',
             email: t.email || '—',
             phone: t.phone || 'N/A',
@@ -239,7 +239,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // Server sends name as attendee field; map all fields correctly
           const matchedTicket: Ticket = {
             id: t.id || t.ticketId || cleanId,
-            event: t.event || 'FRESHERS TAKEOVER',
+            event: t.event || 'DHOLIDA GARBA ROYALE',
             attendee: t.attendee || t.name || '—',
             email: t.email || '—',
             phone: t.phone || 'N/A',

@@ -453,7 +453,7 @@ export default function Customers({ sales = [], globalSearch = '' }: Props) {
                 {sales.filter(s => s.email === selectedCustomer.email && ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)).map((s: any, idx: number) => (
                   <div key={s.orderId || idx} style={{ background: 'var(--panel-2)', padding: '12px 14px', borderRadius: '12px', border: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ink)' }}>{s.event || 'FRESHERS TAKEOVER'}</div>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ink)' }}>{s.event || 'DHOLIDA GARBA ROYALE'}</div>
                       <div style={{ fontSize: '10.5px', color: 'var(--ink-faint)' }}>{s.createdAt ? new Date(s.createdAt).toLocaleString('en-IN') : '—'}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>

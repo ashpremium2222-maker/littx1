@@ -49,7 +49,7 @@ export default function ShadowPanelApp() {
   const [selectedTierObj, setSelectedTierObj]   = useState<any>(null)
 
   // Ticket creation form state
-  const [event, setEvent]           = useState('FRESHERS TAKEOVER')
+  const [event, setEvent]           = useState('DHOLIDA GARBA ROYALE')
   const [ticketType, setTicketType] = useState('Male Pass')
   const [name, setName]             = useState('')
   const [email, setEmail]           = useState('')
@@ -560,7 +560,7 @@ export default function ShadowPanelApp() {
                             eventsList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)
                           ) : (
                             <>
-                              <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
+                              <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
                               <option value="AURA GENESIS">AURA GENESIS</option>
                             </>
                           )}
@@ -706,7 +706,7 @@ export default function ShadowPanelApp() {
                                   <div style={{ fontWeight: 600, color: '#f4f4f5' }}>{o.name}</div>
                                   <div style={{ fontSize: '10px', color: '#71717a' }}>{o.email}</div>
                                 </td>
-                                <td style={{ fontWeight: 600 }}>{o.event || 'FRESHERS TAKEOVER'}</td>
+                                <td style={{ fontWeight: 600 }}>{o.event || 'DHOLIDA GARBA ROYALE'}</td>
                                 <td style={{ fontWeight: 800, color: '#ffffff' }}>
                                   ₹{(o.amount || 0).toLocaleString()}
                                 </td>
@@ -775,7 +775,7 @@ export default function ShadowPanelApp() {
                         eventsList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)
                       ) : (
                         <>
-                          <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
+                          <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
                           <option value="AURA GENESIS">AURA GENESIS</option>
                         </>
                       )}
@@ -912,7 +912,7 @@ export default function ShadowPanelApp() {
                     style={{ width: '180px' }}
                   >
                     <option value="all">All Events</option>
-                    <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
+                    <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
                     <option value="AURA GENESIS">AURA GENESIS</option>
                   </select>
 
@@ -965,7 +965,7 @@ export default function ShadowPanelApp() {
                               <div style={{ fontSize: '10px', color: '#71717a' }}>{o.email}</div>
                               {o.phone && <div style={{ fontSize: '10px', color: '#71717a' }}>{o.phone}</div>}
                             </td>
-                            <td style={{ fontWeight: 600 }}>{o.event || 'FRESHERS TAKEOVER'}</td>
+                            <td style={{ fontWeight: 600 }}>{o.event || 'DHOLIDA GARBA ROYALE'}</td>
                             <td>{o.ticketType || (o.gender === 'female' ? 'Female Pass' : 'Male Pass')}</td>
                             <td style={{ fontWeight: 700 }}>{o.quantity || 1}</td>
                             <td style={{ fontWeight: 800, color: '#ffffff' }}>

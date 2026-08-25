@@ -20,7 +20,7 @@ export default function QRScans({ sales = [], isPresentation = false }: QRScansP
       result: 'Valid',
       ticketId: s.ticketId || '—',
       attendee: s.name || 'Attendee',
-      event: s.event || 'FRESHERS TAKEOVER',
+      event: s.event || 'DHOLIDA GARBA ROYALE',
     }
   })
 

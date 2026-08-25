@@ -112,13 +112,13 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111111; font-size: 15px; line-height: 1.6;">
               <p>Hi ${name},</p>
               <p>Congratulations! 🎉</p>
-              <p>We’re excited to officially welcome you to the Freshers Takeover 2026 Influencer Lineup, presented by LITTX.</p>
+              <p>We’re excited to officially welcome you to the Dholida Garba Royale 2026 Influencer Lineup, presented by LITTX.</p>
               <p>Thank you for being a part of this journey. We’re looking forward to having you with us and creating an unforgettable experience together.</p>
               
               <div style="margin: 25px 0; padding: 20px; border: 2px solid #000000; border-radius: 8px; background-color: #ffffff;">
                 <p style="font-size: 16px; font-weight: bold; margin-top: 0; margin-bottom: 12px; color: #000000; text-transform: uppercase; letter-spacing: 0.05em;">Event Details</p>
                 <ul style="margin: 0; padding-left: 20px; color: #333333; list-style: disc;">
-                  <li style="margin-bottom: 8px;"><strong>Event:</strong> Freshers Takeover 2026</li>
+                  <li style="margin-bottom: 8px;"><strong>Event:</strong> Dholida Garba Royale 2026</li>
                   <li style="margin-bottom: 8px;"><strong>Date:</strong> 5 August 2026</li>
                   <li style="margin-bottom: 8px;"><strong>Time:</strong> 5pm onwards</li>
                   <li style="margin-bottom: 8px;"><strong>Venue:</strong> Flo, Hinjewadi, Pune</li>
@@ -128,14 +128,14 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
               <p>Your official Invitation Pass is attached to this email as a PDF. It contains a unique QR code that will be scanned at the venue for entry. Please keep it safe and avoid sharing it, as each QR code is valid for one time entry only.</p>
               
               <p style="margin-top: 30px;">
-                We can’t wait to see you at Freshers Takeover 2026!<br><br>
+                We can’t wait to see you at Dholida Garba Royale 2026!<br><br>
                 Best Regards,<br>
                 <strong>Team LITTX</strong>
               </p>
             </div>`;
             
-            subject = `Your Invitation: Freshers Takeover 2026 Influencer Lineup`;
-            text = `Hi ${name},\n\nCongratulations! 🎉\n\nWe’re excited to officially welcome you to the Freshers Takeover 2026 Influencer Lineup, presented by LITTX.\n\nThank you for being a part of this journey. We’re looking forward to having you with us and creating an unforgettable experience together.\n\nEvent Details\n• Event: Freshers Takeover 2026\n• Date: 5 August 2026\n• Time: 5pm onwards \n• Venue: Flo, Hinjewadi, Pune\n\nYour official Invitation Pass is attached to this email as a PDF. It contains a unique QR code that will be scanned at the venue for entry. Please keep it safe and avoid sharing it, as each QR code is valid for one time entry only.\n\nWe can’t wait to see you at Freshers Takeover 2026!\n\nBest Regards,\nTeam LITTX`;
+            subject = `Your Invitation: Dholida Garba Royale 2026 Influencer Lineup`;
+            text = `Hi ${name},\n\nCongratulations! 🎉\n\nWe’re excited to officially welcome you to the Dholida Garba Royale 2026 Influencer Lineup, presented by LITTX.\n\nThank you for being a part of this journey. We’re looking forward to having you with us and creating an unforgettable experience together.\n\nEvent Details\n• Event: Dholida Garba Royale 2026\n• Date: 5 August 2026\n• Time: 5pm onwards \n• Venue: Flo, Hinjewadi, Pune\n\nYour official Invitation Pass is attached to this email as a PDF. It contains a unique QR code that will be scanned at the venue for entry. Please keep it safe and avoid sharing it, as each QR code is valid for one time entry only.\n\nWe can’t wait to see you at Dholida Garba Royale 2026!\n\nBest Regards,\nTeam LITTX`;
         } else {
             html = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111111; font-size: 15px; line-height: 1.6;">

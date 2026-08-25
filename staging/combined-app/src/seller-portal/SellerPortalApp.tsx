@@ -41,7 +41,7 @@ export default function SellerPortalApp() {
   const [webauthnStatus, setWebauthnStatus] = useState<string | null>(null)
 
   // Ticket generation form state
-  const [event, setEvent] = useState('FRESHERS TAKEOVER')
+  const [event, setEvent] = useState('DHOLIDA GARBA ROYALE')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -384,7 +384,7 @@ export default function SellerPortalApp() {
             <div>
               <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Event</label>
               <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white font-semibold">
-                FRESHERS TAKEOVER — 17 Oct 2026 · Pethkar Ground, Kothrud, Pune
+                DHOLIDA GARBA ROYALE — 17 Oct 2026 · Pethkar Ground, Kothrud, Pune
               </div>
             </div>
 

@@ -142,7 +142,7 @@ export default function Tickets({
       buyer: s.name,
       email: s.email,
       phone: s.phone || '—',
-      event: s.event || 'FRESHERS TAKEOVER',
+      event: s.event || 'DHOLIDA GARBA ROYALE',
       type:
         s.gender === 'male'
           ? 'Male Pass'
@@ -229,7 +229,7 @@ export default function Tickets({
 
         <select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)}>
           <option value="all">All events</option>
-          <option value="freshers takeover">FRESHERS TAKEOVER</option>
+          <option value="freshers takeover">DHOLIDA GARBA ROYALE</option>
           <option value="aura genesis">AURA GENESIS</option>
           <option value="ft lineup invite">FT LINEUP INVITE</option>
         </select>

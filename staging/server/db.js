@@ -342,7 +342,7 @@ async function seedDefaultEvents() {
         const now = new Date().toISOString();
         const defaultEvents = [
             {
-                name: 'Freshers Takeover 2026',
+                name: 'Dholida Garba Royale 2026',
                 companyId: 'littlane',
                 date: '2026-09-15',
                 time: '07:00 PM',
@@ -746,7 +746,7 @@ const mockDb = {
     events: [
         {
             _id: '64ef8bb11b6d912345678901',
-            name: 'FRESHERS TAKEOVER',
+            name: 'DHOLIDA GARBA ROYALE',
             companyId: 'littlane',
             date: '2026-08-25',
             time: '18:00',
@@ -1417,8 +1417,8 @@ module.exports = {
 
 // ==================== IN-MEMORY MOCK EVENTS (fallback) ====================
 const _mockEvents = new Map([
-    ['FRESHERS TAKEOVER', {
-        id: 'event_freshers', name: 'FRESHERS TAKEOVER', companyId: 'littlane',
+    ['DHOLIDA GARBA ROYALE', {
+        id: 'event_freshers', name: 'DHOLIDA GARBA ROYALE', companyId: 'littlane',
         date: '2026-09-15', time: '07:00 PM', venue: 'The Orchid, Pune',
         tagline: 'Pune College Fest · Main Event',
         gradient: 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',

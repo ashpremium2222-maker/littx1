@@ -179,7 +179,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         id: `created-${sale.orderId}`,
         type: 'purchase',
         title: `${sale.name || 'Attendee'} booked a pass`,
-        sub: `${sale.event || 'FRESHERS TAKEOVER'} · ₹${sale.amount || 0}`,
+        sub: `${sale.event || 'DHOLIDA GARBA ROYALE'} · ₹${sale.amount || 0}`,
         time: timeLabel,
         badge: <span className="badge badge-blue"><span className="badge-dot" />New</span>,
       })
@@ -613,7 +613,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         <div className="right-col">
           {/* Creative Event Overview Cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' }}>
-            {/* Event 1: Freshers Takeover Male */}
+            {/* Event 1: Dholida Garba Royale Male */}
             <div
               className="card lt-hover-lift"
               onClick={(e) => {
@@ -634,7 +634,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ fontSize: '15px' }}>🎉</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Freshers Takeover (Male)</h4>
+                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Dholida Garba Royale (Male)</h4>
                 </div>
                 <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Male Passes Sold</p>
               </div>
@@ -644,7 +644,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               </div>
             </div>
 
-            {/* Event 2: Freshers Takeover Female */}
+            {/* Event 2: Dholida Garba Royale Female */}
             <div
               className="card lt-hover-lift"
               onClick={(e) => {
@@ -665,7 +665,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ fontSize: '15px' }}>👩</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Freshers Takeover (Female)</h4>
+                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Dholida Garba Royale (Female)</h4>
                 </div>
                 <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Female Passes Sold</p>
               </div>
@@ -818,7 +818,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--ink)' }}>
-                  {popupEvent.name === 'freshers male' ? '🎉 Freshers Takeover (Male)' : popupEvent.name === 'freshers female' ? '👩 Freshers Takeover (Female)' : popupEvent.name === 'aura genesis' ? '✨ Aura Genesis' : '⭐ FT Lineup Invite'} — Buyers
+                  {popupEvent.name === 'freshers male' ? '🎉 Dholida Garba Royale (Male)' : popupEvent.name === 'freshers female' ? '👩 Dholida Garba Royale (Female)' : popupEvent.name === 'aura genesis' ? '✨ Aura Genesis' : '⭐ FT Lineup Invite'} — Buyers
                 </h3>
                 <div style={{ fontSize: '11px', color: 'var(--ink-soft)', marginTop: '4px' }}>
                   {(() => {

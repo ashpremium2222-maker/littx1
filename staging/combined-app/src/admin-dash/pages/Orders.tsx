@@ -301,7 +301,7 @@ export default function Orders({
           buyer: s.name,
           email: s.email,
           phone: s.phone,
-          event: s.event || 'FRESHERS TAKEOVER',
+          event: s.event || 'DHOLIDA GARBA ROYALE',
           ticketType: tType,
           qty: s.quantity || 1,
           subtotal: s.amount,
@@ -442,7 +442,7 @@ export default function Orders({
 
         <select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)}>
           <option value="all">All events</option>
-          <option value="freshers takeover">FRESHERS TAKEOVER</option>
+          <option value="freshers takeover">DHOLIDA GARBA ROYALE</option>
           <option value="aura genesis">AURA GENESIS</option>
         </select>
 

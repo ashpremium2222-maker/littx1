@@ -200,7 +200,7 @@ export default function App({ isPresentation = false }: AppProps) {
   const [manualGender, setManualGender] = useState('male')
   const [manualQty, setManualQty] = useState('1')
   const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_male') || '699')
-  const [manualEvent, setManualEvent] = useState('FRESHERS TAKEOVER')
+  const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
 
   const fetchSales = async (keyToUse = adminKey) => {
     if (!keyToUse) {
@@ -309,7 +309,7 @@ export default function App({ isPresentation = false }: AppProps) {
     }
     const isAura = manualEvent === 'AURA GENESIS'
     const isInvite = manualEvent === 'FT LINEUP INVITE'
-    const finalEvent = isInvite ? 'FRESHERS TAKEOVER' : manualEvent
+    const finalEvent = isInvite ? 'DHOLIDA GARBA ROYALE' : manualEvent
     const finalGender = isInvite ? 'Exclusive' : (isAura ? 'aura' : manualGender)
     const finalAmount = isInvite ? 0 : manualAmount
     const finalTicketType = isInvite
@@ -368,7 +368,7 @@ export default function App({ isPresentation = false }: AppProps) {
 
   const handleManualGenderChange = (val: string) => {
     setManualGender(val)
-    if (manualEvent === 'FRESHERS TAKEOVER') {
+    if (manualEvent === 'DHOLIDA GARBA ROYALE') {
       const saved = localStorage.getItem('ft_price_male') || '699'
       setManualAmount(saved)
     } else {
@@ -715,7 +715,7 @@ export default function App({ isPresentation = false }: AppProps) {
                     }
                   }}
                 >
-                  <option value="FRESHERS TAKEOVER">FRESHERS TAKEOVER</option>
+                  <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
                   <option value="AURA GENESIS">AURA GENESIS</option>
                   <option value="FT LINEUP INVITE">FT LINEUP INVITE (FREE)</option>
                 </select>
