@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const os = require('os');
 
 // We fall back to a local mongodb URI if none is set in env
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/littx';
@@ -796,17 +797,40 @@ function useMock() {
 }
 
 // In-memory fallback for local dev (when MongoDB is not available)
-const MOCK_SALES_FILE = path.join(__dirname, 'mock_sales.json');
+// Use /tmp on Vercel/serverless — it's the only writable directory
+const MOCK_SALES_FILE = (() => {
+    const tmpPath = path.join(os.tmpdir(), 'littx_mock_sales.json');
+    const localPath = path.join(__dirname, 'mock_sales.json');
+    // Prefer local path for dev, tmp for serverless
+    try {
+        fs.writeFileSync(localPath, fs.existsSync(localPath) ? fs.readFileSync(localPath) : '[]');
+        return localPath;
+    } catch (_) {
+        return tmpPath;
+    }
+})();
 
 function _loadMockSales() {
     try {
         if (fs.existsSync(MOCK_SALES_FILE)) {
             const raw = fs.readFileSync(MOCK_SALES_FILE, 'utf8');
-            return JSON.parse(raw);
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
         }
     } catch (e) {
         console.error('[mock sales load error]', e.message);
     }
+    // Also try the alternate path
+    try {
+        const altPath = MOCK_SALES_FILE.includes(os.tmpdir())
+            ? path.join(__dirname, 'mock_sales.json')
+            : path.join(os.tmpdir(), 'littx_mock_sales.json');
+        if (fs.existsSync(altPath)) {
+            const raw = fs.readFileSync(altPath, 'utf8');
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+        }
+    } catch (_) {}
     return [];
 }
 
@@ -814,11 +838,20 @@ function _saveMockSales(salesArray) {
     try {
         fs.writeFileSync(MOCK_SALES_FILE, JSON.stringify(salesArray, null, 2), 'utf8');
     } catch (e) {
-        console.error('[mock sales save error]', e.message);
+        // Try alternate path
+        try {
+            const altPath = MOCK_SALES_FILE.includes(os.tmpdir())
+                ? path.join(__dirname, 'mock_sales.json')
+                : path.join(os.tmpdir(), 'littx_mock_sales.json');
+            fs.writeFileSync(altPath, JSON.stringify(salesArray, null, 2), 'utf8');
+        } catch (e2) {
+            console.error('[mock sales save error]', e2.message);
+        }
     }
 }
 
 mockDb.sales = _loadMockSales();
+console.log(`[MockDB] Loaded ${mockDb.sales.length} mock sales from ${MOCK_SALES_FILE}`);
 const _mockSessions = new Map();
 const _mockUserSessions = new Map();
 const _mockScanLogs = [];

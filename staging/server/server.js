@@ -904,6 +904,31 @@ app.get('/api/admin/shadow-sales', async (req, res) => {
     }
 });
 
+// GET /api/debug/db-status — Shows DB connection mode and record count (for debugging)
+app.get('/api/debug/db-status', async (req, res) => {
+    try {
+        const mongoose = require('mongoose');
+        const isConnected = mongoose.connection.readyState === 1;
+        const all = await db.getAll();
+        res.json({
+            success: true,
+            dbMode: isConnected ? 'MongoDB' : 'Mock (in-memory/file)',
+            mongoState: mongoose.connection.readyState,
+            totalRecords: all.length,
+            sampleRecords: all.slice(0, 5).map(s => ({
+                orderId: s.orderId,
+                name: s.name,
+                status: s.status,
+                source: s.source,
+                isShadow: s.isShadow,
+                createdAt: s.createdAt
+            }))
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ==================== 6B. SECURE DATA WIPE (ADMIN ONLY) ====================
 app.post('/api/admin/danger-wipe-test-data', async (req, res) => {
     const clientKey = req.query.key || req.headers['x-admin-key'];
