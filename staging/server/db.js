@@ -290,9 +290,9 @@ async function seedDefaultUsers() {
 
 async function seedDefaultPartnerLocks() {
     const defaultPartners = [
-        { partnerId: 'littlane', name: 'Littlane Entertainment', password: 'littlane-pass-2026' },
-        { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro-pass-2026' },
-        { partnerId: '7th-heaven', name: '7th Heaven', password: 'heaven-pass-2026' }
+        { partnerId: 'littlane', name: 'Littlane Entertainment', password: 'littlane2026' },
+        { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro2026' },
+        { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026' }
     ];
 
     for (const p of defaultPartners) {
@@ -792,9 +792,9 @@ const _mockSessions = new Map();
 const _mockUserSessions = new Map();
 const _mockScanLogs = [];
 const _mockPartnerLocks = new Map([
-    ['littlane', { partnerId: 'littlane', name: 'Littlane Entertainment', password: 'littlane-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['nitro', { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: 'heaven-pass-2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
+    ['littlane', { partnerId: 'littlane', name: 'Littlane Entertainment', password: 'littlane2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['nitro', { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
 ]);
 
 const _mockDevices = new Map();

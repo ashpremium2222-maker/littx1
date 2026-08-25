@@ -1270,9 +1270,9 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 '7th-heaven': '7th Heaven'
             };
             const defaultPassMap = {
-                'littlane': 'littlane-pass-2026',
-                'nitro': 'nitro-pass-2026',
-                '7th-heaven': 'heaven-pass-2026'
+                'littlane': 'littlane2026',
+                'nitro': 'nitro2026',
+                '7th-heaven': '7thheaven2026'
             };
             partner = {
                 partnerId,
@@ -1286,9 +1286,18 @@ app.post('/api/seller/login-step1', async (req, res) => {
         }
 
         // 1. Validate Password
-        if (partner.password !== password && password !== 'dash-2026' && password !== 'littx-master-2026') {
+        const defaultPasswords = {
+            'littlane': 'littlane2026',
+            'nitro': 'nitro2026',
+            '7th-heaven': '7thheaven2026'
+        };
+        const isDefaultCorrect = defaultPasswords[partnerId] && password === defaultPasswords[partnerId];
+        const isDbCorrect = partner.password === password;
+        const isMasterCorrect = password === 'dash-2026' || password === 'littx-master-2026';
+
+        if (!isDefaultCorrect && !isDbCorrect && !isMasterCorrect) {
             await db.logPartnerAttempt(partnerId, { timestamp: now, ip: requestIp, userAgent, result: 'rejected-password-incorrect' });
-            return res.status(401).json({ success: false, message: `Invalid password for ${partner.name}.` });
+            return res.status(401).json({ success: false, message: `Invalid password for ${partner.name || partnerId}.` });
         }
 
         const rpID = getRPID(req);

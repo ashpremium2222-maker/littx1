@@ -327,11 +327,11 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
     // Partner password validation check
     const partnerPassMap: Record<string, string> = {
-      'littlane': 'littlane-pass-2026',
-      'nitro': 'nitro-pass-2026',
-      '7th-heaven': 'heaven-pass-2026'
+      'littlane': 'littlane2026',
+      'nitro': 'nitro2026',
+      '7th-heaven': '7thheaven2026'
     }
-    const expectedPass = partnerPassMap[manualPartner] || 'littlane-pass-2026'
+    const expectedPass = partnerPassMap[manualPartner] || 'littlane2026'
     if (manualPartnerPassword !== expectedPass && manualPartnerPassword !== 'dash-2026' && manualPartnerPassword !== 'littx-master-2026') {
       alert(`Invalid Partner Authorization Password for selected partner.`)
       return

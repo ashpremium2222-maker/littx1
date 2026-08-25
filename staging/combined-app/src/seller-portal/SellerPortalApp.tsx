@@ -8,9 +8,9 @@ export interface PartnerOption {
 }
 
 export const PARTNERS: PartnerOption[] = [
-  { id: 'littlane', name: 'Littlane Entertainment', defaultPass: 'littlane-pass-2026' },
-  { id: 'nitro', name: 'Nitro Events', defaultPass: 'nitro-pass-2026' },
-  { id: '7th-heaven', name: '7th Heaven', defaultPass: 'heaven-pass-2026' },
+  { id: 'littlane', name: 'Littlane Entertainment', defaultPass: 'littlane2026' },
+  { id: 'nitro', name: 'Nitro Events', defaultPass: 'nitro2026' },
+  { id: '7th-heaven', name: '7th Heaven', defaultPass: '7thheaven2026' },
 ]
 
 interface PartnerSessionData {
