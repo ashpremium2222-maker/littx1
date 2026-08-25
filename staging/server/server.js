@@ -40,9 +40,9 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT ||
 // 3 hardcoded seller IDs + passwords. Each seller can only have 1 active session at a time.
 // Adjust passwords here or move to env vars for production.
 const SELLER_ACCOUNTS = {
-    'SELLER-A': process.env.SELLER_A_PASS || 'littx-a-2026',
-    'SELLER-B': process.env.SELLER_B_PASS || 'littx-b-2026',
-    'SELLER-C': process.env.SELLER_C_PASS || 'littx-c-2026',
+    'littlane': process.env.LITTLANE_PASS || 'littlane2026',
+    'nitro': process.env.NITRO_PASS || 'nitro2026',
+    '7th-heaven': process.env.SEVENTH_HEAVEN_PASS || '7thheaven2026',
 };
 
 // In-memory session store: sellerId -> { token, loginAt, ip }
@@ -851,11 +851,11 @@ app.post('/api/seller/login', (req, res) => {
     if (!sellerId || !password) {
         return res.status(400).json({ success: false, message: 'Seller ID and password are required.' });
     }
-    const expected = SELLER_ACCOUNTS[sellerId.toUpperCase()];
+    const expected = SELLER_ACCOUNTS[sellerId.toLowerCase()];
     if (!expected || expected !== password) {
         return res.status(401).json({ success: false, message: 'Invalid Seller ID or password.' });
     }
-    const sid = sellerId.toUpperCase();
+    const sid = sellerId.toLowerCase();
     const token = generateToken();
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
     sellerSessions[sid] = { token, loginAt: new Date().toISOString(), ip };

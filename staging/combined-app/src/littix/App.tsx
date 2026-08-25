@@ -35,7 +35,7 @@ const DEPTH: Record<Screen['name'], number> = {
   'scan-rejected': 2,
 }
 
-const SELLER_IDS = ['SELLER-A', 'SELLER-B', 'SELLER-C'] as const
+const SELLER_IDS = ['littlane', '7th-heaven', 'nitro'] as const
 
 // ==================== SELLER LOGIN SCREEN ====================
 function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: string) => void }) {
@@ -145,7 +145,7 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
                     boxShadow: selected === id ? '0 0 20px rgba(168,85,247,0.2)' : 'none',
                   }}
                 >
-                  {id.replace('SELLER-', 'S-')}
+                  {id.charAt(0).toUpperCase() + id.slice(1)}
                 </motion.button>
               ))}
             </div>
