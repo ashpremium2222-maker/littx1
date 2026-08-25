@@ -909,11 +909,20 @@ app.get('/api/debug/db-status', async (req, res) => {
     try {
         const mongoose = require('mongoose');
         const isConnected = mongoose.connection.readyState === 1;
+        
+        // Obfuscate URI for display
+        const rawUri = process.env.MONGODB_URI || 'not-set (falling back to localhost)';
+        let displayUri = rawUri;
+        if (rawUri.includes('@')) {
+            displayUri = rawUri.replace(/\/\/.*@/, '//****:****@');
+        }
+
         const all = await db.getAll();
         res.json({
             success: true,
             dbMode: isConnected ? 'MongoDB' : 'Mock (in-memory/file)',
             mongoState: mongoose.connection.readyState,
+            uriInUse: displayUri,
             totalRecords: all.length,
             sampleRecords: all.slice(0, 5).map(s => ({
                 orderId: s.orderId,
@@ -925,7 +934,18 @@ app.get('/api/debug/db-status', async (req, res) => {
             }))
         });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        const mongoose = require('mongoose');
+        const rawUri = process.env.MONGODB_URI || 'not-set (falling back to localhost)';
+        let displayUri = rawUri;
+        if (rawUri.includes('@')) {
+            displayUri = rawUri.replace(/\/\/.*@/, '//****:****@');
+        }
+        res.status(500).json({ 
+            success: false, 
+            message: err.message,
+            mongoState: mongoose.connection.readyState,
+            uriInUse: displayUri
+        });
     }
 });
 
