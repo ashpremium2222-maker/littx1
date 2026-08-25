@@ -8,8 +8,28 @@ const QRCode = require('qrcode');
 const PDFDocument = require('pdfkit');
 const { randomUUID } = require('crypto');
 
-const TICKETS_DIR = path.join(__dirname, 'tickets');
-try { if (!fs.existsSync(TICKETS_DIR)) fs.mkdirSync(TICKETS_DIR, { recursive: true }); } catch (_) {}
+const os = require('os');
+const TICKETS_DIR = (() => {
+    if (process.env.VERCEL || process.env.LAMBDA_TASK_ROOT || __dirname.includes('/var/task') || __dirname.includes('/var/tmp')) {
+        const tmpPath = path.join(os.tmpdir(), 'tickets');
+        try { if (!fs.existsSync(tmpPath)) fs.mkdirSync(tmpPath, { recursive: true }); } catch (_) {}
+        return tmpPath;
+    }
+    const localPath = path.join(__dirname, 'tickets');
+    try {
+        if (!fs.existsSync(localPath)) {
+            fs.mkdirSync(localPath, { recursive: true });
+        }
+        const testFile = path.join(localPath, '.write-test');
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        return localPath;
+    } catch (e) {
+        const tmpPath = path.join(os.tmpdir(), 'tickets');
+        try { if (!fs.existsSync(tmpPath)) fs.mkdirSync(tmpPath, { recursive: true }); } catch (_) {}
+        return tmpPath;
+    }
+})();
 
 const BANNER_PATH = path.join(__dirname, 'ticket-banner.png');
 const AURA_BANNER_PATH = path.join(__dirname, 'aura-ticket-banner.jpg');
