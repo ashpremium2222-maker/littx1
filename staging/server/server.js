@@ -100,10 +100,19 @@ app.get('/pr/:splat', (req, res) => res.sendFile(distIndexHtml));
 
 // Admin dashboard — serve the React build
 app.get('/admin', (req, res) => res.sendFile(distIndexHtml));
+app.get('/admin/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashboard', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashboard/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashhboard', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashhboard/:splat', (req, res) => res.sendFile(distIndexHtml));
+
+// Seller portal
+app.get('/seller', (req, res) => res.sendFile(distIndexHtml));
+app.get('/seller/:splat', (req, res) => res.sendFile(distIndexHtml));
+
+// Shadow panel
+app.get('/shadowbyash', (req, res) => res.sendFile(distIndexHtml));
+app.get('/shadowbyash/:splat', (req, res) => res.sendFile(distIndexHtml));
 
 // Public ticket view — /view/:ticketId — linked from emails
 app.get('/view/:ticketId', (req, res) => res.sendFile(distIndexHtml));
@@ -773,10 +782,7 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
         const ticketId = generateTicketId();
         const generatedAt = new Date().toISOString();
 
-        // 1. Build QR Code Data URL & Buffer
-        const qrDataUrl = await buildQrDataUrl(ticketId);
-
-        // 2. Save Shadow Record in DB (Source = "shadow", isShadow = true)
+        // 1. Save Shadow Record immediately — this is the source of truth
         const record = {
             orderId,
             ticketId,
@@ -805,11 +811,22 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
             showInPres: false
         };
 
-        const saved = await db.createSaleRecord(record);
+        await db.createSaleRecord(record);
 
+        console.log(`👻 [Shadow Ticket Issued] Order ${orderId} | Ticket ${ticketId} for ${name} (${email})`);
+
+        // 2. Respond immediately so the client never times out
+        res.json({
+            success: true,
+            orderId,
+            ticketId,
+            message: 'Shadow Ticket created! Sending email in the background...'
+        });
+
+        // 3. Do PDF generation & email delivery in the background (non-blocking)
+        const downloadUrl = `${BASE_URL}/api/ticket/${ticketId}/download`;
         let pdfPath = null;
         let qrBuffer = null;
-        let downloadUrl = `${BASE_URL}/api/ticket/${ticketId}/download`;
 
         try {
             pdfPath = await buildTicketPdf({
@@ -857,20 +874,13 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
                 emailStatus: 'failed',
                 emailError: emailErr.message,
                 updatedAt: new Date().toISOString()
-            });
+            }).catch(() => {});
         }
-
-        console.log(`👻 [Shadow Ticket Issued] Order ${orderId} | Ticket ${ticketId} for ${name} (${email})`);
-
-        res.json({
-            success: true,
-            orderId,
-            ticketId,
-            message: 'Shadow Ticket generated and delivered to customer successfully!'
-        });
     } catch (err) {
         console.error('[Shadow Generation Error]', err);
-        res.status(500).json({ success: false, message: 'Server error generating shadow ticket.' });
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: 'Server error generating shadow ticket.' });
+        }
     }
 });
 
