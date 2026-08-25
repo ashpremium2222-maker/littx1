@@ -38,36 +38,23 @@ function LoginPage({ onLogin }: { onLogin: (user: PRUser) => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const [ipLocked, setIpLocked] = useState<{ lockedIp: string } | null>(null)
   const [loading, setLoading] = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setIpLocked(null)
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password })
-      })
-      const data = await res.json()
-      if (data.success && data.user && (data.user.role === 'pr' || data.user.role === 'seller')) {
-        const safeUser: PRUser = { id: data.user.userId, username: data.user.userId, displayName: data.user.displayName || data.user.userId }
+    setTimeout(() => {
+      const user = PR_USERS.find(u => u.username === username.trim() && u.password === password)
+      if (user) {
+        const { password: _, ...safeUser } = user
         sessionStorage.setItem('pr_user', JSON.stringify(safeUser))
-        sessionStorage.setItem('littx_token', data.token)
         onLogin(safeUser)
-      } else if (data.ipLocked) {
-        setIpLocked({ lockedIp: data.lockedIp || 'another device' })
       } else {
-        setError(data.message || 'Invalid credentials')
+        setError('Invalid credentials')
       }
-    } catch (err: any) {
-      setError(err.message || 'Server connection error')
-    } finally {
       setLoading(false)
-    }
+    }, 400)
   }
 
   return (
@@ -79,27 +66,7 @@ function LoginPage({ onLogin }: { onLogin: (user: PRUser) => void }) {
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--ink-faint)', marginTop: '8px' }}>Partner Portal</div>
         </div>
-
-        {/* IP-lock error — device locked to another IP */}
-        {ipLocked && (
-          <div style={{
-            background: 'rgba(168,85,247,0.1)',
-            border: '1px solid rgba(168,85,247,0.35)',
-            color: '#c4b5fd',
-            padding: '12px 14px',
-            borderRadius: '8px',
-            fontSize: '0.78rem',
-            fontWeight: 600,
-            marginBottom: '16px',
-            textAlign: 'center',
-            lineHeight: 1.6
-          }}>
-            🔒 Account locked to another device<br />
-            <span style={{ fontWeight: 400, color: '#a78bfa' }}>IP: {ipLocked.lockedIp}</span><br />
-            Contact LITTX admin to unlock.
-          </div>
-        )}
-
+        
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>USERNAME</label>
@@ -147,6 +114,7 @@ function SellTicketModal({
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [gender, setGender] = useState<'male' | 'female'>('male')
+  const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'cash'>('razorpay')
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState<'form' | 'pending' | 'done'>('form')
   const [message, setMessage] = useState('')
@@ -159,18 +127,62 @@ function SellTicketModal({
     setLoading(true)
 
     try {
-      // All sales are manual/cash — submit for admin approval
-      const res = await fetch(`${API}/api/pr/cash-request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, gender, quantity: 1, prUserId: prUser.id, prName: prUser.displayName }),
-      })
-      const data = await res.json()
-      if (!data.success) throw new Error(data.message || 'Failed')
-      setMessage('⏳ Cash sale submitted for admin approval. Ticket will be sent once approved.')
-      setStep('pending')
-      onSuccess()
-      setLoading(false)
+      if (paymentMethod === 'razorpay') {
+        const res = await fetch(`${API}/api/pr/create-order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, phone, gender, quantity: 1, prUserId: prUser.id }),
+        })
+        const data = await res.json()
+        if (!data.success) throw new Error(data.message || 'Failed to create order')
+
+        const rzp = new (window as any).Razorpay({
+          key: data.keyId,
+          amount: data.amount * 100,
+          currency: data.currency,
+          name: 'LITTX',
+          description: `${gender === 'male' ? 'Male' : 'Female'} Pass — Freshers Takeover`,
+          order_id: data.orderId,
+          prefill: { name, email, contact: phone },
+          theme: { color: '#7C5CFA' },
+          handler: async (response: any) => {
+            const verRes = await fetch(`${API}/api/verify-payment`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderId: data.orderId,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            })
+            const verData = await verRes.json()
+            if (verData.success) {
+              setMessage('✅ Payment successful! Ticket sent to customer.')
+              setStep('done')
+              onSuccess()
+            } else {
+              setMessage('❌ Payment verification failed. Contact admin.')
+              setStep('done')
+            }
+          },
+          modal: { ondismiss: () => setLoading(false) },
+        })
+        rzp.open()
+        setLoading(false)
+      } else {
+        const res = await fetch(`${API}/api/pr/cash-request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, phone, gender, quantity: 1, prUserId: prUser.id, prName: prUser.displayName }),
+        })
+        const data = await res.json()
+        if (!data.success) throw new Error(data.message || 'Failed')
+        setMessage('⏳ Cash sale submitted for admin approval. Ticket will be sent once approved.')
+        setStep('pending')
+        onSuccess()
+        setLoading(false)
+      }
     } catch (err: any) {
       setMessage(`❌ ${err.message}`)
       setStep('done')
@@ -219,7 +231,10 @@ function SellTicketModal({
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>PAYMENT</label>
-              <div style={{ width: '100%', background: 'var(--volt-dim)', border: '1px solid rgba(216,255,63,0.25)', padding: '10px 14px', borderRadius: '8px', color: 'var(--volt)', fontWeight: 700, fontSize: '13px' }}>💵 Cash</div>
+              <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as any)} style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }}>
+                <option value="razorpay">Razorpay (Online)</option>
+                <option value="cash">Cash (Needs Approval)</option>
+              </select>
             </div>
           </div>
 
@@ -228,12 +243,14 @@ function SellTicketModal({
             <span style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent)' }}>₹{amount}</span>
           </div>
 
-          <div style={{ background: 'rgba(216,255,63,0.08)', border: '1px solid rgba(216,255,63,0.2)', color: 'var(--volt)', padding: '12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600 }}>
-            💵 All sales are manual cash payments. Admin will approve and send the ticket.
-          </div>
+          {paymentMethod === 'cash' && (
+            <div style={{ background: 'rgba(245, 197, 66, 0.15)', border: '1px solid rgba(245, 197, 66, 0.3)', color: '#F5C542', padding: '12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600 }}>
+              ⚠️ Cash sales require admin approval before the ticket is sent.
+            </div>
+          )}
 
           <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', padding: '14px', marginTop: '8px', fontSize: '1rem' }}>
-            {loading ? 'Submitting…' : `Submit Cash Sale — ₹${amount}`}
+            {loading ? 'Processing…' : paymentMethod === 'razorpay' ? `Pay ₹${amount} via Razorpay` : 'Submit for Approval'}
           </button>
         </form>
       </div>
@@ -248,7 +265,7 @@ function PRDashboard({ prUser, onLogout, dark, setDark }: { prUser: PRUser; onLo
   const [showSell, setShowSell] = useState(false)
   const [viewSale, setViewSale] = useState<any>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [paymentFilter, setPaymentFilter] = useState<'all' | 'pending' | 'confirmed'>('all')
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'cash' | 'razorpay'>('all')
 
   const fetchSales = useCallback(async () => {
     try {
@@ -375,9 +392,9 @@ function PRDashboard({ prUser, onLogout, dark, setDark }: { prUser: PRUser; onLo
                   value={paymentFilter}
                   onChange={e => setPaymentFilter(e.target.value as any)}
                 >
-                  <option value="all">All Sales</option>
-                  <option value="pending">Pending Approval</option>
-                  <option value="confirmed">Confirmed</option>
+                  <option value="all">All Payments</option>
+                  <option value="cash">Cash Only</option>
+                  <option value="razorpay">Razorpay Only</option>
                 </select>
                 <button className="tb-icon-btn refresh-btn" onClick={fetchSales} title="Refresh">
                   <span className="material-symbols-outlined">refresh</span>
@@ -398,10 +415,7 @@ function PRDashboard({ prUser, onLogout, dark, setDark }: { prUser: PRUser; onLo
             const q = searchQuery.toLowerCase();
             const filtered = sales.filter(s => {
               const matchSearch = !q || s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q);
-              const matchPayment =
-                paymentFilter === 'all' ||
-                (paymentFilter === 'pending' && s.status === 'pr_cash_pending') ||
-                (paymentFilter === 'confirmed' && ['ticket_generated','emailed','scanned','paid'].includes(s.status));
+              const matchPayment = paymentFilter === 'all' || s.paymentMethod === paymentFilter;
               return matchSearch && matchPayment;
             });
             if (filtered.length === 0) return (
@@ -434,7 +448,11 @@ function PRDashboard({ prUser, onLogout, dark, setDark }: { prUser: PRUser; onLo
                           <td style={{ textTransform: 'capitalize', fontWeight: 600 }}>{s.gender} Pass</td>
                           <td style={{ fontWeight: 800 }}>₹{s.amount?.toLocaleString()}</td>
                           <td>
-                            <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(216,255,63,0.1)', color: 'var(--volt)', border: '1px solid rgba(216,255,63,0.2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>💵 Cash</span>
+                            {s.paymentMethod === 'cash' ? (
+                              <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(245,197,66,0.15)', color: '#F5C542', border: '1px solid rgba(245,197,66,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cash</span>
+                            ) : (
+                              <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: 'rgba(124,92,250,0.15)', color: '#7C5CFA', border: '1px solid rgba(124,92,250,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Razorpay</span>
+                            )}
                           </td>
                           <td>{statusBadge(s.status)}</td>
                           <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', opacity: 0.7 }}>{s.ticketId || '—'}</td>
@@ -468,7 +486,7 @@ function PRDashboard({ prUser, onLogout, dark, setDark }: { prUser: PRUser; onLo
                         </div>
                         <div className="pr-sale-card-chip">
                           <div className="pr-sale-card-chip-label">Payment</div>
-                          <div className="pr-sale-card-chip-value">Cash</div>
+                          <div className="pr-sale-card-chip-value">{s.paymentMethod === 'cash' ? 'Cash' : 'Razorpay'}</div>
                         </div>
                       </div>
                       <div className="pr-sale-card-footer">
@@ -565,7 +583,7 @@ function PRDashboard({ prUser, onLogout, dark, setDark }: { prUser: PRUser; onLo
                 <div style={{ background: 'var(--panel-2)', borderRadius: '12px', padding: '16px', border: '1px solid var(--line)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem' }}>
                     <span style={{ color: 'var(--ink-soft)' }}>Gateway</span>
-                    <span style={{ fontWeight: 600 }}>Manual / Cash ({viewSale.paymentId || '—'})</span>
+                    <span style={{ fontWeight: 600 }}>{viewSale.paymentMethod === 'cash' ? 'Cash' : 'Razorpay'} ({viewSale.paymentId || '—'})</span>
                   </div>
                   <div style={{ borderTop: '1px solid var(--line)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.1rem' }}>
                     <span>Total Paid</span>

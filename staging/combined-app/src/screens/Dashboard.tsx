@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import LittixLogo from '../components/LittixLogo'
 import AnimatedCounter from '../components/AnimatedCounter'
@@ -11,33 +11,16 @@ interface Props {
   onScan: () => void
   onToggleTheme: () => void
   rejectedScans: RejectedScan[]
+  onGenerateTicket?: () => void
   sellerId?: string
   onLogout?: () => void
 }
 
-export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, rejectedScans, sellerId, onLogout }: Props) {
+export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, rejectedScans, onGenerateTicket, sellerId, onLogout }: Props) {
   const { tickets } = useStore()
   const [activeTab, setActiveTab] = useState<'scanned' | 'failed'>('scanned')
   const [search, setSearch] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
-
-  // ==================== SERVER-SIDE SCAN STATS ====================
-  // Polled from /api/scan-stats every 8s — survives refresh, cross-device accurate.
-  const [scanStats, setScanStats] = useState({ accepted: 0, declined: 0, declinedByReason: { duplicate: 0, cancelled: 0, invalid: 0 }, activeScannerCount: 0 })
-
-  useEffect(() => {
-    const sellerToken = sessionStorage.getItem('littx_seller_token') || sessionStorage.getItem('littx_token')
-    if (!sellerToken) return
-    const fetchStats = () => {
-      fetch('/api/scan-stats', { headers: { 'x-seller-token': sellerToken } })
-        .then(r => r.json())
-        .then(d => { if (d.success) setScanStats({ accepted: d.accepted, declined: d.declined, declinedByReason: d.declinedByReason, activeScannerCount: d.activeScannerCount }) })
-        .catch(() => {})
-    }
-    fetchStats()
-    const interval = setInterval(fetchStats, 8000)
-    return () => clearInterval(interval)
-  }, [])
 
   const bg = dark ? 'bg-[#0D0D0D]' : 'bg-[#F9F9FB]'
   const navBg = dark ? 'bg-[#0D0D0D] border-[#1E1E1E]' : 'bg-[#F9F9FB] border-[#EBEBEB]'
@@ -46,24 +29,20 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
   const subText = dark ? 'text-[#A0A0A0]' : 'text-[#6B6B6B]'
   const searchBg = dark ? 'bg-[#1A1A1A] border-[#2A2A2A] text-white placeholder-[#555]' : 'bg-white border-[#E4E4E7] text-[#111] placeholder-[#A0A0A0]'
 
-  // Get all tickets
-  const sentTickets = useMemo(() => {
-    return [...tickets].sort((a, b) => {
-      const timeA = a.generatedAt === 'TBA' ? 0 : new Date(a.generatedAt).getTime()
-      const timeB = b.generatedAt === 'TBA' ? 0 : new Date(b.generatedAt).getTime()
-      return timeB - timeA
-    })
+  // Get only successfully scanned tickets
+  const scannedTickets = useMemo(() => {
+    return tickets.filter((t) => t.status === 'scanned')
   }, [tickets])
 
-  // Filter sent list
-  const filteredSent = useMemo(() => {
-    let list = sentTickets
+  // Filter successfully scanned list
+  const filteredScanned = useMemo(() => {
+    let list = scannedTickets
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       list = list.filter((t) => t.attendee.toLowerCase().includes(q) || t.id.toLowerCase().includes(q))
     }
     return list
-  }, [sentTickets, search])
+  }, [scannedTickets, search])
 
   // Filter session failed scans list
   const filteredFailed = useMemo(() => {
@@ -84,7 +63,14 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
 
       <div className={`flex items-center justify-between px-4 py-4 border-b ${navBg} sticky top-0 z-10 backdrop-blur-md`}>
         <LittixLogo dark={dark} size="sm" />
-        <span className={`text-base font-bold ${text}`}>Scanner Panel</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <span className={`text-base font-bold ${text}`}>Scanner Panel</span>
+          {sellerId && (
+            <span style={{ fontSize: 9, color: '#A855F7', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', marginTop: 1 }}>
+              {sellerId}
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <motion.button
             onClick={onToggleTheme}
@@ -120,34 +106,25 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
         </div>
       </div>
 
-      {/* Stats row — Accepted and Declined come from /api/scan-stats (server-persisted, not in-memory) */}
+      {/* Stats row specific to Scan Panel */}
       <div className="flex gap-3 px-4 pt-4 pb-2">
         <div
           className={`flex-1 rounded-2xl border px-4 py-3.5 ${cardBg}`}
           style={{ boxShadow: dark ? 'none' : '0 1px 8px rgba(0,0,0,0.04)' }}
         >
           <p className="text-2xl font-black text-[#22C55E]">
-            <AnimatedCounter value={sentTickets.length} />
+            <AnimatedCounter value={scannedTickets.length} />
           </p>
-          <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Total Passes</p>
-        </div>
-        <div
-          className={`flex-1 rounded-2xl border px-4 py-3.5 ${cardBg}`}
-          style={{ boxShadow: dark ? 'none' : '0 1px 8px rgba(0,0,0,0.04)' }}
-        >
-          <p className="text-2xl font-black text-[#A855F7]">
-            <AnimatedCounter value={scanStats.accepted} />
-          </p>
-          <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Accepted</p>
+          <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Total Scanned</p>
         </div>
         <div
           className={`flex-1 rounded-2xl border px-4 py-3.5 ${cardBg}`}
           style={{ boxShadow: dark ? 'none' : '0 1px 8px rgba(0,0,0,0.04)' }}
         >
           <p className="text-2xl font-black text-[#EF4444]">
-            <AnimatedCounter value={scanStats.declined} />
+            <AnimatedCounter value={rejectedScans.length} />
           </p>
-          <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Declined</p>
+          <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Failed (Session)</p>
         </div>
       </div>
 
@@ -181,10 +158,10 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
 
       {/* Tab Selectors */}
       <div className="flex gap-2.5 px-4 pb-3">
-        {(['sent', 'failed'] as const).map((tab) => (
+        {(['scanned', 'failed'] as const).map((tab) => (
           <motion.button
             key={tab}
-            onClick={() => setActiveTab(tab as any)}
+            onClick={() => setActiveTab(tab)}
             whileTap={{ scale: 0.94 }}
             className={`relative flex-1 py-3 rounded-2xl text-sm font-bold border overflow-hidden ${
               activeTab === tab
@@ -202,7 +179,7 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
               />
             )}
             <span className="relative">
-              {tab === 'sent' ? 'All Passes' : 'Failed & Duplicates'}
+              {tab === 'scanned' ? 'Scanned' : 'Failed & Duplicates'}
             </span>
           </motion.button>
         ))}
@@ -219,11 +196,11 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
         className="flex-1 overflow-y-auto min-h-0"
         style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
       >
-        {activeTab === ('sent' as any) ? (
-          filteredSent.length === 0 ? (
-            <p className={`text-sm text-center py-12 ${subText}`}>No passes generated yet.</p>
+        {activeTab === 'scanned' ? (
+          filteredScanned.length === 0 ? (
+            <p className={`text-sm text-center py-12 ${subText}`}>No scanned tickets yet.</p>
           ) : (
-            filteredSent.map((ticket) => (
+            filteredScanned.map((ticket) => (
               <div
                 key={ticket.id}
                 className="px-4 py-4 border-b flex items-center text-left w-full min-h-[64px]"
@@ -235,13 +212,11 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
                 <div className="flex-1 min-w-0 pr-2">
                   <span className={`text-sm font-bold block truncate ${text}`}>{ticket.attendee}</span>
                   <p className={`text-[10px] ${subText} mt-0.5 truncate`}>
-                    {ticket.ticketType} · {ticket.generatedAt}
+                    {ticket.ticketType} · {ticket.scannedAt}
                   </p>
                 </div>
-                <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex-shrink-0 ${
-                  ticket.status === 'scanned' ? 'bg-[#22C55E]/15 text-[#22C55E]' : 'bg-[#3B82F6]/15 text-[#3B82F6]'
-                }`}>
-                  {ticket.status === 'scanned' ? 'Scanned' : 'Sent'}
+                <span className="bg-[#22C55E]/15 text-[#22C55E] text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex-shrink-0">
+                  Success
                 </span>
               </div>
             ))
@@ -320,6 +295,21 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
 
       {/* Floating/Sticky Action Buttons */}
       <div className={`px-4 py-4 border-t ${navBg} safe-bottom`}>
+        {onGenerateTicket && (
+          <motion.button
+            onClick={onGenerateTicket}
+            whileTap={{ scale: 0.96 }}
+            className="w-full text-white text-sm font-black py-3.5 rounded-2xl flex items-center justify-center gap-2 mb-3"
+            style={{
+              background: 'linear-gradient(135deg, #6366F1, #4338CA)',
+              boxShadow: '0 4px 18px rgba(99,102,241,0.35)',
+              willChange: 'transform',
+              height: '50px'
+            }}
+          >
+            🎟️ GENERATE TICKET
+          </motion.button>
+        )}
         <motion.button
           onClick={onScan}
           whileTap={{ scale: 0.96 }}

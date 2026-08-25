@@ -3,78 +3,61 @@
 @import 'tailwindcss';
 
 :root {
-  /* ── Layout ───────────────────────────────── */
   --canvas-w: 1440px;
   --canvas-h: 900px;
   --rail-w: 236px;
   --topbar-h: 76px;
   --gutter: 20px;
   --pad: 24px;
-
-  /* ── LITTX Dark Void Palette ─────────────── */
-  --bg: #0A0912;
-  --panel: #0F0D1A;
-  --panel-2: #15121F;
-  --panel-3: #1C1928;
-  --line: rgba(216, 255, 63, 0.06);
-  --line-soft: rgba(216, 255, 63, 0.03);
-
-  /* ── Typography ──────────────────────────── */
-  --ink: #F0EEF8;
-  --ink-soft: #9896A8;
-  --ink-faint: #5C5A6A;
-
-  /* ── Volt Accent ─────────────────────────── */
-  --volt: #D8FF3F;
-  --volt-dim: rgba(216, 255, 63, 0.12);
-  --volt-glow: 0 0 24px rgba(216, 255, 63, 0.25);
-  --accent: #D8FF3F;
-  --accent-fg: #0A0912;
-
-  /* ── Legacy alias (kept for compat) ──────── */
-  --violet: #D8FF3F;
-  --violet-2: #B8E832;
-  --grad-violet: linear-gradient(135deg, #D8FF3F 0%, #9AE600 100%);
+  --bg: #000000;
+  --panel: #09090B;
+  --panel-2: #141417;
+  --panel-3: #1E1E24;
+  --line: rgba(255, 255, 255, .05);
+  --line-soft: rgba(255, 255, 255, .025);
+  --ink: #F5F4F8;
+  --ink-soft: #9C9AAB;
+  --ink-faint: #64626F;
+  --violet: #7C5CFA;
+  --violet-2: #5B8DEF;
+  --grad-violet: linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%);
   --grad-orange: linear-gradient(135deg, #FF7A59 0%, #F5378A 100%);
-  --grad-teal:   linear-gradient(135deg, #38D9C4 0%, #3B82F6 100%);
-  --grad-gold:   linear-gradient(135deg, #F5C542 0%, #F5854D 100%);
+  --grad-teal: linear-gradient(135deg, #38D9C4 0%, #3B82F6 100%);
+  --grad-gold: linear-gradient(135deg, #F5C542 0%, #F5854D 100%);
   --green: #3DDC84;
   --amber: #F5B942;
   --red: #FF6B6B;
-
-  /* ── Shape & Shadow ──────────────────────── */
   --radius-xl: 22px;
   --radius-lg: 18px;
   --radius-md: 14px;
   --radius-sm: 10px;
-  --shadow-card: 0 1px 0 rgba(216, 255, 63, 0.04) inset, 0 10px 30px -14px rgba(0, 0, 0, .85);
-  --drawer-bg: #0D0B18;
-  --drawer-border: rgba(216, 255, 63, 0.2);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, .02) inset, 0 10px 30px -14px rgba(0, 0, 0, .8);
+  --drawer-bg: #0C0A1A;
+  --drawer-border: rgba(124, 92, 250, 0.3);
+  --accent: #7C5CFA;
 }
 
 .theme-light {
-  --bg: #F5F5F0;
+  --bg: #F8FAFC;
   --panel: #FFFFFF;
-  --panel-2: #F0EFE8;
-  --panel-3: #E4E3DC;
+  --panel-2: #F1F5F9;
+  --panel-3: #E2E8F0;
   --line: rgba(0, 0, 0, 0.06);
   --line-soft: rgba(0, 0, 0, 0.03);
-  --ink: #0A0912;
-  --ink-soft: #3D3B4A;
-  --ink-faint: #8C8A9A;
-  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.05);
-  --drawer-bg: #EDECEA;
-  --drawer-border: rgba(0, 0, 0, 0.12);
-  --accent: #8FB800;
-  --volt: #8FB800;
-  --volt-dim: rgba(143, 184, 0, 0.10);
+  --ink: #0F172A;
+  --ink-soft: #475569;
+  --ink-faint: #94A3B8;
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.04);
+  --drawer-bg: #EDF2F7;
+  --drawer-border: rgba(124, 92, 250, 0.25);
+  --accent: #7C5CFA;
 }
 
 @theme {
-  --color-volt: #D8FF3F;
-  --color-panel-bg: #0F0D1A;
-  --color-panel-2: #15121F;
-  --color-panel-3: #1C1928;
+  --color-violet-brand: #7C5CFA;
+  --color-panel-bg: #09090B;
+  --color-panel-2: #141417;
+  --color-panel-3: #1E1E24;
 }
 
 * {
@@ -96,16 +79,14 @@ html, body {
   width: 100%;
   min-height: 100vh;
   position: relative;
-  background:
-    radial-gradient(800px 500px at 80% -5%,  rgba(216,255,63,.10), transparent 60%),
-    radial-gradient(600px 400px at -5% 95%,  rgba(216,255,63,.06), transparent 60%),
-    var(--bg);
+  background: radial-gradient(900px 500px at 85% -10%, rgba(124, 92, 250, .18), transparent 60%),
+    radial-gradient(700px 400px at -5% 100%, rgba(59, 130, 246, .10), transparent 60%), var(--bg);
   color: var(--ink);
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 .app-canvas.theme-light {
-  background: radial-gradient(900px 500px at 85% -10%, rgba(143,184,0, 0.04), transparent 60%), var(--bg);
+  background: radial-gradient(900px 500px at 85% -10%, rgba(124, 92, 250, 0.03), transparent 60%), var(--bg);
 }
 
 @media (max-width: 1180px) {
@@ -260,13 +241,13 @@ html, body {
   height: 50%;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background: var(--volt);
+  background: var(--grad-violet);
 }
 
 .rail-link .count {
   margin-left: auto;
-  background: var(--volt);
-  color: var(--accent-fg);
+  background: var(--violet);
+  color: #fff;
   font-size: 10px;
   font-weight: 800;
   padding: 1px 7px;
@@ -277,13 +258,12 @@ html, body {
   margin-top: 14px;
   border-radius: 14px;
   padding: 14px;
-  background: var(--volt-dim);
-  border: 1px solid rgba(216, 255, 63, 0.15);
+  background: var(--grad-violet);
   display: flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
-  color: var(--volt);
+  color: #fff;
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
@@ -295,7 +275,7 @@ html, body {
 
 .rail-promo:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(216, 255, 63, 0.18);
+  box-shadow: 0 8px 24px rgba(108, 76, 224, 0.4);
 }
 
 .rail-promo div {
@@ -378,14 +358,13 @@ html, body {
 }
 
 .badge-pro {
-  background: var(--volt-dim);
-  border: 1px solid rgba(216,255,63,0.3);
+  background: var(--grad-violet);
   font-size: 9px;
   font-weight: 800;
   padding: 2px 6px;
   border-radius: 5px;
   letter-spacing: .03em;
-  color: var(--volt);
+  color: #fff;
 }
 
 .topbar-search {
@@ -469,8 +448,8 @@ html, body {
   padding: 0 16px;
   border-radius: 10px;
   border: none;
-  background: var(--volt);
-  color: var(--accent-fg);
+  background: var(--grad-violet);
+  color: #fff;
   font-weight: 700;
   font-size: 12.5px;
   display: flex;
@@ -478,12 +457,12 @@ html, body {
   gap: 7px;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: var(--volt-glow);
+  box-shadow: 0 4px 16px rgba(108, 76, 224, 0.3);
 }
 
 .tb-cta:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 24px rgba(216, 255, 63, 0.45);
+  box-shadow: 0 6px 20px rgba(108, 76, 224, 0.45);
 }
 
 /* ── Content Viewport ──────────────────────────────────────────────── */
@@ -639,12 +618,12 @@ html, body {
 
 .tile-orange:hover { box-shadow: 0 16px 36px rgba(255,122,89,0.25); }
 .tile-teal:hover   { box-shadow: 0 16px 36px rgba(56,217,196,0.25); }
-.tile-violet:hover { box-shadow: 0 16px 36px rgba(216,255,63,0.22); }
+.tile-violet:hover { box-shadow: 0 16px 36px rgba(124,92,250,0.25); }
 .tile-gold:hover   { box-shadow: 0 16px 36px rgba(245,197,66,0.25); }
 
 .tile-orange { background: var(--grad-orange); }
 .tile-teal   { background: var(--grad-teal); }
-.tile-violet { background: linear-gradient(135deg, #D8FF3F 0%, #9AE600 100%); color: #0A0912; }
+.tile-violet { background: var(--grad-violet); }
 .tile-gold   { background: var(--grad-gold); }
 .tile-dark   { background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); }
 
@@ -687,19 +666,18 @@ html, body {
 
 /* ── Promotional Card ──────────────────────────────────────────────── */
 .promo-card {
-  background: linear-gradient(135deg, #1A1A0A 0%, #0A0912 100%);
-  border: 1px solid rgba(216, 255, 63, 0.18);
+  background: var(--grad-violet);
   border-radius: var(--radius-xl);
   padding: 20px;
   position: relative;
   overflow: hidden;
-  color: var(--volt);
+  color: #fff;
   transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 
 .promo-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 20px 50px rgba(216, 255, 63, 0.2);
+  box-shadow: 0 20px 50px rgba(108, 76, 224, 0.4);
 }
 
 .promo-card::before {
@@ -902,8 +880,7 @@ html, body {
 .badge-green { background: rgba(61, 220, 132, .12); color: var(--green); }
 .badge-amber { background: rgba(245, 185, 66, .12); color: var(--amber); }
 .badge-red   { background: rgba(255, 107, 107, .12); color: var(--red); }
-.badge-blue  { background: var(--volt-dim); color: var(--volt); }
-.badge-volt  { background: var(--volt-dim); color: var(--volt); border: 1px solid rgba(216,255,63,0.2); }
+.badge-blue  { background: rgba(91, 141, 239, .14); color: var(--violet-2); }
 .badge-dot   { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 
 /* Pulsing live indicator */
@@ -1159,8 +1136,7 @@ html, body {
 }
 
 .field input:focus, .field select:focus, .field textarea:focus {
-  border-color: var(--volt);
-  box-shadow: 0 0 0 3px rgba(216, 255, 63, 0.08);
+  border-color: var(--violet);
 }
 
 .field textarea {
@@ -1173,39 +1149,19 @@ html, body {
   height: 38px;
   border-radius: var(--radius-md);
   border: none;
-  background: var(--volt);
-  color: var(--accent-fg);
+  background: var(--grad-violet);
+  color: #fff;
   font-weight: 700;
   font-size: 12.5px;
   cursor: pointer;
   padding: 0 18px;
   transition: all 0.2s;
-  box-shadow: 0 4px 16px rgba(216, 255, 63, 0.25);
+  box-shadow: 0 4px 16px rgba(108, 76, 224, 0.3);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 24px rgba(216, 255, 63, 0.4);
-}
-
-/* Volt outline variant */
-.btn-volt {
-  height: 38px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(216, 255, 63, 0.4);
-  background: var(--volt-dim);
-  color: var(--volt);
-  font-weight: 700;
-  font-size: 12.5px;
-  cursor: pointer;
-  padding: 0 18px;
-  transition: all 0.2s;
-}
-
-.btn-volt:hover {
-  background: rgba(216, 255, 63, 0.18);
-  border-color: var(--volt);
-  box-shadow: 0 0 12px rgba(216, 255, 63, 0.2);
+  box-shadow: 0 6px 20px rgba(108, 76, 224, 0.45);
 }
 
 .btn-secondary {

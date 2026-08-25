@@ -1,19 +1,11 @@
 import { useState } from 'react'
 
-interface ScanStats {
-  accepted: number
-  declined: number
-  declinedByReason?: { duplicate: number; cancelled: number; invalid: number }
-  activeScannerCount: number
-}
-
 interface QRScansProps {
   sales: any[]
   isPresentation?: boolean
-  scanStats?: ScanStats
 }
 
-export default function QRScans({ sales = [], isPresentation = false, scanStats }: QRScansProps) {
+export default function QRScans({ sales = [], isPresentation = false }: QRScansProps) {
   const [filterResult, setFilterResult] = useState<string>('all')
   const [search, setSearch] = useState('')
 
@@ -76,23 +68,17 @@ export default function QRScans({ sales = [], isPresentation = false, scanStats 
 
         <div className="tile tile-orange">
           <div className="tile-label">DUPLICATE / REJECTED</div>
-          {/* scanStats.declined is sourced from ScanLog (server-persisted) — not hardcoded */}
-          <div className="tile-value">{scanStats ? scanStats.declined : '—'}</div>
-          <div className="tile-sub">
-            {scanStats?.declinedByReason
-              ? `Dup: ${scanStats.declinedByReason.duplicate} · Cxl: ${scanStats.declinedByReason.cancelled} · Invalid: ${scanStats.declinedByReason.invalid}`
-              : 'Already-scanned attempts'}
-          </div>
+          <div className="tile-value">0</div>
+          <div className="tile-sub">Already-scanned attempts</div>
           <div className="tile-delta">
-            <span>⚠</span> {scanStats && scanStats.declined === 0 ? 'Zero declined' : 'Monitoring'}
+            <span>✓</span> Zero duplicates
           </div>
         </div>
 
         <div className="tile tile-dark">
           <div className="tile-label">ACTIVE SCANNERS</div>
-          {/* activeScannerCount is distinct scannedBy IDs in last 10 min from ScanLog */}
-          <div className="tile-value">{scanStats ? scanStats.activeScannerCount : '—'}</div>
-          <div className="tile-sub">Unique scanner devices today</div>
+          <div className="tile-value">1</div>
+          <div className="tile-sub">Authorized scanner devices</div>
           <div className="tile-delta up">
             <span>📡</span> Gate Staff
           </div>

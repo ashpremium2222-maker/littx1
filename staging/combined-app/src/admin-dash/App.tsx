@@ -10,20 +10,9 @@ import QRScans from './pages/QRScans'
 import Refunds from './pages/Refunds'
 import Tickets from './pages/Tickets'
 import PRApprovals from './pages/PRApprovals'
-import CompanyControlCenter from './pages/CompanyControlCenter'
-import MasterOverview from './pages/MasterOverview'
-import MasterGlobalSearch from './pages/MasterGlobalSearch'
-import CompanyPortal from './pages/CompanyPortal'
-import MasterCompaniesTable from './pages/MasterCompaniesTable'
-import MasterSystemSettings from './pages/MasterSystemSettings'
 
 type Page =
   | 'dashboard'
-  | 'master-overview'
-  | 'master-companies'
-  | 'system-settings'
-  | 'company-portal'
-  | 'global-search'
   | 'orders'
   | 'tickets'
   | 'customers'
@@ -37,7 +26,6 @@ type Page =
   | 'admins'
   | 'settings'
   | 'pr-approvals'
-  | 'company-control'
 
 interface NavItemDef {
   id: Page
@@ -48,60 +36,8 @@ interface NavItemDef {
 
 const navItems: NavItemDef[] = [
   {
-    id: 'master-overview' as Page,
-    label: 'Platform Overview',
-    svgIcon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
-    ),
-  },
-  {
-    id: 'master-companies' as Page,
-    label: 'Event Companies',
-    svgIcon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 00-3-3.87" />
-        <path d="M16 3.13a4 4 0 010 7.75" />
-      </svg>
-    ),
-  },
-  {
-    id: 'system-settings' as Page,
-    label: 'System Settings',
-    svgIcon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
-      </svg>
-    ),
-  },
-  {
-    id: 'company-portal' as Page,
-    label: 'Company Workspace',
-    svgIcon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
-        <path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16" />
-      </svg>
-    ),
-  },
-  {
-    id: 'global-search' as Page,
-    label: 'Global Search',
-    svgIcon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="11" cy="11" r="8" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-      </svg>
-    ),
-  },
-  {
     id: 'dashboard',
-    label: 'Event Dashboard',
+    label: 'Dashboard',
     svgIcon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="3" width="7" height="7" rx="1.5" />
@@ -211,15 +147,6 @@ const navItems: NavItemDef[] = [
     ),
   },
   {
-    id: 'company-control' as Page,
-    label: 'Company Control',
-    svgIcon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-      </svg>
-    ),
-  },
-  {
     id: 'pr-approvals' as Page,
     label: 'PR Approvals',
     svgIcon: (
@@ -235,21 +162,18 @@ const navItems: NavItemDef[] = [
 
 interface AppProps {
   isPresentation?: boolean
-  isManager?: boolean
 }
 
-export default function App({ isPresentation = false, isManager = false }: AppProps) {
-  const [page, setPage] = useState<Page>(isManager ? 'dashboard' : 'master-overview')
-  const [selectedCompanyId, setSelectedCompanyId] = useState('littlane')
-  const [selectedCompanyName, setSelectedCompanyName] = useState('Littlane Events')
+export default function App({ isPresentation = false }: AppProps) {
+  const [page, setPage] = useState<Page>('dashboard')
   const [dark, setDark] = useState(true)
   const [search, setSearch] = useState('')
   const [adminKey, setAdminKey] = useState(
-    isManager ? 'dash-2026' : (sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key') || '')
+    sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key') || ''
   )
   const [keyInput, setKeyInput] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(isManager ? true : false)
-  const [authChecking, setAuthChecking] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authChecking, setAuthChecking] = useState(true)
   const [authError, setAuthError] = useState('')
   const [sales, setSales] = useState<any[]>([])
   const [allSales, setAllSales] = useState<any[]>([])
@@ -260,17 +184,10 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     emailFailures: 0,
     ticketFailures: 0,
   })
-  const [testMode, setTestMode] = useState(false)
+  const [testMode, setTestMode] = useState(true)
   const [showManualModal, setShowManualModal] = useState(false)
   const [isManualSubmitting, setIsManualSubmitting] = useState(false)
   const [manualSuccessMsg, setManualSuccessMsg] = useState<string | null>(null)
-  // Scan stats from ScanLog aggregation (included in /api/admin/sales response)
-  const [scanStats, setScanStats] = useState<any>({
-    accepted: 0,
-    declined: 0,
-    declinedByReason: { duplicate: 0, cancelled: 0, invalid: 0 },
-    activeScannerCount: 0,
-  })
 
   // Rail tabs state
   const [railTab, setRailTab] = useState<'events' | 'archived'>('events')
@@ -285,21 +202,20 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_male') || '699')
   const [manualEvent, setManualEvent] = useState('FRESHERS TAKEOVER')
 
-  const fetchSales = async (overrideKey?: string) => {
+  const fetchSales = async (keyToUse = adminKey) => {
+    if (!keyToUse) {
+      setIsAuthenticated(false)
+      setAuthChecking(false)
+      return false
+    }
     try {
-      const activeKey = overrideKey || adminKey
       const res = await fetch(
-        `/api/admin/sales?${isPresentation ? 'pres=true' : ''}`,
-        {
-          headers: {
-            'x-admin-key': activeKey || '',
-            'x-auth-token': activeKey || ''
-          }
-        }
+        `/api/admin/sales?key=${encodeURIComponent(keyToUse)}${isPresentation ? '&pres=true' : ''}`
       )
       const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data.success) {
-        console.error('Failed to fetch sales:', data.message)
+      if (res.status === 401 || !res.ok || !data.success) {
+        const errReason = data.message || 'Access Denied: Admin key invalid.'
+        handleLogout(errReason)
         return false
       }
       const fetchedSales = data.sales || []
@@ -327,9 +243,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       setSales(filteredSales)
       setAllSales(fetchedSales)
       setSummary(activeSummary)
-      setTestMode(data.testMode ?? false)
-      // Extract scan stats from backend response (avoids separate poll from admin UI)
-      if (data.scanStats) setScanStats(data.scanStats)
+      setTestMode(data.testMode)
       setIsAuthenticated(true)
       setAuthError('')
       setAuthChecking(false)
@@ -342,10 +256,15 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   }
 
   useEffect(() => {
-    fetchSales()
-    const interval = setInterval(() => fetchSales(), 10000)
-    return () => clearInterval(interval)
-  }, [])
+    if (adminKey) {
+      fetchSales(adminKey)
+      const interval = setInterval(() => fetchSales(adminKey), 10000)
+      return () => clearInterval(interval)
+    } else {
+      setAuthChecking(false)
+      setIsAuthenticated(false)
+    }
+  }, [adminKey])
 
   const handleLogin = async () => {
     const trimmed = keyInput.trim()
@@ -551,20 +470,6 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
   function renderPage(page: Page) {
     switch (page) {
-      case 'master-overview':
-        return <MasterOverview />
-      case 'master-companies':
-        return <MasterCompaniesTable onSelectCompany={(id, name) => {
-          setSelectedCompanyId(id)
-          setSelectedCompanyName(name)
-          setPage('company-portal')
-        }} />
-      case 'system-settings':
-        return <MasterSystemSettings />
-      case 'global-search':
-        return <MasterGlobalSearch />
-      case 'company-portal':
-        return <CompanyPortal companyId={selectedCompanyId} companyName={selectedCompanyName} />
       case 'dashboard':
         return (
           <Dashboard
@@ -592,10 +497,9 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             allSales={allSales}
             onResend={handleResend}
             adminKey={adminKey}
-            onReload={() => fetchSales()}
+            onReload={() => fetchSales(adminKey)}
             globalSearch={search}
             isPresentation={isPresentation}
-            isManager={isManager}
             eventFilter={ticketEventFilter}
             onEventFilterChange={setTicketEventFilter}
           />
@@ -610,7 +514,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       case 'refunds':
         return <Refunds sales={sales} />
       case 'qr':
-        return <QRScans sales={sales} isPresentation={isPresentation} scanStats={scanStats} />
+        return <QRScans sales={sales} isPresentation={isPresentation} />
       case 'analytics':
       case 'reports':
         return <Analytics sales={sales} />
@@ -619,8 +523,6 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
         return <Settings sales={sales} adminKey={adminKey} testMode={testMode} />
       case 'pr-approvals':
         return <PRApprovals adminKey={adminKey} isPresentation={isPresentation} sales={sales} />
-      case 'company-control':
-        return <CompanyControlCenter />
       default:
         return (
           <Dashboard
@@ -628,7 +530,6 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             summary={summary}
             testMode={testMode}
             onManualGenerate={() => setShowManualModal(true)}
-            scanStats={scanStats}
           />
         )
     }
@@ -664,12 +565,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
         </div>
 
         <nav className="rail-nav">
-          {navItems.filter(item => {
-            if (isManager) {
-              return ['dashboard', 'tickets'].includes(item.id)
-            }
-            return true
-          }).map((item) => {
+          {navItems.map((item) => {
             const active = page === item.id
             return (
               <button

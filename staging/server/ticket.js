@@ -8,14 +8,8 @@ const QRCode = require('qrcode');
 const PDFDocument = require('pdfkit');
 const { randomUUID } = require('crypto');
 
-const TICKETS_DIR = process.env.VERCEL ? path.join('/tmp', 'tickets') : path.join(__dirname, 'tickets');
-if (!fs.existsSync(TICKETS_DIR)) {
-    try {
-        fs.mkdirSync(TICKETS_DIR, { recursive: true });
-    } catch (err) {
-        console.warn('Could not create TICKETS_DIR:', err.message);
-    }
-}
+const TICKETS_DIR = path.join(__dirname, 'tickets');
+if (!fs.existsSync(TICKETS_DIR)) fs.mkdirSync(TICKETS_DIR, { recursive: true });
 
 const BANNER_PATH = path.join(__dirname, 'ticket-banner.png');
 const AURA_BANNER_PATH = path.join(__dirname, 'aura-ticket-banner.jpg');

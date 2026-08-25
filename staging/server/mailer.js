@@ -1,4 +1,6 @@
-require('dotenv').config({ quiet: true });
+// Handles sending the ticket to the buyer's email once payment succeeds.
+// Configure real SMTP or Mailgun credentials in server/.env — see .env.example.
+
 const fs = require('fs');
 const path = require('path');
 const nodemailer = require('nodemailer');
@@ -83,7 +85,17 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
     try {
         const eventTitle = event || EVENT_NAME;
         const genderLabel = GENDER_LABEL[gender] || gender;
-        const fromEmail = process.env.EMAIL_FROM || '"LITTX Events" <events@littx.com>';
+        let envEmail = process.env.EMAIL_FROM || 'events@littx.com';
+        let envName = process.env.EMAIL_FROM_NAME || 'LITTX Events';
+
+        if (envEmail.includes('<') && envEmail.includes('>')) {
+            const match = envEmail.match(/^(?:"?([^"]*)"?\s)?<([^>]+)>$/);
+            if (match) {
+                envName = match[1] || envName;
+                envEmail = match[2];
+            }
+        }
+        const fromEmail = `"${envName}" <${envEmail}>`;
 
         const attachments = [
             { filename: `${ticketId}.pdf`, path: pdfPath }
@@ -169,24 +181,12 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
                 });
             }
 
-            let senderEmail = process.env.EMAIL_FROM || "events@littx.com";
-            let senderName = "LITTX Events";
-            if (senderEmail.includes('<') && senderEmail.includes('>')) {
-                const match = senderEmail.match(/^(?:"?([^"]*)"?\s)?<([^>]+)>$/);
-                if (match) {
-                    senderName = match[1] || senderName;
-                    senderEmail = match[2];
-                }
-            } else if (process.env.EMAIL_FROM_NAME) {
-                senderName = process.env.EMAIL_FROM_NAME;
-            }
-
             const payloadObj = {
                 sender: {
-                    name: senderName,
-                    email: senderEmail
+                    name: envName,
+                    email: envEmail
                 },
-                to: [{ email: to, name: name }],
+                to: [{ email: to, name: name || to }],
                 subject: subject,
                 htmlContent: html,
                 textContent: text

@@ -7,10 +7,12 @@ import QRScanner from '../screens/QRScanner'
 import ScanSuccess from '../screens/ScanSuccess'
 import ScanRejected from '../screens/ScanRejected'
 import Dashboard from '../screens/Dashboard'
+import GenerateTicket from '../screens/GenerateTicket'
 import PageTransition from '../components/PageTransition'
 
 type Screen =
   | { name: 'dashboard' }
+  | { name: 'generate' }
   | { name: 'ticket'; id: string }
   | { name: 'scanner' }
   | { name: 'scan-success'; ticket: Ticket }
@@ -56,11 +58,9 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
       })
       const data = await res.json()
       if (data.success) {
-        localStorage.setItem('littx_seller_token', data.token)
-        localStorage.setItem('littx_seller_id', data.sellerId)
+        sessionStorage.setItem('littx_seller_token', data.token)
+        sessionStorage.setItem('littx_seller_id', data.sellerId)
         onLogin(data.sellerId, data.token)
-      } else if (data.ipLocked) {
-        setError(`🔒 Device locked — this ID is already active on another device. Ask master admin to unlock it.`)
       } else {
         setError(data.message || 'Login failed')
       }
@@ -74,8 +74,7 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#09090b',
-      color: '#fff',
+      background: 'linear-gradient(135deg, #0D0D0D 0%, #1a0a2e 100%)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -140,29 +139,31 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
                     color: selected === id ? '#A855F7' : '#888',
                     fontSize: 12,
                     fontWeight: 700,
-                    cursor: 'pointer',
-                    outline: 'none',
                     letterSpacing: '0.5px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    boxShadow: selected === id ? '0 0 20px rgba(168,85,247,0.2)' : 'none',
                   }}
                 >
-                  {id}
+                  {id.replace('SELLER-', 'S-')}
                 </motion.button>
               ))}
             </div>
           </div>
 
+          {/* Password */}
           <div>
             <label style={{ fontSize: 11, color: '#9a9a9a', letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 8 }}>
               Password
             </label>
             <input
               type="password"
-              placeholder="Enter gate staff password"
               value={password}
               onChange={e => { setPassword(e.target.value); setError('') }}
+              placeholder="Enter access code"
               style={{
                 width: '100%',
-                background: '#111',
+                background: '#0D0D0D',
                 border: '1px solid #2A2A2A',
                 borderRadius: 14,
                 color: '#fff',
@@ -298,9 +299,10 @@ function AppShell({ sellerId, sellerToken, onLogout }: { sellerId: string; selle
         onScan={() => go({ name: 'scanner' })}
         onToggleTheme={toggleTheme}
         rejectedScans={rejectedScans}
+        onGenerateTicket={() => go({ name: 'generate' })}
         sellerId={sellerId}
         onLogout={async () => {
-          const token = localStorage.getItem('littx_seller_token')
+          const token = sessionStorage.getItem('littx_seller_token')
           if (token) {
             await fetch('/api/seller/logout', {
               method: 'POST',
@@ -308,10 +310,20 @@ function AppShell({ sellerId, sellerToken, onLogout }: { sellerId: string; selle
               body: JSON.stringify({ token })
             }).catch(() => {})
           }
-          localStorage.removeItem('littx_seller_token')
-          localStorage.removeItem('littx_seller_id')
+          sessionStorage.removeItem('littx_seller_token')
+          sessionStorage.removeItem('littx_seller_id')
           onLogout()
         }}
+      />
+    )
+  } else if (screen.name === 'generate') {
+    content = (
+      <GenerateTicket
+        dark={dark}
+        onBack={() => go({ name: 'dashboard' })}
+        onGenerated={(id) => go({ name: 'ticket', id })}
+        sellerId={sellerId}
+        sellerToken={sellerToken}
       />
     )
   } else if (screen.name === 'ticket') {
@@ -361,16 +373,15 @@ function AppShell({ sellerId, sellerToken, onLogout }: { sellerId: string; selle
 
 // ==================== ROOT: handles seller auth ====================
 export default function App() {
-  const [sellerId, setSellerId] = useState<string | null>(() => localStorage.getItem('littx_seller_id'))
-  const [sellerToken, setSellerToken] = useState<string | null>(() => localStorage.getItem('littx_seller_token'))
+  const [sellerId, setSellerId] = useState<string | null>(() => sessionStorage.getItem('littx_seller_id'))
+  const [sellerToken, setSellerToken] = useState<string | null>(() => sessionStorage.getItem('littx_seller_token'))
   const [verified, setVerified] = useState(false)
   const [checking, setChecking] = useState(true)
 
   // Verify token on mount
   useEffect(() => {
-    const token = localStorage.getItem('littx_seller_token')
-    const cachedId = localStorage.getItem('littx_seller_id')
-    if (!token || !cachedId) {
+    const token = sessionStorage.getItem('littx_seller_token')
+    if (!token) {
       setChecking(false)
       return
     }
@@ -380,29 +391,24 @@ export default function App() {
       .then(r => r.json())
       .then(data => {
         if (data.success) {
-          // Verified with server — all good
           setSellerId(data.sellerId)
           setSellerToken(token)
           setVerified(true)
-        } else if (data.ipLocked) {
-          // Admin explicitly kicked them from another device — force logout
-          localStorage.removeItem('littx_seller_token')
-          localStorage.removeItem('littx_seller_id')
+        } else {
+          sessionStorage.removeItem('littx_seller_token')
+          sessionStorage.removeItem('littx_seller_id')
           setSellerId(null)
           setSellerToken(null)
-        } else {
-          // Server cold start / session not in memory yet — trust the cached token
-          // MongoDB fix will make verify always succeed; until then keep them logged in
+        }
+      })
+      .catch(() => {
+        // Server might be down — allow cached session to proceed
+        const cachedId = sessionStorage.getItem('littx_seller_id')
+        if (cachedId && token) {
           setSellerId(cachedId)
           setSellerToken(token)
           setVerified(true)
         }
-      })
-      .catch(() => {
-        // Network error — trust the cached session
-        setSellerId(cachedId)
-        setSellerToken(token)
-        setVerified(true)
       })
       .finally(() => setChecking(false))
   }, [])
