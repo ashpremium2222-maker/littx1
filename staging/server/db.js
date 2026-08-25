@@ -795,7 +795,12 @@ const mockDb = {
 };
 
 function useMock() {
-    return mongoose.connection.readyState !== 1;
+    // If an explicit MONGODB_URI is provided (like on Vercel), NEVER use mock.
+    // Mongoose will automatically buffer queries while readyState is 2 (connecting).
+    if (process.env.MONGODB_URI) return false;
+    
+    // Otherwise (local dev fallback), use mock if disconnected.
+    return mongoose.connection.readyState !== 1 && mongoose.connection.readyState !== 2;
 }
 
 // In-memory fallback for local dev (when MongoDB is not available)
