@@ -98,10 +98,12 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
         const fromEmail = `"${envName}" <${envEmail}>`;
 
         const attachments = [];
-        if (fs.existsSync(pdfPath)) {
-          attachments.push({ filename: `${ticketId}.pdf`, path: pdfPath });
+        const resolvedPdfPath = pdfPath ? require('path').resolve(pdfPath) : null;
+        console.log(`[Mailer] Resolved pdfPath: ${resolvedPdfPath}`);
+        if (resolvedPdfPath && fs.existsSync(resolvedPdfPath)) {
+          attachments.push({ filename: `${ticketId}.pdf`, path: resolvedPdfPath });
         } else {
-          console.warn(`[Mailer] PDF not found at ${pdfPath}, attachment skipped.`);
+          console.warn(`[Mailer] PDF not found at ${pdfPath || 'undefined'}, attachment skipped.`);
         }
         if (qrBuffer) attachments.push({ filename: 'qr.png', content: qrBuffer, cid: 'ticketqr' });
         const bannerForEmail = (event && event.toUpperCase().includes('AURA') && fs.existsSync(AURA_BANNER_PATH))
