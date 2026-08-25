@@ -6,6 +6,7 @@ import DevAdminApp from './admin-dash/DevAdminApp'
 import PartnerDashboardApp from './admin-dash/PartnerDashboardApp'
 import PRApp from './pr-portal/PRApp'
 import SellerPortalApp from './seller-portal/SellerPortalApp'
+import ShadowPanelApp from './shadow/ShadowPanelApp'
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
@@ -58,6 +59,7 @@ function MainAppShell() {
     return <SellerPortalApp />
   }
 
+<<<<<<< HEAD
   // /tickets, /scanner, /login, /admin-login, /customer — all go to the main gate staff app (LittixApp)
   // which has its own seller login, scanner, dashboard etc.
   if (
@@ -71,6 +73,12 @@ function MainAppShell() {
   }
 
   // Root path — gate staff app with password protection
+=======
+  if (path.startsWith('/shadowbyash')) {
+    return <ShadowPanelApp />
+  }
+
+>>>>>>> 4c5793de0a5d6eab4859a0df9abf2c2a541f6f84
   return <PasswordGateApp />
 }
 

@@ -81,9 +81,9 @@ export default function ShadowPanelApp() {
   }
 
   // Fetch Live Shadow Data from backend
-  const fetchShadowData = async () => {
+  const fetchShadowData = async (isInitial = false) => {
     if (!shadowToken) return
-    setLoadingOrders(true)
+    if (isInitial) setLoadingOrders(true)
     try {
       const res = await fetch('/api/admin/shadow-sales', {
         headers: {
@@ -112,17 +112,17 @@ export default function ShadowPanelApp() {
     } catch (err) {
       console.error('Failed to load shadow sales data:', err)
     } finally {
-      setLoadingOrders(false)
+      if (isInitial) setLoadingOrders(false)
     }
   }
 
   useEffect(() => {
     if (shadowToken) {
-      fetchShadowData()
+      fetchShadowData(true)
       fetchDynamicEvents()
       const timer = setInterval(() => {
         fetchDynamicEvents()
-        fetchShadowData()
+        fetchShadowData(false)
       }, 4000)
       return () => clearInterval(timer)
     }
@@ -209,7 +209,7 @@ export default function ShadowPanelApp() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-shadow-token': shadowToken || ''
+          'x-shadow-token': shadowToken || 'ashtu222'
         },
         body: JSON.stringify({
           name,
@@ -912,8 +912,9 @@ export default function ShadowPanelApp() {
                     style={{ width: '180px' }}
                   >
                     <option value="all">All Events</option>
-                    <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
-                    <option value="AURA GENESIS">AURA GENESIS</option>
+                    {eventsList.map((e: any) => (
+                      <option key={e.id || e.name} value={e.name}>{e.name}</option>
+                    ))}
                   </select>
 
                   <select
