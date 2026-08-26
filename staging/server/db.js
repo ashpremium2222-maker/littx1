@@ -6,12 +6,36 @@ const os = require('os');
 // We fall back to a local mongodb URI if none is set in env
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/littx';
 
-mongoose.connect(MONGODB_URI)
-  .then(async () => {
-      console.log('✅ Connected to MongoDB');
-      await seedDefaultUsers();
-  })
-  .catch(err => console.error('❌ MongoDB Connection Error:', err));
+// Check if we already have a cached connection in global memory
+let cached = global.mongoose;
+
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
+async function connectToDatabase() {
+  // If connection is already established and cached, re-use it! (This prevents the 500 limit crash)
+  if (cached.conn) {
+    return cached.conn;
+  }
+
+  // If not, create a new one and cache it. 
+  // We set maxPoolSize: 10 so even if Vercel spins up many servers, they don't hoard connections.
+  if (!cached.promise) {
+    cached.promise = mongoose.connect(MONGODB_URI, { maxPoolSize: 10 }).then((mongoose) => {
+      console.log('✅ Connected to MongoDB (New Connection)');
+      return mongoose;
+    });
+  }
+  
+  cached.conn = await cached.promise;
+  return cached.conn;
+}
+
+// Call it to initialize
+connectToDatabase().then(async () => {
+    await seedDefaultUsers(); // Load default data
+}).catch(err => console.error('❌ MongoDB Connection Error:', err));
 
 // ==================== SCHEMAS ====================
 
