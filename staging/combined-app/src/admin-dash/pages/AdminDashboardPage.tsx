@@ -69,21 +69,21 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
     return () => clearInterval(timer)
   }, [])
 
+  const freshersMale = useMemo(() => paidSales.filter(s => (s.event || '').toUpperCase().includes('FRESHERS') && (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male'))), [paidSales])
+  const freshersFemale = useMemo(() => paidSales.filter(s => (s.event || '').toUpperCase().includes('FRESHERS') && (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female'))), [paidSales])
+  const auraGenesis = useMemo(() => paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA')), [paidSales])
+  const ftInvite = useMemo(() => paidSales.filter(s => (s.gender || '').toLowerCase().includes('exclusive') || (s.ticketType || '').toLowerCase().includes('exclusive')), [paidSales])
+
+  const maleCount = useMemo(() => freshersMale.reduce((acc, s) => acc + (s.quantity || 1), 0), [freshersMale])
+  const femaleCount = useMemo(() => freshersFemale.reduce((acc, s) => acc + (s.quantity || 1), 0), [freshersFemale])
+  const auraCount = useMemo(() => auraGenesis.reduce((acc, s) => acc + (s.quantity || 1), 0), [auraGenesis])
+  const inviteCount = useMemo(() => ftInvite.reduce((acc, s) => acc + (s.quantity || 1), 0), [ftInvite])
+
   const grandTotal = Math.max(1, totalTickets)
 
   // Dynamic Event Breakdown based on master admin /api/events
   const eventBreakdown = useMemo(() => {
     if (dynamicEvents.length === 0) {
-      const freshersMale = paidSales.filter(s => (s.event || '').toUpperCase().includes('FRESHERS') && (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male')))
-      const freshersFemale = paidSales.filter(s => (s.event || '').toUpperCase().includes('FRESHERS') && (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female')))
-      const auraGenesis = paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
-      const ftInvite = paidSales.filter(s => (s.gender || '').toLowerCase().includes('exclusive') || (s.ticketType || '').toLowerCase().includes('exclusive'))
-      
-      const maleCount = freshersMale.reduce((acc, s) => acc + (s.quantity || 1), 0)
-      const femaleCount = freshersFemale.reduce((acc, s) => acc + (s.quantity || 1), 0)
-      const auraCount = auraGenesis.reduce((acc, s) => acc + (s.quantity || 1), 0)
-      const inviteCount = ftInvite.reduce((acc, s) => acc + (s.quantity || 1), 0)
-
       return [
         { name: 'Male Pass (₹699)', count: maleCount, pct: Math.round((maleCount / grandTotal) * 100), color: 'var(--grad-violet)' },
         { name: 'Female Pass (₹599)', count: femaleCount, pct: Math.round((femaleCount / grandTotal) * 100), color: 'var(--grad-teal)' },
@@ -104,7 +104,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         color: evt.gradient || COLORS[idx % COLORS.length]
       }
     })
-  }, [dynamicEvents, paidSales, grandTotal])
+  }, [dynamicEvents, paidSales, grandTotal, maleCount, femaleCount, auraCount, inviteCount])
 
   // ==================== SELLER BREAKDOWN ====================
   const sellerSummary = useMemo(() => {
