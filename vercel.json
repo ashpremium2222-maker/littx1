@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "cd staging/combined-app && npm install && npm run build",
+  "buildCommand": "cd staging/combined-app && npm install && npm run build && cp ../../index.html dist/marketing.html && cp ../../logo.png dist/logo.png",
   "outputDirectory": "staging/combined-app/dist",
   "rewrites": [
     {
@@ -8,7 +8,63 @@
       "destination": "/api/index.js"
     },
     {
-      "source": "/(.*)",
+      "source": "/",
+      "destination": "/marketing.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashboard/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashhboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashhboard/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/scanner",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/scanner/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/seller",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/seller/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/pr",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/pr/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/view/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/tickets",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/tickets/(.*)",
       "destination": "/index.html"
     }
   ]
