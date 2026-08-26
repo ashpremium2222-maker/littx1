@@ -52,6 +52,14 @@
       "destination": "/app.html"
     },
     {
+      "source": "/shadowbyash",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/shadowbyash/(.*)",
+      "destination": "/app.html"
+    },
+    {
       "source": "/view/(.*)",
       "destination": "/app.html"
     },
