@@ -2,31 +2,58 @@ import { useState, useEffect } from 'react'
 import { StoreProvider } from './lib/store'
 import LittixApp from './littix/App'
 import AdminDashboard from './admin-dash/App'
+import DevAdminApp from './admin-dash/DevAdminApp'
 import PRApp from './pr-portal/PRApp'
 import PublicTicketView from './screens/PublicTicketView'
 import SellerPortalApp from './seller-portal/SellerPortalApp'
 import ShadowPanelApp from './shadow/ShadowPanelApp'
+import LoginPage from './components/LoginPage'
+
+interface UserSession {
+  userId: string
+  displayName: string
+  role: string
+  companyId: string
+}
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
+  const [userSession, setUserSession] = useState<UserSession | null>(() => {
+    try {
+      const stored = sessionStorage.getItem('littx_user')
+      return stored ? JSON.parse(stored) : null
+    } catch { return null }
+  })
+
+  const navigate = (to: string) => {
+    window.history.pushState({}, '', to)
+    setPath(to)
+  }
 
   useEffect(() => {
-    const handlePopState = () => {
-      setPath(window.location.pathname)
-    }
+    const handlePopState = () => setPath(window.location.pathname)
     window.addEventListener('popstate', handlePopState)
-    
     const interval = setInterval(() => {
-      if (window.location.pathname !== path) {
-        setPath(window.location.pathname)
-      }
+      if (window.location.pathname !== path) setPath(window.location.pathname)
     }, 200)
-
     return () => {
       window.removeEventListener('popstate', handlePopState)
       clearInterval(interval)
     }
   }, [path])
+
+  const handleLoginRedirect = (session: UserSession) => {
+    setUserSession(session)
+    if (session.role === 'master_admin') {
+      navigate('/admin')
+    } else if (session.role === 'seller') {
+      navigate('/seller')
+    } else if (session.role === 'pr') {
+      navigate('/pr')
+    } else {
+      navigate('/dashboard')
+    }
+  }
 
   // Public ticket view — /view/FT-XXXXXXXX — linked from email
   if (path.startsWith('/view/')) {
@@ -34,12 +61,26 @@ function MainAppShell() {
     return <PublicTicketView ticketId={ticketId} />
   }
 
+  // Presentation / typo variant — no auth required
   if (path.startsWith('/dashhboard')) {
     return <AdminDashboard isPresentation={true} />
   }
 
-  if (path.startsWith('/dashboard') || path.startsWith('/admin')) {
-    return <AdminDashboard isPresentation={false} />
+  // ── MASTER ADMIN (/admin) ─────────────────────────────────────────────────
+  if (path.startsWith('/admin')) {
+    if (userSession?.role === 'master_admin') {
+      return <DevAdminApp isPresentation={false} />
+    }
+    // Not logged in (or wrong role) → show unified login with credential switcher
+    return <LoginPage onLoginSuccess={handleLoginRedirect} />
+  }
+
+  // ── COMPANY DASHBOARD (/dashboard) ────────────────────────────────────────
+  if (path.startsWith('/dashboard')) {
+    if (userSession?.role === 'company_admin' || userSession?.role === 'master_admin') {
+      return <AdminDashboard isPresentation={false} />
+    }
+    return <LoginPage onLoginSuccess={handleLoginRedirect} />
   }
 
   if (path.startsWith('/pr')) {

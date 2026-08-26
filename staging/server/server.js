@@ -1116,6 +1116,96 @@ app.get('/api/test-email', async (req, res) => {
 // ==================== HEALTH ====================
 app.get('/api/health', (req, res) => res.json({ success: true, event: EVENT.name, testMode: TEST_MODE }));
 
+// ==================== UNIVERSAL PLATFORM LOGIN ====================
+// POST /api/auth/login — unified entry point for all platform roles.
+// Called by LoginPage.tsx (the portal with the credential switcher at the bottom).
+const PLATFORM_USERS = [
+    {
+        userId: 'superadmin@littx.in',
+        password: process.env.MASTER_PASS || 'littx-master-2026',
+        displayName: 'Master Admin',
+        role: 'master_admin',
+        companyId: 'littx'
+    },
+    {
+        userId: 'admin@littlane.in',
+        password: process.env.COMPANY_PASS || 'littlane-2026',
+        displayName: 'Littlane Admin',
+        role: 'company_admin',
+        companyId: 'littlane'
+    },
+];
+
+const PR_USERS_AUTH = [
+    { username: 'partner1', password: process.env.PR1_PASS || 'ftpr@001', displayName: 'Partner One', id: 'pr1' },
+    { username: 'partner2', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two', id: 'pr2' },
+    { username: 'partner3', password: process.env.PR3_PASS || 'ftpr@003', displayName: 'Partner Three', id: 'pr3' },
+    { username: 'partner4', password: process.env.PR4_PASS || 'ftpr@004', displayName: 'Partner Four', id: 'pr4' },
+    { username: 'partner5', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five', id: 'pr5' },
+];
+
+app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+        return res.status(400).json({ success: false, message: 'Username and password are required.' });
+    }
+
+    // 1. Check platform users (master_admin, company_admin)
+    const platformUser = PLATFORM_USERS.find(
+        u => u.userId.toLowerCase() === username.toLowerCase() && u.password === password
+    );
+    if (platformUser) {
+        const token = generateToken();
+        return res.json({
+            success: true,
+            token,
+            user: {
+                userId: platformUser.userId,
+                displayName: platformUser.displayName,
+                role: platformUser.role,
+                companyId: platformUser.companyId
+            }
+        });
+    }
+
+    // 2. Check PR partners
+    const prUser = PR_USERS_AUTH.find(
+        u => u.username.toLowerCase() === username.toLowerCase() && u.password === password
+    );
+    if (prUser) {
+        const token = generateToken();
+        return res.json({
+            success: true,
+            token,
+            user: {
+                userId: prUser.id,
+                displayName: prUser.displayName,
+                role: 'pr',
+                companyId: 'littlane'
+            }
+        });
+    }
+
+    // 3. Check sellers
+    const sid = username.toUpperCase();
+    if (SELLER_ACCOUNTS[sid] && SELLER_ACCOUNTS[sid] === password) {
+        const token = generateToken();
+        sellerSessions[sid] = { token, loginAt: new Date().toISOString() };
+        return res.json({
+            success: true,
+            token,
+            user: {
+                userId: sid,
+                displayName: `Seller ${sid}`,
+                role: 'seller',
+                companyId: 'littlane'
+            }
+        });
+    }
+
+    return res.status(401).json({ success: false, message: 'Invalid credentials. Check username and password.' });
+});
+
 // ==================== LITTX SELLER LOGIN SYSTEM ====================
 
 // POST /api/seller/login — validate credentials, issue token, enforce 1-session-per-seller
