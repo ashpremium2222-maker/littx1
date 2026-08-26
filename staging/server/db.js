@@ -3,15 +3,39 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-// We fall back to a local mongodb URI if none is set in env
+// A Vercel function can be cold-started for any request. Keep one connection
+// promise on the Node global so every request waits for the same MongoDB
+// connection instead of issuing a buffered query while Mongoose is connecting.
+const HAS_CONFIGURED_MONGODB = Boolean(process.env.MONGODB_URI);
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/littx';
+const MONGO_PROMISE_KEY = '__littxMongoConnectionPromise';
 
-mongoose.connect(MONGODB_URI)
-  .then(async () => {
-      console.log('✅ Connected to MongoDB');
-      await seedDefaultUsers();
-  })
-  .catch(err => console.error('❌ MongoDB Connection Error:', err));
+async function connectDb() {
+    if (mongoose.connection.readyState === 1) return mongoose.connection;
+
+    if (!global[MONGO_PROMISE_KEY]) {
+        global[MONGO_PROMISE_KEY] = mongoose.connect(MONGODB_URI, {
+            maxPoolSize: 10,
+            serverSelectionTimeoutMS: 8000,
+            connectTimeoutMS: 8000,
+        }).then(async connection => {
+            console.log('✅ Connected to MongoDB');
+            await seedDefaultUsers();
+            return connection;
+        }).catch(err => {
+            // Do not retain a rejected promise: a later serverless request can
+            // retry after a transient Atlas/DNS/network failure.
+            global[MONGO_PROMISE_KEY] = null;
+            throw err;
+        });
+    }
+
+    return global[MONGO_PROMISE_KEY];
+}
+
+// Retain the convenient local-development behaviour, but do not let a failed
+// local MongoDB instance prevent the JSON mock fallback from being used.
+connectDb().catch(err => console.error('❌ MongoDB Connection Error:', err.message));
 
 // ==================== SCHEMAS ====================
 
@@ -860,6 +884,10 @@ const _mockDevices = new Map();
 const _mockChallenges = new Map();
 
 module.exports = {
+    // Connection helpers used by the Express API middleware. In production a
+    // request must wait for Atlas before it runs a database query.
+    connectDb,
+    hasConfiguredMongo: HAS_CONFIGURED_MONGODB,
     // Session handlers
     getSellerSession: async (sellerId) => {
         if (useMock()) return _mockSessions.get(sellerId) || null;

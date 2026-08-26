@@ -13,6 +13,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Vercel may invoke an API route before the module-level MongoDB connection
+// has completed. Awaiting the shared connection here avoids Mongoose's
+// "buffering timed out" failure on cold starts.
+app.use('/api', async (req, res, next) => {
+    if (!db.hasConfiguredMongo) return next();
+
+    try {
+        await db.connectDb();
+        next();
+    } catch (err) {
+        console.error('[Database unavailable]', err.message);
+        res.status(503).json({
+            success: false,
+            message: 'Database connection is temporarily unavailable. Please try again shortly.'
+        });
+    }
+});
+
 // ==================== EVENT & PRICING ====================
 const EVENT = { name: EVENT_NAME };
 const PRICING = {
