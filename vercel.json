@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "cd staging/combined-app && npm install && npm run build && cp ../../index.html dist/marketing.html && cp ../../logo.png dist/logo.png",
+  "buildCommand": "cd staging/combined-app && npm install && npm run build && mv dist/index.html dist/app.html && cp ../../index.html dist/index.html && cp ../../logo.png dist/logo.png",
   "outputDirectory": "staging/combined-app/dist",
   "rewrites": [
     {
@@ -8,63 +8,63 @@
       "destination": "/api/index.js"
     },
     {
-      "source": "/",
-      "destination": "/marketing.html"
-    },
-    {
       "source": "/dashboard",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/dashboard/(.*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/dashhboard",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/dashhboard/(.*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/admin",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/scanner",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/scanner/(.*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/seller",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/seller/(.*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/pr",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/pr/(.*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/view/(.*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/tickets",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/tickets/(.*)",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
