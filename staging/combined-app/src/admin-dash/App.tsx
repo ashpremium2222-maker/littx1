@@ -169,10 +169,15 @@ export default function App({ isPresentation = false }: AppProps) {
   const [dark, setDark] = useState(true)
   const [search, setSearch] = useState('')
   const [adminKey, setAdminKey] = useState(
+    sessionStorage.getItem('littx_token') || localStorage.getItem('littx_token') ||
     sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key') || ''
   )
   const [keyInput, setKeyInput] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    // Auto-authenticate if we have a session token from LoginPage
+    return !!(sessionStorage.getItem('littx_token') || localStorage.getItem('littx_token') ||
+              sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key'))
+  })
   const [authChecking, setAuthChecking] = useState(true)
   const [authError, setAuthError] = useState('')
   const [sales, setSales] = useState<any[]>([])
@@ -209,9 +214,15 @@ export default function App({ isPresentation = false }: AppProps) {
       return false
     }
     try {
-      const res = await fetch(
-        `/api/admin/sales?key=${encodeURIComponent(keyToUse)}${isPresentation ? '&pres=true' : ''}`
-      )
+      // Prefer sending as x-auth-token (unified auth) but fall back to ?key= for legacy ADMIN_KEY
+      const isToken = keyToUse.length > 40 // tokens are 64-char hex; legacy keys are shorter
+      const url = isToken
+        ? `/api/admin/sales?${isPresentation ? 'pres=true' : ''}`
+        : `/api/admin/sales?key=${encodeURIComponent(keyToUse)}${isPresentation ? '&pres=true' : ''}`
+      const headers: Record<string, string> = {}
+      if (isToken) headers['x-auth-token'] = keyToUse
+
+      const res = await fetch(url, { headers })
       const data = await res.json().catch(() => ({}))
       if (res.status === 401 || !res.ok || !data.success) {
         const errReason = data.message || 'Access Denied: Admin key invalid.'

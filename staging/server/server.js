@@ -136,8 +136,12 @@ function computeAmount(gender, quantity) {
     return { amount: rate * qty, qty };
 }
 
+// In-memory token store for unified auth sessions (populated by /api/auth/login)
+const platformAuthTokens = new Set();
+
 function requireAdmin(req, res, next) {
     const key = req.headers['x-admin-key'] || req.query.key;
+    const token = req.headers['x-auth-token'];
     const isPres = req.headers['x-presentation'] === 'true' || req.query.pres === 'true';
 
     if (isPres) {
@@ -147,8 +151,13 @@ function requireAdmin(req, res, next) {
         return res.status(401).json({ success: false, message: 'Access Denied: Use the presentation password.' });
     }
 
-    if (key !== ADMIN_KEY) return res.status(401).json({ success: false, message: 'Access Denied: Dashboard is bound to its original deployment device.' });
-    next();
+    // Accept ADMIN_KEY (legacy)
+    if (key && key === ADMIN_KEY) return next();
+
+    // Accept unified auth tokens issued by /api/auth/login (master_admin or company_admin)
+    if (token && platformAuthTokens.has(token)) return next();
+
+    return res.status(401).json({ success: false, message: 'Access Denied: Invalid admin credentials.' });
 }
 
 // ==================== 1. CREATE ORDER (start of checkout) ====================
@@ -1116,6 +1125,32 @@ app.get('/api/test-email', async (req, res) => {
 // ==================== HEALTH ====================
 app.get('/api/health', (req, res) => res.json({ success: true, event: EVENT.name, testMode: TEST_MODE }));
 
+// ==================== EVENTS LIST ====================
+// GET /api/events — returns the active event list for the dashboard event breakdown UI
+app.get('/api/events', (req, res) => {
+    res.json({
+        success: true,
+        events: [{ name: EVENT.name, gradient: 'linear-gradient(135deg,#7C5CFA 0%,#38D9C4 100%)' }]
+    });
+});
+
+// GET /api/admin/sellers — dynamic seller list derived from sales records
+app.get('/api/admin/sellers', async (req, res) => {
+    try {
+        const all = await db.getAll();
+        const sellerSet = new Set();
+        all.forEach(s => {
+            const who = s.generatedBy || s.prUserId || null;
+            if (who) sellerSet.add(who);
+        });
+        // Also include configured seller accounts
+        Object.keys(SELLER_ACCOUNTS).forEach(id => sellerSet.add(id));
+        res.json({ success: true, sellers: Array.from(sellerSet) });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ==================== UNIVERSAL PLATFORM LOGIN ====================
 // POST /api/auth/login — unified entry point for all platform roles.
 // Called by LoginPage.tsx (the portal with the credential switcher at the bottom).
@@ -1156,6 +1191,8 @@ app.post('/api/auth/login', (req, res) => {
     );
     if (platformUser) {
         const token = generateToken();
+        // Register this token so requireAdmin accepts x-auth-token from the frontend
+        platformAuthTokens.add(token);
         return res.json({
             success: true,
             token,

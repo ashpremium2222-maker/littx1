@@ -48,6 +48,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const qrScannedCount = sales.filter(s => s.status === 'scanned' || !!s.scannedAt).length
 
   const [dynamicEvents, setDynamicEvents] = useState<any[]>([])
+  const [knownSellerIds, setKnownSellerIds] = useState<string[]>([])
 
   useEffect(() => {
     const loadEvents = () => {
@@ -56,8 +57,15 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         .then(d => { if (d.success && Array.isArray(d.events)) setDynamicEvents(d.events) })
         .catch(() => {})
     }
+    const loadSellers = () => {
+      fetch('/api/admin/sellers')
+        .then(r => r.json())
+        .then(d => { if (d.success && Array.isArray(d.sellers)) setKnownSellerIds(d.sellers) })
+        .catch(() => {})
+    }
     loadEvents()
-    const timer = setInterval(loadEvents, 4000)
+    loadSellers()
+    const timer = setInterval(() => { loadEvents(); loadSellers() }, 15000)
     return () => clearInterval(timer)
   }, [])
 
@@ -99,10 +107,10 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   }, [dynamicEvents, paidSales, grandTotal])
 
   // ==================== SELLER BREAKDOWN ====================
-  const KNOWN_SELLERS = ['SELLER-A', 'SELLER-B', 'SELLER-C', 'Admin']
   const sellerSummary = useMemo(() => {
     const map: Record<string, { sellerId: string; ticketCount: number; revenue: number; lastSale: string | null; sales: any[] }> = {}
-    for (const sid of KNOWN_SELLERS) {
+    // Pre-seed known sellers from API (so they show even with zero sales)
+    for (const sid of knownSellerIds) {
       map[sid] = { sellerId: sid, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
     }
     for (const s of paidSales) {
@@ -117,8 +125,8 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       }
       map[who].sales.push(s)
     }
-    return Object.values(map).sort((a, b) => b.revenue - a.revenue)
-  }, [paidSales])
+    return Object.values(map).filter(s => s.ticketCount > 0 || knownSellerIds.includes(s.sellerId)).sort((a, b) => b.revenue - a.revenue)
+  }, [paidSales, knownSellerIds])
 
   const getChartData = () => {
     const chartData = []

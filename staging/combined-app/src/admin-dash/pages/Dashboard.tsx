@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -71,10 +71,17 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const invitePct = Math.round((inviteCount / grandTotal) * 100)
 
   // ==================== SELLER BREAKDOWN ====================
-  const KNOWN_SELLERS = ['SELLER-A', 'SELLER-B', 'SELLER-C', 'Admin']
+  const [knownSellerIds, setKnownSellerIds] = useState<string[]>([])
+  useEffect(() => {
+    fetch('/api/admin/sellers')
+      .then(r => r.json())
+      .then(d => { if (d.success && Array.isArray(d.sellers)) setKnownSellerIds(d.sellers) })
+      .catch(() => {})
+  }, [])
+
   const sellerSummary = useMemo(() => {
     const map: Record<string, { sellerId: string; ticketCount: number; revenue: number; lastSale: string | null; sales: any[] }> = {}
-    for (const sid of KNOWN_SELLERS) {
+    for (const sid of knownSellerIds) {
       map[sid] = { sellerId: sid, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
     }
     for (const s of paidSales) {
@@ -89,8 +96,8 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       }
       map[who].sales.push(s)
     }
-    return Object.values(map).sort((a, b) => b.revenue - a.revenue)
-  }, [paidSales])
+    return Object.values(map).filter(s => s.ticketCount > 0 || knownSellerIds.includes(s.sellerId)).sort((a, b) => b.revenue - a.revenue)
+  }, [paidSales, knownSellerIds])
 
   const getChartData = () => {
     const chartData = []
