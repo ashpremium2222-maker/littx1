@@ -373,7 +373,15 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                     {seller.sellerId === 'Admin' ? 'A' : seller.sellerId.slice(-1)}
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)' }}>{seller.sellerId}</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)' }}>
+                      {seller.sellerId === 'littlane' ? 'Littlane Entertainment'
+                        : seller.sellerId === 'nitro' ? 'Nitro Events'
+                        : seller.sellerId === '7th-heaven' ? '7th Heaven'
+                        : seller.sellerId === 'SELLER-A' ? 'Littlane Entertainment'
+                        : seller.sellerId === 'SELLER-B' ? 'Nitro Events'
+                        : seller.sellerId === 'SELLER-C' ? '7th Heaven'
+                        : seller.sellerId}
+                    </div>
                     <div style={{ fontSize: 10, color: 'var(--ink-soft)', marginTop: 2 }}>
                       {seller.ticketCount} ticket{seller.ticketCount !== 1 ? 's' : ''} sold
                       {seller.lastSale ? ` · Last: ${new Date(seller.lastSale).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ' · No sales yet'}
