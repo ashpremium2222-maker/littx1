@@ -219,9 +219,9 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
 }
 
 // ==================== MAIN APP SHELL ====================
-function AppShell({ sellerId, sellerToken, onLogout }: { sellerId: string; sellerToken: string; onLogout: () => void }) {
+function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId: string; sellerToken: string; onLogout: () => void, forceScanner?: boolean }) {
   const { dark, toggleTheme, tickets, findTicket, scanTicket } = useStore()
-  const [screen, setScreen] = useState<Screen>({ name: 'dashboard' })
+  const [screen, setScreen] = useState<Screen>({ name: forceScanner ? 'scanner' : 'dashboard' })
   const [prevDepth, setPrevDepth] = useState(0)
   const [rejectedScans, setRejectedScans] = useState<RejectedScan[]>([])
 
@@ -372,11 +372,22 @@ function AppShell({ sellerId, sellerToken, onLogout }: { sellerId: string; selle
 }
 
 // ==================== ROOT: handles seller auth ====================
-export default function App() {
+export default function App({ forceScanner }: { forceScanner?: boolean }) {
   const [sellerId, setSellerId] = useState<string | null>(() => sessionStorage.getItem('littx_seller_id'))
   const [sellerToken, setSellerToken] = useState<string | null>(() => sessionStorage.getItem('littx_seller_token'))
   const [verified, setVerified] = useState(false)
-  const [checking, setChecking] = useState(true)
+  const [checking, setChecking] = useState(!forceScanner)
+
+  if (forceScanner) {
+    return (
+      <AppShell
+        sellerId="Gate Scanner"
+        sellerToken="direct"
+        forceScanner={true}
+        onLogout={() => {}}
+      />
+    )
+  }
 
   // Verify token on mount
   useEffect(() => {
