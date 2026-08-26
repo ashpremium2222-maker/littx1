@@ -1151,6 +1151,108 @@ app.get('/api/admin/sellers', async (req, res) => {
     }
 });
 
+// ==================== MASTER ADMIN COMPANY PORTAL / GOVERNANCE API ====================
+// GET /api/master/companies — returns all companies with aggregated stats
+app.get('/api/master/companies', async (req, res) => {
+    try {
+        const list = await db.getAllCompanies();
+        const allSales = await db.getAll();
+        const paidSales = allSales.filter(s => ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status));
+
+        const companiesWithStats = list.map(c => {
+            const companySales = paidSales.filter(s => s.companyId === c.companyId);
+            const totalOrders = companySales.length;
+            const ticketCount = companySales.reduce((acc, s) => acc + (s.quantity || 1), 0);
+            const grossRevenue = companySales.reduce((acc, s) => acc + (s.amount || 0), 0);
+
+            return {
+                ...c,
+                stats: {
+                    totalOrders,
+                    ticketCount,
+                    grossRevenue
+                }
+            };
+        });
+
+        res.json({ success: true, companies: companiesWithStats });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// GET /api/master/companies/:id/control-center — details, overrides, and logs for one company
+app.get('/api/master/companies/:id/control-center', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const company = await db.getCompanyById(id);
+        if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+
+        const effectiveConfig = await db.getEffectiveConfig(id);
+        const allEvents = await db.getAllEvents();
+        const events = allEvents.filter(e => e.companyId === id);
+        const auditLogs = await db.getAuditLogs(id);
+
+        res.json({
+            success: true,
+            company,
+            effectiveConfig: effectiveConfig.effective,
+            events,
+            auditLogs
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/master/companies/:id/config — updates company settings and logs governance action
+app.post('/api/master/companies/:id/config', async (req, res) => {
+    const { id } = req.params;
+    const { updates, adminUser, reason } = req.body || {};
+    try {
+        const old = await db.getCompanyById(id);
+        if (!old) return res.status(404).json({ success: false, message: 'Company not found' });
+
+        const updated = await db.updateCompanyConfig(id, updates);
+        await db.createAuditLog({
+            companyId: id,
+            action: 'UPDATE_CONFIG',
+            performedBy: adminUser || 'Master Admin',
+            details: `Updated company parameters. Reason: ${reason || 'Governance Update'}`
+        });
+
+        res.json({ success: true, company: updated });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// POST /api/master/companies/:id/emergency — locks or shuts down operations instantly
+app.post('/api/master/companies/:id/emergency', async (req, res) => {
+    const { id } = req.params;
+    const { action, statusReason, adminUser } = req.body || {};
+    try {
+        const company = await db.getCompanyById(id);
+        if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+
+        let status = company.status;
+        if (action === 'LOCK_PLATFORM') status = 'SUSPENDED';
+        else if (action === 'ACTIVATE_PLATFORM') status = 'ACTIVE';
+
+        const updated = await db.updateCompanyConfig(id, { status, statusReason });
+        await db.createAuditLog({
+            companyId: id,
+            action,
+            performedBy: adminUser || 'Master Admin',
+            details: `Emergency Governance action triggered: ${action}. Reason: ${statusReason}`
+        });
+
+        res.json({ success: true, company: updated });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ==================== UNIVERSAL PLATFORM LOGIN ====================
 // POST /api/auth/login — unified entry point for all platform roles.
 // Called by LoginPage.tsx (the portal with the credential switcher at the bottom).
