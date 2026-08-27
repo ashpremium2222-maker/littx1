@@ -47,9 +47,9 @@ const SELLER_IDS = ['littlane', '7th-heaven', 'nitro'] as const
 
 type DirectScannerTab = 'scanner' | 'history' | 'profile'
 type HistoryTab = 'approved' | 'rejected'
-type ScannerHistoryStatus = 'approved' | 'duplicate' | 'cancelled' | 'invalid'
+export type ScannerHistoryStatus = 'approved' | 'duplicate' | 'cancelled' | 'invalid'
 
-type ScannerHistoryEntry = {
+export type ScannerHistoryEntry = {
   id: string
   ticketId: string
   status: ScannerHistoryStatus
@@ -84,6 +84,16 @@ function loadScannerHistory(): ScannerHistoryEntry[] {
   } catch {
     return []
   }
+}
+
+function cleanScannedTicketId(raw: string) {
+  const value = raw.trim()
+  const withoutPrefix = value.replace(/^LITTIX:/i, '').replace(/^#/, '')
+  const viewMatch = withoutPrefix.match(/\/view\/([^/?#]+)/i)
+  if (viewMatch) return decodeURIComponent(viewMatch[1]).replace(/^#/, '')
+  const ticketMatch = withoutPrefix.match(/(?:ticketId|ticket|id)=([^&#]+)/i)
+  if (ticketMatch) return decodeURIComponent(ticketMatch[1]).replace(/^#/, '')
+  return withoutPrefix.split(/[?#]/)[0].trim()
 }
 
 function DirectScannerExperience({
@@ -149,6 +159,7 @@ function DirectScannerExperience({
               scanFeedback={scannerFeedback}
               onScanNext={onScanNext}
               rejectedScans={rejectedScans}
+              scannerHistory={scannerHistory}
             />
           </motion.div>
         )}
@@ -559,7 +570,7 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
   }
 
   async function handleScan(raw: string) {
-    const cleaned = raw.replace(/^LITTIX:/i, '').replace(/^#/, '')
+    const cleaned = cleanScannedTicketId(raw)
     const outcome = await scanTicket(cleaned, sellerId)
 
     const timestamp = formatScanTime()

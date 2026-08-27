@@ -3,7 +3,7 @@ import jsQR from 'jsqr'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import LittixLogo from '../components/LittixLogo'
 import type { Ticket } from '../lib/store'
-import type { RejectedScan } from '../littix/App'
+import type { RejectedScan, ScannerHistoryEntry } from '../littix/App'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface Props {
@@ -33,6 +33,7 @@ interface Props {
   onScanNext?: () => void
   rejectedScans?: RejectedScan[]
   scannedTickets?: Ticket[]
+  scannerHistory?: ScannerHistoryEntry[]
   sellerId?: string
 }
 
@@ -49,7 +50,7 @@ type TorchTrack = MediaStreamTrack & {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function QRScanner({ onBack, onScan, premium = false, scanFeedback, onScanNext, rejectedScans = [], scannedTickets = [], sellerId }: Props) {
+export default function QRScanner({ onBack, onScan, premium = false, scanFeedback, onScanNext, rejectedScans = [], scannedTickets = [], scannerHistory = [], sellerId }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -185,21 +186,37 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
   }
 
   // ─── Derived history data ─────────────────────────────────────────────────
-  const approvedItems = scannedTickets.map(t => ({
-    id: t.id,
-    title: t.event,
-    holder: t.attendee,
-    time: t.scannedAt || '',
-    type: t.ticketType,
-  }))
+  const approvedItems = scannerHistory.length > 0
+    ? scannerHistory.filter(entry => entry.status === 'approved').map(entry => ({
+      id: entry.ticketId,
+      title: entry.event,
+      holder: entry.attendee,
+      time: `Generated ${entry.generatedAt} · Scanned ${entry.scannedAt}`,
+      type: entry.ticketType,
+    }))
+    : scannedTickets.map(t => ({
+      id: t.id,
+      title: t.event,
+      holder: t.attendee,
+      time: t.scannedAt || '',
+      type: t.ticketType,
+    }))
 
-  const rejectedItems = rejectedScans.map(r => ({
-    id: r.ticket?.id || r.rawCode || '—',
-    title: r.ticket?.event || 'Unknown Ticket',
-    holder: r.ticket?.attendee || r.rawCode || 'Unknown',
-    time: r.timestamp,
-    reason: r.reason === 'duplicate' ? 'Already Scanned' : r.reason === 'cancelled' ? 'Ticket Cancelled' : 'Invalid Ticket',
-  }))
+  const rejectedItems = scannerHistory.length > 0
+    ? scannerHistory.filter(entry => entry.status !== 'approved').map(entry => ({
+      id: entry.ticketId,
+      title: entry.event,
+      holder: entry.attendee,
+      time: `Generated ${entry.generatedAt} · Attempt ${entry.scannedAt}`,
+      reason: entry.status === 'duplicate' ? `Already Scanned${entry.originalScanAt ? ` · First ${entry.originalScanAt}` : ''}` : entry.status === 'cancelled' ? 'Ticket Cancelled' : 'Invalid Ticket',
+    }))
+    : rejectedScans.map(r => ({
+      id: r.ticket?.id || r.rawCode || '—',
+      title: r.ticket?.event || 'Unknown Ticket',
+      holder: r.ticket?.attendee || r.rawCode || 'Unknown',
+      time: r.timestamp,
+      reason: r.reason === 'duplicate' ? 'Already Scanned' : r.reason === 'cancelled' ? 'Ticket Cancelled' : 'Invalid Ticket',
+    }))
   const feedbackEntry = scanFeedback?.entry
   const feedbackOk = scanFeedback?.status === 'success'
   const feedbackAccent = feedbackOk ? '#22C55E' : '#EF4444'
@@ -209,6 +226,7 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
     feedbackEntry?.status === 'cancelled' ? 'Cancelled' :
     feedbackEntry?.status === 'invalid' ? 'Invalid' :
     scanFeedback?.title
+  const fallbackTicketId = feedbackEntry?.ticketId || scanFeedback?.code || 'UNKNOWN'
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -691,31 +709,29 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
                 </div>
               </div>
 
-              {feedbackEntry && (
-                <motion.div
-                  className="mt-5 grid grid-cols-2 gap-2"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.12, duration: 0.28 }}
-                >
-                  <ResultDetail label="Ticket ID" value={`#${feedbackEntry.ticketId}`} mono />
-                  <ResultDetail label="Attendee" value={feedbackEntry.attendee} />
-                  <ResultDetail label="Ticket Type" value={feedbackEntry.ticketType} />
-                  <ResultDetail label="Generated" value={feedbackEntry.generatedAt} />
-                  <ResultDetail label={feedbackOk ? 'Scanned' : 'Scan Attempt'} value={feedbackEntry.scannedAt} />
-                  <ResultDetail label="Scanner" value={feedbackEntry.scannedBy} />
-                  {feedbackEntry.originalScanAt && (
-                    <ResultDetail label="First Scanned" value={feedbackEntry.originalScanAt} />
-                  )}
-                  {feedbackEntry.attemptNumber > 1 && (
-                    <ResultDetail label="Attempt" value={`${feedbackEntry.attemptNumber}`} />
-                  )}
-                  <div className="col-span-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3">
-                    <p className="text-white/35 text-[10px] font-bold uppercase tracking-[0.14em] mb-1">Event</p>
-                    <p className="text-white text-[13px] font-semibold leading-snug">{feedbackEntry.event}</p>
-                  </div>
-                </motion.div>
-              )}
+              <motion.div
+                className="mt-5 grid grid-cols-2 gap-2"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.12, duration: 0.28 }}
+              >
+                <ResultDetail label="Ticket ID" value={`#${fallbackTicketId}`} mono />
+                <ResultDetail label="Attendee" value={feedbackEntry?.attendee || 'Not available'} />
+                <ResultDetail label="Ticket Type" value={feedbackEntry?.ticketType || 'Not available'} />
+                <ResultDetail label="Generated" value={feedbackEntry?.generatedAt || 'Not available'} />
+                <ResultDetail label={feedbackOk ? 'Scanned' : 'Scan Attempt'} value={feedbackEntry?.scannedAt || 'Just now'} />
+                <ResultDetail label="Scanner" value={feedbackEntry?.scannedBy || sellerId || 'Gate Scanner'} />
+                {feedbackEntry?.originalScanAt && (
+                  <ResultDetail label="First Scanned" value={feedbackEntry.originalScanAt} />
+                )}
+                {feedbackEntry && feedbackEntry.attemptNumber > 1 && (
+                  <ResultDetail label="Attempt" value={`${feedbackEntry.attemptNumber}`} />
+                )}
+                <div className="col-span-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3">
+                  <p className="text-white/35 text-[10px] font-bold uppercase tracking-[0.14em] mb-1">Event</p>
+                  <p className="text-white text-[13px] font-semibold leading-snug">{feedbackEntry?.event || scanFeedback.message}</p>
+                </div>
+              </motion.div>
 
               <motion.button
                 onClick={onScanNext}
