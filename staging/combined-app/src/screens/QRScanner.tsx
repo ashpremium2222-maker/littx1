@@ -220,8 +220,6 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
   const feedbackEntry = scanFeedback?.entry
   const feedbackOk = scanFeedback?.status === 'success'
   const feedbackAccent = feedbackOk ? '#22C55E' : '#EF4444'
-  const feedbackSurface = feedbackOk ? '#4ADE80' : '#93000A'
-  const feedbackInk = feedbackOk ? '#07110A' : '#FFDAD6'
   const feedbackLabel =
     feedbackEntry?.status === 'approved' ? 'Approved' :
     feedbackEntry?.status === 'duplicate' ? 'Duplicate' :
@@ -229,8 +227,6 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
     feedbackEntry?.status === 'invalid' ? 'Invalid' :
     scanFeedback?.title
   const fallbackTicketId = feedbackEntry?.ticketId || scanFeedback?.code || 'UNKNOWN'
-  const resultKicker = feedbackOk ? 'Valid Pass' : feedbackEntry?.status === 'duplicate' ? 'Duplicate Pass' : feedbackEntry?.status === 'cancelled' ? 'Cancelled Pass' : 'Invalid Pass'
-  const resultCommand = feedbackOk ? 'Allow Entry' : 'Do Not Allow Entry'
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -635,94 +631,14 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
       {/* ── SCAN RESULT MODAL ── */}
       <AnimatePresence>
         {scanFeedback && premium && (
-          <motion.div
-            className="fixed inset-0 flex items-stretch justify-center overflow-hidden"
-            style={{ zIndex: 70, background: feedbackSurface, color: feedbackInk }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.div
-              className="relative flex min-h-dvh w-full max-w-[520px] flex-col px-5 pb-5 pt-10"
-              initial={{ scale: 0.98, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.98, opacity: 0 }}
-              transition={{ duration: 0.22 }}
-            >
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.2)_100%)] opacity-20" />
-              {!feedbackOk && <div className="pointer-events-none absolute inset-0 animate-pulse bg-[#F87171]/10" />}
-
-              <main className="relative z-10 flex flex-1 flex-col items-center justify-center text-center">
-                <motion.div
-                  className={`mb-5 grid h-32 w-32 place-items-center rounded-full ${feedbackOk ? 'bg-black/10 border-black/20' : 'bg-[#FFB4AB]/20 border-[#FFB4AB]/50'} border`}
-                  initial={{ scale: 0.72, opacity: 0 }}
-                  animate={{ scale: [0.72, 1.08, 1], opacity: 1 }}
-                  transition={{ duration: 0.45, ease: 'easeOut' }}
-                >
-                  <span className="material-symbols-outlined text-[112px] leading-none">{feedbackOk ? 'check_circle' : 'block'}</span>
-                </motion.div>
-
-                <div className="mb-5 w-full">
-                  <div
-                    className={`mx-auto mb-3 inline-flex rounded-lg px-4 py-2 text-[17px] font-black uppercase tracking-[0.16em] ${feedbackOk ? 'bg-black/10 text-black/80' : 'bg-[#FFB4AB] text-[#690005]'}`}
-                  >
-                    {resultKicker}
-                  </div>
-                  <h1 className="text-[42px] font-black uppercase leading-[0.98] tracking-normal sm:text-[48px]">{resultCommand}</h1>
-                </div>
-
-                <section className={`w-full rounded-xl border p-4 text-left shadow-2xl ${feedbackOk ? 'border-black/20 bg-black/10' : 'border-[#FFB4AB]/35 bg-[#0E0E0E]/90 text-[#E5E2E1]'}`}>
-                  <div className={`mb-3 border-b pb-3 ${feedbackOk ? 'border-black/20' : 'border-white/10'}`}>
-                    <p className={`text-[11px] font-black uppercase tracking-[0.14em] ${feedbackOk ? 'text-black/60' : 'text-[#C4C7C8]'}`}>Attendee</p>
-                    <p className="mt-1 truncate text-[30px] font-black uppercase leading-tight">{feedbackEntry?.attendee || 'Not available'}</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <ScanResultField dark={!feedbackOk} label="Ticket Type" value={feedbackEntry?.ticketType || 'Not available'} />
-                    <ScanResultField dark={!feedbackOk} label="Ticket ID" value={`#${fallbackTicketId}`} mono />
-                    <ScanResultField dark={!feedbackOk} label={feedbackOk ? 'Scanned' : 'Current Attempt'} value={feedbackEntry?.scannedAt || 'Just now'} />
-                    <ScanResultField dark={!feedbackOk} label="Scanned By" value={feedbackEntry?.scannedBy || sellerId || 'Gate Staff'} />
-                  </div>
-
-                  <div className={`mt-3 rounded-lg px-3 py-3 ${feedbackOk ? 'bg-black/10' : 'bg-[#93000A]/25'}`}>
-                    <p className={`text-[11px] font-black uppercase tracking-[0.14em] ${feedbackOk ? 'text-black/60' : 'text-[#FFB4AB]'}`}>Event</p>
-                    <p className="mt-1 text-[15px] font-black uppercase leading-snug">{feedbackEntry?.event || scanFeedback.message}</p>
-                  </div>
-
-                  {!feedbackOk && (
-                    <div className="mt-3 rounded-full border border-[#FFB4AB]/35 bg-[#FFB4AB]/12 px-4 py-3 text-center text-[14px] font-black uppercase tracking-[0.08em] text-[#FFB4AB]">
-                      {feedbackEntry?.originalScanAt ? `First scan: ${feedbackEntry.originalScanAt}` : scanFeedback.message}
-                    </div>
-                  )}
-                </section>
-
-                <motion.button
-                  onClick={onScanNext}
-                  whileTap={{ scale: 0.97 }}
-                  className={`mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-lg border text-[12px] font-black uppercase tracking-[0.16em] ${feedbackOk ? 'border-black/40 bg-[#121212] text-white' : 'border-[#FFDAD6]/45 bg-transparent text-[#FFDAD6]'}`}
-                  type="button"
-                >
-                  <QrIcon />
-                  Scan Next Ticket
-                </motion.button>
-              </main>
-
-              <div className="relative z-10 mt-4">
-                <div className={`mb-2 flex items-center justify-between px-1 text-[10px] font-black uppercase tracking-[0.16em] ${feedbackOk ? 'text-black/65' : 'text-[#FFB4AB]'}`}>
-                  <span>Ready for next scan</span>
-                  <span>{feedbackLabel}</span>
-                </div>
-                <div className={`h-1.5 overflow-hidden rounded-full ${feedbackOk ? 'bg-black/20' : 'bg-[#201F1F]/80'}`}>
-                  <motion.div
-                    className={`h-full ${feedbackOk ? 'bg-black' : 'bg-[#FFB4AB]'}`}
-                    initial={{ width: '100%' }}
-                    animate={{ width: '0%' }}
-                    transition={{ duration: 4, ease: 'linear' }}
-                  />
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
+          <RefinedScanResult
+            feedbackEntry={feedbackEntry}
+            feedbackLabel={feedbackLabel}
+            fallbackTicketId={fallbackTicketId}
+            scanFeedback={scanFeedback}
+            sellerId={sellerId}
+            onScanNext={onScanNext}
+          />
         )}
 
         {scanFeedback && !premium && (
@@ -875,6 +791,264 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+function RefinedScanResult({
+  feedbackEntry,
+  feedbackLabel,
+  fallbackTicketId,
+  scanFeedback,
+  sellerId,
+  onScanNext,
+}: {
+  feedbackEntry: NonNullable<Props['scanFeedback']>['entry'] | undefined
+  feedbackLabel: string | undefined
+  fallbackTicketId: string
+  scanFeedback: NonNullable<Props['scanFeedback']>
+  sellerId?: string
+  onScanNext?: () => void
+}) {
+  const approved = scanFeedback.status === 'success'
+  const attendee = feedbackEntry?.attendee || 'Not available'
+  const attendeeInitials = attendee
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase())
+    .join('') || 'NA'
+  const scanCount = Math.max(1, feedbackEntry?.attemptNumber || (approved ? 1 : 2))
+  const rejectedReason =
+    feedbackEntry?.status === 'duplicate' ? 'Duplicate Pass' :
+    feedbackEntry?.status === 'cancelled' ? 'Cancelled Pass' :
+    'Invalid Pass'
+  const background = approved
+    ? 'radial-gradient(circle at 50% 20%, rgba(5,231,119,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(5,231,119,0.1) 0%, transparent 50%), #131313'
+    : 'radial-gradient(circle at top, rgba(255,77,77,0.15) 0%, transparent 70%), linear-gradient(180deg, #3a0000 0%, #130000 44%, #0a0000 100%)'
+
+  function scanNext() {
+    if (navigator.vibrate) navigator.vibrate(50)
+    onScanNext?.()
+  }
+
+  return (
+    <motion.div
+      className="fixed inset-0 flex items-stretch justify-center overflow-hidden font-[Inter]"
+      style={{ zIndex: 70, background }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div
+        className="relative flex min-h-dvh w-full max-w-[520px] flex-col px-6 pb-[108px] pt-4 text-[#E5E2E1]"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 10 }}
+        transition={{ duration: 0.18 }}
+      >
+        {!approved && <div className="pointer-events-none absolute inset-0 animate-pulse bg-[#FF4D4D]/10" />}
+
+        <header className="relative z-10 flex h-[60px] items-center justify-between">
+          <button className={`flex h-12 w-12 items-center justify-start ${approved ? 'text-white' : 'text-[#FF4D4D]'}`} type="button" aria-label="Flash">
+            <span className="material-symbols-outlined">flash_on</span>
+          </button>
+          <span className={`text-[14px] font-black uppercase tracking-[0.18em] ${approved ? 'text-white' : 'text-[#FF4D4D]'}`}>Scanner</span>
+          <button className={`flex h-12 w-12 items-center justify-end ${approved ? 'text-white' : 'text-[#FF4D4D]'}`} type="button" aria-label="Help">
+            <span className="material-symbols-outlined">help_outline</span>
+          </button>
+        </header>
+
+        <main className="relative z-10 flex flex-1 flex-col">
+          {approved ? (
+            <>
+              <div className="mb-8 mt-4 flex flex-col items-center justify-center text-center">
+                <motion.div
+                  className="mb-4 flex h-20 w-20 items-center justify-center rounded-full border border-[#05E777]/50 bg-[#05E777]/20 shadow-[0_0_40px_10px_rgba(5,231,119,0.2)]"
+                  initial={{ scale: 0.72, opacity: 0 }}
+                  animate={{ scale: [0.72, 1.08, 1], opacity: 1 }}
+                  transition={{ duration: 0.45, ease: 'easeOut' }}
+                >
+                  <span className="material-symbols-outlined text-4xl text-[#05E777] [font-variation-settings:'FILL'_1]">check_circle</span>
+                </motion.div>
+                <h1 className="mb-1 text-[24px] font-bold leading-8 text-[#E5E2E1]">Ticket Approved</h1>
+                <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-[#00E475]">Valid Entry</p>
+              </div>
+
+              <div className="flex w-full flex-col gap-4">
+                <section className="relative flex items-center justify-between overflow-hidden rounded-2xl border border-white/10 bg-[#201F1F]/40 p-5 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl after:absolute after:inset-0 after:-translate-x-full after:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.05),transparent)] after:animate-[sc-shimmer_3s_infinite]">
+                  <div className="flex min-w-0 items-center gap-4">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-white/5 bg-[#353534]">
+                      <span className="material-symbols-outlined text-[#E4BEBA]">person</span>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="mb-1 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#C8C6C5]">Attendee</span>
+                      <span className="block truncate text-[20px] font-bold leading-6 text-[#E5E2E1]">{attendee}</span>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="mb-1 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#C8C6C5]">Created</span>
+                    <span className="block max-w-[116px] truncate text-[16px] font-medium leading-6 text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</span>
+                  </div>
+                </section>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <RefinedResultCard icon="tag" label="Ticket ID" value={`#${fallbackTicketId}`} mono />
+                  <RefinedResultCard icon="confirmation_number" label="Ticket Type" value={feedbackEntry?.ticketType || 'Not available'} />
+                  <RefinedResultCard icon="qr_code_scanner" label="Total Scans" value={`${scanCount}`} large />
+                  <RefinedResultCard icon="fact_check" label="Result" value="Success" accent="#00E475" />
+                </div>
+
+                <section className="rounded-2xl border border-white/10 border-l-4 border-l-[#05E777] bg-[#201F1F]/40 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
+                  <span className="mb-1 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#C8C6C5]">Event</span>
+                  <span className="block truncate text-[16px] font-semibold leading-6 text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</span>
+                </section>
+
+                <details className="group">
+                  <summary className="mt-4 flex cursor-pointer list-none items-center justify-center gap-2 py-3 text-[#C8C6C5] transition-colors group-open:text-[#E5E2E1]">
+                    <span className="text-[12px] font-bold uppercase tracking-[0.18em]">View More Details</span>
+                    <span className="material-symbols-outlined text-sm transition-transform group-open:rotate-180">expand_more</span>
+                  </summary>
+                  <div className="grid grid-cols-2 gap-2">
+                    <RefinedResultCard icon="schedule" label="Scanned" value={feedbackEntry?.scannedAt || 'Just now'} compact />
+                    <RefinedResultCard icon="badge" label="Scanned By" value={feedbackEntry?.scannedBy || sellerId || 'Gate Staff'} compact />
+                  </div>
+                </details>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex-none pt-8 pb-6 text-center">
+                <div className="relative mx-auto mb-6 flex h-32 w-32 items-center justify-center">
+                  <div className="absolute inset-0 animate-ping rounded-full border border-[#FF4D4D] opacity-20 [animation-duration:2s]" />
+                  <div className="absolute inset-2 rounded-full border border-[#FF4D4D] opacity-40" />
+                  <div className="absolute inset-4 rounded-full border border-[#FF4D4D] opacity-60" />
+                  <motion.div
+                    className="relative z-10 flex h-20 w-20 items-center justify-center rounded-full border border-[#FF4D4D]/50 bg-[#3A0000] shadow-[0_0_30px_rgba(255,77,77,0.4)] backdrop-blur-md"
+                    initial={{ scale: 0.72, opacity: 0 }}
+                    animate={{ scale: [0.72, 1.08, 1], opacity: 1 }}
+                    transition={{ duration: 0.45, ease: 'easeOut' }}
+                  >
+                    <span className="material-symbols-outlined text-[40px] text-[#FF4D4D] [font-variation-settings:'FILL'_1]">close</span>
+                  </motion.div>
+                </div>
+                <h2 className="mb-2 text-[14px] font-bold uppercase tracking-[0.2em] text-[#FF4D4D] drop-shadow-[0_0_8px_rgba(255,77,77,0.5)]">Ticket Rejected</h2>
+                <p className="m-0 text-[16px] leading-6 text-[#C8C6C5]">Entry not allowed</p>
+              </div>
+
+              <div className="flex w-full flex-1 flex-col gap-2">
+                <section className="flex items-center gap-4 rounded-2xl border-t border-white/10 bg-[#201F1F]/40 p-5 shadow-lg ring-1 ring-inset ring-white/5 backdrop-blur-xl">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-white/5 bg-[#3A3939]">
+                    <span className="text-[16px] font-semibold text-[#E5E2E1]">{attendeeInitials}</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="mb-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#C8C6C5]">Attendee</h3>
+                    <p className="m-0 truncate text-[16px] font-bold text-[#E5E2E1]">{attendee}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <h3 className="mb-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#C8C6C5]">Created</h3>
+                    <p className="m-0 max-w-[116px] truncate text-[12px] font-medium text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</p>
+                  </div>
+                </section>
+
+                <section className="relative overflow-hidden rounded-2xl border-t border-[#FF4D4D]/30 bg-[#201F1F]/40 p-5 shadow-lg ring-1 ring-inset ring-white/5 backdrop-blur-xl">
+                  <div className="flex items-start gap-3">
+                    <span className="material-symbols-outlined mt-0.5 text-[#FF4D4D]">warning</span>
+                    <div>
+                      <h3 className="mb-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#FF4D4D]">Reason</h3>
+                      <p className="mb-1 text-[16px] font-semibold text-[#E5E2E1]">{rejectedReason}</p>
+                      <p className="m-0 text-[12px] font-normal leading-relaxed text-[#C8C6C5]">{scanFeedback.message}<br />Do not allow entry.</p>
+                    </div>
+                  </div>
+                </section>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <RefinedResultCard icon="bar_chart" label="Total Scans" value={`${scanCount}`} large />
+                  <RefinedResultCard icon="assignment_late" label="Result" value={`Failed${feedbackLabel ? ` (${feedbackLabel})` : ''}`} accent="#FF4D4D" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <RefinedResultCard icon="person" label="Ticket Type" value={feedbackEntry?.ticketType || 'Not available'} />
+                  <RefinedResultCard icon="sell" label="Ticket ID" value={`#${fallbackTicketId}`} mono />
+                </div>
+
+                <RefinedResultCard icon="event" label="Event" value={feedbackEntry?.event || scanFeedback.message} full />
+
+                <details className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-center gap-2 rounded-xl py-3 text-[#FF4D4D] transition-colors hover:bg-[#FF4D4D]/5">
+                    <span className="material-symbols-outlined text-[18px]">info</span>
+                    <span className="text-[12px] font-black uppercase tracking-[0.18em]">View More Details</span>
+                  </summary>
+                  <div className="grid grid-cols-2 gap-2">
+                    <RefinedResultCard icon="schedule" label="Current Attempt" value={feedbackEntry?.scannedAt || 'Just now'} compact />
+                    <RefinedResultCard icon="history" label="First Scan" value={feedbackEntry?.originalScanAt || 'Not available'} compact />
+                  </div>
+                </details>
+              </div>
+            </>
+          )}
+
+          <div className="mt-auto w-full pb-4 pt-6">
+            <motion.button
+              onClick={scanNext}
+              whileTap={{ scale: 0.95 }}
+              className={`flex h-14 w-full items-center justify-center gap-3 rounded-2xl text-[14px] font-black uppercase tracking-[0.1em] transition-all ${approved ? 'bg-[#05E777] text-[#00622E] shadow-[0_0_20px_rgba(5,231,119,0.3)]' : 'bg-[#FF4D4D] text-white shadow-[0_0_20px_rgba(255,77,77,0.4)]'}`}
+              type="button"
+            >
+              <span className="material-symbols-outlined">{approved ? 'barcode_scanner' : 'document_scanner'}</span>
+              Scan Next Ticket
+            </motion.button>
+          </div>
+        </main>
+
+        <nav className="fixed bottom-0 left-0 z-[72] flex h-[90px] w-full items-center justify-around rounded-t-3xl border-t border-white/10 bg-[#1A1A1A]/80 px-5 pb-[env(safe-area-inset-bottom)] shadow-2xl backdrop-blur-2xl">
+          {[
+            ['qr_code_scanner', 'Scanner'],
+            ['history', 'History'],
+            ['account_circle', 'Profile'],
+          ].map(([icon, label], index) => (
+            <button
+              key={label}
+              className={`flex min-w-[64px] flex-col items-center justify-center rounded-2xl p-2 transition-all ${index === 0 ? (approved ? 'text-[#05E777]' : 'text-[#FF4D4D]') : 'text-[#C8C6C5]/70'}`}
+              type="button"
+              onClick={index === 0 ? scanNext : undefined}
+            >
+              <span className="material-symbols-outlined mb-1">{icon}</span>
+              <span className="text-[12px] font-semibold tracking-[0.05em]">{label}</span>
+            </button>
+          ))}
+        </nav>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+function RefinedResultCard({
+  icon,
+  label,
+  value,
+  accent,
+  mono = false,
+  large = false,
+  compact = false,
+  full = false,
+}: {
+  icon: string
+  label: string
+  value: string
+  accent?: string
+  mono?: boolean
+  large?: boolean
+  compact?: boolean
+  full?: boolean
+}) {
+  return (
+    <section className={`${full ? 'col-span-2' : ''} rounded-2xl border-t border-white/10 bg-[#201F1F]/40 ${compact ? 'p-3' : 'p-4'} shadow-lg ring-1 ring-inset ring-white/5 backdrop-blur-xl`}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="material-symbols-outlined text-[18px]" style={{ color: accent || '#C8C6C5' }}>{icon}</span>
+        <span className="text-[12px] font-semibold uppercase tracking-[0.05em]" style={{ color: accent || '#C8C6C5' }}>{label}</span>
+      </div>
+      <p className={`m-0 truncate font-semibold ${large ? 'text-[24px] leading-8' : 'text-[16px] leading-6'} ${mono ? 'font-mono text-sm' : ''}`} style={{ color: accent || '#E5E2E1' }}>{value}</p>
+    </section>
   )
 }
 
@@ -1403,6 +1577,9 @@ const styles = `
   .sc-ring-1 { inset: 0; animation: sc-spin 12s linear infinite; }
   .sc-ring-2 { inset: 18px; border-color: rgba(79,176,255,0.12); animation: sc-spin 18s linear infinite reverse; }
   @keyframes sc-spin { to { transform: rotate(360deg); } }
+  @keyframes sc-shimmer {
+    100% { transform: translateX(100%); }
+  }
 
   /* Pulse ring */
   .sc-pulse-ring {
