@@ -831,13 +831,56 @@ function RefinedScanResult({
     onScanNext?.()
   }
 
+  // Staggered Container Animation
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.08,
+        delayChildren: 0.1
+      }
+    }
+  }
+
+  // Individual Card Animation
+  const cardVariants = {
+    hidden: { opacity: 0, y: 20, scale: 0.96 },
+    show: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        type: "spring",
+        stiffness: 120,
+        damping: 14
+      }
+    }
+  }
+
   return (
     <motion.div
       className="fixed inset-0 flex items-stretch justify-center overflow-hidden font-[Inter]"
-      style={{ zIndex: 70, background }}
+      style={{ zIndex: 70 }}
       initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      animate={{ 
+        opacity: 1,
+        background: approved 
+          ? [
+              'radial-gradient(circle at 50% 10%, rgba(5,231,119,0.18) 0%, transparent 60%), #0d0d0d',
+              'radial-gradient(circle at 50% 25%, rgba(5,231,119,0.26) 0%, transparent 70%), #0d0d0d',
+              'radial-gradient(circle at 50% 10%, rgba(5,231,119,0.18) 0%, transparent 60%), #0d0d0d'
+            ]
+          : [
+              'radial-gradient(circle at 50% 0%, rgba(239,68,68,0.20) 0%, transparent 60%), #0d0000',
+              'radial-gradient(circle at 50% 15%, rgba(239,68,68,0.32) 0%, transparent 70%), #0d0000',
+              'radial-gradient(circle at 50% 0%, rgba(239,68,68,0.20) 0%, transparent 60%), #0d0000'
+            ]
+      }}
       exit={{ opacity: 0 }}
+      transition={{
+        background: { duration: 3.5, repeat: Infinity, ease: "easeInOut" }
+      }}
     >
       <motion.div
         className="relative flex min-h-dvh w-full max-w-[520px] flex-col px-6 pb-[108px] pt-4 text-[#E5E2E1]"
@@ -846,36 +889,97 @@ function RefinedScanResult({
         exit={{ opacity: 0, y: 10 }}
         transition={{ duration: 0.18 }}
       >
-        {!approved && <div className="pointer-events-none absolute inset-0 animate-pulse bg-[#FF4D4D]/10" />}
+        {!approved && (
+          <motion.div 
+            className="pointer-events-none absolute inset-0 bg-[#FF4D4D]/10" 
+            animate={{ opacity: [0.05, 0.15, 0.05] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+          />
+        )}
 
         <header className="relative z-10 flex h-[60px] items-center justify-between">
-          <button className={`flex h-12 w-12 items-center justify-start ${approved ? 'text-white' : 'text-[#FF4D4D]'}`} type="button" aria-label="Flash">
+          <motion.button 
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className={`flex h-12 w-12 items-center justify-start ${approved ? 'text-white' : 'text-[#FF4D4D]'}`} 
+            type="button" 
+            aria-label="Flash"
+          >
             <span className="material-symbols-outlined">flash_on</span>
-          </button>
+          </motion.button>
           <span className={`text-[14px] font-black uppercase tracking-[0.18em] ${approved ? 'text-white' : 'text-[#FF4D4D]'}`}>Scanner</span>
-          <button className={`flex h-12 w-12 items-center justify-end ${approved ? 'text-white' : 'text-[#FF4D4D]'}`} type="button" aria-label="Help">
+          <motion.button 
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className={`flex h-12 w-12 items-center justify-end ${approved ? 'text-white' : 'text-[#FF4D4D]'}`} 
+            type="button" 
+            aria-label="Help"
+          >
             <span className="material-symbols-outlined">help_outline</span>
-          </button>
+          </motion.button>
         </header>
 
         <main className="relative z-10 flex flex-1 flex-col">
           {approved ? (
             <>
               <div className="mb-8 mt-4 flex flex-col items-center justify-center text-center">
-                <motion.div
-                  className="mb-4 flex h-20 w-20 items-center justify-center rounded-full border border-[#05E777]/50 bg-[#05E777]/20 shadow-[0_0_40px_10px_rgba(5,231,119,0.2)]"
-                  initial={{ scale: 0.72, opacity: 0 }}
-                  animate={{ scale: [0.72, 1.08, 1], opacity: 1 }}
-                  transition={{ duration: 0.45, ease: 'easeOut' }}
-                >
-                  <span className="material-symbols-outlined text-4xl text-[#05E777] [font-variation-settings:'FILL'_1]">check_circle</span>
-                </motion.div>
-                <h1 className="mb-1 text-[24px] font-bold leading-8 text-[#E5E2E1]">Ticket Approved</h1>
-                <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-[#00E475]">Valid Entry</p>
+                <div className="relative mb-4 flex h-20 w-20 items-center justify-center">
+                  {/* Glowing Rings Ripple */}
+                  {[...Array(2)].map((_, idx) => (
+                    <motion.div
+                      key={idx}
+                      className="absolute inset-[-12px] rounded-full border border-[#05E777]/30"
+                      initial={{ scale: 0.85, opacity: 0.8 }}
+                      animate={{ scale: 1.5, opacity: 0 }}
+                      transition={{
+                        duration: 1.8,
+                        repeat: Infinity,
+                        delay: idx * 0.9,
+                        ease: "easeOut"
+                      }}
+                    />
+                  ))}
+                  
+                  <motion.div
+                    className="relative z-10 flex h-20 w-20 items-center justify-center rounded-full border border-[#05E777]/50 bg-[#05E777]/20 shadow-[0_0_40px_10px_rgba(5,231,119,0.25)]"
+                    initial={{ scale: 0.72, opacity: 0 }}
+                    animate={{ scale: [0.72, 1.08, 1], opacity: 1 }}
+                    transition={{ duration: 0.45, ease: 'easeOut' }}
+                  >
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#05E777" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <motion.path
+                        d="M20 6L9 17l-5-5"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 0.5, delay: 0.15, ease: "easeOut" }}
+                      />
+                    </svg>
+                  </motion.div>
+                </div>
+                <motion.h1 
+                  className="mb-1 text-[24px] font-bold leading-8 text-[#E5E2E1]"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                >Ticket Approved</motion.h1>
+                <motion.p 
+                  className="text-[12px] font-bold uppercase tracking-[0.2em] text-[#00E475]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                >Valid Entry</motion.p>
               </div>
 
-              <div className="flex w-full flex-col gap-4">
-                <section className="relative flex items-center justify-between overflow-hidden rounded-2xl border border-white/10 bg-[#201F1F]/40 p-5 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl after:absolute after:inset-0 after:-translate-x-full after:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.05),transparent)] after:animate-[sc-shimmer_3s_infinite]">
+              <motion.div 
+                className="flex w-full flex-col gap-4"
+                variants={containerVariants}
+                initial="hidden"
+                animate="show"
+              >
+                <motion.section 
+                  variants={cardVariants}
+                  className="relative flex items-center justify-between overflow-hidden rounded-2xl border border-white/10 bg-[#201F1F]/40 p-5 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl after:absolute after:inset-0 after:-translate-x-full after:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.05),transparent)] after:animate-[sc-shimmer_3s_infinite]"
+                >
                   <div className="flex min-w-0 items-center gap-4">
                     <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-white/5 bg-[#353534]">
                       <span className="material-symbols-outlined text-[#E4BEBA]">person</span>
@@ -889,21 +993,24 @@ function RefinedScanResult({
                     <span className="mb-1 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#C8C6C5]">Created</span>
                     <span className="block max-w-[116px] truncate text-[16px] font-medium leading-6 text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</span>
                   </div>
-                </section>
+                </motion.section>
 
-                <div className="grid grid-cols-2 gap-4">
+                <motion.div className="grid grid-cols-2 gap-4" variants={cardVariants}>
                   <RefinedResultCard icon="tag" label="Ticket ID" value={`#${fallbackTicketId}`} mono />
                   <RefinedResultCard icon="confirmation_number" label="Ticket Type" value={feedbackEntry?.ticketType || 'Not available'} />
                   <RefinedResultCard icon="qr_code_scanner" label="Total Scans" value={`${scanCount}`} large />
                   <RefinedResultCard icon="fact_check" label="Result" value="Success" accent="#00E475" />
-                </div>
+                </motion.div>
 
-                <section className="rounded-2xl border border-white/10 border-l-4 border-l-[#05E777] bg-[#201F1F]/40 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
+                <motion.section 
+                  variants={cardVariants}
+                  className="rounded-2xl border border-white/10 border-l-4 border-l-[#05E777] bg-[#201F1F]/40 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.3)] backdrop-blur-2xl"
+                >
                   <span className="mb-1 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[#C8C6C5]">Event</span>
                   <span className="block truncate text-[16px] font-semibold leading-6 text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</span>
-                </section>
+                </motion.section>
 
-                <details className="group">
+                <motion.details className="group" variants={cardVariants}>
                   <summary className="mt-4 flex cursor-pointer list-none items-center justify-center gap-2 py-3 text-[#C8C6C5] transition-colors group-open:text-[#E5E2E1]">
                     <span className="text-[12px] font-bold uppercase tracking-[0.18em]">View More Details</span>
                     <span className="material-symbols-outlined text-sm transition-transform group-open:rotate-180">expand_more</span>
@@ -912,68 +1019,118 @@ function RefinedScanResult({
                     <RefinedResultCard icon="schedule" label="Scanned" value={feedbackEntry?.scannedAt || 'Just now'} compact />
                     <RefinedResultCard icon="badge" label="Scanned By" value={feedbackEntry?.scannedBy || sellerId || 'Gate Staff'} compact />
                   </div>
-                </details>
-              </div>
+                </motion.details>
+              </motion.div>
             </>
           ) : (
             <>
               <div className="flex-none pt-8 pb-6 text-center">
                 <div className="relative mx-auto mb-6 flex h-32 w-32 items-center justify-center">
-                  <div className="absolute inset-0 animate-ping rounded-full border border-[#FF4D4D] opacity-20 [animation-duration:2s]" />
-                  <div className="absolute inset-2 rounded-full border border-[#FF4D4D] opacity-40" />
-                  <div className="absolute inset-4 rounded-full border border-[#FF4D4D] opacity-60" />
+                  {/* Warning Ripples */}
+                  {[...Array(3)].map((_, idx) => (
+                    <motion.div
+                      key={idx}
+                      className="absolute inset-0 rounded-full border border-[#FF4D4D]/25"
+                      initial={{ scale: 0.9, opacity: 0.8 }}
+                      animate={{ scale: 1.6, opacity: 0 }}
+                      transition={{
+                        duration: 2.0,
+                        repeat: Infinity,
+                        delay: idx * 0.65,
+                        ease: "easeOut"
+                      }}
+                    />
+                  ))}
+                  <div className="absolute inset-4 rounded-full border border-[#FF4D4D]/30" />
+                  
                   <motion.div
-                    className="relative z-10 flex h-20 w-20 items-center justify-center rounded-full border border-[#FF4D4D]/50 bg-[#3A0000] shadow-[0_0_30px_rgba(255,77,77,0.4)] backdrop-blur-md"
-                    initial={{ scale: 0.72, opacity: 0 }}
-                    animate={{ scale: [0.72, 1.08, 1], opacity: 1 }}
+                    className="relative z-10 flex h-20 w-20 items-center justify-center rounded-full border border-[#FF4D4D]/50 bg-[#3A0000] shadow-[0_0_30px_rgba(255,77,77,0.45)] backdrop-blur-md"
+                    initial={{ scale: 0.72, opacity: 0, rotate: -10 }}
+                    animate={{ scale: [0.72, 1.08, 1], opacity: 1, rotate: 0 }}
                     transition={{ duration: 0.45, ease: 'easeOut' }}
                   >
-                    <span className="material-symbols-outlined text-[40px] text-[#FF4D4D] [font-variation-settings:'FILL'_1]">close</span>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#FF4D4D" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                      <motion.path
+                        d="M18 6L6 18"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 0.4, delay: 0.15, ease: "easeOut" }}
+                      />
+                      <motion.path
+                        d="M6 6l12 12"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 0.4, delay: 0.3, ease: "easeOut" }}
+                      />
+                    </svg>
                   </motion.div>
                 </div>
-                <h2 className="mb-2 text-[14px] font-bold uppercase tracking-[0.2em] text-[#FF4D4D] drop-shadow-[0_0_8px_rgba(255,77,77,0.5)]">Ticket Rejected</h2>
-                <p className="m-0 text-[16px] leading-6 text-[#C8C6C5]">Entry not allowed</p>
+                <motion.h2 
+                  className="mb-2 text-[14px] font-bold uppercase tracking-[0.2em] text-[#FF4D4D] drop-shadow-[0_0_8px_rgba(255,77,77,0.5)]"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                >Ticket Rejected</motion.h2>
+                <motion.p 
+                  className="m-0 text-[16px] leading-6 text-[#C8C6C5]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                >Entry not allowed</motion.p>
               </div>
 
-              <div className="flex w-full flex-1 flex-col gap-2">
-                <section className="flex items-center gap-4 rounded-2xl border-t border-white/10 bg-[#201F1F]/40 p-5 shadow-lg ring-1 ring-inset ring-white/5 backdrop-blur-xl">
-                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-white/5 bg-[#3A3939]">
-                    <span className="text-[16px] font-semibold text-[#E5E2E1]">{attendeeInitials}</span>
+              <motion.div 
+                className="flex w-full flex-1 flex-col gap-2"
+                variants={containerVariants}
+                initial="hidden"
+                animate="show"
+              >
+                <motion.section 
+                  variants={cardVariants}
+                  className="flex items-center gap-4 rounded-2xl border-t border-white/10 bg-[#201F1F]/40 p-5 shadow-lg ring-1 ring-inset ring-white/5 backdrop-blur-xl"
+                >
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-white/5 bg-[#3A3939] shadow-inner">
+                    <span className="text-[16px] font-bold text-[#E4BEBA]">{attendeeInitials}</span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="mb-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#C8C6C5]">Attendee</h3>
-                    <p className="m-0 truncate text-[16px] font-bold text-[#E5E2E1]">{attendee}</p>
+                    <p className="m-0 truncate text-[18px] font-bold text-[#E5E2E1]">{attendee}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <h3 className="mb-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#C8C6C5]">Created</h3>
                     <p className="m-0 max-w-[116px] truncate text-[12px] font-medium text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</p>
                   </div>
-                </section>
+                </motion.section>
 
-                <section className="relative overflow-hidden rounded-2xl border-t border-[#FF4D4D]/30 bg-[#201F1F]/40 p-5 shadow-lg ring-1 ring-inset ring-white/5 backdrop-blur-xl">
+                <motion.section 
+                  variants={cardVariants}
+                  className="relative overflow-hidden rounded-2xl border-t border-[#FF4D4D]/30 bg-[#201F1F]/40 p-5 shadow-lg ring-1 ring-inset ring-white/5 backdrop-blur-xl border-l-4 border-l-[#FF4D4D]"
+                >
                   <div className="flex items-start gap-3">
                     <span className="material-symbols-outlined mt-0.5 text-[#FF4D4D]">warning</span>
                     <div>
                       <h3 className="mb-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-[#FF4D4D]">Reason</h3>
-                      <p className="mb-1 text-[16px] font-semibold text-[#E5E2E1]">{rejectedReason}</p>
+                      <p className="mb-1 text-[16px] font-bold text-[#E5E2E1]">{rejectedReason}</p>
                       <p className="m-0 text-[12px] font-normal leading-relaxed text-[#C8C6C5]">{scanFeedback.message}<br />Do not allow entry.</p>
                     </div>
                   </div>
-                </section>
+                </motion.section>
 
-                <div className="grid grid-cols-2 gap-2">
+                <motion.div className="grid grid-cols-2 gap-2" variants={cardVariants}>
                   <RefinedResultCard icon="bar_chart" label="Total Scans" value={`${scanCount}`} large />
                   <RefinedResultCard icon="assignment_late" label="Result" value={`Failed${feedbackLabel ? ` (${feedbackLabel})` : ''}`} accent="#FF4D4D" />
-                </div>
+                </motion.div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <motion.div className="grid grid-cols-2 gap-2" variants={cardVariants}>
                   <RefinedResultCard icon="person" label="Ticket Type" value={feedbackEntry?.ticketType || 'Not available'} />
                   <RefinedResultCard icon="sell" label="Ticket ID" value={`#${fallbackTicketId}`} mono />
-                </div>
+                </motion.div>
 
-                <RefinedResultCard icon="event" label="Event" value={feedbackEntry?.event || scanFeedback.message} full />
+                <motion.div variants={cardVariants}>
+                  <RefinedResultCard icon="event" label="Event" value={feedbackEntry?.event || scanFeedback.message} full />
+                </motion.div>
 
-                <details className="group">
+                <motion.details className="group" variants={cardVariants}>
                   <summary className="flex cursor-pointer list-none items-center justify-center gap-2 rounded-xl py-3 text-[#FF4D4D] transition-colors hover:bg-[#FF4D4D]/5">
                     <span className="material-symbols-outlined text-[18px]">info</span>
                     <span className="text-[12px] font-black uppercase tracking-[0.18em]">View More Details</span>
@@ -982,16 +1139,17 @@ function RefinedScanResult({
                     <RefinedResultCard icon="schedule" label="Current Attempt" value={feedbackEntry?.scannedAt || 'Just now'} compact />
                     <RefinedResultCard icon="history" label="First Scan" value={feedbackEntry?.originalScanAt || 'Not available'} compact />
                   </div>
-                </details>
-              </div>
+                </motion.details>
+              </motion.div>
             </>
           )}
 
           <div className="mt-auto w-full pb-4 pt-6">
             <motion.button
               onClick={scanNext}
+              whileHover={{ scale: 1.02, boxShadow: approved ? '0 0 25px rgba(5,231,119,0.55)' : '0 0 25px rgba(255,77,77,0.6)' }}
               whileTap={{ scale: 0.95 }}
-              className={`flex h-14 w-full items-center justify-center gap-3 rounded-2xl text-[14px] font-black uppercase tracking-[0.1em] transition-all ${approved ? 'bg-[#05E777] text-[#00622E] shadow-[0_0_20px_rgba(5,231,119,0.3)]' : 'bg-[#FF4D4D] text-white shadow-[0_0_20px_rgba(255,77,77,0.4)]'}`}
+              className={`flex h-14 w-full items-center justify-center gap-3 rounded-2xl text-[14px] font-black uppercase tracking-[0.15em] transition-all ${approved ? 'bg-[#05E777] text-[#00622E] shadow-[0_0_20px_rgba(5,231,119,0.35)]' : 'bg-[#FF4D4D] text-white shadow-[0_0_20px_rgba(255,77,77,0.45)]'}`}
               type="button"
             >
               <span className="material-symbols-outlined">{approved ? 'barcode_scanner' : 'document_scanner'}</span>
