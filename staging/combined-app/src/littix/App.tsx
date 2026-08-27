@@ -23,6 +23,7 @@ type ScannerFeedback = {
   title: string
   message: string
   code?: string
+  entry?: ScannerHistoryEntry
 }
 
 export interface RejectedScan {
@@ -46,11 +47,50 @@ const SELLER_IDS = ['littlane', '7th-heaven', 'nitro'] as const
 
 type DirectScannerTab = 'scanner' | 'history' | 'profile'
 type HistoryTab = 'approved' | 'rejected'
+type ScannerHistoryStatus = 'approved' | 'duplicate' | 'cancelled' | 'invalid'
+
+type ScannerHistoryEntry = {
+  id: string
+  ticketId: string
+  status: ScannerHistoryStatus
+  attendee: string
+  event: string
+  ticketType: string
+  generatedAt: string
+  scannedAt: string
+  originalScanAt?: string
+  scannedBy: string
+  rawCode?: string
+  attemptNumber: number
+  message: string
+}
+
+const SCANNER_HISTORY_KEY = 'littix-direct-scanner-history-v1'
+
+function formatScanTime(date = new Date()) {
+  const ist = new Date(date.getTime() + 5.5 * 60 * 60 * 1000)
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const rawH = ist.getUTCHours()
+  const ampm = rawH >= 12 ? 'PM' : 'AM'
+  const h12 = rawH % 12 === 0 ? 12 : rawH % 12
+  const mm = ist.getUTCMinutes().toString().padStart(2, '0')
+  return `${months[ist.getUTCMonth()]} ${ist.getUTCDate()}, ${h12}:${mm} ${ampm}`
+}
+
+function loadScannerHistory(): ScannerHistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(SCANNER_HISTORY_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
 
 function DirectScannerExperience({
   sellerId,
   rejectedScans,
   scannerFeedback,
+  scannerHistory,
   scannerCycle,
   onScan,
   onScanNext,
@@ -58,15 +98,16 @@ function DirectScannerExperience({
   sellerId: string
   rejectedScans: RejectedScan[]
   scannerFeedback: ScannerFeedback | null
+  scannerHistory: ScannerHistoryEntry[]
   scannerCycle: number
   onScan: (raw: string) => Promise<void>
   onScanNext: () => void
 }) {
-  const { tickets } = useStore()
   const [tab, setTab] = useState<DirectScannerTab>('scanner')
   const [historyTab, setHistoryTab] = useState<HistoryTab>('approved')
 
-  const approvedTickets = tickets.filter((ticket) => ticket.status === 'scanned')
+  const approvedHistory = scannerHistory.filter((entry) => entry.status === 'approved')
+  const rejectedHistory = scannerHistory.filter((entry) => entry.status !== 'approved')
 
   function selectTab(next: DirectScannerTab) {
     setTab(next)
@@ -107,6 +148,7 @@ function DirectScannerExperience({
               premium={true}
               scanFeedback={scannerFeedback}
               onScanNext={onScanNext}
+              rejectedScans={rejectedScans}
             />
           </motion.div>
         )}
@@ -161,15 +203,15 @@ function DirectScannerExperience({
                 <div className="absolute -top-2 left-5 right-5 h-10 rounded-t-3xl border border-white/10 opacity-40" style={glass} />
                 <div className="absolute -top-4 left-10 right-10 h-10 rounded-t-3xl border border-white/10 opacity-20" style={glass} />
 
-                {historyTab === 'approved' && approvedTickets.length === 0 && (
+                {historyTab === 'approved' && approvedHistory.length === 0 && (
                   <div className="relative rounded-3xl border border-white/10 p-6 text-center text-white/55" style={glass}>
                     No approved tickets yet
                   </div>
                 )}
 
-                {historyTab === 'approved' && approvedTickets.map((ticket, index) => (
+                {historyTab === 'approved' && approvedHistory.map((entry, index) => (
                   <motion.article
-                    key={ticket.id}
+                    key={entry.id}
                     className="relative rounded-3xl border border-white/10 p-4 flex items-center gap-4 overflow-hidden"
                     style={glass}
                     initial={{ opacity: 0, y: 10 }}
@@ -182,24 +224,25 @@ function DirectScannerExperience({
                     </div>
                     <div className="relative min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-3">
-                        <h2 className="text-[16px] font-bold truncate">{ticket.ticketType}</h2>
-                        <span className="font-mono text-[11px] text-[#22C55E]/80 shrink-0">#{ticket.id}</span>
+                        <h2 className="text-[16px] font-bold truncate">{entry.ticketType}</h2>
+                        <span className="font-mono text-[11px] text-[#22C55E]/80 shrink-0">#{entry.ticketId}</span>
                       </div>
-                      <p className="text-white/50 text-[12px] truncate mt-1">{ticket.attendee} · {ticket.event}</p>
-                      <p className="text-white/40 text-[11px] truncate mt-1">{ticket.scannedAt || ticket.generatedAt}</p>
+                      <p className="text-white/50 text-[12px] truncate mt-1">{entry.attendee} · {entry.event}</p>
+                      <p className="text-white/40 text-[11px] truncate mt-1">Generated: {entry.generatedAt}</p>
+                      <p className="text-white/40 text-[11px] truncate mt-1">Scanned: {entry.scannedAt}</p>
                     </div>
                   </motion.article>
                 ))}
 
-                {historyTab === 'rejected' && rejectedScans.length === 0 && (
+                {historyTab === 'rejected' && rejectedHistory.length === 0 && (
                   <div className="relative rounded-3xl border border-white/10 p-6 text-center text-white/55" style={glass}>
                     No rejected tickets yet
                   </div>
                 )}
 
-                {historyTab === 'rejected' && rejectedScans.map((item, index) => (
+                {historyTab === 'rejected' && rejectedHistory.map((entry, index) => (
                   <motion.article
-                    key={`${item.rawCode || item.ticket?.id || 'scan'}-${index}`}
+                    key={entry.id}
                     className="relative rounded-3xl border border-white/10 p-4 flex items-center gap-4 overflow-hidden"
                     style={glass}
                     initial={{ opacity: 0, y: 10 }}
@@ -212,11 +255,15 @@ function DirectScannerExperience({
                     </div>
                     <div className="relative min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-3">
-                        <h2 className="text-[16px] font-bold truncate">{item.ticket?.ticketType || 'Unknown Ticket'}</h2>
-                        <span className="font-mono text-[11px] text-[#EF4444]/80 shrink-0">#{item.rawCode || item.ticket?.id || 'UNKNOWN'}</span>
+                        <h2 className="text-[16px] font-bold truncate">{entry.ticketType}</h2>
+                        <span className="font-mono text-[11px] text-[#EF4444]/80 shrink-0">#{entry.ticketId}</span>
                       </div>
-                      <p className="text-white/50 text-[12px] truncate mt-1">{item.ticket?.attendee || 'Not found'} · {item.reason}</p>
-                      <p className="text-white/40 text-[11px] truncate mt-1">{item.timestamp}</p>
+                      <p className="text-white/50 text-[12px] truncate mt-1">{entry.attendee} · {entry.status}</p>
+                      <p className="text-white/40 text-[11px] truncate mt-1">Generated: {entry.generatedAt}</p>
+                      <p className="text-white/40 text-[11px] truncate mt-1">Scan attempt: {entry.scannedAt}</p>
+                      {entry.originalScanAt && (
+                        <p className="text-white/40 text-[11px] truncate mt-1">First scanned: {entry.originalScanAt}</p>
+                      )}
                     </div>
                   </motion.article>
                 ))}
@@ -246,11 +293,11 @@ function DirectScannerExperience({
               <h2 className="text-2xl font-black mb-5">{sellerId}</h2>
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                  <p className="text-2xl font-black text-[#22C55E]">{approvedTickets.length}</p>
+                  <p className="text-2xl font-black text-[#22C55E]">{approvedHistory.length}</p>
                   <p className="text-white/45 text-xs mt-1">Approved</p>
                 </div>
                 <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                  <p className="text-2xl font-black text-[#EF4444]">{rejectedScans.length}</p>
+                  <p className="text-2xl font-black text-[#EF4444]">{rejectedHistory.length}</p>
                   <p className="text-white/45 text-xs mt-1">Rejected</p>
                 </div>
               </div>
@@ -473,6 +520,15 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
   const [scannerFeedback, setScannerFeedback] = useState<ScannerFeedback | null>(null)
   const [scannerCycle, setScannerCycle] = useState(0)
   const [scannedTickets, setScannedTickets] = useState<Ticket[]>([])
+  const [scannerHistory, setScannerHistory] = useState<ScannerHistoryEntry[]>(loadScannerHistory)
+
+  useEffect(() => {
+    localStorage.setItem(SCANNER_HISTORY_KEY, JSON.stringify(scannerHistory.slice(0, 100)))
+  }, [scannerHistory])
+
+  function recordScannerHistory(entry: ScannerHistoryEntry) {
+    setScannerHistory((prev) => [entry, ...prev].slice(0, 100))
+  }
 
   useEffect(() => {
     window.history.replaceState({ name: forceScanner ? 'scanner' : 'dashboard' }, '')
@@ -506,22 +562,46 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
     const cleaned = raw.replace(/^LITTIX:/i, '').replace(/^#/, '')
     const outcome = await scanTicket(cleaned, sellerId)
 
-    const now = new Date()
-    const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000)
-    const rawH = ist.getUTCHours()
-    const ampm = rawH >= 12 ? 'PM' : 'AM'
-    const h12 = rawH % 12 === 0 ? 12 : rawH % 12
-    const mm = ist.getUTCMinutes().toString().padStart(2, '0')
-    const timestamp = `${h12}:${mm} ${ampm}`
+    const timestamp = formatScanTime()
+
+    const buildHistoryEntry = (
+      status: ScannerHistoryStatus,
+      ticket: Ticket | null,
+      message: string,
+      attemptNumber: number,
+      originalScanAt?: string
+    ): ScannerHistoryEntry => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      ticketId: ticket?.id || cleaned || 'UNKNOWN',
+      status,
+      attendee: ticket?.attendee || 'Unknown',
+      event: ticket?.event || 'Unknown Ticket',
+      ticketType: ticket?.ticketType || 'Unknown Ticket',
+      generatedAt: ticket?.generatedAt || 'Not available',
+      scannedAt: timestamp,
+      originalScanAt,
+      scannedBy: sellerId,
+      rawCode: cleaned,
+      attemptNumber,
+      message,
+    })
 
     if (outcome.result === 'success' && outcome.ticket) {
       setScannedTickets(prev => [outcome.ticket!, ...prev])
+      const entry = buildHistoryEntry(
+        'approved',
+        outcome.ticket,
+        `${outcome.ticket.attendee} checked in successfully.`,
+        1
+      )
+      recordScannerHistory(entry)
       if (forceScanner) {
         setScannerFeedback({
           status: 'success',
           title: 'Ticket Valid',
           message: `${outcome.ticket.attendee} checked in at ${timestamp}`,
-          code: outcome.ticket.id
+          code: outcome.ticket.id,
+          entry
         })
         return
       }
@@ -530,38 +610,57 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
       const isCancel = (outcome.ticket.status as string) === 'cancelled' || (outcome.ticket.scannedAt === 'Cancelled by Admin')
       const reason: RejectedScan['reason'] = isCancel ? 'cancelled' : 'duplicate'
       const prevCount = rejectedScans.filter(r => (r.ticket?.id === outcome.ticket!.id || r.rawCode === cleaned)).length
+      const attemptNumber = prevCount + 1
       setRejectedScans(prev => [{
         ticket: outcome.ticket!,
         rawCode: cleaned,
         timestamp,
         reason,
-        attemptNumber: prevCount + 1
+        attemptNumber
       }, ...prev])
+      const entry = buildHistoryEntry(
+        reason,
+        outcome.ticket,
+        isCancel ? 'This ticket is cancelled and cannot be used.' : `${outcome.ticket.attendee} was already checked in.`,
+        attemptNumber,
+        isCancel ? undefined : outcome.ticket.scannedAt
+      )
+      recordScannerHistory(entry)
       if (forceScanner) {
         setScannerFeedback({
           status: 'rejected',
           title: isCancel ? 'Ticket Cancelled' : 'Already Scanned',
           message: isCancel ? 'This ticket is void and cannot be used.' : `${outcome.ticket.attendee} has already checked in.`,
-          code: outcome.ticket.id
+          code: outcome.ticket.id,
+          entry
         })
         return
       }
       go({ name: 'scan-rejected', ticket: outcome.ticket })
     } else {
       const prevCount = rejectedScans.filter(r => r.rawCode === cleaned).length
+      const attemptNumber = prevCount + 1
       setRejectedScans(prev => [{
         ticket: null,
         rawCode: cleaned,
         timestamp,
         reason: 'invalid',
-        attemptNumber: prevCount + 1
+        attemptNumber
       }, ...prev])
+      const entry = buildHistoryEntry(
+        'invalid',
+        null,
+        'No ticket matches this code.',
+        attemptNumber
+      )
+      recordScannerHistory(entry)
       if (forceScanner) {
         setScannerFeedback({
           status: 'invalid',
           title: 'Ticket Not Found',
           message: 'No ticket matches this code. Check the ID and try again.',
-          code: cleaned
+          code: cleaned,
+          entry
         })
         return
       }
@@ -583,6 +682,7 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
         sellerId={sellerId}
         rejectedScans={rejectedScans}
         scannerFeedback={scannerFeedback}
+        scannerHistory={scannerHistory}
         scannerCycle={scannerCycle}
         onScan={handleScan}
         onScanNext={resetDirectScanner}

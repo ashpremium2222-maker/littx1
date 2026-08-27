@@ -16,6 +16,19 @@ interface Props {
     title: string
     message: string
     code?: string
+    entry?: {
+      ticketId: string
+      status: 'approved' | 'duplicate' | 'cancelled' | 'invalid'
+      attendee: string
+      event: string
+      ticketType: string
+      generatedAt: string
+      scannedAt: string
+      originalScanAt?: string
+      scannedBy: string
+      attemptNumber: number
+      message: string
+    }
   } | null
   onScanNext?: () => void
   rejectedScans?: RejectedScan[]
@@ -176,6 +189,15 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
     time: r.timestamp,
     reason: r.reason === 'duplicate' ? 'Already Scanned' : r.reason === 'cancelled' ? 'Ticket Cancelled' : 'Invalid Ticket',
   }))
+  const feedbackEntry = scanFeedback?.entry
+  const feedbackOk = scanFeedback?.status === 'success'
+  const feedbackAccent = feedbackOk ? '#22C55E' : '#EF4444'
+  const feedbackLabel =
+    feedbackEntry?.status === 'approved' ? 'Approved' :
+    feedbackEntry?.status === 'duplicate' ? 'Duplicate' :
+    feedbackEntry?.status === 'cancelled' ? 'Cancelled' :
+    feedbackEntry?.status === 'invalid' ? 'Invalid' :
+    scanFeedback?.title
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -548,14 +570,14 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
       <AnimatePresence>
         {scanFeedback && (
           <motion.div
-            className={`absolute inset-0 z-20 bg-black/65 backdrop-blur-sm flex items-end px-4 ${premium ? 'pb-36' : 'pb-6'}`}
+            className={`absolute inset-0 z-20 bg-black/72 backdrop-blur-sm flex items-end px-4 ${premium ? 'pb-36' : 'pb-6'}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="w-full border border-white/10 bg-[#111]/95 rounded-3xl p-5 shadow-2xl"
-              initial={{ y: 28, scale: 0.98 }}
+              className="w-full border border-white/10 bg-[#111]/95 rounded-3xl p-5 shadow-2xl overflow-hidden relative"
+              initial={{ y: 42, scale: 0.96 }}
               animate={{ y: 0, scale: 1 }}
               exit={{ y: 20, scale: 0.98 }}
               transition={{ type: 'spring', stiffness: 360, damping: 32 }}
@@ -566,14 +588,21 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
                 boxShadow: '0 24px 80px rgba(0,0,0,0.42), inset 0 1px 1px rgba(255,255,255,0.16)',
               } : undefined}
             >
+              <motion.div
+                className="absolute inset-x-0 top-0 h-1"
+                style={{ backgroundColor: feedbackAccent }}
+                initial={{ scaleX: 0, transformOrigin: 'left' }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.45, ease: 'easeOut' }}
+              />
               <div className="flex items-center gap-4">
                 <div
                   className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
                   style={{
-                    backgroundColor: scanFeedback.status === 'success' ? 'rgba(34,197,94,0.16)' : 'rgba(239,68,68,0.15)',
+                    backgroundColor: feedbackOk ? 'rgba(34,197,94,0.16)' : 'rgba(239,68,68,0.15)',
                   }}
                 >
-                  {scanFeedback.status === 'success' ? (
+                  {feedbackOk ? (
                     <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
                       <path d="M6 14.5l5 5L22 8.5" stroke="#22C55E" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
@@ -585,13 +614,44 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
                   )}
                 </div>
                 <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span
+                      className="text-[10px] font-black uppercase tracking-[0.16em] px-2 py-1 rounded-full"
+                      style={{ color: feedbackAccent, backgroundColor: `${feedbackAccent}24` }}
+                    >
+                      {feedbackLabel}
+                    </span>
+                  </div>
                   <p className="text-white text-lg font-black leading-tight">{scanFeedback.title}</p>
                   <p className="text-white/60 text-sm leading-snug mt-1">{scanFeedback.message}</p>
-                  {scanFeedback.code && (
-                    <p className="text-white/45 text-xs font-mono mt-2 truncate">#{scanFeedback.code}</p>
-                  )}
                 </div>
               </div>
+
+              {feedbackEntry && (
+                <motion.div
+                  className="mt-5 grid grid-cols-2 gap-2"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.12, duration: 0.28 }}
+                >
+                  <ResultDetail label="Ticket ID" value={`#${feedbackEntry.ticketId}`} mono />
+                  <ResultDetail label="Attendee" value={feedbackEntry.attendee} />
+                  <ResultDetail label="Ticket Type" value={feedbackEntry.ticketType} />
+                  <ResultDetail label="Generated" value={feedbackEntry.generatedAt} />
+                  <ResultDetail label={feedbackOk ? 'Scanned' : 'Scan Attempt'} value={feedbackEntry.scannedAt} />
+                  <ResultDetail label="Scanner" value={feedbackEntry.scannedBy} />
+                  {feedbackEntry.originalScanAt && (
+                    <ResultDetail label="First Scanned" value={feedbackEntry.originalScanAt} />
+                  )}
+                  {feedbackEntry.attemptNumber > 1 && (
+                    <ResultDetail label="Attempt" value={`${feedbackEntry.attemptNumber}`} />
+                  )}
+                  <div className="col-span-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3">
+                    <p className="text-white/35 text-[10px] font-bold uppercase tracking-[0.14em] mb-1">Event</p>
+                    <p className="text-white text-[13px] font-semibold leading-snug">{feedbackEntry.event}</p>
+                  </div>
+                </motion.div>
+              )}
 
               <motion.button
                 onClick={onScanNext}
@@ -639,6 +699,15 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+function ResultDetail({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3">
+      <p className="text-white/35 text-[10px] font-bold uppercase tracking-[0.14em] mb-1">{label}</p>
+      <p className={`text-white text-[13px] font-semibold leading-snug truncate ${mono ? 'font-mono' : ''}`}>{value}</p>
     </div>
   )
 }
