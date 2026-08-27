@@ -9,6 +9,14 @@ interface Props {
 }
 
 type ScannerMode = 'hub' | 'camera'
+type HistoryFilter = 'scanned' | 'rejected'
+type HistoryItem = {
+  id: string
+  title: string
+  time: string
+  detail: string
+  status: HistoryFilter
+}
 
 type TorchTrack = MediaStreamTrack & {
   getCapabilities?: () => MediaTrackCapabilities & { torch?: boolean }
@@ -30,8 +38,10 @@ export default function QRScanner({ onBack, onScan }: Props) {
   const [manualId, setManualId] = useState('')
   const [torchOn, setTorchOn] = useState(false)
   const [detected, setDetected] = useState(false)
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('scanned')
 
   const isCamera = mode === 'camera'
+  const visibleHistory = scanHistoryItems.filter((item) => item.status === historyFilter)
 
   const stopCamera = useCallback(() => {
     if (scanTimerRef.current) {
@@ -252,24 +262,72 @@ export default function QRScanner({ onBack, onScan }: Props) {
 
         {!isCamera && (
           <motion.section
-            className="scan-stack"
+            className="scan-history-panel"
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.12, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            aria-label="Recent scans"
+            aria-label="Scan history"
           >
-            <div className="scan-stack-card scan-stack-card-third" />
-            <div className="scan-stack-card scan-stack-card-second" />
-            <button className="scan-stack-card scan-stack-card-front" type="button" onClick={() => setManualOpen(true)}>
-              <span className="scan-history-icon">
-                <HistoryIcon />
-              </span>
+            <div className="scan-history-heading">
               <span>
-                <strong>Recent Scans</strong>
-                <small>View history</small>
+                <strong>Scan History</strong>
+                <small>Review recent ticket processing logs.</small>
               </span>
-              <ChevronIcon />
-            </button>
+              <HistoryIcon />
+            </div>
+
+            <div className="scan-history-filters" role="tablist" aria-label="Scan history filter">
+              <button
+                className={historyFilter === 'scanned' ? 'is-selected' : ''}
+                type="button"
+                onClick={() => setHistoryFilter('scanned')}
+                role="tab"
+                aria-selected={historyFilter === 'scanned'}
+              >
+                <CheckIcon />
+                <span>Scanned</span>
+              </button>
+              <button
+                className={historyFilter === 'rejected' ? 'is-selected is-rejected' : 'is-rejected'}
+                type="button"
+                onClick={() => setHistoryFilter('rejected')}
+                role="tab"
+                aria-selected={historyFilter === 'rejected'}
+              >
+                <CancelIcon />
+                <span>Rejected</span>
+              </button>
+            </div>
+
+            <div className="scan-history-list">
+              <div className="scan-history-backdrop scan-history-backdrop-one" />
+              <div className="scan-history-backdrop scan-history-backdrop-two" />
+
+              {visibleHistory.map((item) => (
+                <article className={`scan-history-card is-${item.status}`} key={item.id}>
+                  <div className="scan-history-card-glow" />
+                  <span className="scan-history-status-icon">
+                    {item.status === 'scanned' ? <CheckIcon /> : <CancelIcon />}
+                  </span>
+                  <span className="scan-history-copy">
+                    <span className="scan-history-title-row">
+                      <strong>{item.title}</strong>
+                      <code>{item.id}</code>
+                    </span>
+                    <span className="scan-history-meta">
+                      <small>
+                        <ClockIcon />
+                        {item.time}
+                      </small>
+                      <small>
+                        {item.status === 'scanned' ? <PersonIcon /> : <ErrorIcon />}
+                        {item.detail}
+                      </small>
+                    </span>
+                  </span>
+                </article>
+              ))}
+            </div>
           </motion.section>
         )}
       </main>
@@ -335,6 +393,30 @@ export default function QRScanner({ onBack, onScan }: Props) {
     </div>
   )
 }
+
+const scanHistoryItems: HistoryItem[] = [
+  {
+    id: '#TX-8924A',
+    title: 'VIP Entry: NEON GA',
+    time: '22:45, Oct 24',
+    detail: 'Alex Vance',
+    status: 'scanned',
+  },
+  {
+    id: '#TX-5542B',
+    title: 'BACKSTAGE PASS',
+    time: '21:30, Oct 24',
+    detail: 'C. Redfield',
+    status: 'scanned',
+  },
+  {
+    id: '#TX-1109X',
+    title: 'GA Entry: SECTOR 4',
+    time: '22:15, Oct 24',
+    detail: 'Expired',
+    status: 'rejected',
+  },
+]
 
 const scannerStyles = `
   .scan-hub-shell {
@@ -725,6 +807,267 @@ const scannerStyles = `
     background: rgba(255, 255, 255, 0.07);
   }
 
+  .scan-history-panel {
+    width: 100%;
+    position: relative;
+    z-index: 1;
+    margin-top: 4px;
+    padding-bottom: 12px;
+  }
+
+  .scan-history-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+  }
+
+  .scan-history-heading strong,
+  .scan-history-heading small {
+    display: block;
+    letter-spacing: 0;
+  }
+
+  .scan-history-heading strong {
+    color: #fff;
+    font-size: 28px;
+    line-height: 1.16;
+    font-weight: 800;
+    text-shadow: 0 0 18px rgba(242, 169, 0, 0.22);
+  }
+
+  .scan-history-heading small {
+    margin-top: 3px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .scan-history-heading svg {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    color: #f2a900;
+    opacity: 0.9;
+  }
+
+  .scan-history-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .scan-history-filters button {
+    height: 48px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: rgba(255, 255, 255, 0.55);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    text-transform: uppercase;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0;
+    transition: transform 180ms ease, color 180ms ease, border-color 180ms ease, background 180ms ease;
+  }
+
+  .scan-history-filters button:active {
+    transform: scale(0.97);
+  }
+
+  .scan-history-filters button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .scan-history-filters button.is-selected {
+    color: #f2a900;
+    border-color: rgba(242, 169, 0, 0.36);
+    background: linear-gradient(135deg, rgba(242, 169, 0, 0.14), rgba(0, 0, 0, 0.34));
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3), inset 0 0 16px rgba(242, 169, 0, 0.12);
+  }
+
+  .scan-history-filters button.is-selected.is-rejected {
+    color: #ff6a62;
+    border-color: rgba(255, 59, 48, 0.32);
+    background: linear-gradient(135deg, rgba(255, 59, 48, 0.12), rgba(0, 0, 0, 0.34));
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3), inset 0 0 16px rgba(255, 59, 48, 0.1);
+  }
+
+  .scan-history-list {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 148px;
+  }
+
+  .scan-history-backdrop {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    height: 42px;
+    border-radius: 24px 24px 0 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.26);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    pointer-events: none;
+  }
+
+  .scan-history-backdrop-one {
+    top: -7px;
+    opacity: 0.5;
+    z-index: -1;
+  }
+
+  .scan-history-backdrop-two {
+    top: -14px;
+    left: 32px;
+    right: 32px;
+    opacity: 0.22;
+    z-index: -2;
+  }
+
+  .scan-history-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 76px;
+    padding: 12px 14px;
+    overflow: hidden;
+    border-radius: 24px;
+    color: #fff;
+    background: linear-gradient(145deg, rgba(25, 18, 10, 0.92), rgba(5, 5, 5, 0.96));
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 1px solid rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .scan-history-card.is-scanned {
+    background: linear-gradient(145deg, rgba(10, 24, 16, 0.86), rgba(5, 5, 5, 0.96));
+  }
+
+  .scan-history-card-glow {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .scan-history-card.is-scanned .scan-history-card-glow {
+    background: radial-gradient(circle at 100% 0%, rgba(0, 255, 148, 0.12), transparent 58%);
+  }
+
+  .scan-history-card.is-rejected .scan-history-card-glow {
+    background: radial-gradient(circle at 100% 0%, rgba(255, 59, 48, 0.12), transparent 58%);
+  }
+
+  .scan-history-status-icon {
+    position: relative;
+    z-index: 1;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+  }
+
+  .scan-history-status-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .scan-history-card.is-scanned .scan-history-status-icon {
+    color: #00ff94;
+    background: rgba(0, 255, 148, 0.11);
+  }
+
+  .scan-history-card.is-rejected .scan-history-status-icon {
+    color: #ff3b30;
+    background: rgba(255, 59, 48, 0.12);
+  }
+
+  .scan-history-copy {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .scan-history-title-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .scan-history-title-row strong {
+    min-width: 0;
+    color: #fff;
+    font-size: 15px;
+    line-height: 1.15;
+    font-weight: 800;
+    letter-spacing: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .scan-history-title-row code {
+    flex: 0 0 auto;
+    color: rgba(0, 255, 148, 0.82);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+  }
+
+  .scan-history-card.is-rejected .scan-history-title-row code {
+    color: rgba(255, 59, 48, 0.84);
+  }
+
+  .scan-history-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .scan-history-meta small {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .scan-history-meta svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+  }
+
   .scan-actions {
     position: fixed;
     left: 50%;
@@ -1016,10 +1359,44 @@ function HistoryIcon() {
   )
 }
 
-function ChevronIcon() {
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="m6 12.6 3.5 3.5L18.5 7" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function CancelIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="m7 7 10 10M17 7 7 17" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.9" />
+      <path d="M12 7.5V12l3 1.8" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function PersonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM5.5 20a6.5 6.5 0 0 1 13 0" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ErrorIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" width="22" height="22">
-      <path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 8v5M12 16.5h.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.9" />
     </svg>
   )
 }
