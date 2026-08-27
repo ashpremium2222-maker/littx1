@@ -859,7 +859,7 @@ function RefinedScanResult({
   }
 
   // Intercept browser back when feedback is showing — go to "scan next" instead of exiting
-  React.useEffect(() => {
+  useEffect(() => {
     window.history.pushState({ _scanResult: true }, '')
     const handlePop = () => {
       scanNext()
