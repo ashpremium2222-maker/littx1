@@ -224,6 +224,7 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
   const [screen, setScreen] = useState<Screen>({ name: forceScanner ? 'scanner' : 'dashboard' })
   const [prevDepth, setPrevDepth] = useState(0)
   const [rejectedScans, setRejectedScans] = useState<RejectedScan[]>([])
+  const [scannedTickets, setScannedTickets] = useState<Ticket[]>([])
 
   useEffect(() => {
     window.history.replaceState({ name: 'dashboard' }, '')
@@ -259,6 +260,7 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
     const timestamp = `${h12}:${mm} ${ampm}`
 
     if (outcome.result === 'success' && outcome.ticket) {
+      setScannedTickets(prev => [outcome.ticket!, ...prev])
       go({ name: 'scan-success', ticket: outcome.ticket })
     } else if (outcome.result === 'rejected' && outcome.ticket) {
       const isCancel = outcome.ticket.status === 'cancelled' || (outcome.ticket.scannedAt === 'Cancelled by Admin')
@@ -331,7 +333,7 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
     key = `ticket-${ticket?.id}`
     content = <TicketCard dark={dark} ticket={ticket} onBack={() => go({ name: 'dashboard' })} />
   } else if (screen.name === 'scanner') {
-    content = <QRScanner onBack={() => go({ name: 'dashboard' })} onScan={handleScan} />
+    content = <QRScanner onBack={() => go({ name: 'dashboard' })} onScan={handleScan} rejectedScans={rejectedScans} scannedTickets={scannedTickets} sellerId={sellerId} />
   } else if (screen.name === 'scan-success') {
     key = `scan-success-${screen.ticket.id}`
     content = (

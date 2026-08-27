@@ -2,21 +2,22 @@ import { AnimatePresence, motion } from 'framer-motion'
 import jsQR from 'jsqr'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import LittixLogo from '../components/LittixLogo'
+import type { Ticket } from '../lib/store'
+import type { RejectedScan } from '../littix/App'
 
+// ─── Props ────────────────────────────────────────────────────────────────────
 interface Props {
   onBack: () => void
   onScan: (raw: string) => void
+  rejectedScans?: RejectedScan[]
+  scannedTickets?: Ticket[]
+  sellerId?: string
 }
 
-type ScannerMode = 'hub' | 'camera'
-type HistoryFilter = 'scanned' | 'rejected'
-type HistoryItem = {
-  id: string
-  title: string
-  time: string
-  detail: string
-  status: HistoryFilter
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
+type Tab = 'scanner' | 'history' | 'profile'
+type HistoryFilter = 'approved' | 'rejected'
+type ScanPhase = 'idle' | 'scanning' | 'detected' | 'verifying'
 
 type TorchTrack = MediaStreamTrack & {
   getCapabilities?: () => MediaTrackCapabilities & { torch?: boolean }
@@ -25,367 +26,539 @@ type TorchTrack = MediaStreamTrack & {
   ) => Promise<void>
 }
 
-export default function QRScanner({ onBack, onScan }: Props) {
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function QRScanner({ onBack, onScan, rejectedScans = [], scannedTickets = [], sellerId }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const scanTimerRef = useRef<number | null>(null)
   const scanningRef = useRef(false)
+  const phaseTimerRef = useRef<number | null>(null)
 
-  const [mode, setMode] = useState<ScannerMode>('hub')
+  const [activeTab, setActiveTab] = useState<Tab>('scanner')
+  const [cameraActive, setCameraActive] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [phase, setPhase] = useState<ScanPhase>('idle')
+  const [torchOn, setTorchOn] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
   const [manualId, setManualId] = useState('')
-  const [torchOn, setTorchOn] = useState(false)
-  const [detected, setDetected] = useState(false)
-  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('scanned')
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('approved')
 
-  const isCamera = mode === 'camera'
-  const visibleHistory = scanHistoryItems.filter((item) => item.status === historyFilter)
-
+  // ─── Camera helpers ──────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
-    if (scanTimerRef.current) {
-      window.clearTimeout(scanTimerRef.current)
-      scanTimerRef.current = null
-    }
-
-    streamRef.current?.getTracks().forEach((track) => track.stop())
+    if (scanTimerRef.current) { window.clearTimeout(scanTimerRef.current); scanTimerRef.current = null }
+    if (phaseTimerRef.current) { window.clearTimeout(phaseTimerRef.current); phaseTimerRef.current = null }
+    streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
     scanningRef.current = false
     setTorchOn(false)
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null
-    }
+    setCameraActive(false)
+    if (videoRef.current) videoRef.current.srcObject = null
   }, [])
 
   const scanFrame = useCallback(() => {
     const video = videoRef.current
     const canvas = canvasRef.current
-
     if (
-      video &&
-      canvas &&
+      video && canvas &&
       video.readyState === video.HAVE_ENOUGH_DATA &&
       video.videoWidth > 0 &&
-      video.videoHeight > 0 &&
       scanningRef.current
     ) {
       const ctx = canvas.getContext('2d', { willReadFrequently: true })
-
       if (ctx) {
         const maxDim = 640
         const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight))
-        const width = Math.floor(video.videoWidth * scale)
-        const height = Math.floor(video.videoHeight * scale)
-
-        canvas.width = width
-        canvas.height = height
-        ctx.drawImage(video, 0, 0, width, height)
-
-        const imageData = ctx.getImageData(0, 0, width, height)
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: 'dontInvert',
-        })
-
+        const w = Math.floor(video.videoWidth * scale)
+        const h = Math.floor(video.videoHeight * scale)
+        canvas.width = w; canvas.height = h
+        ctx.drawImage(video, 0, 0, w, h)
+        const imageData = ctx.getImageData(0, 0, w, h)
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' })
         if (code?.data) {
           scanningRef.current = false
-          setDetected(true)
-          stopCamera()
-          onScan(code.data)
+          setPhase('detected')
+          phaseTimerRef.current = window.setTimeout(() => {
+            setPhase('verifying')
+            phaseTimerRef.current = window.setTimeout(() => {
+              stopCamera()
+              setPhase('idle')
+              onScan(code.data)
+            }, 600)
+          }, 500)
           return
         }
       }
     }
-
-    if (scanningRef.current) {
-      scanTimerRef.current = window.setTimeout(scanFrame, 180)
-    }
+    if (scanningRef.current) scanTimerRef.current = window.setTimeout(scanFrame, 150)
   }, [onScan, stopCamera])
 
   const openCamera = useCallback(async () => {
     setCameraError(null)
-    setDetected(false)
+    setPhase('scanning')
     stopCamera()
-    setMode('camera')
 
     try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Camera unavailable')
-      }
-
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('camera_unavailable')
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
       })
-
       streamRef.current = stream
       scanningRef.current = true
-
+      setCameraActive(true)
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
       }
-
       scanFrame()
-    } catch {
+    } catch (err: unknown) {
       scanningRef.current = false
-      setCameraError('Camera access unavailable')
+      setCameraActive(false)
+      setPhase('idle')
+      const msg = err instanceof Error ? err.message : ''
+      if (msg === 'camera_unavailable' || msg.includes('NotSupportedError')) {
+        setCameraError('camera_unavailable')
+      } else {
+        setCameraError('camera_denied')
+      }
     }
   }, [scanFrame, stopCamera])
 
-  useEffect(() => stopCamera, [stopCamera])
+  // Cleanup on unmount
+  useEffect(() => () => { stopCamera() }, [stopCamera])
 
+  // Switch tabs → stop camera
+  useEffect(() => {
+    if (activeTab !== 'scanner') stopCamera()
+  }, [activeTab, stopCamera])
+
+  // ─── Torch ───────────────────────────────────────────────────────────────
   async function toggleTorch() {
     const track = streamRef.current?.getVideoTracks()[0] as TorchTrack | undefined
-    const capabilities = track?.getCapabilities?.()
-
-    if (!track || !capabilities?.torch) {
-      setCameraError('Torch is not available on this device')
-      return
-    }
-
+    const caps = track?.getCapabilities?.()
+    if (!track || !caps?.torch) { setCameraError('torch_unavailable'); return }
     try {
       const next = !torchOn
-      await track.applyConstraints?.({
-        advanced: [{ torch: next }],
-      } as MediaTrackConstraints & { advanced: Array<{ torch: boolean }> })
+      await track.applyConstraints?.({ advanced: [{ torch: next }] } as MediaTrackConstraints & { advanced: Array<{ torch: boolean }> })
       setTorchOn(next)
       setCameraError(null)
-    } catch {
-      setCameraError('Torch could not be enabled')
-    }
+    } catch { setCameraError('torch_unavailable') }
   }
 
+  // ─── Manual submit ────────────────────────────────────────────────────────
   function submitManual() {
-    const value = manualId.trim()
-    if (value) {
-      stopCamera()
-      onScan(value)
-    }
+    const v = manualId.trim()
+    if (v) { stopCamera(); setManualId(''); setManualOpen(false); onScan(v) }
   }
 
-  function exitCamera() {
-    stopCamera()
-    setMode('hub')
-    setCameraError(null)
-    setDetected(false)
-  }
+  // ─── Derived history data ─────────────────────────────────────────────────
+  const approvedItems = scannedTickets.map(t => ({
+    id: t.id,
+    title: t.event,
+    holder: t.attendee,
+    time: t.scannedAt || '',
+    type: t.ticketType,
+  }))
 
-  function handleBack() {
-    if (isCamera) {
-      exitCamera()
-      return
-    }
+  const rejectedItems = rejectedScans.map(r => ({
+    id: r.ticket?.id || r.rawCode || '—',
+    title: r.ticket?.event || 'Unknown Ticket',
+    holder: r.ticket?.attendee || r.rawCode || 'Unknown',
+    time: r.timestamp,
+    reason: r.reason === 'duplicate' ? 'Already Scanned' : r.reason === 'cancelled' ? 'Ticket Cancelled' : 'Invalid Ticket',
+  }))
 
-    onBack()
-  }
-
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="scan-hub-shell">
-      <style>{scannerStyles}</style>
+    <div className="sc-shell">
+      <style>{styles}</style>
 
-      <div className="scan-ambient" aria-hidden="true">
-        <div className="scan-glow scan-glow-top" />
-        <div className="scan-glow scan-glow-bottom" />
+      {/* Ambient background */}
+      <div className="sc-ambient" aria-hidden="true">
+        <div className="sc-ambient-orb sc-ambient-orb-1" />
+        <div className="sc-ambient-orb sc-ambient-orb-2" />
       </div>
 
-      <video
-        ref={videoRef}
-        playsInline
-        muted
-        className={`scan-camera-feed ${isCamera ? 'is-visible' : ''}`}
-      />
-      <canvas ref={canvasRef} className="scan-hidden-canvas" />
+      {/* Hidden camera elements */}
+      <video ref={videoRef} playsInline muted className={`sc-video-feed${cameraActive ? ' is-active' : ''}`} />
+      <canvas ref={canvasRef} className="sc-hidden-canvas" />
 
-      <header className="scan-topbar">
-        <button className="scan-icon-button" type="button" onClick={handleBack} aria-label={isCamera ? 'Close scanner' : 'Back'}>
-          {isCamera ? <CloseIcon /> : <MenuIcon />}
-        </button>
-
-        <div className="scan-brand">
-          <LittixLogo dark size="sm" />
-          <span>LITTIX</span>
-        </div>
-
-        <button
-          className={`scan-icon-button ${isCamera && torchOn ? 'is-active' : ''}`}
-          type="button"
-          onClick={isCamera ? toggleTorch : openCamera}
-          aria-label={isCamera ? 'Toggle torch' : 'Open scanner'}
-        >
-          {isCamera ? <LightIcon /> : <SearchIcon />}
-        </button>
-      </header>
-
-      <main className={`scan-main ${isCamera ? 'is-camera-mode' : ''}`}>
-        <motion.section
-          className="scan-hero"
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <p className="scan-kicker">Event access</p>
-          <h1>{isCamera ? 'Scanning' : 'Start Scan'}</h1>
-          <p>{isCamera ? cameraError || 'Position code within frame' : 'Position code within frame'}</p>
-
+      {/* ── SCANNER TAB ── */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'scanner' && (
           <motion.div
-            className={`scan-orb ${isCamera ? 'has-camera' : ''} ${detected ? 'is-detected' : ''}`}
-            animate={{ scale: detected ? 1.04 : 1 }}
-            transition={{ duration: 0.25 }}
+            key="scanner-tab"
+            className="sc-tab-content"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
           >
-            <div className="scan-ring scan-ring-one" />
-            <div className="scan-ring scan-ring-two" />
-            <div className="scan-target">
-              <div className="scan-target-glow" />
-              {isCamera ? <ScanIcon /> : <TicketIcon />}
-            </div>
+            {/* Top bar */}
+            <header className="sc-topbar">
+              <div className="sc-brand">
+                <LittixLogo dark size="sm" />
+                <span>LITTIX</span>
+              </div>
+              {cameraActive && (
+                <button
+                  className={`sc-topbar-btn${torchOn ? ' is-active' : ''}`}
+                  onClick={toggleTorch}
+                  aria-label="Toggle flashlight"
+                  type="button"
+                >
+                  <FlashIcon />
+                </button>
+              )}
+            </header>
 
-            {isCamera && !cameraError && (
-              <>
-                <div className="scan-viewfinder-corner corner-tl" />
-                <div className="scan-viewfinder-corner corner-tr" />
-                <div className="scan-viewfinder-corner corner-br" />
-                <div className="scan-viewfinder-corner corner-bl" />
-                <motion.div
-                  className="scan-line"
-                  animate={{ y: [-74, 74, -74] }}
-                  transition={{ duration: 2.15, repeat: Infinity, ease: 'easeInOut' }}
+            {/* Scanner main area */}
+            <main className="sc-scanner-main">
+              {/* Hero text */}
+              <div className="sc-hero-text">
+                <motion.p
+                  className="sc-eyebrow"
+                  key={phase}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {phase === 'idle' && 'Ready to scan'}
+                  {phase === 'scanning' && 'Camera active'}
+                  {phase === 'detected' && 'QR detected'}
+                  {phase === 'verifying' && 'Verifying...'}
+                </motion.p>
+                <motion.h1
+                  className="sc-title"
+                  key={`title-${phase}`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35 }}
+                >
+                  {phase === 'idle' && 'Scan Ticket'}
+                  {phase === 'scanning' && 'Scanning'}
+                  {phase === 'detected' && 'Ticket Detected'}
+                  {phase === 'verifying' && 'Verifying Ticket'}
+                </motion.h1>
+                <motion.p
+                  className="sc-subtitle"
+                  key={`sub-${phase}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                >
+                  {phase === 'idle' && 'Position the ticket QR code inside the frame'}
+                  {phase === 'scanning' && (cameraError ? getErrorMessage(cameraError) : 'Position code within the frame')}
+                  {phase === 'detected' && 'Hold still — reading ticket data'}
+                  {phase === 'verifying' && 'Checking ticket validity'}
+                </motion.p>
+              </div>
+
+              {/* Scanner orb */}
+              <div className="sc-orb-container">
+                <ScannerOrb
+                  phase={phase}
+                  cameraActive={cameraActive}
+                  cameraError={cameraError}
                 />
-              </>
-            )}
+              </div>
+
+              {/* Camera error state */}
+              {cameraError && (
+                <motion.div
+                  className="sc-error-card"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35 }}
+                >
+                  <div className="sc-error-icon">
+                    <CameraOffIcon />
+                  </div>
+                  <div className="sc-error-body">
+                    <p className="sc-error-title">
+                      {cameraError === 'camera_denied' ? 'Camera Access Required' :
+                       cameraError === 'camera_unavailable' ? 'Camera Not Available' :
+                       'Torch Unavailable'}
+                    </p>
+                    <p className="sc-error-desc">
+                      {cameraError === 'camera_denied' ? 'Allow camera access in your browser settings to scan tickets.' :
+                       cameraError === 'camera_unavailable' ? 'This device does not support camera scanning.' :
+                       'Torch is not supported on this device.'}
+                    </p>
+                  </div>
+                  {(cameraError === 'camera_denied' || cameraError === 'camera_unavailable') && (
+                    <button className="sc-error-retry" onClick={openCamera} type="button">Try Again</button>
+                  )}
+                </motion.div>
+              )}
+            </main>
+
+            {/* Bottom action area */}
+            <footer className="sc-footer">
+              <div className="sc-action-group">
+                <button
+                  className="sc-action-primary"
+                  onClick={cameraActive ? stopCamera : openCamera}
+                  type="button"
+                  id="scan-qr-btn"
+                >
+                  <QrIcon />
+                  <span>{cameraActive ? 'Stop Scanner' : 'Scan QR'}</span>
+                </button>
+                <button
+                  className="sc-action-secondary"
+                  onClick={() => setManualOpen(true)}
+                  type="button"
+                  id="manual-entry-btn"
+                >
+                  <KeyboardIcon />
+                  <span>Manual</span>
+                </button>
+              </div>
+            </footer>
           </motion.div>
-        </motion.section>
+        )}
 
-        {!isCamera && (
-          <motion.section
-            className="scan-history-panel"
-            initial={{ opacity: 0, y: 18 }}
+        {/* ── HISTORY TAB ── */}
+        {activeTab === 'history' && (
+          <motion.div
+            key="history-tab"
+            className="sc-tab-content sc-history-tab"
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            aria-label="Scan history"
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
           >
-            <div className="scan-history-heading">
-              <span>
-                <strong>Scan History</strong>
-                <small>Review recent ticket processing logs.</small>
-              </span>
-              <HistoryIcon />
-            </div>
+            <header className="sc-page-header">
+              <div className="sc-page-header-inner">
+                <h1 className="sc-page-title">Scan History</h1>
+                <p className="sc-page-subtitle">Review recent ticket processing logs.</p>
+              </div>
+            </header>
 
-            <div className="scan-history-filters" role="tablist" aria-label="Scan history filter">
+            {/* Filter tabs */}
+            <div className="sc-hist-filters">
               <button
-                className={historyFilter === 'scanned' ? 'is-selected' : ''}
+                className={`sc-hist-filter-btn${historyFilter === 'approved' ? ' is-approved' : ''}`}
+                onClick={() => setHistoryFilter('approved')}
                 type="button"
-                onClick={() => setHistoryFilter('scanned')}
-                role="tab"
-                aria-selected={historyFilter === 'scanned'}
+                id="history-approved-tab"
               >
-                <CheckIcon />
-                <span>Scanned</span>
+                <CheckCircleIcon />
+                <span>Approved</span>
               </button>
               <button
-                className={historyFilter === 'rejected' ? 'is-selected is-rejected' : 'is-rejected'}
-                type="button"
+                className={`sc-hist-filter-btn${historyFilter === 'rejected' ? ' is-rejected' : ''}`}
                 onClick={() => setHistoryFilter('rejected')}
-                role="tab"
-                aria-selected={historyFilter === 'rejected'}
+                type="button"
+                id="history-rejected-tab"
               >
-                <CancelIcon />
+                <CancelCircleIcon />
                 <span>Rejected</span>
               </button>
             </div>
 
-            <div className="scan-history-list">
-              <div className="scan-history-backdrop scan-history-backdrop-one" />
-              <div className="scan-history-backdrop scan-history-backdrop-two" />
-
-              {visibleHistory.map((item) => (
-                <article className={`scan-history-card is-${item.status}`} key={item.id}>
-                  <div className="scan-history-card-glow" />
-                  <span className="scan-history-status-icon">
-                    {item.status === 'scanned' ? <CheckIcon /> : <CancelIcon />}
-                  </span>
-                  <span className="scan-history-copy">
-                    <span className="scan-history-title-row">
-                      <strong>{item.title}</strong>
-                      <code>{item.id}</code>
-                    </span>
-                    <span className="scan-history-meta">
-                      <small>
-                        <ClockIcon />
-                        {item.time}
-                      </small>
-                      <small>
-                        {item.status === 'scanned' ? <PersonIcon /> : <ErrorIcon />}
-                        {item.detail}
-                      </small>
-                    </span>
-                  </span>
-                </article>
-              ))}
+            {/* History list */}
+            <div className="sc-hist-list-wrap">
+              <AnimatePresence mode="wait">
+                {historyFilter === 'approved' ? (
+                  <motion.div
+                    key="approved-list"
+                    className="sc-hist-list"
+                    initial={{ opacity: 0, x: -12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 12 }}
+                    transition={{ duration: 0.22 }}
+                  >
+                    {approvedItems.length === 0 ? (
+                      <EmptyState type="approved" />
+                    ) : (
+                      approvedItems.map((item, i) => (
+                        <motion.article
+                          key={item.id + i}
+                          className="sc-hist-card is-approved"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.05, duration: 0.25 }}
+                        >
+                          <div className="sc-hist-card-glow sc-hist-card-glow-approved" />
+                          <div className="sc-hist-status-icon is-approved">
+                            <CheckIcon />
+                          </div>
+                          <div className="sc-hist-card-body">
+                            <div className="sc-hist-card-row">
+                              <span className="sc-hist-card-title">{item.title}</span>
+                              <code className="sc-hist-card-id is-approved">#{item.id}</code>
+                            </div>
+                            <div className="sc-hist-card-meta">
+                              <span><ClockIcon />{item.time}</span>
+                              <span><PersonIcon />{item.holder}</span>
+                            </div>
+                          </div>
+                        </motion.article>
+                      ))
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="rejected-list"
+                    className="sc-hist-list"
+                    initial={{ opacity: 0, x: 12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -12 }}
+                    transition={{ duration: 0.22 }}
+                  >
+                    {rejectedItems.length === 0 ? (
+                      <EmptyState type="rejected" />
+                    ) : (
+                      rejectedItems.map((item, i) => (
+                        <motion.article
+                          key={item.id + i}
+                          className="sc-hist-card is-rejected"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.05, duration: 0.25 }}
+                        >
+                          <div className="sc-hist-card-glow sc-hist-card-glow-rejected" />
+                          <div className="sc-hist-status-icon is-rejected">
+                            <CancelIcon />
+                          </div>
+                          <div className="sc-hist-card-body">
+                            <div className="sc-hist-card-row">
+                              <span className="sc-hist-card-title">{item.title}</span>
+                              <code className="sc-hist-card-id is-rejected">#{item.id}</code>
+                            </div>
+                            <div className="sc-hist-card-meta">
+                              <span><ClockIcon />{item.time}</span>
+                              <span><ErrorIcon />{item.reason}</span>
+                            </div>
+                          </div>
+                        </motion.article>
+                      ))
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          </motion.section>
+          </motion.div>
         )}
-      </main>
 
-      <footer className="scan-actions">
-        <div className="scan-action-group">
-          <button className="scan-primary-action" type="button" onClick={openCamera}>
-            <ScanIcon />
-            <span>Scan QR</span>
-          </button>
-          <button className="scan-secondary-action" type="button" onClick={() => setManualOpen(true)}>
-            <KeyboardIcon />
-            <span>Manual</span>
-          </button>
+        {/* ── PROFILE TAB ── */}
+        {activeTab === 'profile' && (
+          <motion.div
+            key="profile-tab"
+            className="sc-tab-content sc-profile-tab"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <header className="sc-page-header">
+              <div className="sc-page-header-inner">
+                <h1 className="sc-page-title">Profile</h1>
+                <p className="sc-page-subtitle">Gate staff session information.</p>
+              </div>
+            </header>
+
+            <div className="sc-profile-content">
+              {/* Avatar */}
+              <div className="sc-profile-avatar-wrap">
+                <div className="sc-profile-avatar">
+                  <PersonIcon />
+                </div>
+                <div className="sc-profile-avatar-ring" />
+              </div>
+
+              {/* Info */}
+              <div className="sc-profile-info">
+                <p className="sc-profile-name">{sellerId || 'Gate Scanner'}</p>
+                <span className="sc-profile-badge">Gate Staff</span>
+              </div>
+
+              {/* Stats */}
+              <div className="sc-profile-stats">
+                <div className="sc-stat-card">
+                  <span className="sc-stat-value sc-stat-approved">{approvedItems.length}</span>
+                  <span className="sc-stat-label">Approved</span>
+                </div>
+                <div className="sc-stat-divider" />
+                <div className="sc-stat-card">
+                  <span className="sc-stat-value sc-stat-rejected">{rejectedItems.length}</span>
+                  <span className="sc-stat-label">Rejected</span>
+                </div>
+                <div className="sc-stat-divider" />
+                <div className="sc-stat-card">
+                  <span className="sc-stat-value">{approvedItems.length + rejectedItems.length}</span>
+                  <span className="sc-stat-label">Total</span>
+                </div>
+              </div>
+
+              {/* Exit button */}
+              <button className="sc-profile-exit" onClick={onBack} type="button" id="exit-scanner-btn">
+                <HomeIcon />
+                <span>Exit Scanner</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── BOTTOM NAVIGATION ── */}
+      <nav className="sc-bottom-nav" aria-label="Scanner navigation">
+        <div className="sc-nav-pill">
+          <NavButton
+            id="nav-scanner"
+            label="Scanner"
+            active={activeTab === 'scanner'}
+            onClick={() => setActiveTab('scanner')}
+            icon={<QrIcon />}
+          />
+          <NavButton
+            id="nav-history"
+            label="History"
+            active={activeTab === 'history'}
+            onClick={() => setActiveTab('history')}
+            icon={<HistoryIcon />}
+          />
+          <NavButton
+            id="nav-profile"
+            label="Profile"
+            active={activeTab === 'profile'}
+            onClick={() => setActiveTab('profile')}
+            icon={<PersonIcon />}
+          />
         </div>
+      </nav>
 
-        <nav className="scan-bottom-nav" aria-label="Scanner navigation">
-          <button className="is-selected" type="button" onClick={isCamera ? exitCamera : openCamera} aria-label="Scan">
-            <ScanIcon />
-          </button>
-          <button type="button" onClick={() => setManualOpen(true)} aria-label="Manual entry">
-            <KeyboardIcon />
-          </button>
-          <button type="button" onClick={onBack} aria-label="Exit scanner">
-            <HomeIcon />
-          </button>
-        </nav>
-      </footer>
-
+      {/* ── MANUAL ENTRY MODAL ── */}
       <AnimatePresence>
         {manualOpen && (
           <motion.div
-            className="scan-modal-backdrop"
+            className="sc-modal-backdrop"
             onClick={() => setManualOpen(false)}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="scan-modal"
-              onClick={(event) => event.stopPropagation()}
+              className="sc-modal"
+              onClick={e => e.stopPropagation()}
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 380, damping: 34 }}
             >
-              <div className="scan-modal-handle" />
+              <div className="sc-modal-handle" />
               <h2>Enter Ticket ID</h2>
               <input
                 autoFocus
                 value={manualId}
-                onChange={(event) => setManualId(event.target.value)}
-                onKeyDown={(event) => event.key === 'Enter' && submitManual()}
-                placeholder="e.g. TML-2026-00847"
+                onChange={e => setManualId(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && submitManual()}
+                placeholder="e.g. FT-2026-00847"
+                id="manual-ticket-input"
               />
-              <button type="button" onClick={submitManual}>
-                Verify Ticket
-              </button>
+              <button type="button" onClick={submitManual} id="manual-verify-btn">Verify Ticket</button>
             </motion.div>
           </motion.div>
         )}
@@ -394,962 +567,181 @@ export default function QRScanner({ onBack, onScan }: Props) {
   )
 }
 
-const scanHistoryItems: HistoryItem[] = [
-  {
-    id: '#TX-8924A',
-    title: 'VIP Entry: NEON GA',
-    time: '22:45, Oct 24',
-    detail: 'Alex Vance',
-    status: 'scanned',
-  },
-  {
-    id: '#TX-5542B',
-    title: 'BACKSTAGE PASS',
-    time: '21:30, Oct 24',
-    detail: 'C. Redfield',
-    status: 'scanned',
-  },
-  {
-    id: '#TX-1109X',
-    title: 'GA Entry: SECTOR 4',
-    time: '22:15, Oct 24',
-    detail: 'Expired',
-    status: 'rejected',
-  },
-]
+// ─── Helper ───────────────────────────────────────────────────────────────────
+function getErrorMessage(err: string): string {
+  if (err === 'camera_denied') return 'Camera access denied. Check browser settings.'
+  if (err === 'camera_unavailable') return 'Camera not available on this device.'
+  if (err === 'torch_unavailable') return 'Torch not supported on this device.'
+  return 'Camera error. Tap Try Again.'
+}
+
+// ─── Scanner Orb ──────────────────────────────────────────────────────────────
+function ScannerOrb({ phase, cameraActive, cameraError }: { phase: ScanPhase; cameraActive: boolean; cameraError: string | null }) {
+  const isActive = cameraActive && !cameraError
+  const isDetected = phase === 'detected'
+  const isVerifying = phase === 'verifying'
 
-const scannerStyles = `
-  .scan-hub-shell {
-    position: relative;
-    min-height: 100vh;
-    width: 100%;
-    overflow: hidden;
-    background:
-      radial-gradient(circle at 18% -10%, rgba(0, 122, 255, 0.24), transparent 36%),
-      radial-gradient(circle at 120% 68%, rgba(2, 132, 199, 0.18), transparent 34%),
-      #0b0f10;
-    color: #e8edf2;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  }
-
-  .scan-hub-shell button,
-  .scan-hub-shell input {
-    font: inherit;
-  }
-
-  .scan-ambient {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    overflow: hidden;
-    pointer-events: none;
-  }
-
-  .scan-glow {
-    position: absolute;
-    border-radius: 999px;
-    filter: blur(120px);
-    mix-blend-mode: screen;
-  }
-
-  .scan-glow-top {
-    top: -16%;
-    left: -26%;
-    width: min(640px, 110vw);
-    height: min(640px, 110vw);
-    background: rgba(0, 122, 255, 0.32);
-  }
-
-  .scan-glow-bottom {
-    right: -32%;
-    bottom: 6%;
-    width: min(560px, 86vw);
-    height: min(560px, 86vw);
-    background: rgba(8, 145, 178, 0.22);
-  }
-
-  .scan-camera-feed {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    opacity: 0;
-    transform: scale(1.02);
-    transition: opacity 260ms ease;
-    z-index: 0;
-  }
-
-  .scan-camera-feed.is-visible {
-    opacity: 0.5;
-  }
-
-  .scan-hidden-canvas {
-    display: none;
-  }
-
-  .scan-topbar {
-    position: fixed;
-    top: 0;
-    left: 50%;
-    z-index: 5;
-    width: min(100%, 520px);
-    height: 92px;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 24px 20px 12px;
-  }
-
-  .scan-icon-button,
-  .scan-bottom-nav,
-  .scan-action-group,
-  .scan-modal {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015));
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-  }
-
-  .scan-icon-button {
-    width: 48px;
-    height: 48px;
-    border-radius: 999px;
-    color: #e8edf2;
-    display: grid;
-    place-items: center;
-    transition: transform 180ms ease, background 180ms ease, color 180ms ease;
-  }
-
-  .scan-icon-button:hover {
-    transform: translateY(-1px);
-    color: #4fb0ff;
-  }
-
-  .scan-icon-button.is-active {
-    background: #007aff;
-    color: #fff;
-    box-shadow: 0 0 24px rgba(0, 122, 255, 0.46);
-  }
-
-  .scan-icon-button svg,
-  .scan-bottom-nav svg,
-  .scan-action-group svg,
-  .scan-history-icon svg {
-    width: 22px;
-    height: 22px;
-  }
-
-  .scan-brand {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    color: #fff;
-    font-size: 20px;
-    font-weight: 800;
-    letter-spacing: 0;
-    text-shadow: 0 0 18px rgba(0, 122, 255, 0.38);
-  }
-
-  .scan-main {
-    position: relative;
-    z-index: 1;
-    width: min(100%, 520px);
-    min-height: 100vh;
-    margin: 0 auto;
-    padding: 112px 20px 232px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .scan-main.is-camera-mode {
-    padding-bottom: 208px;
-  }
-
-  .scan-hero {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 24px 0 16px;
-    text-align: center;
-  }
-
-  .scan-kicker {
-    margin: 0 0 10px;
-    color: #7ec5ff;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0;
-    text-transform: uppercase;
-  }
-
-  .scan-hero h1 {
-    margin: 0 0 8px;
-    color: #fff;
-    font-size: clamp(36px, 9vw, 48px);
-    line-height: 1.05;
-    font-weight: 800;
-    letter-spacing: 0;
-    text-shadow: 0 0 18px rgba(0, 122, 255, 0.42);
-  }
-
-  .scan-hero p:not(.scan-kicker) {
-    min-height: 24px;
-    margin: 0 0 38px;
-    color: #c1c6d7;
-    font-size: 16px;
-    line-height: 1.5;
-  }
-
-  .scan-orb {
-    position: relative;
-    width: min(68vw, 264px);
-    height: min(68vw, 264px);
-    border-radius: 999px;
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-    background: rgba(0, 0, 0, 0.42);
-    box-shadow:
-      inset 0 18px 34px rgba(0, 0, 0, 0.58),
-      inset 0 1px 2px rgba(255, 255, 255, 0.08),
-      0 1px 0 rgba(255, 255, 255, 0.1);
-  }
-
-  .scan-orb.has-camera {
-    background: rgba(0, 0, 0, 0.24);
-    box-shadow:
-      inset 0 0 0 1px rgba(0, 122, 255, 0.22),
-      0 0 80px rgba(0, 122, 255, 0.18);
-  }
-
-  .scan-orb.is-detected {
-    box-shadow:
-      inset 0 0 0 1px rgba(80, 220, 160, 0.55),
-      0 0 88px rgba(80, 220, 160, 0.24);
-  }
-
-  .scan-ring {
-    position: absolute;
-    border-radius: 999px;
-    border: 1px solid rgba(0, 122, 255, 0.22);
-  }
-
-  .scan-ring-one {
-    inset: 0;
-    animation: scan-spin 10s linear infinite;
-  }
-
-  .scan-ring-two {
-    inset: 16px;
-    border-color: rgba(79, 176, 255, 0.14);
-    animation: scan-spin 15s linear infinite reverse;
-  }
-
-  .scan-target {
-    position: relative;
-    width: 128px;
-    height: 128px;
-    border-radius: 32px;
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-    color: #28a3ff;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38), inset 0 1px 1px rgba(255, 255, 255, 0.1);
-  }
-
-  .scan-target svg {
-    position: relative;
-    z-index: 1;
-    width: 54px;
-    height: 54px;
-    filter: drop-shadow(0 0 14px rgba(0, 122, 255, 0.78));
-  }
-
-  .scan-target-glow {
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: radial-gradient(circle at 50% 50%, rgba(0, 122, 255, 0.18), transparent 64%);
-  }
-
-  .scan-line {
-    position: absolute;
-    left: 44px;
-    right: 44px;
-    top: 50%;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, #35aaff, transparent);
-    box-shadow: 0 0 16px rgba(0, 122, 255, 0.9);
-  }
-
-  .scan-viewfinder-corner {
-    position: absolute;
-    width: 36px;
-    height: 36px;
-    border-color: #45adff;
-    border-style: solid;
-  }
-
-  .corner-tl {
-    top: 42px;
-    left: 42px;
-    border-width: 3px 0 0 3px;
-    border-top-left-radius: 8px;
-  }
-
-  .corner-tr {
-    top: 42px;
-    right: 42px;
-    border-width: 3px 3px 0 0;
-    border-top-right-radius: 8px;
-  }
-
-  .corner-br {
-    right: 42px;
-    bottom: 42px;
-    border-width: 0 3px 3px 0;
-    border-bottom-right-radius: 8px;
-  }
-
-  .corner-bl {
-    left: 42px;
-    bottom: 42px;
-    border-width: 0 0 3px 3px;
-    border-bottom-left-radius: 8px;
-  }
-
-  .scan-stack {
-    position: relative;
-    width: 100%;
-    height: 160px;
-    margin-top: 4px;
-  }
-
-  .scan-stack-card {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 112px;
-    border-radius: 28px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    box-shadow: 0 26px 46px rgba(0, 0, 0, 0.36);
-  }
-
-  .scan-stack-card-third {
-    z-index: 1;
-    transform: translateY(32px) scale(0.9);
-    opacity: 0.5;
-    background: linear-gradient(180deg, #2e3c45, #242f36);
-    filter: brightness(0.6);
-  }
-
-  .scan-stack-card-second {
-    z-index: 2;
-    transform: translateY(16px) scale(0.95);
-    opacity: 0.82;
-    background: linear-gradient(180deg, #242f36, #1a2228);
-    filter: brightness(0.8);
-  }
-
-  .scan-stack-card-front {
-    z-index: 3;
-    height: 116px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 18px 22px;
-    color: #fff;
-    text-align: left;
-    background: linear-gradient(180deg, rgba(26, 34, 40, 0.94), rgba(16, 20, 21, 0.94));
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-  }
-
-  .scan-stack-card-front span:nth-child(2) {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .scan-stack-card-front strong,
-  .scan-stack-card-front small {
-    display: block;
-    letter-spacing: 0;
-  }
-
-  .scan-stack-card-front strong {
-    font-size: 18px;
-    line-height: 1.35;
-  }
-
-  .scan-stack-card-front small {
-    margin-top: 2px;
-    color: #c1c6d7;
-    font-size: 14px;
-  }
-
-  .scan-history-icon {
-    width: 50px;
-    height: 50px;
-    border-radius: 999px;
-    flex: 0 0 auto;
-    display: grid;
-    place-items: center;
-    color: #c1c6d7;
-    background: rgba(255, 255, 255, 0.07);
-  }
-
-  .scan-history-panel {
-    width: 100%;
-    position: relative;
-    z-index: 1;
-    margin-top: 4px;
-    padding-bottom: 12px;
-  }
-
-  .scan-history-heading {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 14px;
-  }
-
-  .scan-history-heading strong,
-  .scan-history-heading small {
-    display: block;
-    letter-spacing: 0;
-  }
-
-  .scan-history-heading strong {
-    color: #fff;
-    font-size: 28px;
-    line-height: 1.16;
-    font-weight: 800;
-    text-shadow: 0 0 18px rgba(242, 169, 0, 0.22);
-  }
-
-  .scan-history-heading small {
-    margin-top: 3px;
-    color: rgba(255, 255, 255, 0.58);
-    font-size: 13px;
-    line-height: 1.45;
-  }
-
-  .scan-history-heading svg {
-    width: 24px;
-    height: 24px;
-    flex: 0 0 auto;
-    color: #f2a900;
-    opacity: 0.9;
-  }
-
-  .scan-history-filters {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 18px;
-  }
-
-  .scan-history-filters button {
-    height: 48px;
-    border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    color: rgba(255, 255, 255, 0.55);
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    text-transform: uppercase;
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 0;
-    transition: transform 180ms ease, color 180ms ease, border-color 180ms ease, background 180ms ease;
-  }
-
-  .scan-history-filters button:active {
-    transform: scale(0.97);
-  }
-
-  .scan-history-filters button svg {
-    width: 20px;
-    height: 20px;
-  }
-
-  .scan-history-filters button.is-selected {
-    color: #f2a900;
-    border-color: rgba(242, 169, 0, 0.36);
-    background: linear-gradient(135deg, rgba(242, 169, 0, 0.14), rgba(0, 0, 0, 0.34));
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3), inset 0 0 16px rgba(242, 169, 0, 0.12);
-  }
-
-  .scan-history-filters button.is-selected.is-rejected {
-    color: #ff6a62;
-    border-color: rgba(255, 59, 48, 0.32);
-    background: linear-gradient(135deg, rgba(255, 59, 48, 0.12), rgba(0, 0, 0, 0.34));
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3), inset 0 0 16px rgba(255, 59, 48, 0.1);
-  }
-
-  .scan-history-list {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-height: 148px;
-  }
-
-  .scan-history-backdrop {
-    position: absolute;
-    left: 16px;
-    right: 16px;
-    height: 42px;
-    border-radius: 24px 24px 0 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.26);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    pointer-events: none;
-  }
-
-  .scan-history-backdrop-one {
-    top: -7px;
-    opacity: 0.5;
-    z-index: -1;
-  }
-
-  .scan-history-backdrop-two {
-    top: -14px;
-    left: 32px;
-    right: 32px;
-    opacity: 0.22;
-    z-index: -2;
-  }
-
-  .scan-history-card {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    min-height: 76px;
-    padding: 12px 14px;
-    overflow: hidden;
-    border-radius: 24px;
-    color: #fff;
-    background: linear-gradient(145deg, rgba(25, 18, 10, 0.92), rgba(5, 5, 5, 0.96));
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
-    border-right: 1px solid rgba(0, 0, 0, 0.2);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.4);
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-  }
-
-  .scan-history-card.is-scanned {
-    background: linear-gradient(145deg, rgba(10, 24, 16, 0.86), rgba(5, 5, 5, 0.96));
-  }
-
-  .scan-history-card-glow {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-  }
-
-  .scan-history-card.is-scanned .scan-history-card-glow {
-    background: radial-gradient(circle at 100% 0%, rgba(0, 255, 148, 0.12), transparent 58%);
-  }
-
-  .scan-history-card.is-rejected .scan-history-card-glow {
-    background: radial-gradient(circle at 100% 0%, rgba(255, 59, 48, 0.12), transparent 58%);
-  }
-
-  .scan-history-status-icon {
-    position: relative;
-    z-index: 1;
-    width: 36px;
-    height: 36px;
-    flex: 0 0 auto;
-    display: grid;
-    place-items: center;
-    border-radius: 999px;
-  }
-
-  .scan-history-status-icon svg {
-    width: 20px;
-    height: 20px;
-  }
-
-  .scan-history-card.is-scanned .scan-history-status-icon {
-    color: #00ff94;
-    background: rgba(0, 255, 148, 0.11);
-  }
-
-  .scan-history-card.is-rejected .scan-history-status-icon {
-    color: #ff3b30;
-    background: rgba(255, 59, 48, 0.12);
-  }
-
-  .scan-history-copy {
-    position: relative;
-    z-index: 1;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .scan-history-title-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 6px;
-  }
-
-  .scan-history-title-row strong {
-    min-width: 0;
-    color: #fff;
-    font-size: 15px;
-    line-height: 1.15;
-    font-weight: 800;
-    letter-spacing: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .scan-history-title-row code {
-    flex: 0 0 auto;
-    color: rgba(0, 255, 148, 0.82);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 11px;
-  }
-
-  .scan-history-card.is-rejected .scan-history-title-row code {
-    color: rgba(255, 59, 48, 0.84);
-  }
-
-  .scan-history-meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  .scan-history-meta small {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 11px;
-    line-height: 1.35;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .scan-history-meta svg {
-    width: 14px;
-    height: 14px;
-    flex: 0 0 auto;
-  }
-
-  .scan-actions {
-    position: fixed;
-    left: 50%;
-    bottom: 0;
-    z-index: 6;
-    width: min(100%, 520px);
-    transform: translateX(-50%);
-    padding: 46px 18px 24px;
-    background: linear-gradient(0deg, #0b0f10 0%, rgba(11, 15, 16, 0.94) 58%, transparent 100%);
-  }
-
-  .scan-action-group {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    padding: 8px;
-    border-radius: 32px;
-    margin-bottom: 18px;
-  }
-
-  .scan-action-group button {
-    min-height: 76px;
-    border: 0;
-    border-radius: 24px;
-    color: #fff;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    font-size: 14px;
-    font-weight: 800;
-    letter-spacing: 0;
-    transition: transform 180ms ease, background 180ms ease;
-  }
-
-  .scan-action-group button:active,
-  .scan-bottom-nav button:active {
-    transform: scale(0.97);
-  }
-
-  .scan-primary-action {
-    background: #007aff;
-    box-shadow: 0 0 24px rgba(0, 122, 255, 0.42);
-  }
-
-  .scan-secondary-action {
-    background: rgba(39, 42, 44, 0.72);
-    border: 1px solid rgba(255, 255, 255, 0.06) !important;
-  }
-
-  .scan-bottom-nav {
-    width: 100%;
-    height: 64px;
-    border-radius: 999px;
-    display: flex;
-    align-items: center;
-    justify-content: space-around;
-    padding: 8px;
-  }
-
-  .scan-bottom-nav button {
-    width: 48px;
-    height: 48px;
-    border: 0;
-    border-radius: 999px;
-    display: grid;
-    place-items: center;
-    color: #c1c6d7;
-    background: transparent;
-    transition: transform 180ms ease, background 180ms ease, color 180ms ease;
-  }
-
-  .scan-bottom-nav button.is-selected {
-    color: #080b0c;
-    background: #fff;
-    box-shadow: 0 0 22px rgba(255, 255, 255, 0.28);
-  }
-
-  .scan-modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 20;
-    display: flex;
-    align-items: flex-end;
-    background: rgba(0, 0, 0, 0.64);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-
-  .scan-modal {
-    width: min(100%, 520px);
-    margin: 0 auto;
-    padding: 10px 20px 28px;
-    border-radius: 28px 28px 0 0;
-    background: linear-gradient(180deg, rgba(25, 28, 30, 0.96), rgba(11, 15, 16, 0.98));
-  }
-
-  .scan-modal-handle {
-    width: 42px;
-    height: 4px;
-    margin: 0 auto 20px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.22);
-  }
-
-  .scan-modal h2 {
-    margin: 0 0 14px;
-    color: #fff;
-    font-size: 18px;
-    line-height: 1.35;
-    letter-spacing: 0;
-  }
-
-  .scan-modal input {
-    width: 100%;
-    height: 54px;
-    margin-bottom: 12px;
-    padding: 0 16px;
-    border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    outline: none;
-    color: #fff;
-    background: rgba(255, 255, 255, 0.06);
-  }
-
-  .scan-modal input:focus {
-    border-color: rgba(0, 122, 255, 0.82);
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.14);
-  }
-
-  .scan-modal button {
-    width: 100%;
-    height: 54px;
-    border: 0;
-    border-radius: 18px;
-    color: #fff;
-    background: #007aff;
-    font-weight: 800;
-    box-shadow: 0 0 24px rgba(0, 122, 255, 0.34);
-  }
-
-  @keyframes scan-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  @media (max-height: 760px) {
-    .scan-topbar {
-      height: 78px;
-      padding-top: 16px;
-    }
-
-    .scan-main {
-      padding-top: 86px;
-      padding-bottom: 214px;
-    }
-
-    .scan-hero {
-      padding-top: 10px;
-    }
-
-    .scan-hero p:not(.scan-kicker) {
-      margin-bottom: 24px;
-    }
-
-    .scan-orb {
-      width: 224px;
-      height: 224px;
-    }
-
-    .scan-target {
-      width: 108px;
-      height: 108px;
-      border-radius: 28px;
-    }
-
-    .corner-tl,
-    .corner-tr {
-      top: 34px;
-    }
-
-    .corner-br,
-    .corner-bl {
-      bottom: 34px;
-    }
-
-    .corner-tl,
-    .corner-bl {
-      left: 34px;
-    }
-
-    .corner-tr,
-    .corner-br {
-      right: 34px;
-    }
-
-    .scan-stack {
-      height: 130px;
-    }
-  }
-`
-
-function MenuIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
+    <div className={`sc-orb${isActive ? ' is-scanning' : ''}${isDetected ? ' is-detected' : ''}${isVerifying ? ' is-verifying' : ''}`}>
+      {/* Outer rings */}
+      <div className="sc-ring sc-ring-1" />
+      <div className="sc-ring sc-ring-2" />
+      {/* Pulse ring for detected state */}
+      {(isDetected || isVerifying) && (
+        <motion.div
+          className={`sc-pulse-ring${isVerifying ? ' sc-pulse-ring-verify' : ''}`}
+          initial={{ scale: 0.8, opacity: 0.8 }}
+          animate={{ scale: 1.15, opacity: 0 }}
+          transition={{ duration: 0.9, repeat: Infinity, ease: 'easeOut' }}
+        />
+      )}
+
+      {/* Inner target */}
+      <div className="sc-target">
+        <div className="sc-target-glow" />
+        <AnimatePresence mode="wait">
+          {isVerifying ? (
+            <motion.div
+              key="verify-icon"
+              className="sc-target-icon"
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.6, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              <SpinnerIcon />
+            </motion.div>
+          ) : isDetected ? (
+            <motion.div
+              key="detected-icon"
+              className="sc-target-icon is-detected"
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.5, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 16 }}
+            >
+              <DetectedCheckIcon />
+            </motion.div>
+          ) : isActive ? (
+            <motion.div
+              key="scan-icon"
+              className="sc-target-icon"
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              <QrIcon />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="ticket-icon"
+              className="sc-target-icon"
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.3 }}
+            >
+              <TicketIcon />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Viewfinder corners — shown when camera active */}
+      {isActive && (
+        <>
+          <motion.div
+            className="sc-corner sc-corner-tl"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}
+          />
+          <motion.div
+            className="sc-corner sc-corner-tr"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, delay: 0.05 }}
+          />
+          <motion.div
+            className="sc-corner sc-corner-br"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+          />
+          <motion.div
+            className="sc-corner sc-corner-bl"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
+          />
+          <motion.div
+            className="sc-scan-line"
+            animate={{ y: [-80, 80, -80] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </>
+      )}
+    </div>
   )
 }
 
-function SearchIcon() {
+// ─── NavButton ────────────────────────────────────────────────────────────────
+function NavButton({ id, label, active, onClick, icon }: {
+  id: string; label: string; active: boolean; onClick: () => void; icon: React.ReactNode
+}) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="m20 20-4.2-4.2M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
+    <button
+      id={id}
+      type="button"
+      className={`sc-nav-btn${active ? ' is-active' : ''}`}
+      onClick={onClick}
+      aria-label={label}
+    >
+      {active ? (
+        <motion.div
+          className="sc-nav-active-bg"
+          layoutId="sc-nav-active"
+          transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+        />
+      ) : null}
+      <span className="sc-nav-icon">{icon}</span>
+      <span className="sc-nav-label">{label}</span>
+    </button>
   )
 }
 
-function CloseIcon() {
+// ─── Empty State ──────────────────────────────────────────────────────────────
+function EmptyState({ type }: { type: 'approved' | 'rejected' }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
+    <motion.div
+      className="sc-empty-state"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+    >
+      <div className={`sc-empty-icon${type === 'approved' ? ' is-approved' : ' is-rejected'}`}>
+        {type === 'approved' ? <CheckCircleIcon /> : <CancelCircleIcon />}
+      </div>
+      <p className="sc-empty-title">
+        {type === 'approved' ? 'No approved tickets yet' : 'No rejected tickets yet'}
+      </p>
+      <p className="sc-empty-desc">
+        {type === 'approved' ? 'Approved scans will appear here.' : 'Rejected scans will appear here.'}
+      </p>
+    </motion.div>
   )
 }
 
-function LightIcon() {
+// ─── Icons ────────────────────────────────────────────────────────────────────
+function QrIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 2v2M12 20v2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M5.6 18.4l-1.4 1.4M19.8 4.2l-1.4 1.4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
+      <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
+      <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
+      <path d="M14 14h3v3M17 17h4M14 21h4v-3M14 17v1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   )
 }
-
-function TicketIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M4.5 8.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1.2a2.3 2.3 0 0 0 0 4.6v1.2a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-1.2a2.3 2.3 0 0 0 0-4.6V8.5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path d="M9 9h6M9 12h5M9 15h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function ScanIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M7 4H5a1 1 0 0 0-1 1v2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function KeyboardIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M5 7h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M7 11h.01M10 11h.01M13 11h.01M16 11h.01M7 14h.01M10 14h4M17 14h.01" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function HomeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="m4 11 8-7 8 7M6.5 10.5V20h11v-9.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
 function HistoryIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1358,7 +750,66 @@ function HistoryIcon() {
     </svg>
   )
 }
-
+function PersonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM5.5 20a6.5 6.5 0 0 1 13 0" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  )
+}
+function FlashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M13 2L4.5 13.5H11L10 22L19.5 10.5H13L13 2Z" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+function KeyboardIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 7h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M7 11h.01M10 11h.01M13 11h.01M16 11h.01M7 14h.01M10 14h4M17 14h.01" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+function TicketIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4.5 8.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1.2a2.3 2.3 0 0 0 0 4.6v1.2a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-1.2a2.3 2.3 0 0 0 0-4.6V8.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M9 9h6M9 12h5M9 15h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+function HomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="m4 11 8-7 8 7M6.5 10.5V20h11v-9.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+function CameraOffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M3 3l18 18M10.5 5H17l2 3h2a1 1 0 0 1 1 1v9M21 15l-4.17-4.17M12 17a4 4 0 0 1-3.83-5.17M7 7H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+function CheckCircleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.9" />
+      <path d="m8 12 2.5 2.5L16 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+function CancelCircleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.9" />
+      <path d="m8.5 8.5 7 7M15.5 8.5l-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
 function CheckIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1366,7 +817,6 @@ function CheckIcon() {
     </svg>
   )
 }
-
 function CancelIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1374,7 +824,6 @@ function CancelIcon() {
     </svg>
   )
 }
-
 function ClockIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -1383,20 +832,754 @@ function ClockIcon() {
     </svg>
   )
 }
-
-function PersonIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM5.5 20a6.5 6.5 0 0 1 13 0" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 function ErrorIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" width="22" height="22">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M12 8v5M12 16.5h.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
       <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.9" />
     </svg>
   )
 }
+function SpinnerIcon() {
+  return (
+    <motion.svg viewBox="0 0 24 24" fill="none" aria-hidden="true"
+      animate={{ rotate: 360 }}
+      transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
+    >
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" strokeDasharray="32 16" />
+    </motion.svg>
+  )
+}
+function DetectedCheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <motion.path
+        d="m6 12 4 4 8-8"
+        stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+      />
+    </svg>
+  )
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const styles = `
+  /* ── Shell ── */
+  .sc-shell {
+    position: relative;
+    min-height: 100dvh;
+    width: 100%;
+    overflow: hidden;
+    background: #0b0f10;
+    color: #e0e4ec;
+    font-family: 'Geist', Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+  .sc-shell *, .sc-shell button, .sc-shell input { box-sizing: border-box; font: inherit; }
+
+  /* ── Ambient ── */
+  .sc-ambient {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .sc-ambient-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(110px);
+    mix-blend-mode: screen;
+  }
+  .sc-ambient-orb-1 {
+    top: -12%;
+    left: -22%;
+    width: min(680px, 120vw);
+    height: min(680px, 120vw);
+    background: rgba(0, 122, 255, 0.28);
+  }
+  .sc-ambient-orb-2 {
+    bottom: 4%;
+    right: -28%;
+    width: min(520px, 90vw);
+    height: min(520px, 90vw);
+    background: rgba(2, 150, 210, 0.18);
+  }
+
+  /* ── Video ── */
+  .sc-video-feed {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transform: scale(1.03);
+    transition: opacity 280ms ease;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .sc-video-feed.is-active { opacity: 0.48; }
+  .sc-hidden-canvas { display: none; }
+
+  /* ── Tab content ── */
+  .sc-tab-content {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 520px);
+    margin: 0 auto;
+    min-height: 100dvh;
+    padding-bottom: 104px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Top bar ── */
+  .sc-topbar {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    width: min(100%, 520px);
+    height: 88px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 20px 12px;
+    background: linear-gradient(to bottom, rgba(11,15,16,0.9) 0%, transparent 100%);
+  }
+  .sc-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: #fff;
+    font-size: 19px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    text-shadow: 0 0 20px rgba(0,122,255,0.4);
+  }
+  .sc-topbar-btn {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: linear-gradient(135deg, rgba(255,255,255,0.09), rgba(255,255,255,0.02));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.1);
+    color: #e0e4ec;
+    display: grid;
+    place-items: center;
+    transition: transform 160ms ease, background 160ms ease, color 160ms ease;
+  }
+  .sc-topbar-btn svg { width: 20px; height: 20px; }
+  .sc-topbar-btn:hover { transform: translateY(-1px); }
+  .sc-topbar-btn:active { transform: scale(0.94); }
+  .sc-topbar-btn.is-active { background: #007aff; color: #fff; box-shadow: 0 0 22px rgba(0,122,255,0.5); }
+
+  /* ── Scanner main ── */
+  .sc-scanner-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 100px 20px 16px;
+    gap: 0;
+  }
+
+  /* ── Hero text ── */
+  .sc-hero-text {
+    text-align: center;
+    margin-bottom: 36px;
+    width: 100%;
+  }
+  .sc-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: #4fb0ff;
+    margin: 0 0 10px;
+  }
+  .sc-title {
+    margin: 0 0 8px;
+    color: #fff;
+    font-size: clamp(34px, 9vw, 46px);
+    line-height: 1.04;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    text-shadow: 0 0 22px rgba(0,122,255,0.38);
+  }
+  .sc-subtitle {
+    margin: 0;
+    color: #9aacbf;
+    font-size: 15px;
+    line-height: 1.55;
+    min-height: 24px;
+  }
+
+  /* ── Orb ── */
+  .sc-orb-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .sc-orb {
+    position: relative;
+    width: min(66vw, 260px);
+    height: min(66vw, 260px);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: rgba(0,0,0,0.44);
+    box-shadow:
+      inset 0 20px 38px rgba(0,0,0,0.6),
+      inset 0 1px 2px rgba(255,255,255,0.07),
+      0 1px 0 rgba(255,255,255,0.09);
+    transition: box-shadow 400ms ease;
+  }
+  .sc-orb.is-scanning {
+    box-shadow:
+      inset 0 0 0 1.5px rgba(0,122,255,0.28),
+      0 0 72px rgba(0,122,255,0.22);
+  }
+  .sc-orb.is-detected {
+    box-shadow:
+      inset 0 0 0 2px rgba(52,211,153,0.55),
+      0 0 88px rgba(52,211,153,0.28);
+  }
+  .sc-orb.is-verifying {
+    box-shadow:
+      inset 0 0 0 2px rgba(251,191,36,0.45),
+      0 0 80px rgba(251,191,36,0.2);
+  }
+
+  /* Rings */
+  .sc-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(0,122,255,0.2);
+    pointer-events: none;
+  }
+  .sc-ring-1 { inset: 0; animation: sc-spin 12s linear infinite; }
+  .sc-ring-2 { inset: 18px; border-color: rgba(79,176,255,0.12); animation: sc-spin 18s linear infinite reverse; }
+  @keyframes sc-spin { to { transform: rotate(360deg); } }
+
+  /* Pulse ring */
+  .sc-pulse-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid rgba(52,211,153,0.6);
+    pointer-events: none;
+  }
+  .sc-pulse-ring-verify { border-color: rgba(251,191,36,0.55); }
+
+  /* Target */
+  .sc-target {
+    position: relative;
+    width: 126px;
+    height: 126px;
+    border-radius: 30px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(255,255,255,0.09), rgba(255,255,255,0.02));
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 16px 44px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.1);
+    transition: border-color 400ms ease, box-shadow 400ms ease;
+  }
+  .sc-target-glow {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(circle at 50% 50%, rgba(0,122,255,0.2), transparent 65%);
+    transition: background 400ms ease;
+  }
+  .sc-orb.is-detected .sc-target-glow { background: radial-gradient(circle at 50% 50%, rgba(52,211,153,0.25), transparent 65%); }
+  .sc-orb.is-verifying .sc-target-glow { background: radial-gradient(circle at 50% 50%, rgba(251,191,36,0.22), transparent 65%); }
+
+  .sc-target-icon {
+    position: relative;
+    z-index: 1;
+    color: #28a3ff;
+    display: grid;
+    place-items: center;
+    width: 54px;
+    height: 54px;
+    filter: drop-shadow(0 0 14px rgba(0,122,255,0.7));
+  }
+  .sc-target-icon svg { width: 54px; height: 54px; }
+  .sc-target-icon.is-detected { color: #34d399; filter: drop-shadow(0 0 14px rgba(52,211,153,0.8)); }
+
+  /* Viewfinder corners */
+  .sc-corner {
+    position: absolute;
+    width: 34px;
+    height: 34px;
+    border-color: #45adff;
+    border-style: solid;
+    pointer-events: none;
+  }
+  .sc-corner-tl { top: 40px; left: 40px; border-width: 3px 0 0 3px; border-top-left-radius: 8px; }
+  .sc-corner-tr { top: 40px; right: 40px; border-width: 3px 3px 0 0; border-top-right-radius: 8px; }
+  .sc-corner-br { right: 40px; bottom: 40px; border-width: 0 3px 3px 0; border-bottom-right-radius: 8px; }
+  .sc-corner-bl { left: 40px; bottom: 40px; border-width: 0 0 3px 3px; border-bottom-left-radius: 8px; }
+
+  /* Scan line */
+  .sc-scan-line {
+    position: absolute;
+    left: 46px;
+    right: 46px;
+    top: 50%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #35aaff 30%, #35aaff 70%, transparent);
+    box-shadow: 0 0 16px rgba(0,122,255,0.9), 0 0 32px rgba(0,122,255,0.4);
+    pointer-events: none;
+  }
+
+  /* ── Camera error card ── */
+  .sc-error-card {
+    margin-top: 24px;
+    width: 100%;
+    background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01));
+    border: 1px solid rgba(255,255,255,0.09);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 22px;
+    padding: 18px 18px 18px 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.3);
+  }
+  .sc-error-icon {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 auto;
+    border-radius: 14px;
+    background: rgba(239,68,68,0.12);
+    color: #f87171;
+    display: grid;
+    place-items: center;
+  }
+  .sc-error-icon svg { width: 22px; height: 22px; }
+  .sc-error-body { flex: 1; min-width: 0; }
+  .sc-error-title { font-size: 14px; font-weight: 700; color: #fff; margin: 0 0 4px; }
+  .sc-error-desc { font-size: 12px; color: #9aacbf; margin: 0; line-height: 1.5; }
+  .sc-error-retry {
+    flex: 0 0 auto;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(0,122,255,0.4);
+    background: rgba(0,122,255,0.14);
+    color: #4fb0ff;
+    font-size: 12px;
+    font-weight: 700;
+    transition: background 160ms ease;
+  }
+  .sc-error-retry:hover { background: rgba(0,122,255,0.22); }
+  .sc-error-retry:active { transform: scale(0.95); }
+
+  /* ── Footer (scanner actions) ── */
+  .sc-footer {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 8;
+    width: min(100%, 520px);
+    padding: 20px 18px 108px;
+    background: linear-gradient(0deg, rgba(11,15,16,0.97) 0%, rgba(11,15,16,0.88) 55%, transparent 100%);
+  }
+  .sc-action-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 28px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.35), inset 0 1px 1px rgba(255,255,255,0.1);
+  }
+  .sc-action-primary,
+  .sc-action-secondary {
+    height: 72px;
+    border-radius: 20px;
+    border: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    color: #fff;
+    transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
+  }
+  .sc-action-primary svg, .sc-action-secondary svg { width: 22px; height: 22px; }
+  .sc-action-primary:active, .sc-action-secondary:active { transform: scale(0.96); }
+  .sc-action-primary {
+    background: #007aff;
+    box-shadow: 0 0 24px rgba(0,122,255,0.42);
+  }
+  .sc-action-primary:hover { background: #0070f0; box-shadow: 0 0 32px rgba(0,122,255,0.5); }
+  .sc-action-secondary {
+    background: rgba(40,44,48,0.7);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .sc-action-secondary:hover { background: rgba(50,55,60,0.7); }
+
+  /* ── Bottom nav ── */
+  .sc-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    width: min(100%, 520px);
+    padding: 0 16px 20px;
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+  .sc-nav-pill {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.1);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    box-shadow: 0 18px 48px rgba(0,0,0,0.45), 0 2px 0 rgba(255,255,255,0.07) inset;
+    border-radius: 999px;
+    padding: 6px;
+    gap: 4px;
+  }
+  .sc-nav-btn {
+    position: relative;
+    flex: 1;
+    height: 52px;
+    border-radius: 999px;
+    border: 0;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: rgba(193,198,215,0.7);
+    transition: color 200ms ease;
+  }
+  .sc-nav-btn:active { transform: scale(0.93); }
+  .sc-nav-btn.is-active { color: #fff; }
+  .sc-nav-active-bg {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.12);
+    box-shadow: 0 0 18px rgba(0,122,255,0.25);
+  }
+  .sc-nav-icon { position: relative; z-index: 1; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+  .sc-nav-icon svg { width: 22px; height: 22px; }
+  .sc-nav-label { position: relative; z-index: 1; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1; }
+
+  /* ── History tab ── */
+  .sc-history-tab { overflow-y: auto; }
+  .sc-page-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: linear-gradient(to bottom, rgba(11,15,16,0.96) 60%, transparent);
+    padding: 56px 20px 12px;
+  }
+  .sc-page-title {
+    font-size: 34px;
+    font-weight: 800;
+    color: #fff;
+    margin: 0 0 4px;
+    letter-spacing: -0.02em;
+  }
+  .sc-page-subtitle { font-size: 13px; color: rgba(255,255,255,0.5); margin: 0; }
+
+  .sc-hist-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 0 20px;
+    margin-bottom: 16px;
+  }
+  .sc-hist-filter-btn {
+    height: 48px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 8px 26px rgba(0,0,0,0.25), inset 0 1px 1px rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.5);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    transition: transform 160ms ease, background 200ms ease, color 200ms ease, border-color 200ms ease;
+  }
+  .sc-hist-filter-btn:active { transform: scale(0.96); }
+  .sc-hist-filter-btn svg { width: 18px; height: 18px; }
+  .sc-hist-filter-btn.is-approved {
+    color: #34d399;
+    border-color: rgba(52,211,153,0.35);
+    background: linear-gradient(135deg, rgba(52,211,153,0.12), rgba(0,0,0,0.3));
+    box-shadow: 0 8px 28px rgba(0,0,0,0.28), inset 0 0 14px rgba(52,211,153,0.1);
+  }
+  .sc-hist-filter-btn.is-rejected {
+    color: #f87171;
+    border-color: rgba(239,68,68,0.32);
+    background: linear-gradient(135deg, rgba(239,68,68,0.1), rgba(0,0,0,0.3));
+    box-shadow: 0 8px 28px rgba(0,0,0,0.28), inset 0 0 14px rgba(239,68,68,0.08);
+  }
+
+  .sc-hist-list-wrap { flex: 1; padding: 0 20px 16px; overflow: visible; }
+  .sc-hist-list { display: flex; flex-direction: column; gap: 10px; min-height: 120px; }
+
+  .sc-hist-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 13px 15px;
+    border-radius: 22px;
+    overflow: hidden;
+    background: linear-gradient(145deg, rgba(25,18,10,0.9), rgba(5,5,5,0.95));
+    border-top: 1px solid rgba(255,255,255,0.13);
+    border-left: 1px solid rgba(255,255,255,0.08);
+    border-right: 1px solid rgba(0,0,0,0.2);
+    border-bottom: 1px solid rgba(0,0,0,0.35);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+  .sc-hist-card-glow { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+  .sc-hist-card-glow-approved { background: radial-gradient(circle at 95% 10%, rgba(52,211,153,0.14), transparent 55%); }
+  .sc-hist-card-glow-rejected { background: radial-gradient(circle at 95% 10%, rgba(239,68,68,0.13), transparent 55%); }
+
+  .sc-hist-status-icon {
+    position: relative;
+    z-index: 1;
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+  }
+  .sc-hist-status-icon svg { width: 18px; height: 18px; }
+  .sc-hist-status-icon.is-approved { color: #34d399; background: rgba(52,211,153,0.12); }
+  .sc-hist-status-icon.is-rejected { color: #f87171; background: rgba(239,68,68,0.12); }
+
+  .sc-hist-card-body { position: relative; z-index: 1; flex: 1; min-width: 0; }
+  .sc-hist-card-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+  .sc-hist-card-title { font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sc-hist-card-id { flex: 0 0 auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; }
+  .sc-hist-card-id.is-approved { color: rgba(52,211,153,0.8); }
+  .sc-hist-card-id.is-rejected { color: rgba(239,68,68,0.8); }
+  .sc-hist-card-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sc-hist-card-meta > span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: rgba(255,255,255,0.45);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+  }
+  .sc-hist-card-meta svg { width: 13px; height: 13px; flex: 0 0 auto; }
+
+  /* ── Empty state ── */
+  .sc-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+    text-align: center;
+    gap: 12px;
+  }
+  .sc-empty-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    margin-bottom: 4px;
+  }
+  .sc-empty-icon svg { width: 28px; height: 28px; }
+  .sc-empty-icon.is-approved { background: rgba(52,211,153,0.1); color: #34d399; }
+  .sc-empty-icon.is-rejected { background: rgba(239,68,68,0.1); color: #f87171; }
+  .sc-empty-title { font-size: 16px; font-weight: 700; color: #fff; margin: 0; }
+  .sc-empty-desc { font-size: 13px; color: rgba(255,255,255,0.45); margin: 0; }
+
+  /* ── Profile tab ── */
+  .sc-profile-tab { align-items: stretch; }
+  .sc-profile-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 20px 32px;
+    gap: 20px;
+  }
+  .sc-profile-avatar-wrap { position: relative; width: 88px; height: 88px; }
+  .sc-profile-avatar {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(0,122,255,0.25), rgba(2,150,210,0.12));
+    border: 1.5px solid rgba(0,122,255,0.35);
+    display: grid;
+    place-items: center;
+    color: #4fb0ff;
+    position: relative;
+    z-index: 1;
+  }
+  .sc-profile-avatar svg { width: 40px; height: 40px; }
+  .sc-profile-avatar-ring {
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,122,255,0.2);
+    animation: sc-spin 18s linear infinite;
+  }
+  .sc-profile-info { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .sc-profile-name { font-size: 22px; font-weight: 800; color: #fff; margin: 0; letter-spacing: -0.02em; text-transform: capitalize; }
+  .sc-profile-badge { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #4fb0ff; background: rgba(0,122,255,0.12); border: 1px solid rgba(0,122,255,0.25); padding: 4px 12px; border-radius: 999px; }
+
+  .sc-profile-stats {
+    width: 100%;
+    background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 24px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.08);
+  }
+  .sc-stat-card { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .sc-stat-value { font-size: 28px; font-weight: 800; color: #fff; line-height: 1; }
+  .sc-stat-value.sc-stat-approved { color: #34d399; }
+  .sc-stat-value.sc-stat-rejected { color: #f87171; }
+  .sc-stat-label { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.45); letter-spacing: 0.08em; text-transform: uppercase; }
+  .sc-stat-divider { width: 1px; height: 42px; background: rgba(255,255,255,0.1); }
+
+  .sc-profile-exit {
+    width: 100%;
+    height: 56px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    color: #c1c6d7;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: background 160ms ease, transform 160ms ease;
+    margin-top: 4px;
+  }
+  .sc-profile-exit svg { width: 20px; height: 20px; }
+  .sc-profile-exit:hover { background: rgba(255,255,255,0.1); }
+  .sc-profile-exit:active { transform: scale(0.97); }
+
+  /* ── Modal ── */
+  .sc-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: flex-end;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .sc-modal {
+    width: min(100%, 520px);
+    margin: 0 auto;
+    padding: 10px 20px 30px;
+    border-radius: 28px 28px 0 0;
+    background: linear-gradient(180deg, rgba(28,32,34,0.97), rgba(11,15,16,0.99));
+    border-top: 1px solid rgba(255,255,255,0.1);
+    border-left: 1px solid rgba(255,255,255,0.07);
+    border-right: 1px solid rgba(255,255,255,0.07);
+    box-shadow: 0 -24px 60px rgba(0,0,0,0.5);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+  }
+  .sc-modal-handle { width: 42px; height: 4px; margin: 0 auto 22px; border-radius: 999px; background: rgba(255,255,255,0.2); }
+  .sc-modal h2 { margin: 0 0 14px; color: #fff; font-size: 20px; font-weight: 800; }
+  .sc-modal input {
+    display: block;
+    width: 100%;
+    height: 54px;
+    margin-bottom: 12px;
+    padding: 0 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.1);
+    outline: none;
+    color: #fff;
+    background: rgba(255,255,255,0.06);
+    font-size: 15px;
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+  }
+  .sc-modal input:focus { border-color: rgba(0,122,255,0.75); box-shadow: 0 0 0 3px rgba(0,122,255,0.14); }
+  .sc-modal button {
+    display: block;
+    width: 100%;
+    height: 54px;
+    border: 0;
+    border-radius: 18px;
+    color: #fff;
+    background: #007aff;
+    font-size: 15px;
+    font-weight: 800;
+    box-shadow: 0 0 24px rgba(0,122,255,0.35);
+    transition: background 160ms ease, transform 160ms ease;
+  }
+  .sc-modal button:hover { background: #0070f0; }
+  .sc-modal button:active { transform: scale(0.97); }
+
+  /* ── Responsive ── */
+  @media (max-height: 740px) {
+    .sc-scanner-main { padding-top: 88px; }
+    .sc-hero-text { margin-bottom: 24px; }
+    .sc-title { font-size: 30px; }
+    .sc-orb { width: min(58vw, 220px); height: min(58vw, 220px); }
+    .sc-target { width: 108px; height: 108px; border-radius: 26px; }
+    .sc-corner-tl, .sc-corner-tr { top: 34px; }
+    .sc-corner-br, .sc-corner-bl { bottom: 34px; }
+    .sc-corner-tl, .sc-corner-bl { left: 34px; }
+    .sc-corner-tr, .sc-corner-br { right: 34px; }
+  }
+  @media (max-width: 360px) {
+    .sc-action-primary, .sc-action-secondary { height: 64px; font-size: 12px; }
+    .sc-nav-label { font-size: 9px; }
+  }
+`
