@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import LittixLogo from '../components/LittixLogo'
 import AnimatedCounter from '../components/AnimatedCounter'
@@ -21,6 +21,31 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
   const [activeTab, setActiveTab] = useState<'scanned' | 'failed'>('scanned')
   const [search, setSearch] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
+  const [databaseStats, setDatabaseStats] = useState({ accepted: 0, failed: 0 })
+
+  // These are persistent, all-scanner totals. Refresh after every scan through
+  // polling so the panel stays current even when another device is scanning.
+  useEffect(() => {
+    let active = true
+    const loadStats = async () => {
+      try {
+        const res = await fetch('/api/scan-stats')
+        const data = await res.json()
+        if (active && res.ok && data.success) {
+          setDatabaseStats({ accepted: data.accepted || 0, failed: data.failed || 0 })
+        }
+      } catch {
+        // Keep the last known totals while a scanner is temporarily offline.
+      }
+    }
+
+    loadStats()
+    const interval = window.setInterval(loadStats, 3000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [])
 
   const bg = dark ? 'bg-[#0D0D0D]' : 'bg-[#F9F9FB]'
   const navBg = dark ? 'bg-[#0D0D0D] border-[#1E1E1E]' : 'bg-[#F9F9FB] border-[#EBEBEB]'
@@ -113,7 +138,7 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
           style={{ boxShadow: dark ? 'none' : '0 1px 8px rgba(0,0,0,0.04)' }}
         >
           <p className="text-2xl font-black text-[#22C55E]">
-            <AnimatedCounter value={scannedTickets.length} />
+            <AnimatedCounter value={databaseStats.accepted} />
           </p>
           <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Total Scanned</p>
         </div>
@@ -122,9 +147,9 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
           style={{ boxShadow: dark ? 'none' : '0 1px 8px rgba(0,0,0,0.04)' }}
         >
           <p className="text-2xl font-black text-[#EF4444]">
-            <AnimatedCounter value={rejectedScans.length} />
+            <AnimatedCounter value={databaseStats.failed} />
           </p>
-          <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Failed (Session)</p>
+          <p className={`text-[11px] font-semibold mt-0.5 ${subText}`}>Failed Scans</p>
         </div>
       </div>
 

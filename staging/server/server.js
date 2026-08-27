@@ -13,6 +13,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Vercel may invoke an API route before the module-level MongoDB connection
+// has completed. Awaiting the shared connection here avoids Mongoose's
+// "buffering timed out" failure on cold starts.
+app.use('/api', async (req, res, next) => {
+    if (!db.hasConfiguredMongo) return next();
+
+    try {
+        await db.connectDb();
+        next();
+    } catch (err) {
+        console.error('[Database unavailable]', err.message);
+        res.status(503).json({
+            success: false,
+            message: 'Database connection is temporarily unavailable. Please try again shortly.'
+        });
+    }
+});
+
 // ==================== EVENT & PRICING ====================
 const EVENT = { name: EVENT_NAME };
 const PRICING = {
@@ -1002,6 +1020,28 @@ app.post('/api/admin/cancel-ticket', async (req, res) => {
 });
 
 // ==================== 7. SCAN TICKET ====================
+// Scanner dashboard totals. Accepted tickets are derived from the durable sale
+// state; failed attempts come from ScanLog so duplicate, cancelled, and
+// invalid scans survive a refresh, logout, or a different scanner device.
+app.get('/api/scan-stats', async (req, res) => {
+    try {
+        const [sales, scanStats] = await Promise.all([
+            db.getAll(),
+            db.getScanStats(null, new Date(0))
+        ]);
+        const accepted = sales.filter(s => s.status === 'scanned').length;
+        res.json({
+            success: true,
+            accepted,
+            failed: scanStats.declined,
+            failedByReason: scanStats.declinedByReason
+        });
+    } catch (err) {
+        console.error('[scan-stats] Error:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 app.post('/api/scan-ticket', async (req, res) => {
     const { ticketId, scannedBy } = req.body || {};
     if (!ticketId) {
@@ -1011,10 +1051,24 @@ app.post('/api/scan-ticket', async (req, res) => {
     try {
         const sale = await db.getByTicketId(ticketId);
         if (!sale) {
+            await db.createScanLog({
+                ticketId,
+                result: 'invalid',
+                scannedBy: scannedBy || 'Gate Staff',
+                ip: req.ip || req.socket?.remoteAddress || 'unknown'
+            });
             return res.json({ result: 'not_found' });
         }
 
         if (sale.status === 'cancelled') {
+            await db.createScanLog({
+                ticketId: sale.ticketId,
+                result: 'cancelled',
+                scannedBy: scannedBy || 'Gate Staff',
+                ip: req.ip || req.socket?.remoteAddress || 'unknown',
+                companyId: sale.companyId || 'littlane',
+                event: sale.event
+            });
             return res.json({
                 result: 'rejected',
                 ticket: {
@@ -1035,6 +1089,14 @@ app.post('/api/scan-ticket', async (req, res) => {
         }
 
         if (sale.status === 'scanned' || sale.scannedAt) {
+            await db.createScanLog({
+                ticketId: sale.ticketId,
+                result: 'duplicate',
+                scannedBy: scannedBy || 'Gate Staff',
+                ip: req.ip || req.socket?.remoteAddress || 'unknown',
+                companyId: sale.companyId || 'littlane',
+                event: sale.event
+            });
             return res.json({
                 result: 'rejected',
                 ticket: {
@@ -1068,6 +1130,15 @@ app.post('/api/scan-ticket', async (req, res) => {
             status: 'scanned',
             scannedBy: scannedBy || 'Gate Staff',
             scannedAt: scannedAtStr
+        });
+
+        await db.createScanLog({
+            ticketId: sale.ticketId,
+            result: 'accepted',
+            scannedBy: scannedBy || 'Gate Staff',
+            ip: req.ip || req.socket?.remoteAddress || 'unknown',
+            companyId: sale.companyId || 'littlane',
+            event: sale.event
         });
 
         const updatedSale = await db.getByOrderId(sale.orderId);
