@@ -49,7 +49,7 @@ type TorchTrack = MediaStreamTrack & {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, rejectedScans = [], scannedTickets = [], sellerId }: Props) {
+export default function QRScanner({ onBack, onScan, premium = false, scanFeedback, onScanNext, rejectedScans = [], scannedTickets = [], sellerId }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -78,6 +78,14 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
     if (videoRef.current) videoRef.current.srcObject = null
   }, [])
 
+  const finishScan = useCallback((raw: string) => {
+    stopCamera()
+    setPhase('verifying')
+    Promise.resolve(onScan(raw)).catch(() => {
+      setPhase('idle')
+    })
+  }, [onScan, stopCamera])
+
   const scanFrame = useCallback(() => {
     const video = videoRef.current
     const canvas = canvasRef.current
@@ -103,10 +111,7 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
           phaseTimerRef.current = window.setTimeout(() => {
             setPhase('verifying')
             phaseTimerRef.current = window.setTimeout(() => {
-              stopCamera()
-              Promise.resolve(onScan(code.data)).catch(() => {
-                setPhase('idle')
-              })
+              finishScan(code.data)
             }, 600)
           }, 500)
           return
@@ -114,7 +119,7 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
       }
     }
     if (scanningRef.current) scanTimerRef.current = window.setTimeout(scanFrame, 280)
-  }, [onScan, stopCamera])
+  }, [finishScan])
 
   const openCamera = useCallback(async () => {
     setCameraError(null)
@@ -124,7 +129,7 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('camera_unavailable')
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: 'environment', width: { ideal: 720 }, height: { ideal: 720 } },
       })
       streamRef.current = stream
       scanningRef.current = true
@@ -173,12 +178,9 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
     const v = manualId.trim()
     if (v) {
       stopCamera()
-      setPhase('verifying')
       setManualId('')
       setManualOpen(false)
-      Promise.resolve(onScan(v)).catch(() => {
-        setPhase('idle')
-      })
+      finishScan(v)
     }
   }
 
@@ -575,7 +577,40 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
         </div>
       </nav>
 
-      {/* ── MANUAL ENTRY MODAL ── */}
+      <AnimatePresence>
+        {phase === 'verifying' && !scanFeedback && (
+          <motion.div
+            className="fixed inset-0 flex items-center justify-center px-6"
+            style={{ zIndex: 65, background: 'radial-gradient(circle at 50% 35%, rgba(0,122,255,0.26), rgba(0,0,0,0.78) 58%, rgba(0,0,0,0.92) 100%)' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="w-full max-w-[360px] rounded-[32px] border border-white/10 bg-white/[0.07] p-7 text-center backdrop-blur-2xl shadow-2xl"
+              initial={{ y: 16, scale: 0.96 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: 12, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+            >
+              <motion.div
+                className="mx-auto mb-5 h-24 w-24 rounded-full grid place-items-center text-[#4fb0ff]"
+                style={{ background: 'radial-gradient(circle, rgba(79,176,255,0.22), rgba(79,176,255,0.08) 58%, transparent 72%)', boxShadow: '0 0 48px rgba(79,176,255,0.34)' }}
+                animate={{ scale: [1, 1.06, 1] }}
+                transition={{ duration: 1.25, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <div className="h-12 w-12">
+                  <SpinnerIcon />
+                </div>
+              </motion.div>
+              <p className="text-white text-2xl font-black leading-tight">Verifying Ticket</p>
+              <p className="text-white/55 text-sm leading-snug mt-2">Checking ticket details and scan status</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── SCAN RESULT MODAL ── */}
       <AnimatePresence>
         {scanFeedback && (
           <motion.div
