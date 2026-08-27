@@ -979,17 +979,20 @@ function RefinedScanResult({
               <motion.div className="flex flex-col gap-3" variants={containerVariants} initial="hidden" animate="show">
                 
                 {/* Attendee Row */}
-                <motion.div variants={cardVariants} className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 backdrop-blur-xl">
-                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white/8">
-                    <span className="material-symbols-outlined text-[20px] text-[#C8C6C5]">person</span>
+                <motion.div 
+                  variants={cardVariants} 
+                  className="flex items-center gap-4 rounded-full border border-white/12 bg-white/[0.06] px-6 py-3 shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                >
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gradient-to-tr from-white/10 to-white/5 border border-white/15 shadow-inner">
+                    <span className="material-symbols-outlined text-[22px] text-[#E4BEBA]">person</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Attendee</p>
-                    <p className="truncate text-[16px] font-bold text-[#E5E2E1]">{attendee}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Attendee</p>
+                    <p className="truncate text-[16px] font-extrabold text-[#E5E2E1]">{attendee}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Created</p>
-                    <p className="max-w-[100px] truncate text-[13px] font-medium text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Created</p>
+                    <p className="max-w-[100px] truncate text-[13px] font-bold text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</p>
                   </div>
                 </motion.div>
 
@@ -1002,9 +1005,12 @@ function RefinedScanResult({
                 </motion.div>
 
                 {/* Event */}
-                <motion.div variants={cardVariants} className="rounded-2xl border-l-4 border-l-[#05E777] border border-white/8 bg-white/5 px-4 py-3 backdrop-blur-xl">
-                  <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Event</p>
-                  <p className="truncate text-[15px] font-semibold text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</p>
+                <motion.div 
+                  variants={cardVariants} 
+                  className="rounded-full border border-white/12 bg-white/[0.06] px-6 py-3.5 shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                >
+                  <p className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Event</p>
+                  <p className="truncate text-[15px] font-extrabold text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</p>
                 </motion.div>
 
                 {/* More Details */}
@@ -1061,28 +1067,36 @@ function RefinedScanResult({
               <motion.div className="flex flex-col gap-3" variants={containerVariants} initial="hidden" animate="show">
                 
                 {/* Attendee Row */}
-                <motion.div variants={cardVariants} className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 backdrop-blur-xl">
-                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#3A1010] border border-[#FF4D4D]/20">
+                <motion.div 
+                  variants={cardVariants} 
+                  className="flex items-center gap-4 rounded-full border border-white/12 bg-white/[0.06] px-6 py-3 shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                >
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#3A1010] border border-[#FF4D4D]/20 shadow-inner">
                     <span className="text-[15px] font-bold text-[#E4BEBA]">{attendeeInitials}</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Attendee</p>
-                    <p className="truncate text-[16px] font-bold text-[#E5E2E1]">{attendee}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Attendee</p>
+                    <p className="truncate text-[16px] font-extrabold text-[#E5E2E1]">{attendee}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Created</p>
-                    <p className="max-w-[100px] truncate text-[13px] font-medium text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Created</p>
+                    <p className="max-w-[100px] truncate text-[13px] font-bold text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</p>
                   </div>
                 </motion.div>
 
                 {/* Reason Banner */}
-                <motion.div variants={cardVariants} className="rounded-2xl border border-[#FF4D4D]/25 border-l-4 border-l-[#FF4D4D] bg-[#FF4D4D]/8 px-4 py-3 backdrop-blur-xl">
-                  <div className="flex items-start gap-3">
-                    <span className="material-symbols-outlined mt-0.5 text-[20px] text-[#FF4D4D]">warning</span>
+                <motion.div 
+                  variants={cardVariants} 
+                  className="relative overflow-hidden rounded-[28px] border border-[#FF4D4D]/25 bg-gradient-to-r from-[#FF4D4D]/12 to-[#FF4D4D]/6 px-6 py-4 shadow-[0_8px_32px_0_rgba(255,77,77,0.15),inset_0_1px_0_0_rgba(255,255,255,0.1)] backdrop-blur-2xl"
+                >
+                  <div className="flex items-start gap-3.5">
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#FF4D4D]/20 border border-[#FF4D4D]/35">
+                      <span className="material-symbols-outlined text-[18px] text-[#FF4D4D]">warning</span>
+                    </div>
                     <div className="min-w-0">
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#FF4D4D]/80">Reason</p>
-                      <p className="text-[15px] font-bold text-[#E5E2E1]">{rejectedReason}</p>
-                      <p className="mt-0.5 text-[12px] leading-relaxed text-[#C8C6C5]/80">{scanFeedback.message} · Do not allow entry.</p>
+                      <p className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#FF4D4D]">Reason</p>
+                      <p className="text-[15px] font-extrabold text-[#E5E2E1] leading-tight">{rejectedReason}</p>
+                      <p className="mt-1 text-[12px] leading-relaxed text-[#C8C6C5]/90">{scanFeedback.message} · Do not allow entry.</p>
                     </div>
                   </div>
                 </motion.div>
@@ -1096,9 +1110,12 @@ function RefinedScanResult({
                 </motion.div>
 
                 {/* Event */}
-                <motion.div variants={cardVariants} className="rounded-2xl border-l-4 border-l-[#FF4D4D]/60 border border-white/8 bg-white/5 px-4 py-3 backdrop-blur-xl">
-                  <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Event</p>
-                  <p className="truncate text-[15px] font-semibold text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</p>
+                <motion.div 
+                  variants={cardVariants} 
+                  className="rounded-full border border-white/12 bg-white/[0.06] px-6 py-3.5 shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                >
+                  <p className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Event</p>
+                  <p className="truncate text-[15px] font-extrabold text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</p>
                 </motion.div>
 
                 {/* More Details */}
@@ -1125,9 +1142,13 @@ function RefinedScanResult({
       >
         <motion.button
           onClick={scanNext}
-          whileHover={{ scale: 1.02 }}
+          whileHover={{ scale: 1.02, boxShadow: approved ? '0 8px 30px rgba(5,231,119,0.5)' : '0 8px 30px rgba(255,77,77,0.5)' }}
           whileTap={{ scale: 0.95 }}
-          className={`flex h-14 w-full max-w-[520px] items-center justify-center gap-3 rounded-2xl text-[14px] font-black uppercase tracking-[0.15em] shadow-lg transition-all ${approved ? 'bg-[#05E777] text-[#003D1A] shadow-[0_4px_20px_rgba(5,231,119,0.45)]' : 'bg-[#FF4D4D] text-white shadow-[0_4px_20px_rgba(255,77,77,0.55)]'}`}
+          className={`flex h-14 w-full max-w-[520px] items-center justify-center gap-3 rounded-full text-[14px] font-black uppercase tracking-[0.18em] shadow-lg transition-all ${
+            approved 
+              ? 'bg-[#05E777] text-[#003D1A] shadow-[0_8px_32px_0_rgba(5,231,119,0.3)]' 
+              : 'bg-[#FF4D4D] text-white shadow-[0_8px_32px_0_rgba(255,77,77,0.45)]'
+          }`}
           type="button"
         >
           <span className="material-symbols-outlined text-[20px]">{approved ? 'barcode_scanner' : 'document_scanner'}</span>
@@ -1136,7 +1157,7 @@ function RefinedScanResult({
       </div>
 
       {/* ── BOTTOM NAV ── */}
-      <nav className="fixed bottom-0 left-0 z-[72] flex h-[90px] w-full items-center justify-around rounded-t-3xl border-t border-white/10 bg-[#0d0d0d]/90 px-5 pb-[env(safe-area-inset-bottom)] shadow-2xl backdrop-blur-2xl">
+      <nav className="fixed bottom-0 left-0 z-[72] flex h-[90px] w-full items-center justify-around rounded-t-[36px] border-t border-white/10 bg-[#0d0d0d]/90 px-5 pb-[env(safe-area-inset-bottom)] shadow-2xl backdrop-blur-2xl">
         {[
           ['qr_code_scanner', 'Scanner'],
           ['history', 'History'],
@@ -1174,13 +1195,13 @@ function CompactCard({
   big?: boolean
 }) {
   return (
-    <div className="rounded-2xl border border-white/8 bg-white/5 p-3 backdrop-blur-xl">
-      <div className="mb-1 flex items-center gap-1.5">
+    <div className="rounded-[24px] border border-white/12 bg-white/[0.06] p-4 shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl">
+      <div className="mb-1.5 flex items-center gap-1.5">
         <span className="material-symbols-outlined text-[16px]" style={{ color: accent || '#C8C6C5' }}>{icon}</span>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: accent || '#C8C6C5' }}>{label}</span>
+        <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: accent || '#C8C6C5' }}>{label}</span>
       </div>
       <p
-        className={`m-0 truncate font-bold ${big ? 'text-[22px] leading-tight' : 'text-[14px] leading-5'} ${mono ? 'font-mono text-[12px]' : ''}`}
+        className={`m-0 truncate font-extrabold ${big ? 'text-[24px] leading-none' : 'text-[14px] leading-5'} ${mono ? 'font-mono text-[12px]' : ''}`}
         style={{ color: accent || '#E5E2E1' }}
       >{value}</p>
     </div>
