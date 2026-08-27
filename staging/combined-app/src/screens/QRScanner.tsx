@@ -89,7 +89,7 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
     ) {
       const ctx = canvas.getContext('2d', { willReadFrequently: true })
       if (ctx) {
-        const maxDim = 640
+        const maxDim = 420
         const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight))
         const w = Math.floor(video.videoWidth * scale)
         const h = Math.floor(video.videoHeight * scale)
@@ -104,15 +104,16 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
             setPhase('verifying')
             phaseTimerRef.current = window.setTimeout(() => {
               stopCamera()
-              setPhase('idle')
-              onScan(code.data)
+              Promise.resolve(onScan(code.data)).catch(() => {
+                setPhase('idle')
+              })
             }, 600)
           }, 500)
           return
         }
       }
     }
-    if (scanningRef.current) scanTimerRef.current = window.setTimeout(scanFrame, 150)
+    if (scanningRef.current) scanTimerRef.current = window.setTimeout(scanFrame, 280)
   }, [onScan, stopCamera])
 
   const openCamera = useCallback(async () => {
@@ -170,7 +171,15 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
   // ─── Manual submit ────────────────────────────────────────────────────────
   function submitManual() {
     const v = manualId.trim()
-    if (v) { stopCamera(); setManualId(''); setManualOpen(false); onScan(v) }
+    if (v) {
+      stopCamera()
+      setPhase('verifying')
+      setManualId('')
+      setManualOpen(false)
+      Promise.resolve(onScan(v)).catch(() => {
+        setPhase('idle')
+      })
+    }
   }
 
   // ─── Derived history data ─────────────────────────────────────────────────
@@ -570,16 +579,17 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
       <AnimatePresence>
         {scanFeedback && (
           <motion.div
-            className={`absolute inset-0 z-20 bg-black/72 backdrop-blur-sm flex items-end px-4 ${premium ? 'pb-36' : 'pb-6'}`}
+            className="fixed inset-0 bg-black/72 backdrop-blur-sm flex items-center px-4 py-6 overflow-y-auto"
+            style={{ zIndex: 70, background: 'radial-gradient(circle at 50% 18%, rgba(0,122,255,0.22), rgba(0,0,0,0.78) 48%, rgba(0,0,0,0.9) 100%)' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="w-full border border-white/10 bg-[#111]/95 rounded-3xl p-5 shadow-2xl overflow-hidden relative"
-              initial={{ y: 42, scale: 0.96 }}
+              className="w-full max-w-[520px] mx-auto my-auto border border-white/10 bg-[#111]/95 rounded-3xl p-5 shadow-2xl overflow-hidden relative"
+              initial={{ y: 28, scale: 0.92, opacity: 0 }}
               animate={{ y: 0, scale: 1 }}
-              exit={{ y: 20, scale: 0.98 }}
+              exit={{ y: 20, scale: 0.98, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 360, damping: 32 }}
               style={premium ? {
                 background: 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02))',
@@ -595,6 +605,25 @@ export default function QRScanner({ onBack, onScan, scanFeedback, onScanNext, re
                 animate={{ scaleX: 1 }}
                 transition={{ duration: 0.45, ease: 'easeOut' }}
               />
+              <motion.div
+                className="mx-auto mb-4 h-20 w-20 rounded-full grid place-items-center"
+                style={{
+                  color: feedbackAccent,
+                  background: `radial-gradient(circle, ${feedbackAccent}2e, ${feedbackAccent}12 54%, transparent 72%)`,
+                  boxShadow: `0 0 42px ${feedbackAccent}45`,
+                }}
+                initial={{ scale: 0.72, opacity: 0 }}
+                animate={{ scale: [0.72, 1.08, 1], opacity: 1 }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+              >
+                <motion.div
+                  animate={{ scale: [1, 1.08, 1] }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                  className="h-12 w-12"
+                >
+                  {feedbackOk ? <CheckCircleIcon /> : <CancelCircleIcon />}
+                </motion.div>
+              </motion.div>
               <div className="flex items-center gap-4">
                 <div
                   className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
