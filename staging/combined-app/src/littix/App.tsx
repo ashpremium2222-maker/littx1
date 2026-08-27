@@ -470,12 +470,9 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
   const [screen, setScreen] = useState<Screen>({ name: forceScanner ? 'scanner' : 'dashboard' })
   const [prevDepth, setPrevDepth] = useState(0)
   const [rejectedScans, setRejectedScans] = useState<RejectedScan[]>([])
-<<<<<<< HEAD
   const [scannerFeedback, setScannerFeedback] = useState<ScannerFeedback | null>(null)
   const [scannerCycle, setScannerCycle] = useState(0)
-=======
   const [scannedTickets, setScannedTickets] = useState<Ticket[]>([])
->>>>>>> f1e5face3fb7dd8c1600eebc7f8f1d2db4eb977a
 
   useEffect(() => {
     window.history.replaceState({ name: forceScanner ? 'scanner' : 'dashboard' }, '')
@@ -518,7 +515,7 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
     const timestamp = `${h12}:${mm} ${ampm}`
 
     if (outcome.result === 'success' && outcome.ticket) {
-<<<<<<< HEAD
+      setScannedTickets(prev => [outcome.ticket!, ...prev])
       if (forceScanner) {
         setScannerFeedback({
           status: 'success',
@@ -528,9 +525,6 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
         })
         return
       }
-=======
-      setScannedTickets(prev => [outcome.ticket!, ...prev])
->>>>>>> f1e5face3fb7dd8c1600eebc7f8f1d2db4eb977a
       go({ name: 'scan-success', ticket: outcome.ticket })
     } else if (outcome.result === 'rejected' && outcome.ticket) {
       const isCancel = (outcome.ticket.status as string) === 'cancelled' || (outcome.ticket.scannedAt === 'Cancelled by Admin')
@@ -610,7 +604,7 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
         onScan={() => go({ name: 'scanner' })}
         onToggleTheme={toggleTheme}
         rejectedScans={rejectedScans}
-        onGenerateTicket={() => go({ name: 'generate' })}
+        onGenerateTicket={forceScanner ? undefined : () => go({ name: 'generate' })}
         sellerId={sellerId}
         onLogout={async () => {
           const token = sessionStorage.getItem('littx_seller_token')
@@ -642,7 +636,6 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
     key = `ticket-${ticket?.id}`
     content = <TicketCard dark={dark} ticket={ticket} onBack={() => go({ name: 'dashboard' })} />
   } else if (screen.name === 'scanner') {
-<<<<<<< HEAD
     content = (
       <QRScanner
         key={forceScanner ? `direct-scanner-${scannerCycle}` : 'scanner'}
@@ -651,11 +644,11 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
         showBack={!forceScanner}
         scanFeedback={forceScanner ? scannerFeedback : null}
         onScanNext={resetDirectScanner}
+        rejectedScans={rejectedScans}
+        scannedTickets={scannedTickets}
+        sellerId={sellerId}
       />
     )
-=======
-    content = <QRScanner onBack={() => go({ name: 'dashboard' })} onScan={handleScan} rejectedScans={rejectedScans} scannedTickets={scannedTickets} sellerId={sellerId} />
->>>>>>> f1e5face3fb7dd8c1600eebc7f8f1d2db4eb977a
   } else if (screen.name === 'scan-success') {
     key = `scan-success-${screen.ticket.id}`
     content = (
