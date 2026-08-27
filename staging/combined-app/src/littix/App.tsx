@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from '../lib/store'
 import type { Ticket } from '../lib/store'
@@ -115,6 +115,7 @@ function DirectScannerExperience({
 }) {
   const [tab, setTab] = useState<DirectScannerTab>('scanner')
   const [historyTab, setHistoryTab] = useState<HistoryTab>('approved')
+  const [selectedHistoryEntry, setSelectedHistoryEntry] = useState<ScannerHistoryEntry | null>(null)
 
   const approvedHistory = scannerHistory.filter((entry) => entry.status === 'approved')
   const rejectedHistory = scannerHistory.filter((entry) => entry.status !== 'approved')
@@ -221,13 +222,16 @@ function DirectScannerExperience({
                 )}
 
                 {historyTab === 'approved' && approvedHistory.map((entry, index) => (
-                  <motion.article
+                  <motion.button
                     key={entry.id}
-                    className="relative rounded-3xl border border-white/10 p-4 flex items-center gap-4 overflow-hidden"
+                    type="button"
+                    onClick={() => setSelectedHistoryEntry(entry)}
+                    className="relative rounded-3xl border border-white/10 p-4 flex items-center gap-4 overflow-hidden text-left active:scale-[0.985] transition-transform"
                     style={glass}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.035, duration: 0.2 }}
+                    aria-label={`Open details for ${entry.attendee} ${entry.ticketType}`}
                   >
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(34,197,94,0.1),transparent_55%)]" />
                     <div className="relative w-10 h-10 rounded-full bg-[#22C55E]/12 text-[#22C55E] flex items-center justify-center shrink-0">
@@ -242,7 +246,8 @@ function DirectScannerExperience({
                       <p className="text-white/40 text-[11px] truncate mt-1">Generated: {entry.generatedAt}</p>
                       <p className="text-white/40 text-[11px] truncate mt-1">Scanned: {entry.scannedAt}</p>
                     </div>
-                  </motion.article>
+                    <span className="material-symbols-outlined relative text-white/35 text-[20px] shrink-0">chevron_right</span>
+                  </motion.button>
                 ))}
 
                 {historyTab === 'rejected' && rejectedHistory.length === 0 && (
@@ -252,13 +257,16 @@ function DirectScannerExperience({
                 )}
 
                 {historyTab === 'rejected' && rejectedHistory.map((entry, index) => (
-                  <motion.article
+                  <motion.button
                     key={entry.id}
-                    className="relative rounded-3xl border border-white/10 p-4 flex items-center gap-4 overflow-hidden"
+                    type="button"
+                    onClick={() => setSelectedHistoryEntry(entry)}
+                    className="relative rounded-3xl border border-white/10 p-4 flex items-center gap-4 overflow-hidden text-left active:scale-[0.985] transition-transform"
                     style={glass}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.035, duration: 0.2 }}
+                    aria-label={`Open details for ${entry.attendee} ${entry.ticketType}`}
                   >
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(239,68,68,0.12),transparent_55%)]" />
                     <div className="relative w-10 h-10 rounded-full bg-[#EF4444]/12 text-[#EF4444] flex items-center justify-center shrink-0">
@@ -276,7 +284,8 @@ function DirectScannerExperience({
                         <p className="text-white/40 text-[11px] truncate mt-1">First scanned: {entry.originalScanAt}</p>
                       )}
                     </div>
-                  </motion.article>
+                    <span className="material-symbols-outlined relative text-white/35 text-[20px] shrink-0">chevron_right</span>
+                  </motion.button>
                 ))}
               </motion.div>
             </AnimatePresence>
@@ -337,7 +346,112 @@ function DirectScannerExperience({
           })}
         </div>
       </nav>
+
+      <AnimatePresence>
+        {selectedHistoryEntry && (
+          <DirectScannerPassDetails
+            entry={selectedHistoryEntry}
+            glass={glass}
+            onClose={() => setSelectedHistoryEntry(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
+  )
+}
+
+function DirectScannerPassDetails({
+  entry,
+  glass,
+  onClose,
+}: {
+  entry: ScannerHistoryEntry
+  glass: CSSProperties
+  onClose: () => void
+}) {
+  const approved = entry.status === 'approved'
+  const accent = approved ? '#22C55E' : '#EF4444'
+  const statusLabel =
+    entry.status === 'approved' ? 'Approved' :
+    entry.status === 'duplicate' ? 'Duplicate' :
+    entry.status === 'cancelled' ? 'Cancelled' :
+    'Invalid'
+  const quickFields = [
+    { label: 'A. Attendee', value: entry.attendee },
+    { label: 'B. Pass', value: entry.ticketType },
+    { label: 'C. Code', value: `#${entry.ticketId}`, mono: true },
+    { label: 'D. Decision', value: statusLabel },
+    { label: 'E. Event', value: entry.event },
+    { label: 'F. Generated', value: entry.generatedAt },
+    { label: approved ? 'G. Scanned' : 'G. Attempt', value: entry.scannedAt },
+    { label: 'H. Scanner', value: entry.scannedBy },
+  ]
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 px-4 pt-8 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.section
+        className="w-full max-w-[520px] max-h-[88dvh] overflow-y-auto rounded-t-[32px] border border-white/10 p-5 pb-8 text-white shadow-2xl"
+        style={glass}
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', stiffness: 380, damping: 34 }}
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${entry.attendee} pass details`}
+      >
+        <div className="mx-auto mb-4 h-1 w-11 rounded-full bg-white/25" />
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: accent }}>{statusLabel} Pass</p>
+            <h2 className="text-[30px] font-black leading-none tracking-tight">{entry.attendee}</h2>
+            <p className="mt-2 text-sm font-semibold text-white/58">{entry.ticketType} · {entry.event}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.08] text-white/70"
+            aria-label="Close pass details"
+          >
+            <span className="material-symbols-outlined text-[22px]">close</span>
+          </button>
+        </div>
+
+        <div className="mt-5 rounded-3xl border border-white/10 p-4" style={{ background: `${accent}12` }}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[11px] font-black uppercase tracking-[0.16em]" style={{ color: accent }}>{approved ? 'Allow entry' : 'Do not allow entry'}</span>
+            <span className="rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em]" style={{ color: accent, backgroundColor: `${accent}20` }}>{statusLabel}</span>
+          </div>
+          <p className="mt-2 text-sm leading-snug text-white/70">{entry.message}</p>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          {quickFields.map((field) => (
+            <div key={field.label} className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-3">
+              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/35">{field.label}</p>
+              <p className={`truncate text-[13px] font-bold leading-snug text-white ${field.mono ? 'font-mono' : ''}`}>{field.value || 'Not available'}</p>
+            </div>
+          ))}
+          {entry.originalScanAt && (
+            <div className="col-span-2 rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-3">
+              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/35">I. First Scanned</p>
+              <p className="text-[13px] font-bold leading-snug text-white">{entry.originalScanAt}</p>
+            </div>
+          )}
+          <div className="col-span-2 rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-3">
+            <p className="mb-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/35">J. Raw Scan</p>
+            <p className="break-all font-mono text-[12px] font-semibold leading-snug text-white/75">{entry.rawCode || entry.ticketId}</p>
+          </div>
+        </div>
+      </motion.section>
+    </motion.div>
   )
 }
 
