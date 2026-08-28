@@ -879,7 +879,7 @@ function RefinedScanResult({
 
   return (
     <motion.div
-      className="fixed inset-0 flex justify-center overflow-hidden font-[Inter]"
+      className="fixed inset-0 flex justify-center overflow-hidden font-[Manrope]"
       style={{
         zIndex: 70,
         background: approved
@@ -1412,7 +1412,7 @@ const styles = `
     overflow: hidden;
     background: #0b0f10;
     color: #e0e4ec;
-    font-family: 'Geist', Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-family: 'Manrope', Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
   }
   .sc-shell *, .sc-shell button, .sc-shell input { box-sizing: border-box; font: inherit; }
 
