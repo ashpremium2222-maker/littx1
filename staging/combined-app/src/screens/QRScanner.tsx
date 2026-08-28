@@ -902,13 +902,12 @@ function RefinedScanResult({
         />
       )}
 
-      {/* Scrollable content column */}
+      {/* Compact result column: fit the checker view without requiring scroll. */}
       <motion.div
-        className="relative flex w-full max-w-[520px] flex-col overflow-y-auto text-[#E5E2E1]"
+        className="relative flex h-full w-full max-w-[520px] flex-col overflow-hidden text-[#E5E2E1]"
         style={{ 
-          paddingBottom: 'calc(90px + 72px + env(safe-area-inset-bottom))',
-          paddingTop: 4,
-          scrollbarWidth: 'none',
+          paddingBottom: 'calc(120px + env(safe-area-inset-bottom))',
+          paddingTop: 2,
         }}
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
@@ -916,88 +915,88 @@ function RefinedScanResult({
         transition={{ duration: 0.18 }}
       >
         {/* Header */}
-        <header className="sticky top-0 z-10 flex h-[56px] shrink-0 items-center justify-between px-5"
+        <header className="z-10 flex h-[44px] shrink-0 items-center justify-between px-4"
           style={{ background: approved ? 'rgba(13,13,13,0.85)' : 'rgba(13,0,0,0.85)', backdropFilter: 'blur(20px)' }}
         >
           <motion.button 
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            className={`flex h-10 w-10 items-center justify-start ${approved ? 'text-white/70' : 'text-[#FF4D4D]/80'}`} 
+            className={`flex h-8 w-8 items-center justify-start ${approved ? 'text-white/70' : 'text-[#FF4D4D]/80'}`} 
             type="button" 
             aria-label="Flash"
           >
-            <span className="material-symbols-outlined text-[22px]">flash_on</span>
+            <span className="material-symbols-outlined text-[18px]">flash_on</span>
           </motion.button>
-          <span className={`text-[13px] font-black uppercase tracking-[0.2em] ${approved ? 'text-white' : 'text-[#FF4D4D]'}`}>Scanner</span>
+          <span className={`text-[12px] font-black uppercase tracking-[0.18em] ${approved ? 'text-white' : 'text-[#FF4D4D]'}`}>Scanner</span>
           <motion.button 
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            className={`flex h-10 w-10 items-center justify-end ${approved ? 'text-white/70' : 'text-[#FF4D4D]/80'}`} 
+            className={`flex h-8 w-8 items-center justify-end ${approved ? 'text-white/70' : 'text-[#FF4D4D]/80'}`} 
             type="button" 
             aria-label="Help"
           >
-            <span className="material-symbols-outlined text-[22px]">help_outline</span>
+            <span className="material-symbols-outlined text-[18px]">help_outline</span>
           </motion.button>
         </header>
 
         {/* ─── Main Content ─── */}
-        <div className="flex flex-1 flex-col px-4">
+        <div className="flex min-h-0 flex-1 flex-col px-3">
           {approved ? (
             <>
               {/* ── APPROVED HERO ── */}
-              <div className="flex flex-col items-center pt-6 pb-5 text-center">
-                <div className="relative mb-4 flex h-[88px] w-[88px] items-center justify-center">
+              <div className="flex flex-col items-center pt-3 pb-2 text-center">
+                <div className="relative mb-2 flex h-[62px] w-[62px] items-center justify-center">
                   {[...Array(2)].map((_, idx) => (
                     <motion.div
                       key={idx}
-                      className="absolute inset-[-10px] rounded-full border border-[#05E777]/25"
+                    className="absolute inset-[-6px] rounded-full border border-[#05E777]/25"
                       initial={{ scale: 0.85, opacity: 0.7 }}
                       animate={{ scale: 1.5, opacity: 0 }}
                       transition={{ duration: 1.8, repeat: Infinity, delay: idx * 0.9, ease: "easeOut" }}
                     />
                   ))}
                   <motion.div
-                    className="relative z-10 flex h-[88px] w-[88px] items-center justify-center rounded-full border border-[#05E777]/50 bg-[#05E777]/20 shadow-[0_0_36px_8px_rgba(5,231,119,0.25)]"
+                    className="relative z-10 flex h-[62px] w-[62px] items-center justify-center rounded-full border border-[#05E777]/50 bg-[#05E777]/20 shadow-[0_0_28px_6px_rgba(5,231,119,0.22)]"
                     initial={{ scale: 0.72, opacity: 0 }}
                     animate={{ scale: [0.72, 1.08, 1], opacity: 1 }}
                     transition={{ duration: 0.45, ease: 'easeOut' }}
                   >
-                    <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#05E777" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#05E777" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
                       <motion.path d="M20 6L9 17l-5-5" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.5, delay: 0.15, ease: "easeOut" }} />
                     </svg>
                   </motion.div>
                 </div>
-                <motion.h1 className="mb-0.5 text-[22px] font-bold leading-tight text-[#E5E2E1]" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+                <motion.h1 className="mb-0.5 text-[18px] font-bold leading-tight text-[#E5E2E1]" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
                   Ticket Approved
                 </motion.h1>
-                <motion.p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#00E475]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
+                <motion.p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#00E475]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
                   Valid Entry
                 </motion.p>
               </div>
 
               {/* ── APPROVED CARDS ── */}
-              <motion.div className="flex flex-col gap-3" variants={containerVariants} initial="hidden" animate="show">
+              <motion.div className="flex min-h-0 flex-col gap-2" variants={containerVariants} initial="hidden" animate="show">
                 
                 {/* Attendee Row */}
                 <motion.div 
                   variants={cardVariants} 
-                  className="flex items-center gap-4 rounded-full border border-white/12 bg-white/[0.06] px-6 py-3 shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                  className="flex items-center gap-3 rounded-[24px] border border-white/12 bg-white/[0.06] px-4 py-2 shadow-[0_8px_24px_0_rgba(0,0,0,0.32),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
                 >
-                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gradient-to-tr from-white/10 to-white/5 border border-white/15 shadow-inner">
-                    <span className="material-symbols-outlined text-[22px] text-[#E4BEBA]">person</span>
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-tr from-white/10 to-white/5 border border-white/15 shadow-inner">
+                    <span className="material-symbols-outlined text-[18px] text-[#E4BEBA]">person</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Attendee</p>
-                    <p className="truncate text-[16px] font-extrabold text-[#E5E2E1]">{attendee}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Attendee</p>
+                    <p className="truncate text-[14px] font-extrabold text-[#E5E2E1]">{attendee}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Created</p>
-                    <p className="max-w-[100px] truncate text-[13px] font-bold text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Created</p>
+                    <p className="max-w-[88px] truncate text-[12px] font-bold text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</p>
                   </div>
                 </motion.div>
 
                 {/* Stat Cards Row */}
-                <motion.div variants={cardVariants} className="grid grid-cols-2 gap-3">
+                <motion.div variants={cardVariants} className="grid grid-cols-2 gap-2">
                   <CompactCard icon="tag" label="Ticket ID" value={`#${fallbackTicketId}`} mono />
                   <CompactCard icon="confirmation_number" label="Type" value={feedbackEntry?.ticketType || 'N/A'} />
                   <CompactCard icon="qr_code_scanner" label="Total Scans" value={`${scanCount}`} accent="#00E475" big />
@@ -1007,30 +1006,23 @@ function RefinedScanResult({
                 {/* Event */}
                 <motion.div 
                   variants={cardVariants} 
-                  className="rounded-full border border-white/12 bg-white/[0.06] px-6 py-3.5 shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                  className="rounded-[22px] border border-white/12 bg-white/[0.06] px-4 py-2.5 shadow-[0_8px_24px_0_rgba(0,0,0,0.32),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
                 >
-                  <p className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Event</p>
-                  <p className="truncate text-[15px] font-extrabold text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</p>
+                  <p className="mb-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Event</p>
+                  <p className="truncate text-[13px] font-extrabold text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</p>
                 </motion.div>
 
-                {/* More Details */}
-                <motion.details className="group" variants={cardVariants}>
-                  <summary className="flex cursor-pointer list-none items-center justify-center gap-2 py-3 text-[#C8C6C5] transition-colors group-open:text-[#E5E2E1]">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.18em]">More Details</span>
-                    <span className="material-symbols-outlined text-[18px] transition-transform group-open:rotate-180">expand_more</span>
-                  </summary>
-                  <div className="grid grid-cols-2 gap-3 pt-1 pb-2">
-                    <CompactCard icon="schedule" label="Scanned At" value={feedbackEntry?.scannedAt || 'Just now'} />
-                    <CompactCard icon="badge" label="Scanned By" value={feedbackEntry?.scannedBy || sellerId || 'Gate Staff'} />
-                  </div>
-                </motion.details>
+                <motion.div className="grid grid-cols-2 gap-2" variants={cardVariants}>
+                  <CompactCard icon="schedule" label="Scanned At" value={feedbackEntry?.scannedAt || 'Just now'} tiny />
+                  <CompactCard icon="badge" label="Scanned By" value={feedbackEntry?.scannedBy || sellerId || 'Gate Staff'} tiny />
+                </motion.div>
               </motion.div>
             </>
           ) : (
             <>
               {/* ── REJECTED HERO ── */}
-              <div className="flex flex-col items-center pt-6 pb-4 text-center">
-                <div className="relative mb-4 flex h-[100px] w-[100px] items-center justify-center">
+              <div className="flex flex-col items-center pt-3 pb-2 text-center">
+                <div className="relative mb-2 flex h-[66px] w-[66px] items-center justify-center">
                   {[...Array(3)].map((_, idx) => (
                     <motion.div
                       key={idx}
@@ -1040,69 +1032,69 @@ function RefinedScanResult({
                       transition={{ duration: 2.0, repeat: Infinity, delay: idx * 0.65, ease: "easeOut" }}
                     />
                   ))}
-                  <div className="absolute inset-4 rounded-full border border-[#FF4D4D]/20" />
+                  <div className="absolute inset-3 rounded-full border border-[#FF4D4D]/20" />
                   <motion.div
-                    className="relative z-10 flex h-[80px] w-[80px] items-center justify-center rounded-full border border-[#FF4D4D]/50 bg-[#3A0000] shadow-[0_0_32px_rgba(255,77,77,0.5)]"
+                    className="relative z-10 flex h-[56px] w-[56px] items-center justify-center rounded-full border border-[#FF4D4D]/50 bg-[#3A0000] shadow-[0_0_26px_rgba(255,77,77,0.45)]"
                     initial={{ scale: 0.72, opacity: 0, rotate: -10 }}
                     animate={{ scale: [0.72, 1.08, 1], opacity: 1, rotate: 0 }}
                     transition={{ duration: 0.45, ease: 'easeOut' }}
                   >
-                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#FF4D4D" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF4D4D" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
                       <motion.path d="M18 6L6 18" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, delay: 0.15, ease: "easeOut" }} />
                       <motion.path d="M6 6l12 12" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, delay: 0.3, ease: "easeOut" }} />
                     </svg>
                   </motion.div>
                 </div>
                 <motion.h2 
-                  className="mb-0.5 text-[13px] font-black uppercase tracking-[0.22em] text-[#FF4D4D] drop-shadow-[0_0_8px_rgba(255,77,77,0.4)]"
+                  className="mb-0 text-[11px] font-black uppercase tracking-[0.16em] text-[#FF4D4D] drop-shadow-[0_0_8px_rgba(255,77,77,0.4)]"
                   initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
                 >Ticket Rejected</motion.h2>
                 <motion.p 
-                  className="m-0 text-[15px] leading-6 text-[#C8C6C5]"
+                  className="m-0 text-[13px] leading-5 text-[#C8C6C5]"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
                 >Entry not allowed</motion.p>
               </div>
 
               {/* ── REJECTED CARDS ── */}
-              <motion.div className="flex flex-col gap-3" variants={containerVariants} initial="hidden" animate="show">
+              <motion.div className="flex min-h-0 flex-col gap-2" variants={containerVariants} initial="hidden" animate="show">
                 
                 {/* Attendee Row */}
                 <motion.div 
                   variants={cardVariants} 
-                  className="flex items-center gap-4 rounded-full border border-white/12 bg-white/[0.06] px-6 py-3 shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                  className="flex items-center gap-3 rounded-[24px] border border-white/12 bg-white/[0.06] px-4 py-2 shadow-[0_8px_24px_0_rgba(0,0,0,0.32),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
                 >
-                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#3A1010] border border-[#FF4D4D]/20 shadow-inner">
-                    <span className="text-[15px] font-bold text-[#E4BEBA]">{attendeeInitials}</span>
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#3A1010] border border-[#FF4D4D]/20 shadow-inner">
+                    <span className="text-[12px] font-bold text-[#E4BEBA]">{attendeeInitials}</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Attendee</p>
-                    <p className="truncate text-[16px] font-extrabold text-[#E5E2E1]">{attendee}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Attendee</p>
+                    <p className="truncate text-[14px] font-extrabold text-[#E5E2E1]">{attendee}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Created</p>
-                    <p className="max-w-[100px] truncate text-[13px] font-bold text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Created</p>
+                    <p className="max-w-[88px] truncate text-[12px] font-bold text-[#E5E2E1]">{feedbackEntry?.generatedAt || 'TBA'}</p>
                   </div>
                 </motion.div>
 
                 {/* Reason Banner */}
                 <motion.div 
                   variants={cardVariants} 
-                  className="relative overflow-hidden rounded-[28px] border border-[#FF4D4D]/25 bg-gradient-to-r from-[#FF4D4D]/12 to-[#FF4D4D]/6 px-6 py-4 shadow-[0_8px_32px_0_rgba(255,77,77,0.15),inset_0_1px_0_0_rgba(255,255,255,0.1)] backdrop-blur-2xl"
+                  className="relative overflow-hidden rounded-[22px] border border-[#FF4D4D]/25 bg-gradient-to-r from-[#FF4D4D]/12 to-[#FF4D4D]/6 px-4 py-2.5 shadow-[0_8px_24px_0_rgba(255,77,77,0.14),inset_0_1px_0_0_rgba(255,255,255,0.1)] backdrop-blur-2xl"
                 >
-                  <div className="flex items-start gap-3.5">
-                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#FF4D4D]/20 border border-[#FF4D4D]/35">
-                      <span className="material-symbols-outlined text-[18px] text-[#FF4D4D]">warning</span>
+                  <div className="flex items-start gap-2.5">
+                    <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#FF4D4D]/20 border border-[#FF4D4D]/35">
+                      <span className="material-symbols-outlined text-[16px] text-[#FF4D4D]">warning</span>
                     </div>
                     <div className="min-w-0">
-                      <p className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#FF4D4D]">Reason</p>
-                      <p className="text-[15px] font-extrabold text-[#E5E2E1] leading-tight">{rejectedReason}</p>
-                      <p className="mt-1 text-[12px] leading-relaxed text-[#C8C6C5]/90">{scanFeedback.message} · Do not allow entry.</p>
+                      <p className="mb-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[#FF4D4D]">Reason</p>
+                      <p className="text-[14px] font-extrabold text-[#E5E2E1] leading-tight">{rejectedReason}</p>
+                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-[#C8C6C5]/90">{scanFeedback.message} · Do not allow entry.</p>
                     </div>
                   </div>
                 </motion.div>
 
                 {/* Stat Cards */}
-                <motion.div variants={cardVariants} className="grid grid-cols-2 gap-3">
+                <motion.div variants={cardVariants} className="grid grid-cols-2 gap-2">
                   <CompactCard icon="bar_chart" label="Total Scans" value={`${scanCount}`} accent="#FF4D4D" big />
                   <CompactCard icon="assignment_late" label="Result" value={`Failed${feedbackLabel ? ` (${feedbackLabel})` : ''}`} accent="#FF4D4D" />
                   <CompactCard icon="confirmation_number" label="Ticket Type" value={feedbackEntry?.ticketType || 'N/A'} />
@@ -1112,23 +1104,16 @@ function RefinedScanResult({
                 {/* Event */}
                 <motion.div 
                   variants={cardVariants} 
-                  className="rounded-full border border-white/12 bg-white/[0.06] px-6 py-3.5 shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                  className="rounded-[22px] border border-white/12 bg-white/[0.06] px-4 py-2.5 shadow-[0_8px_24px_0_rgba(0,0,0,0.32),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
                 >
-                  <p className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#C8C6C5]/60">Event</p>
-                  <p className="truncate text-[15px] font-extrabold text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</p>
+                  <p className="mb-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Event</p>
+                  <p className="truncate text-[13px] font-extrabold text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</p>
                 </motion.div>
 
-                {/* More Details */}
-                <motion.details className="group" variants={cardVariants}>
-                  <summary className="flex cursor-pointer list-none items-center justify-center gap-2 py-3 text-[#FF4D4D]/80">
-                    <span className="material-symbols-outlined text-[18px]">info</span>
-                    <span className="text-[11px] font-black uppercase tracking-[0.18em]">More Details</span>
-                  </summary>
-                  <div className="grid grid-cols-2 gap-3 pt-1 pb-2">
-                    <CompactCard icon="schedule" label="Attempt At" value={feedbackEntry?.scannedAt || 'Just now'} />
-                    <CompactCard icon="history" label="First Scan" value={feedbackEntry?.originalScanAt || 'N/A'} />
-                  </div>
-                </motion.details>
+                <motion.div className="grid grid-cols-2 gap-2" variants={cardVariants}>
+                  <CompactCard icon="schedule" label="Attempt At" value={feedbackEntry?.scannedAt || 'Just now'} tiny />
+                  <CompactCard icon="history" label="First Scan" value={feedbackEntry?.originalScanAt || 'N/A'} tiny />
+                </motion.div>
               </motion.div>
             </>
           )}
@@ -1138,26 +1123,26 @@ function RefinedScanResult({
       {/* ── STICKY CTA BUTTON ── */}
       <div 
         className="fixed left-0 right-0 flex justify-center px-4"
-        style={{ bottom: 'calc(90px + env(safe-area-inset-bottom))', zIndex: 73 }}
+        style={{ bottom: 'calc(68px + env(safe-area-inset-bottom))', zIndex: 73 }}
       >
         <motion.button
           onClick={scanNext}
           whileHover={{ scale: 1.02, boxShadow: approved ? '0 8px 30px rgba(5,231,119,0.5)' : '0 8px 30px rgba(255,77,77,0.5)' }}
           whileTap={{ scale: 0.95 }}
-          className={`flex h-14 w-full max-w-[520px] items-center justify-center gap-3 rounded-full text-[14px] font-black uppercase tracking-[0.18em] shadow-lg transition-all ${
+          className={`flex h-11 w-full max-w-[520px] items-center justify-center gap-2.5 rounded-full text-[12px] font-black uppercase tracking-[0.14em] shadow-lg transition-all ${
             approved 
               ? 'bg-[#05E777] text-[#003D1A] shadow-[0_8px_32px_0_rgba(5,231,119,0.3)]' 
               : 'bg-[#FF4D4D] text-white shadow-[0_8px_32px_0_rgba(255,77,77,0.45)]'
           }`}
           type="button"
         >
-          <span className="material-symbols-outlined text-[20px]">{approved ? 'barcode_scanner' : 'document_scanner'}</span>
+          <span className="material-symbols-outlined text-[18px]">{approved ? 'barcode_scanner' : 'document_scanner'}</span>
           Scan Next Ticket
         </motion.button>
       </div>
 
       {/* ── BOTTOM NAV ── */}
-      <nav className="fixed bottom-0 left-0 z-[72] flex h-[90px] w-full items-center justify-around rounded-t-[36px] border-t border-white/10 bg-[#0d0d0d]/90 px-5 pb-[env(safe-area-inset-bottom)] shadow-2xl backdrop-blur-2xl">
+      <nav className="fixed bottom-0 left-0 z-[72] flex h-[68px] w-full items-center justify-around rounded-t-[26px] border-t border-white/10 bg-[#0d0d0d]/90 px-5 pb-[env(safe-area-inset-bottom)] shadow-2xl backdrop-blur-2xl">
         {[
           ['qr_code_scanner', 'Scanner'],
           ['history', 'History'],
@@ -1165,12 +1150,12 @@ function RefinedScanResult({
         ].map(([icon, label], index) => (
           <button
             key={label}
-            className={`flex min-w-[64px] flex-col items-center justify-center rounded-2xl p-2 transition-all active:scale-90 ${index === 0 ? (approved ? 'text-[#05E777]' : 'text-[#FF4D4D]') : 'text-[#C8C6C5]/50'}`}
+            className={`flex min-w-[58px] flex-col items-center justify-center rounded-2xl p-1 transition-all active:scale-90 ${index === 0 ? (approved ? 'text-[#05E777]' : 'text-[#FF4D4D]') : 'text-[#C8C6C5]/50'}`}
             type="button"
             onClick={index === 0 ? scanNext : undefined}
           >
-            <span className="material-symbols-outlined mb-0.5 text-[24px]">{icon}</span>
-            <span className="text-[11px] font-semibold tracking-[0.05em]">{label}</span>
+            <span className="material-symbols-outlined mb-0 text-[20px]">{icon}</span>
+            <span className="text-[10px] font-semibold tracking-[0.03em]">{label}</span>
           </button>
         ))}
       </nav>
@@ -1186,6 +1171,7 @@ function CompactCard({
   accent,
   mono = false,
   big = false,
+  tiny = false,
 }: {
   icon: string
   label: string
@@ -1193,15 +1179,16 @@ function CompactCard({
   accent?: string
   mono?: boolean
   big?: boolean
+  tiny?: boolean
 }) {
   return (
-    <div className="rounded-[24px] border border-white/12 bg-white/[0.06] p-4 shadow-[0_8px_32px_0_rgba(0,0,0,0.37),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl">
-      <div className="mb-1.5 flex items-center gap-1.5">
-        <span className="material-symbols-outlined text-[16px]" style={{ color: accent || '#C8C6C5' }}>{icon}</span>
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: accent || '#C8C6C5' }}>{label}</span>
+    <div className={`min-w-0 rounded-[18px] border border-white/12 bg-white/[0.06] ${tiny ? 'p-2' : 'p-2.5'} shadow-[0_8px_22px_0_rgba(0,0,0,0.32),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl`}>
+      <div className={`${tiny ? 'mb-0.5' : 'mb-1'} flex min-w-0 items-center gap-1.5`}>
+        <span className={`material-symbols-outlined ${tiny ? 'text-[13px]' : 'text-[15px]'} shrink-0`} style={{ color: accent || '#C8C6C5' }}>{icon}</span>
+        <span className={`${tiny ? 'text-[8px]' : 'text-[9px]'} truncate font-bold uppercase tracking-[0.08em]`} style={{ color: accent || '#C8C6C5' }}>{label}</span>
       </div>
       <p
-        className={`m-0 truncate font-extrabold ${big ? 'text-[24px] leading-none' : 'text-[14px] leading-5'} ${mono ? 'font-mono text-[12px]' : ''}`}
+        className={`m-0 truncate font-extrabold ${big ? 'text-[19px] leading-none' : tiny ? 'text-[11px] leading-4' : 'text-[12px] leading-4'} ${mono ? 'font-mono text-[10px]' : ''}`}
         style={{ color: accent || '#E5E2E1' }}
       >{value}</p>
     </div>
