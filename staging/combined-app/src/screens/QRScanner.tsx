@@ -893,7 +893,7 @@ function RefinedScanResult({
       <div className="pointer-events-none absolute inset-x-0 top-0 h-28" style={{ background: `linear-gradient(180deg, ${softAccent}, transparent)` }} />
 
       <motion.div
-        className="relative flex h-full w-full max-w-[520px] flex-col overflow-hidden px-4 pt-2 text-[#F4F0EF]"
+        className="relative flex h-full w-full max-w-[520px] flex-col overflow-hidden px-5 pt-2 text-[#F4F0EF]"
         style={{ paddingBottom: 'calc(112px + env(safe-area-inset-bottom))' }}
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -906,21 +906,21 @@ function RefinedScanResult({
           <span className="material-symbols-outlined text-[18px]" style={{ color: accent }}>help_outline</span>
         </header>
 
-        <main className="flex min-h-0 flex-1 flex-col gap-2">
+        <main className="flex min-h-0 flex-1 flex-col gap-3">
           <motion.section
-            className="rounded-[28px] border px-4 py-3.5 shadow-[0_18px_42px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-2xl"
-            style={{ borderColor: approved ? 'rgba(5,231,119,0.22)' : 'rgba(255,77,77,0.26)', background: approved ? 'rgba(5,231,119,0.075)' : 'rgba(255,77,77,0.085)' }}
+            className="rounded-[32px] border px-5 py-5 shadow-[0_18px_42px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl"
+            style={{ borderColor: approved ? 'rgba(5,231,119,0.18)' : 'rgba(255,77,77,0.2)', background: 'rgba(255,255,255,0.045)' }}
             variants={cardVariants}
             initial="hidden"
             animate="show"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <div
-                className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border"
-                style={{ color: accent, borderColor: `${accent}66`, background: `${accent}18`, boxShadow: `0 0 28px ${accent}3f` }}
+                className="grid h-16 w-16 shrink-0 place-items-center rounded-full border"
+                style={{ color: accent, borderColor: `${accent}55`, background: `${accent}12`, boxShadow: `0 0 34px ${accent}2e` }}
               >
                 <motion.span
-                  className="material-symbols-outlined text-[34px]"
+                  className="material-symbols-outlined text-[36px]"
                   initial={{ scale: 0.7, rotate: approved ? 0 : -8 }}
                   animate={{ scale: 1, rotate: 0 }}
                   transition={{ type: 'spring', stiffness: 300, damping: 16 }}
@@ -930,81 +930,44 @@ function RefinedScanResult({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-black uppercase tracking-[0.12em]" style={{ color: accent }}>Ticket {statusTitle}</p>
-                <h1 className="truncate text-[26px] font-black leading-tight text-white">{statusCopy}</h1>
-                <p className="mt-0.5 line-clamp-1 text-[12px] leading-4 text-white/66">{statusDetail}</p>
+                <h1 className="text-[27px] font-black leading-tight text-white">{statusCopy}</h1>
+                <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-white/62">{statusDetail}</p>
               </div>
             </div>
-          </motion.section>
 
-          <motion.section
-            className="grid grid-cols-[44px_1fr_auto] items-center gap-3 rounded-[22px] border border-white/10 bg-white/[0.055] px-3 py-2.5 shadow-[0_10px_26px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl"
-            variants={cardVariants}
-            initial="hidden"
-            animate="show"
-          >
-            <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/18 text-[13px] font-black text-white/86">
-              {attendeeInitials}
-            </div>
-            <div className="min-w-0">
-              <p className="text-[8px] font-black uppercase tracking-[0.08em] text-white/42">Attendee</p>
-              <p className="truncate text-[17px] font-black leading-5 text-white">{attendee}</p>
-            </div>
-            <div className="max-w-[100px] text-right">
-              <p className="text-[8px] font-black uppercase tracking-[0.08em] text-white/42">Created</p>
-              <p className="truncate text-[12px] font-bold text-white/82">{feedbackEntry?.generatedAt || 'TBA'}</p>
-            </div>
-          </motion.section>
-
-          {!approved && (
-            <motion.section
-              className="rounded-[22px] border px-3 py-2.5 shadow-[0_10px_28px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl"
-              style={{ borderColor: 'rgba(255,77,77,0.24)', background: 'linear-gradient(135deg, rgba(255,77,77,0.11), rgba(255,255,255,0.045))' }}
-              variants={cardVariants}
-              initial="hidden"
-              animate="show"
-            >
-              <div className="flex items-start gap-2.5">
-                <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#FF4D4D]/16 text-[#FF4D4D]">
-                  <span className="material-symbols-outlined text-[16px]">warning</span>
+            <div className="mt-5 rounded-[24px] bg-black/16 p-3">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/8 text-[12px] font-black text-white/82">
+                  {attendeeInitials}
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[8px] font-black uppercase tracking-[0.08em] text-[#FF4D4D]">Reason</p>
-                  <p className="text-[15px] font-black leading-5 text-white">{rejectedReason}</p>
-                  <p className="line-clamp-1 text-[11px] leading-4 text-white/62">{scanFeedback.message} · Do not allow entry.</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[8px] font-black uppercase tracking-[0.08em] text-white/38">Attendee</p>
+                  <p className="truncate text-[17px] font-black leading-5 text-white">{attendee}</p>
                 </div>
+                <MetaPill value={`${scanCount} scan${scanCount === 1 ? '' : 's'}`} accent={accent} />
               </div>
-            </motion.section>
-          )}
-
-          <motion.section
-            className="grid grid-cols-4 overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.052] shadow-[0_10px_26px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl"
-            variants={cardVariants}
-            initial="hidden"
-            animate="show"
-          >
-            <ResultCell icon="bar_chart" label="Scans" value={`${scanCount}`} accent={accent} />
-            <ResultCell icon={approved ? 'verified' : 'assignment_late'} label="Result" value={approved ? 'Success' : feedbackLabel || 'Failed'} accent={accent} />
-            <ResultCell icon="confirmation_number" label="Type" value={feedbackEntry?.ticketType || 'N/A'} />
-            <ResultCell icon="sell" label="Ticket" value={`#${fallbackTicketId}`} mono />
+            </div>
           </motion.section>
 
           <motion.section
-            className="rounded-[22px] border border-white/10 bg-white/[0.052] px-3 py-2.5 shadow-[0_10px_26px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl"
+            className="rounded-[30px] border border-white/10 bg-white/[0.04] px-4 py-4 shadow-[0_14px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-2xl"
             variants={cardVariants}
             initial="hidden"
             animate="show"
           >
-            <div className="flex items-start gap-2.5">
-              <span className="material-symbols-outlined mt-0.5 text-[16px] text-white/48">event</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[8px] font-black uppercase tracking-[0.08em] text-white/42">Event</p>
-                <p className="truncate text-[14px] font-black leading-5 text-white">{feedbackEntry?.event || scanFeedback.message}</p>
+            {!approved && (
+              <div className="mb-3 rounded-[20px] px-3 py-2.5" style={{ background: `${accent}12` }}>
+                <p className="text-[8px] font-black uppercase tracking-[0.08em]" style={{ color: accent }}>Reason</p>
+                <p className="truncate text-[15px] font-black leading-5 text-white">{rejectedReason}</p>
               </div>
-            </div>
+            )}
 
-            <div className="mt-2 grid grid-cols-2 gap-2 border-t border-white/10 pt-2">
-              <TimeCell icon={approved ? 'schedule' : 'schedule'} label={approved ? 'Scanned At' : 'Attempt At'} value={feedbackEntry?.scannedAt || 'Just now'} />
-              <TimeCell icon={approved ? 'badge' : 'history'} label={approved ? 'Scanner' : 'First Scan'} value={approved ? (feedbackEntry?.scannedBy || sellerId || 'Gate Staff') : (feedbackEntry?.originalScanAt || 'N/A')} />
+            <div className="space-y-2">
+              <DetailLine icon="confirmation_number" label="Ticket Type" value={feedbackEntry?.ticketType || 'N/A'} />
+              <DetailLine icon="sell" label="Ticket ID" value={`#${fallbackTicketId}`} mono />
+              <DetailLine icon="event" label="Event" value={feedbackEntry?.event || scanFeedback.message} />
+              <DetailLine icon="schedule" label={approved ? 'Scanned At' : 'Attempt At'} value={feedbackEntry?.scannedAt || 'Just now'} />
+              <DetailLine icon={approved ? 'badge' : 'history'} label={approved ? 'Scanner' : 'First Scan'} value={approved ? (feedbackEntry?.scannedBy || sellerId || 'Gate Staff') : (feedbackEntry?.originalScanAt || 'N/A')} />
             </div>
           </motion.section>
         </main>
@@ -1048,30 +1011,28 @@ function RefinedScanResult({
   )
 }
 
-function ResultCell({ icon, label, value, accent, mono = false }: {
-  icon: string
-  label: string
-  value: string
-  accent?: string
-  mono?: boolean
-}) {
+function MetaPill({ value, accent }: { value: string; accent: string }) {
   return (
-    <div className="min-w-0 border-r border-white/10 px-2.5 py-2.5 last:border-r-0">
-      <span className="material-symbols-outlined mb-1 block text-[15px]" style={{ color: accent || 'rgba(255,255,255,0.48)' }}>{icon}</span>
-      <p className="truncate text-[8px] font-black uppercase tracking-[0.08em] text-white/42">{label}</p>
-      <p className={`truncate text-[12px] font-black leading-4 ${mono ? 'font-mono text-[10px]' : ''}`} style={{ color: accent || '#fff' }}>{value}</p>
+    <div
+      className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.04em]"
+      style={{ color: accent, background: `${accent}14` }}
+    >
+      {value}
     </div>
   )
 }
 
-function TimeCell({ icon, label, value }: { icon: string; label: string; value: string }) {
+function DetailLine({ icon, label, value, mono = false }: {
+  icon: string
+  label: string
+  value: string
+  mono?: boolean
+}) {
   return (
-    <div className="min-w-0 rounded-2xl bg-black/14 px-2.5 py-2">
-      <div className="mb-0.5 flex min-w-0 items-center gap-1.5 text-white/42">
-        <span className="material-symbols-outlined text-[14px]">{icon}</span>
-        <p className="truncate text-[8px] font-black uppercase tracking-[0.08em]">{label}</p>
-      </div>
-      <p className="truncate text-[11px] font-bold leading-4 text-white/86">{value}</p>
+    <div className="grid min-w-0 grid-cols-[22px_94px_1fr] items-center gap-2 rounded-2xl px-2.5 py-2 hover:bg-white/[0.025]">
+      <span className="material-symbols-outlined text-[16px] text-white/42">{icon}</span>
+      <p className="text-[9px] font-black uppercase tracking-[0.08em] text-white/36">{label}</p>
+      <p className={`truncate text-right text-[13px] font-bold leading-4 text-white/88 ${mono ? 'font-mono text-[11px]' : ''}`}>{value}</p>
     </div>
   )
 }
