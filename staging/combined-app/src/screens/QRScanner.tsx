@@ -1050,7 +1050,7 @@ function RefinedScanResult({
                   initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
                 >Ticket Rejected</motion.h2>
                 <motion.p 
-                  className="m-0 text-[13px] leading-5 text-[#C8C6C5]"
+                  className="m-0 text-[12px] leading-4 text-[#C8C6C5]"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
                 >Entry not allowed</motion.p>
               </div>
@@ -1061,14 +1061,14 @@ function RefinedScanResult({
                 {/* Attendee Row */}
                 <motion.div 
                   variants={cardVariants} 
-                  className="flex items-center gap-3 rounded-[24px] border border-white/12 bg-white/[0.06] px-4 py-2 shadow-[0_8px_24px_0_rgba(0,0,0,0.32),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                  className="flex items-center gap-3 rounded-[20px] border border-white/10 bg-white/[0.055] px-3 py-2 shadow-[0_8px_20px_0_rgba(0,0,0,0.28),inset_0_1px_0_0_rgba(255,255,255,0.1)] backdrop-blur-2xl"
                 >
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#3A1010] border border-[#FF4D4D]/20 shadow-inner">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#3A1010] border border-[#FF4D4D]/20 shadow-inner">
                     <span className="text-[12px] font-bold text-[#E4BEBA]">{attendeeInitials}</span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Attendee</p>
-                    <p className="truncate text-[14px] font-extrabold text-[#E5E2E1]">{attendee}</p>
+                    <p className="truncate text-[13px] font-extrabold text-[#E5E2E1]">{attendee}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Created</p>
@@ -1079,40 +1079,55 @@ function RefinedScanResult({
                 {/* Reason Banner */}
                 <motion.div 
                   variants={cardVariants} 
-                  className="relative overflow-hidden rounded-[22px] border border-[#FF4D4D]/25 bg-gradient-to-r from-[#FF4D4D]/12 to-[#FF4D4D]/6 px-4 py-2.5 shadow-[0_8px_24px_0_rgba(255,77,77,0.14),inset_0_1px_0_0_rgba(255,255,255,0.1)] backdrop-blur-2xl"
+                  className="relative overflow-hidden rounded-[20px] border border-[#FF4D4D]/22 bg-gradient-to-r from-[#FF4D4D]/10 to-[#FF4D4D]/5 px-3 py-2 shadow-[0_8px_20px_0_rgba(255,77,77,0.12),inset_0_1px_0_0_rgba(255,255,255,0.08)] backdrop-blur-2xl"
                 >
-                  <div className="flex items-start gap-2.5">
-                    <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#FF4D4D]/20 border border-[#FF4D4D]/35">
-                      <span className="material-symbols-outlined text-[16px] text-[#FF4D4D]">warning</span>
+                  <div className="flex items-start gap-2">
+                    <div className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#FF4D4D]/18 border border-[#FF4D4D]/32">
+                      <span className="material-symbols-outlined text-[14px] text-[#FF4D4D]">warning</span>
                     </div>
                     <div className="min-w-0">
                       <p className="mb-0 text-[9px] font-bold uppercase tracking-[0.1em] text-[#FF4D4D]">Reason</p>
-                      <p className="text-[14px] font-extrabold text-[#E5E2E1] leading-tight">{rejectedReason}</p>
-                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-[#C8C6C5]/90">{scanFeedback.message} · Do not allow entry.</p>
+                      <p className="text-[13px] font-extrabold text-[#E5E2E1] leading-tight">{rejectedReason}</p>
+                      <p className="mt-0.5 line-clamp-1 text-[10px] leading-snug text-[#C8C6C5]/86">{scanFeedback.message} · Do not allow entry.</p>
                     </div>
                   </div>
                 </motion.div>
 
-                {/* Stat Cards */}
                 <motion.div variants={cardVariants} className="grid grid-cols-2 gap-2">
                   <CompactCard icon="bar_chart" label="Total Scans" value={`${scanCount}`} accent="#FF4D4D" big />
                   <CompactCard icon="assignment_late" label="Result" value={`Failed${feedbackLabel ? ` (${feedbackLabel})` : ''}`} accent="#FF4D4D" />
-                  <CompactCard icon="confirmation_number" label="Ticket Type" value={feedbackEntry?.ticketType || 'N/A'} />
-                  <CompactCard icon="sell" label="Ticket ID" value={`#${fallbackTicketId}`} mono />
                 </motion.div>
 
-                {/* Event */}
                 <motion.div 
                   variants={cardVariants} 
-                  className="rounded-[22px] border border-white/12 bg-white/[0.06] px-4 py-2.5 shadow-[0_8px_24px_0_rgba(0,0,0,0.32),inset_0_1px_0_0_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                  className="grid grid-cols-[0.82fr_1.18fr] gap-3 rounded-[18px] border border-white/10 bg-white/[0.052] px-3 py-2 shadow-[0_8px_20px_0_rgba(0,0,0,0.28),inset_0_1px_0_0_rgba(255,255,255,0.09)] backdrop-blur-2xl"
                 >
-                  <p className="mb-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-[#C8C6C5]/60">Event</p>
-                  <p className="truncate text-[13px] font-extrabold text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</p>
+                  <div className="min-w-0">
+                    <p className="mb-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-[#C8C6C5]/55">Ticket Type</p>
+                    <p className="truncate text-[12px] font-extrabold text-[#E5E2E1]">{feedbackEntry?.ticketType || 'N/A'}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="mb-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-[#C8C6C5]/55">Ticket ID</p>
+                    <p className="truncate font-mono text-[11px] font-extrabold text-[#E5E2E1]">#{fallbackTicketId}</p>
+                  </div>
                 </motion.div>
 
-                <motion.div className="grid grid-cols-2 gap-2" variants={cardVariants}>
-                  <CompactCard icon="schedule" label="Attempt At" value={feedbackEntry?.scannedAt || 'Just now'} tiny />
-                  <CompactCard icon="history" label="First Scan" value={feedbackEntry?.originalScanAt || 'N/A'} tiny />
+                <motion.div 
+                  className="rounded-[18px] border border-white/10 bg-white/[0.052] px-3 py-2 shadow-[0_8px_20px_0_rgba(0,0,0,0.28),inset_0_1px_0_0_rgba(255,255,255,0.09)] backdrop-blur-2xl"
+                  variants={cardVariants}
+                >
+                  <p className="mb-1 text-[8px] font-bold uppercase tracking-[0.08em] text-[#C8C6C5]/55">Event</p>
+                  <p className="truncate text-[12px] font-extrabold text-[#E5E2E1]">{feedbackEntry?.event || scanFeedback.message}</p>
+                  <div className="mt-1.5 grid grid-cols-2 gap-3 border-t border-white/10 pt-1.5">
+                    <div className="min-w-0">
+                      <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-[#C8C6C5]/45">Attempt At</p>
+                      <p className="truncate text-[11px] font-bold text-[#E5E2E1]">{feedbackEntry?.scannedAt || 'Just now'}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[8px] font-bold uppercase tracking-[0.08em] text-[#C8C6C5]/45">First Scan</p>
+                      <p className="truncate text-[11px] font-bold text-[#E5E2E1]">{feedbackEntry?.originalScanAt || 'N/A'}</p>
+                    </div>
+                  </div>
                 </motion.div>
               </motion.div>
             </>
