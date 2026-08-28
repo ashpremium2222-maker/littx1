@@ -258,7 +258,7 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
             <header className="sc-topbar">
               <div className="sc-brand">
                 <LittixLogo dark size="sm" />
-                <span>LITTIX</span>
+                <span>LITTX</span>
               </div>
               {cameraActive && (
                 <button
