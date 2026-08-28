@@ -1266,113 +1266,101 @@ function getErrorMessage(err: string): string {
 }
 
 // ─── Scanner Orb ──────────────────────────────────────────────────────────────
+// ─── Scanner Viewfinder ────────────────────────────────────────────────────────
 function ScannerOrb({ phase, cameraActive, cameraError }: { phase: ScanPhase; cameraActive: boolean; cameraError: string | null }) {
   const isActive = cameraActive && !cameraError
   const isDetected = phase === 'detected'
   const isVerifying = phase === 'verifying'
 
+  // If camera is NOT active, show a premium glass starting frame
+  if (!isActive) {
+    return (
+      <div className="sc-orb-placeholder">
+        <div className="sc-placeholder-glow" />
+        <div className="sc-placeholder-inner">
+          <motion.div
+            className="sc-placeholder-icon"
+            animate={{ scale: [1, 1.06, 1] }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <TicketIcon />
+          </motion.div>
+          <div className="sc-placeholder-text">
+            <span>Tap to Start Camera</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // If camera is active, show the premium rectangular viewfinder
   return (
-    <div className={`sc-orb${isActive ? ' is-scanning' : ''}${isDetected ? ' is-detected' : ''}${isVerifying ? ' is-verifying' : ''}`}>
-      {/* Outer rings */}
-      <div className="sc-ring sc-ring-1" />
-      <div className="sc-ring sc-ring-2" />
-      {/* Pulse ring for detected state */}
-      {(isDetected || isVerifying) && (
+    <div className={`sc-viewfinder${isDetected ? ' is-detected' : ''}${isVerifying ? ' is-verifying' : ''}`}>
+      {/* Corner Brackets */}
+      <motion.div
+        className="sc-corner sc-corner-tl"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3 }}
+      />
+      <motion.div
+        className="sc-corner sc-corner-tr"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3, delay: 0.05 }}
+      />
+      <motion.div
+        className="sc-corner sc-corner-br"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+      />
+      <motion.div
+        className="sc-corner sc-corner-bl"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3, delay: 0.15 }}
+      />
+
+      {/* Laser scan line (only if scanning/active, not when detected or verifying) */}
+      {!isDetected && !isVerifying && (
         <motion.div
-          className={`sc-pulse-ring${isVerifying ? ' sc-pulse-ring-verify' : ''}`}
-          initial={{ scale: 0.8, opacity: 0.8 }}
-          animate={{ scale: 1.15, opacity: 0 }}
-          transition={{ duration: 0.9, repeat: Infinity, ease: 'easeOut' }}
+          className="sc-scan-laser"
+          animate={{ top: ['4%', '96%', '4%'] }}
+          transition={{ duration: 2.0, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
 
-      {/* Inner target */}
-      <div className="sc-target">
-        <div className="sc-target-glow" />
-        <AnimatePresence mode="wait">
-          {isVerifying ? (
-            <motion.div
-              key="verify-icon"
-              className="sc-target-icon"
-              initial={{ scale: 0.6, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.6, opacity: 0 }}
-              transition={{ duration: 0.25 }}
-            >
-              <SpinnerIcon />
-            </motion.div>
-          ) : isDetected ? (
-            <motion.div
-              key="detected-icon"
-              className="sc-target-icon is-detected"
-              initial={{ scale: 0.5, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.5, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 16 }}
-            >
-              <DetectedCheckIcon />
-            </motion.div>
-          ) : isActive ? (
-            <motion.div
-              key="scan-icon"
-              className="sc-target-icon"
-              initial={{ scale: 0.6, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.3 }}
-            >
-              <QrIcon />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="ticket-icon"
-              className="sc-target-icon"
-              initial={{ scale: 0.6, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.3 }}
-            >
-              <TicketIcon />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Viewfinder corners — shown when camera active */}
-      {isActive && (
-        <>
+      {/* Status icons inside the viewfinder */}
+      <AnimatePresence mode="wait">
+        {isVerifying ? (
           <motion.div
-            className="sc-corner sc-corner-tl"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4 }}
-          />
+            key="verify-icon"
+            className="sc-viewfinder-status-icon"
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.6, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <SpinnerIcon />
+          </motion.div>
+        ) : isDetected ? (
           <motion.div
-            className="sc-corner sc-corner-tr"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, delay: 0.05 }}
-          />
-          <motion.div
-            className="sc-corner sc-corner-br"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, delay: 0.1 }}
-          />
-          <motion.div
-            className="sc-corner sc-corner-bl"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, delay: 0.15 }}
-          />
-          <motion.div
-            className="sc-scan-line"
-            animate={{ y: [-80, 80, -80] }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        </>
-      )}
+            key="detected-icon"
+            className="sc-viewfinder-status-icon is-detected"
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.5, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 16 }}
+          >
+            <DetectedCheckIcon />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   )
 }
+
 
 // ─── NavButton ────────────────────────────────────────────────────────────────
 function NavButton({ id, label, active, onClick, icon }: {
@@ -1610,7 +1598,7 @@ const styles = `
     z-index: 0;
     pointer-events: none;
   }
-  .sc-video-feed.is-active { opacity: 0.48; }
+  .sc-video-feed.is-active { opacity: 0.95; }
   .sc-hidden-canvas { display: none; }
 
   /* ── Tab content ── */
@@ -1710,7 +1698,7 @@ const styles = `
     min-height: 24px;
   }
 
-  /* ── Orb ── */
+  /* ── Viewfinder & Placeholder ── */
   .sc-orb-container {
     width: 100%;
     border: 0;
@@ -1722,123 +1710,150 @@ const styles = `
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
-  .sc-orb-container:active .sc-orb { transform: scale(0.97); }
-  .sc-orb {
+  .sc-orb-container:active .sc-orb-placeholder,
+  .sc-orb-container:active .sc-viewfinder { transform: scale(0.98); }
+
+  /* ── Placeholder (when camera inactive) ── */
+  .sc-orb-placeholder {
     position: relative;
-    width: min(66vw, 260px);
-    height: min(66vw, 260px);
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-    background: rgba(0,0,0,0.44);
-    box-shadow:
-      inset 0 20px 38px rgba(0,0,0,0.6),
-      inset 0 1px 2px rgba(255,255,255,0.07),
-      0 1px 0 rgba(255,255,255,0.09);
-    transition: box-shadow 400ms ease, transform 160ms ease;
+    width: min(72vw, 270px);
+    height: min(72vw, 270px);
+    border-radius: 40px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01));
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 
+      0 20px 40px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.1);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: transform 160ms ease, border-color 300ms ease;
   }
-  .sc-orb.is-scanning {
-    box-shadow:
-      inset 0 0 0 1.5px rgba(0,122,255,0.28),
-      0 0 72px rgba(0,122,255,0.22);
+  .sc-orb-placeholder:hover {
+    border-color: rgba(255,255,255,0.15);
   }
-  .sc-orb.is-detected {
-    box-shadow:
-      inset 0 0 0 2px rgba(52,211,153,0.55),
-      0 0 88px rgba(52,211,153,0.28);
-  }
-  .sc-orb.is-verifying {
-    box-shadow:
-      inset 0 0 0 2px rgba(251,191,36,0.45),
-      0 0 80px rgba(251,191,36,0.2);
-  }
-
-  /* Rings */
-  .sc-ring {
-    position: absolute;
-    border-radius: 50%;
-    border: 1px solid rgba(0,122,255,0.2);
-    pointer-events: none;
-  }
-  .sc-ring-1 { inset: 0; animation: sc-spin 12s linear infinite; }
-  .sc-ring-2 { inset: 18px; border-color: rgba(79,176,255,0.12); animation: sc-spin 18s linear infinite reverse; }
-  @keyframes sc-spin { to { transform: rotate(360deg); } }
-  @keyframes sc-shimmer {
-    100% { transform: translateX(100%); }
-  }
-
-  /* Pulse ring */
-  .sc-pulse-ring {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 2px solid rgba(52,211,153,0.6);
-    pointer-events: none;
-  }
-  .sc-pulse-ring-verify { border-color: rgba(251,191,36,0.55); }
-
-  /* Target */
-  .sc-target {
-    position: relative;
-    width: 126px;
-    height: 126px;
-    border-radius: 30px;
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-    background: linear-gradient(135deg, rgba(255,255,255,0.09), rgba(255,255,255,0.02));
-    border: 1px solid rgba(255,255,255,0.1);
-    box-shadow: 0 16px 44px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.1);
-    transition: border-color 400ms ease, box-shadow 400ms ease;
-  }
-  .sc-target-glow {
+  .sc-placeholder-glow {
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: radial-gradient(circle at 50% 50%, rgba(0,122,255,0.2), transparent 65%);
-    transition: background 400ms ease;
+    background: radial-gradient(circle at 50% 50%, rgba(0,122,255,0.12), transparent 70%);
   }
-  .sc-orb.is-detected .sc-target-glow { background: radial-gradient(circle at 50% 50%, rgba(52,211,153,0.25), transparent 65%); }
-  .sc-orb.is-verifying .sc-target-glow { background: radial-gradient(circle at 50% 50%, rgba(251,191,36,0.22), transparent 65%); }
-
-  .sc-target-icon {
-    position: relative;
+  .sc-placeholder-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
     z-index: 1;
-    color: #28a3ff;
+  }
+  .sc-placeholder-icon {
+    color: #4fb0ff;
+    width: 64px;
+    height: 64px;
     display: grid;
     place-items: center;
-    width: 54px;
-    height: 54px;
-    filter: drop-shadow(0 0 14px rgba(0,122,255,0.7));
+    filter: drop-shadow(0 0 16px rgba(0,122,255,0.4));
   }
-  .sc-target-icon svg { width: 54px; height: 54px; }
-  .sc-target-icon.is-detected { color: #34d399; filter: drop-shadow(0 0 14px rgba(52,211,153,0.8)); }
+  .sc-placeholder-icon svg {
+    width: 56px;
+    height: 56px;
+  }
+  .sc-placeholder-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: #9aacbf;
+    letter-spacing: -0.1px;
+  }
+
+  /* ── Viewfinder (when camera active) ── */
+  .sc-viewfinder {
+    position: relative;
+    width: min(72vw, 270px);
+    height: min(72vw, 270px);
+    border-radius: 36px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 
+      0 0 0 9999px rgba(11, 15, 16, 0.65),
+      0 0 30px rgba(0, 122, 255, 0.15);
+    transition: border-color 300ms ease, box-shadow 300ms ease, transform 160ms ease;
+  }
+  
+  .sc-viewfinder.is-detected {
+    border-color: rgba(52, 211, 153, 0.65);
+    box-shadow: 
+      0 0 0 9999px rgba(11, 15, 16, 0.65),
+      0 0 40px rgba(52, 211, 153, 0.35);
+  }
+  
+  .sc-viewfinder.is-verifying {
+    border-color: rgba(251, 191, 36, 0.6);
+    box-shadow: 
+      0 0 0 9999px rgba(11, 15, 16, 0.65),
+      0 0 45px rgba(251, 191, 36, 0.25);
+  }
 
   /* Viewfinder corners */
   .sc-corner {
     position: absolute;
-    width: 34px;
-    height: 34px;
-    border-color: #45adff;
+    width: 32px;
+    height: 32px;
+    border-color: #007aff;
     border-style: solid;
     pointer-events: none;
+    filter: drop-shadow(0 0 8px rgba(0, 122, 255, 0.6));
+    transition: border-color 300ms ease, filter 300ms ease;
   }
-  .sc-corner-tl { top: 40px; left: 40px; border-width: 3px 0 0 3px; border-top-left-radius: 8px; }
-  .sc-corner-tr { top: 40px; right: 40px; border-width: 3px 3px 0 0; border-top-right-radius: 8px; }
-  .sc-corner-br { right: 40px; bottom: 40px; border-width: 0 3px 3px 0; border-bottom-right-radius: 8px; }
-  .sc-corner-bl { left: 40px; bottom: 40px; border-width: 0 0 3px 3px; border-bottom-left-radius: 8px; }
+  
+  .sc-viewfinder.is-detected .sc-corner {
+    border-color: #34d399;
+    filter: drop-shadow(0 0 10px rgba(52, 211, 153, 0.8));
+  }
+  
+  .sc-viewfinder.is-verifying .sc-corner {
+    border-color: #fbbf24;
+    filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.7));
+  }
 
-  /* Scan line */
-  .sc-scan-line {
+  .sc-corner-tl { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-top-left-radius: 16px; }
+  .sc-corner-tr { top: -2px; right: -2px; border-width: 4px 4px 0 0; border-top-right-radius: 16px; }
+  .sc-corner-br { right: -2px; bottom: -2px; border-width: 0 4px 4px 0; border-bottom-right-radius: 16px; }
+  .sc-corner-bl { left: -2px; bottom: -2px; border-width: 0 0 4px 4px; border-bottom-left-radius: 16px; }
+
+  /* Scan Laser */
+  .sc-scan-laser {
     position: absolute;
-    left: 46px;
-    right: 46px;
-    top: 50%;
+    left: 12px;
+    right: 12px;
     height: 2px;
-    background: linear-gradient(90deg, transparent, #35aaff 30%, #35aaff 70%, transparent);
-    box-shadow: 0 0 16px rgba(0,122,255,0.9), 0 0 32px rgba(0,122,255,0.4);
+    background: linear-gradient(90deg, transparent, #007aff 20%, #4fb0ff 50%, #007aff 80%, transparent);
+    box-shadow: 
+      0 0 12px 2px rgba(0, 122, 255, 0.8),
+      0 0 24px 4px rgba(0, 122, 255, 0.4);
     pointer-events: none;
+  }
+
+  /* Status Icons */
+  .sc-viewfinder-status-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 64px;
+    height: 64px;
+    color: #fbbf24;
+    display: grid;
+    place-items: center;
+    filter: drop-shadow(0 0 16px rgba(251,191,36,0.5));
+    z-index: 10;
+  }
+  .sc-viewfinder-status-icon svg {
+    width: 56px;
+    height: 56px;
+  }
+  .sc-viewfinder-status-icon.is-detected {
+    color: #34d399;
+    filter: drop-shadow(0 0 20px rgba(52,211,153,0.7));
   }
 
   /* ── Camera error card ── */
@@ -2270,12 +2285,7 @@ const styles = `
     .sc-scanner-main { padding-top: 88px; }
     .sc-hero-text { margin-bottom: 24px; }
     .sc-title { font-size: 30px; }
-    .sc-orb { width: min(58vw, 220px); height: min(58vw, 220px); }
-    .sc-target { width: 108px; height: 108px; border-radius: 26px; }
-    .sc-corner-tl, .sc-corner-tr { top: 34px; }
-    .sc-corner-br, .sc-corner-bl { bottom: 34px; }
-    .sc-corner-tl, .sc-corner-bl { left: 34px; }
-    .sc-corner-tr, .sc-corner-br { right: 34px; }
+    .sc-viewfinder, .sc-orb-placeholder { width: min(64vw, 220px); height: min(64vw, 220px); }
   }
   @media (max-width: 360px) {
     .sc-action-primary, .sc-action-secondary { height: 64px; font-size: 12px; }
