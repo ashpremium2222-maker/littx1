@@ -28,6 +28,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<'ticket' | 'details'>('ticket')
   const [dir, setDir] = useState(0) // slider direction
+  const [ticketEntranceDone, setTicketEntranceDone] = useState(false)
 
   useEffect(() => {
     async function fetchTicket() {
@@ -178,12 +179,17 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
 
               {/* Ticket Card Container */}
               <div 
-                className="rounded-[32px] w-full flex flex-col mb-6 shadow-2xl relative"
+                className={`rounded-[32px] w-full flex flex-col mb-6 shadow-2xl relative ${!ticketEntranceDone ? 'thermal-ticket-print' : ''}`}
                 style={{
                   background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
                   backdropFilter: 'blur(20px)',
                   WebkitBackdropFilter: 'blur(20px)',
                   border: '1px solid rgba(255,255,255,0.08)'
+                }}
+                onAnimationEnd={(event) => {
+                  if (event.currentTarget === event.target) {
+                    setTicketEntranceDone(true)
+                  }
                 }}
               >
                 {/* Top Section */}

@@ -89,6 +89,69 @@ html, body {
   min-height: 100vh;
 }
 
+.thermal-ticket-print {
+  transform-origin: top center;
+  will-change: clip-path, transform;
+  animation: thermal-ticket-feed 1.72s cubic-bezier(0.2, 0.72, 0.18, 1) both;
+}
+
+@keyframes thermal-ticket-feed {
+  0% {
+    clip-path: inset(0 0 100% 0 round 32px);
+    transform: translateY(-30px);
+  }
+  9% {
+    clip-path: inset(0 0 94% 0 round 32px);
+    transform: translateY(-28px);
+  }
+  18% {
+    clip-path: inset(0 0 84% 0 round 32px);
+    transform: translateY(-23px);
+  }
+  27% {
+    clip-path: inset(0 0 73% 0 round 32px);
+    transform: translateY(-22px);
+  }
+  38% {
+    clip-path: inset(0 0 59% 0 round 32px);
+    transform: translateY(-16px);
+  }
+  49% {
+    clip-path: inset(0 0 44% 0 round 32px);
+    transform: translateY(-15px);
+  }
+  61% {
+    clip-path: inset(0 0 29% 0 round 32px);
+    transform: translateY(-8px);
+  }
+  73% {
+    clip-path: inset(0 0 14% 0 round 32px);
+    transform: translateY(-9px);
+  }
+  84% {
+    clip-path: inset(0 0 3% 0 round 32px);
+    transform: translateY(-2px);
+  }
+  91% {
+    clip-path: inset(0 0 0 0 round 32px);
+    transform: translateY(1px);
+  }
+  96% {
+    clip-path: inset(0 0 0 0 round 32px);
+    transform: translateY(-0.5px);
+  }
+  100% {
+    clip-path: inset(0 0 0 0 round 32px);
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thermal-ticket-print {
+    animation: none;
+  }
+}
+
 /* ── App Canvas Ambient Layout ────────────────────────────────────────── */
 .app-canvas {
   width: 100%;
