@@ -1,3 +1,26 @@
+
+const { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } = require('@simplewebauthn/server');
+
+// WebAuthn state for Sellers
+const rpName = 'Littx Seller Portal'; // Vite default
+
+const PARTNER_PASSWORDS = {
+    'littlane': 'littlane2026',
+    'nitro': 'nitro2026',
+    '7th-heaven': '7thheaven2026'
+};
+
+const PARTNER_NAMES = {
+    'littlane': 'Littlane Entertainment',
+    'nitro': 'Nitro Events',
+    '7th-heaven': '7th Heaven'
+};
+
+// In-memory WebAuthn Authenticators and Challenges
+const webauthnAuthenticators = {}; // partnerId -> { credentialID, credentialPublicKey, counter }
+const webauthnChallenges = {}; // partnerId -> current challenge string
+
+
 require('dotenv').config({ path: require('path').join(__dirname, '.env'), quiet: true });
 const express = require('express');
 const cors = require('cors');
