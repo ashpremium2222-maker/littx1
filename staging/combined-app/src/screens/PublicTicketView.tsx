@@ -31,6 +31,12 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
   const [ticketEntranceDone, setTicketEntranceDone] = useState(false)
 
   useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setTicketEntranceDone(true)
+    }
+  }, [])
+
+  useEffect(() => {
     async function fetchTicket() {
       try {
         const res = await fetch(`/api/ticket/${ticketId}`)
@@ -178,20 +184,33 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
               </header>
 
               {/* Ticket Card Container */}
-              <div 
-                className={`rounded-[32px] w-full flex flex-col mb-6 shadow-2xl relative ${!ticketEntranceDone ? 'thermal-ticket-print' : ''}`}
-                style={{
-                  background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
-                  backdropFilter: 'blur(20px)',
-                  WebkitBackdropFilter: 'blur(20px)',
-                  border: '1px solid rgba(255,255,255,0.08)'
-                }}
-                onAnimationEnd={(event) => {
-                  if (event.currentTarget === event.target) {
-                    setTicketEntranceDone(true)
-                  }
-                }}
-              >
+              <div className="thermal-ticket-stage relative w-full mb-6">
+                {!ticketEntranceDone && (
+                  <>
+                    <div className="thermal-printer" aria-hidden="true">
+                      <div className="thermal-printer__lid" />
+                      <div className="thermal-printer__indicator" />
+                      <div className="thermal-printer__slot">
+                        <div className="thermal-printer__slot-inner" />
+                      </div>
+                    </div>
+                    <div className="thermal-print-head" aria-hidden="true" />
+                  </>
+                )}
+                <div
+                  className={`thermal-ticket-paper rounded-[32px] w-full flex flex-col shadow-2xl relative ${!ticketEntranceDone ? 'thermal-ticket-print' : ''}`}
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255,255,255,0.08)'
+                  }}
+                  onAnimationEnd={(event) => {
+                    if (event.currentTarget === event.target) {
+                      setTicketEntranceDone(true)
+                    }
+                  }}
+                >
                 {/* Top Section */}
                 <div className="px-6 pt-8 pb-6 flex flex-col items-center">
                   <h2 className="text-white text-[24px] font-black text-center leading-tight mb-2 tracking-tight">
@@ -267,6 +286,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
                       </div>
                     </div>
                   </div>
+                </div>
                 </div>
               </div>
 

@@ -95,6 +95,94 @@ html, body {
   animation: thermal-ticket-feed 1.72s cubic-bezier(0.2, 0.72, 0.18, 1) both;
 }
 
+.thermal-printer {
+  position: absolute;
+  z-index: 20;
+  top: -62px;
+  left: 50%;
+  width: min(84%, 330px);
+  height: 72px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 15px 15px 10px 10px;
+  background: linear-gradient(160deg, #272727 0%, #111 45%, #080808 100%);
+  box-shadow: 0 17px 30px rgba(0, 0, 0, 0.46), inset 0 1px rgba(255, 255, 255, 0.1), inset 0 -12px 18px rgba(0, 0, 0, 0.54);
+  pointer-events: none;
+  animation: thermal-printer-run 1.72s ease-in-out both;
+}
+
+.thermal-printer__lid {
+  position: absolute;
+  top: 11px;
+  right: 17px;
+  left: 17px;
+  height: 21px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.01));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05), 0 4px 8px rgba(0, 0, 0, 0.18);
+}
+
+.thermal-printer__indicator {
+  position: absolute;
+  top: 19px;
+  right: 25px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #cad4a1;
+  box-shadow: 0 0 0 1px rgba(202, 212, 161, 0.28), 0 0 7px rgba(202, 212, 161, 0.45);
+  animation: thermal-indicator 1.72s steps(1, end) both;
+}
+
+.thermal-printer__slot {
+  position: absolute;
+  right: 12%;
+  bottom: -7px;
+  left: 12%;
+  height: 13px;
+  padding: 3px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 3px;
+  background: #181818;
+  box-shadow: 0 6px 9px rgba(0, 0, 0, 0.58), inset 0 2px 3px rgba(0, 0, 0, 0.85), inset 0 -1px rgba(255, 255, 255, 0.07);
+}
+
+.thermal-printer__slot-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 1px;
+  background: #020202;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.04);
+}
+
+.thermal-printer::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  right: 14%;
+  bottom: -16px;
+  left: 14%;
+  height: 15px;
+  background: rgba(0, 0, 0, 0.48);
+  filter: blur(7px);
+  opacity: 0.8;
+}
+
+.thermal-print-head {
+  position: absolute;
+  z-index: 12;
+  top: 3px;
+  left: 13%;
+  width: 74%;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(255, 248, 221, 0.72);
+  box-shadow: 0 0 7px rgba(255, 248, 221, 0.35);
+  pointer-events: none;
+  animation: thermal-print-head-scan 1.72s ease-in-out both;
+}
+
 @keyframes thermal-ticket-feed {
   0% {
     clip-path: inset(0 0 100% 0 round 32px);
@@ -146,8 +234,75 @@ html, body {
   }
 }
 
+@keyframes thermal-printer-run {
+  0%, 5% {
+    opacity: 1;
+    transform: translateX(-50%) translateX(0);
+  }
+  8% {
+    transform: translateX(-50%) translateX(-0.35px);
+  }
+  20% {
+    transform: translateX(-50%) translateX(0.22px);
+  }
+  38% {
+    transform: translateX(-50%) translateX(-0.2px);
+  }
+  57% {
+    transform: translateX(-50%) translateX(0.15px);
+  }
+  76% {
+    transform: translateX(-50%) translateX(-0.12px);
+  }
+  88% {
+    opacity: 1;
+    transform: translateX(-50%) translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-5px);
+  }
+}
+
+@keyframes thermal-indicator {
+  0%, 6% { opacity: 0.35; }
+  7%, 88% { opacity: 1; }
+  89%, 100% { opacity: 0.35; }
+}
+
+@keyframes thermal-print-head-scan {
+  0%, 7% {
+    opacity: 0;
+    transform: translateX(-14px) scaleX(0.3);
+  }
+  10% {
+    opacity: 0.38;
+    transform: translateX(-6px) scaleX(0.7);
+  }
+  29% {
+    transform: translateX(7px) scaleX(1);
+  }
+  48% {
+    transform: translateX(-5px) scaleX(0.82);
+  }
+  68% {
+    transform: translateX(6px) scaleX(0.96);
+  }
+  84% {
+    opacity: 0.22;
+    transform: translateX(0) scaleX(0.72);
+  }
+  92%, 100% {
+    opacity: 0;
+    transform: translateX(0) scaleX(0.6);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .thermal-ticket-print {
+  .thermal-ticket-print,
+  .thermal-printer,
+  .thermal-print-head,
+  .thermal-printer__indicator {
     animation: none;
   }
 }
