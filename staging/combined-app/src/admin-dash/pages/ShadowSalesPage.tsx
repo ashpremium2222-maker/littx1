@@ -134,7 +134,7 @@ export default function ShadowSalesPage({ adminKey }: { adminKey: string }) {
             >
               <option value="all">All Events</option>
               <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
-              <option value="AURA GENESIS">AURA GENESIS</option>
+              
             </select>
           </div>
 
@@ -209,7 +209,7 @@ export default function ShadowSalesPage({ adminKey }: { adminKey: string }) {
                       {s.phone && <div style={{ fontSize: '11px', color: 'var(--ink-faint)' }}>{s.phone}</div>}
                     </td>
                     <td style={{ fontWeight: 600 }}>{s.event || 'DHOLIDA GARBA ROYALE'}</td>
-                    <td>{s.gender === 'female' ? 'Female Pass' : 'Male Pass'}</td>
+                    <td>{s.gender === 'female' ? 'VIP Single' : 'GA Single'}</td>
                     <td style={{ fontWeight: 700 }}>{s.quantity || 1}</td>
                     <td style={{ fontWeight: 800, color: 'var(--teal)' }}>₹{(s.amount || 0).toLocaleString()}</td>
                     <td style={{ fontSize: '11px', color: 'var(--ink-faint)' }}>

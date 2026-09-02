@@ -50,14 +50,14 @@ export default function ShadowPanelApp() {
 
   // Ticket creation form state
   const [event, setEvent]           = useState('DHOLIDA GARBA ROYALE')
-  const [ticketType, setTicketType] = useState('Male Pass')
+  const [ticketType, setTicketType] = useState('GA Single')
   const [name, setName]             = useState('')
   const [email, setEmail]           = useState('')
   const [phone, setPhone]           = useState('')
-  const [gender, setGender]         = useState('male')
+  const [gender, setGender]         = useState('GA Single')
   const [quantity, setQuantity]     = useState('1')
   const [paymentStatus, setPaymentStatus] = useState('Paid')
-  const [amount, setAmount]         = useState('699')
+  const [amount, setAmount]         = useState('399')
 
   const [submitting, setSubmitting] = useState(false)
   const [resendingTicketId, setResendingTicketId] = useState<string | null>(null)
@@ -589,7 +589,7 @@ export default function ShadowPanelApp() {
                           ) : (
                             <>
                               <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
-                              <option value="AURA GENESIS">AURA GENESIS</option>
+                              
                             </>
                           )}
                         </select>
@@ -608,8 +608,14 @@ export default function ShadowPanelApp() {
                             ))
                           ) : (
                             <>
-                              <option value="Male Pass">Male Pass (₹699)</option>
-                              <option value="Female Pass">Female Pass (₹599)</option>
+                              
+    <option value="GA Single">GA Single (₹399)</option>
+    <option value="GA Group of 5">GA Group of 5 (₹1699)</option>
+    <option value="GA Group of 10">GA Group of 10 (₹2999)</option>
+    <option value="VIP Single">VIP Single (₹599)</option>
+    <option value="VIP Group of 5">VIP Group of 5 (₹2799)</option>
+    <option value="VIP Group of 10">VIP Group of 10 (₹4999)</option>
+  
                             </>
                           )}
                         </select>
@@ -822,7 +828,7 @@ export default function ShadowPanelApp() {
                       ) : (
                         <>
                           <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
-                          <option value="AURA GENESIS">AURA GENESIS</option>
+                          
                         </>
                       )}
                     </select>
@@ -841,8 +847,14 @@ export default function ShadowPanelApp() {
                         ))
                       ) : (
                         <>
-                          <option value="Male Pass">Male Pass (₹699)</option>
-                          <option value="Female Pass">Female Pass (₹599)</option>
+                          
+    <option value="GA Single">GA Single (₹399)</option>
+    <option value="GA Group of 5">GA Group of 5 (₹1699)</option>
+    <option value="GA Group of 10">GA Group of 10 (₹2999)</option>
+    <option value="VIP Single">VIP Single (₹599)</option>
+    <option value="VIP Group of 5">VIP Group of 5 (₹2799)</option>
+    <option value="VIP Group of 10">VIP Group of 10 (₹4999)</option>
+  
                         </>
                       )}
                     </select>
@@ -1014,7 +1026,7 @@ export default function ShadowPanelApp() {
                               {o.phone && <div style={{ fontSize: '10px', color: '#71717a' }}>{o.phone}</div>}
                             </td>
                             <td style={{ fontWeight: 600 }}>{o.event || 'DHOLIDA GARBA ROYALE'}</td>
-                            <td>{o.ticketType || (o.gender === 'female' ? 'Female Pass' : 'Male Pass')}</td>
+                            <td>{o.ticketType || (o.gender === 'female' ? 'VIP Single' : 'GA Single')}</td>
                             <td style={{ fontWeight: 700 }}>{o.quantity || 1}</td>
                             <td style={{ fontWeight: 800, color: '#ffffff' }}>
                               ₹{(o.amount || 0).toLocaleString()}

@@ -280,9 +280,9 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [manualName, setManualName] = useState('')
   const [manualEmail, setManualEmail] = useState('')
   const [manualPhone, setManualPhone] = useState('')
-  const [manualGender, setManualGender] = useState('male')
+  const [manualGender, setManualGender] = useState('GA Single')
   const [manualQty, setManualQty] = useState('1')
-  const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_male') || '699')
+  const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_male') || '399')
   const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
   const [manualPartner, setManualPartner] = useState('littlane')
   const [manualPartnerPassword, setManualPartnerPassword] = useState('')
@@ -385,18 +385,18 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       alert('Name and Email are required')
       return
     }
-    const isAura = manualEvent === 'AURA GENESIS'
-    const isInvite = manualEvent === 'FT LINEUP INVITE'
+    const isAura = manualEvent === 'DHOLIDA GARBA ROYALE'
+    const isInvite = manualEvent === 'DHOLIDA GARBA ROYALE'
     const finalEvent = isInvite ? 'DHOLIDA GARBA ROYALE' : manualEvent
     const finalGender = isInvite ? 'Exclusive' : (isAura ? 'aura' : manualGender)
     const finalAmount = isInvite ? 0 : manualAmount
     const finalTicketType = isInvite
       ? 'Exclusive VIP Pass'
       : isAura
-      ? 'Aura Genesis'
+      ? 'DHOLIDA GARBA ROYALE'
       : manualGender === 'female'
-      ? 'Female Pass'
-      : 'Male Pass'
+      ? 'VIP Single'
+      : 'GA Single'
 
     // Partner password validation check
     const partnerPassMap: Record<string, string> = {
@@ -446,12 +446,12 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
         setTimeout(() => {
           setManualSuccessMsg(null)
         }, 3000)
-        if (manualEvent === 'AURA GENESIS') {
+        if (manualEvent === 'DHOLIDA GARBA ROYALE') {
           setManualAmount(localStorage.getItem('ft_price_aura') || '350')
         } else if (manualGender === 'female') {
           setManualAmount(localStorage.getItem('ft_price_female') || '599')
         } else {
-          setManualAmount(localStorage.getItem('ft_price_male') || '699')
+          setManualAmount(localStorage.getItem('ft_price_male') || '399')
         }
         fetchSales()
       } else {
@@ -467,7 +467,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const handleManualGenderChange = (val: string) => {
     setManualGender(val)
     if (manualEvent === 'DHOLIDA GARBA ROYALE') {
-      const saved = localStorage.getItem('ft_price_male') || '699'
+      const saved = localStorage.getItem('ft_price_male') || '399'
       setManualAmount(saved)
     } else {
       const saved = localStorage.getItem('ft_price_female') || '599'
@@ -761,18 +761,18 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                   onChange={(e) => {
                     const evt = e.target.value
                     setManualEvent(evt)
-                    if (evt === 'AURA GENESIS') {
+                    if (evt === 'DHOLIDA GARBA ROYALE') {
                       setManualGender('aura')
                       setManualAmount(localStorage.getItem('ft_price_aura') || '350')
                     } else if (manualGender === 'aura') {
                       setManualGender('male')
-                      setManualAmount(localStorage.getItem('ft_price_male') || '699')
+                      setManualAmount(localStorage.getItem('ft_price_male') || '399')
                     }
                   }}
                 >
                   <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
-                  <option value="AURA GENESIS">AURA GENESIS</option>
-                  <option value="FT LINEUP INVITE">FT LINEUP INVITE (FREE)</option>
+                  
+                  
                 </select>
               </div>
 
@@ -798,7 +798,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                 />
               </div>
 
-              {manualEvent !== 'FT LINEUP INVITE' && (
+              {manualEvent !== 'DHOLIDA GARBA ROYALE' && (
                 <div className="field">
                   <label>ATTENDEE PHONE</label>
                   <input
@@ -810,10 +810,10 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: manualEvent === 'FT LINEUP INVITE' ? '1fr' : '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: manualEvent === 'DHOLIDA GARBA ROYALE' ? '1fr' : '1fr 1fr', gap: '10px' }}>
                 <div className="field">
                   <label>PASS TYPE</label>
-                  {manualEvent === 'FT LINEUP INVITE' ? (
+                  {manualEvent === 'DHOLIDA GARBA ROYALE' ? (
                     <div
                       style={{
                         padding: '10px',
@@ -827,7 +827,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                     >
                       ✨ Exclusive VIP Invite (Free)
                     </div>
-                  ) : manualEvent === 'AURA GENESIS' ? (
+                  ) : manualEvent === 'DHOLIDA GARBA ROYALE' ? (
                     <div
                       style={{
                         padding: '10px',
@@ -852,7 +852,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                   )}
                 </div>
 
-                {manualEvent !== 'FT LINEUP INVITE' && (
+                {manualEvent !== 'DHOLIDA GARBA ROYALE' && (
                   <div className="field">
                     <label>PRICE (₹)</label>
                     <input
@@ -862,7 +862,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                         const val = e.target.value
                         setManualAmount(val)
                         const key =
-                          manualEvent === 'AURA GENESIS'
+                          manualEvent === 'DHOLIDA GARBA ROYALE'
                             ? 'ft_price_aura'
                             : manualGender === 'female'
                             ? 'ft_price_female'

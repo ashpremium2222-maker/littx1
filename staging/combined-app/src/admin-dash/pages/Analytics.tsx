@@ -87,9 +87,9 @@ export default function Analytics({ sales = [] }: Props) {
   paid.forEach((s) => {
     const type =
       s.gender === 'male'
-        ? 'Male Pass'
+        ? 'GA Single'
         : s.gender === 'female'
-        ? 'Female Pass'
+        ? 'VIP Single'
         : String(s.gender || '').toLowerCase().includes('exclusive')
         ? 'VIP Invite'
         : 'General'

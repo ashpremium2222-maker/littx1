@@ -289,9 +289,9 @@ export default function Orders({
 
         const tType =
           s.gender === 'male'
-            ? 'Male Pass'
+            ? 'GA Single'
             : s.gender === 'female'
-            ? 'Female Pass'
+            ? 'VIP Single'
             : String(s.gender || '').toLowerCase().includes('exclusive')
             ? 'Exclusive VIP'
             : 'General'
