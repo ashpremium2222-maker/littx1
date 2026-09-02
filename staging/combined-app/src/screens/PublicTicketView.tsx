@@ -189,10 +189,25 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
                   <>
                     <div className="thermal-printer" aria-hidden="true">
                       <div className="thermal-printer__lid" />
-                      <div className="thermal-printer__indicator" />
-                      <div className="thermal-printer__slot">
-                        <div className="thermal-printer__slot-inner" />
+                      <div className="thermal-printer__shine" />
+                      <div className="thermal-printer__brand">LITTX</div>
+                      <div className="thermal-printer__status">
+                        <span>READY</span>
+                        <div className="thermal-printer__indicator" />
                       </div>
+                      <div className="thermal-printer__vents">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <div className="thermal-printer__side" />
+                      <div className="thermal-printer__slot-housing">
+                        <div className="thermal-printer__slot">
+                          <div className="thermal-printer__slot-inner" />
+                          <div className="thermal-printer__slot-glow" />
+                        </div>
+                      </div>
+                      <div className="thermal-printer__feet"><span /><span /></div>
                     </div>
                     <div className="thermal-print-head" aria-hidden="true" />
                   </>
