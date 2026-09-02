@@ -1,4 +1,8 @@
 
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
 const { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } = require('@simplewebauthn/server');
 
 // WebAuthn state for Sellers
@@ -17,8 +21,6 @@ const PARTNER_NAMES = {
 };
 
 // Persistent WebAuthn authenticators in tmp/local to survive serverless cold starts
-const os = require('os');
-const fs = require('fs');
 const WEBAUTHN_FILE = path.join(os.tmpdir(), 'littx_seller_webauthn.json');
 const SESSIONS_FILE = path.join(os.tmpdir(), 'littx_seller_sessions.json');
 
@@ -57,11 +59,9 @@ function authenticateSeller(token) {
 }
 
 
-require('dotenv').config({ path: require('path').join(__dirname, '.env'), quiet: true });
+require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
-const crypto = require('crypto');
 
 const db = require('./db');
 const { atomicClaimOrder } = db;
