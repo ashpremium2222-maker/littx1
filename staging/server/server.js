@@ -325,7 +325,7 @@ app.post('/api/verify-payment', async (req, res) => {
                 quantity: sale.quantity,
                 amount: sale.amount,
                 createdAt: generatedAt,
-                event: sale.event || 'FRESHERS TAKEOVER'
+                event: sale.event || 'DHOLIDA GARBA ROYALE'
             });
             qrBuffer = await buildQrBuffer(ticketId);
             qrDataUrl = await buildQrDataUrl(ticketId);
@@ -356,7 +356,7 @@ app.post('/api/verify-payment', async (req, res) => {
             pdfPath,
             qrBuffer,
             downloadUrl,
-            event: sale.event || 'FRESHERS TAKEOVER'
+            event: sale.event || 'DHOLIDA GARBA ROYALE'
         });
 
         if (emailResult.success) {
@@ -444,7 +444,7 @@ app.post('/api/webhook/razorpay', async (req, res) => {
                 pdfPath = await buildTicketPdf({
                     ticketId, name: sale.name, email: sale.email, gender: sale.gender,
                     quantity: sale.quantity, amount: sale.amount, createdAt: generatedAt,
-                    event: sale.event || 'FRESHERS TAKEOVER'
+                    event: sale.event || 'DHOLIDA GARBA ROYALE'
                 });
                 qrBuffer = await buildQrBuffer(ticketId);
                 qrDataUrl = await buildQrDataUrl(ticketId);
@@ -463,7 +463,7 @@ app.post('/api/webhook/razorpay', async (req, res) => {
             const emailResult = await sendTicketEmail({
                 to: sale.email, name: sale.name, ticketId, gender: sale.gender,
                 quantity: sale.quantity, amount: sale.amount, pdfPath, qrBuffer,
-                downloadUrl, event: sale.event || 'FRESHERS TAKEOVER'
+                downloadUrl, event: sale.event || 'DHOLIDA GARBA ROYALE'
             });
 
             if (emailResult.success) {
@@ -494,23 +494,23 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
     // Build event details (mirrors ticket.js)
     const isAura = sale.event && sale.event.toUpperCase().includes('AURA');
     const dateLabel = isAura
-        ? '14 AUG 2026 · 7:00 PM'
-        : '05 AUG 2026 · 4:00 PM';
-    const venue = 'Flo The Brewery, Hinjewadi, Pune';
-    const gLabel = { female: 'Female Pass', male: 'Male Pass', aura: 'Aura Genesis', exclusive: 'Exclusive VIP Pass' };
+        ? '17 OCT 2026 · 4:00 PM'
+        : '17 OCT 2026 · 4:00 PM';
+    const venue = 'Pethkar Ground, Kothrud, Pune';
+    const gLabel = { female: 'VIP Single', male: 'GA Single', aura: 'Dholida Garba Royale', exclusive: 'VIP Single' };
 
     res.json({
         success: true,
         ticket: {
             ticketId: sale.ticketId,
-            event: sale.event || 'FRESHERS TAKEOVER',
+            event: sale.event || 'DHOLIDA GARBA ROYALE',
             name: sale.name,
             attendee: sale.name,
             email: sale.email,
             phone: sale.phone,
             dateLabel,
             venue,
-            ticketType: sale.ticketType || gLabel[sale.gender] || (sale.gender === 'female' ? 'Female Pass' : 'Male Pass'),
+            ticketType: sale.ticketType || gLabel[sale.gender] || (sale.gender === 'female' ? 'VIP Single' : 'GA Single'),
             amount: sale.amount,
             quantity: sale.quantity || 1,
             status: sale.scannedAt ? 'scanned' : 'paid',
@@ -531,7 +531,7 @@ app.get('/api/ticket/:ticketId/download', async (req, res) => {
     if (!fs2.existsSync(filePath)) {
         try {
             console.log(`[Ticket Download] File not found for ${sale.ticketId}. Rebuilding...`);
-            const tType = sale.gender === 'male' ? 'Male Pass' : sale.gender === 'female' ? 'Female Pass' : 'General';
+            const tType = sale.gender === 'male' ? 'GA Single' : sale.gender === 'female' ? 'VIP Single' : 'General';
             await buildTicketPdf({
                 ticketId: sale.ticketId,
                 name: sale.name,
@@ -563,7 +563,7 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
     if (!fs2.existsSync(pdfPath)) {
         try {
             console.log(`[Ticket Resend] File not found for ${sale.ticketId}. Rebuilding...`);
-            const tType = sale.gender === 'male' ? 'Male Pass' : sale.gender === 'female' ? 'Female Pass' : 'General';
+            const tType = sale.gender === 'male' ? 'GA Single' : sale.gender === 'female' ? 'VIP Single' : 'General';
             await buildTicketPdf({
                 ticketId: sale.ticketId,
                 name: sale.name,
@@ -649,7 +649,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
 
     const qty = parseInt(quantity, 10) || 1;
     const evtName = event || EVENT.name;
-    const tType = ticketType || (gender === 'male' ? 'Male Pass' : gender === 'female' ? 'Female Pass' : 'General');
+    const tType = ticketType || (gender === 'male' ? 'GA Single' : gender === 'female' ? 'VIP Single' : 'General');
     
     // Compute price dynamically from single source of truth: PRICING
     let finalAmount = parseFloat(amount) || 0;
@@ -797,7 +797,7 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
 
     const qty = parseInt(quantity, 10) || 1;
     const evtName = event || EVENT.name;
-    const tType = ticketType || (gender === 'male' ? 'Male Pass' : gender === 'female' ? 'Female Pass' : 'General');
+    const tType = ticketType || (gender === 'male' ? 'GA Single' : gender === 'female' ? 'VIP Single' : 'General');
     
     let finalAmount = parseFloat(amount) || 0;
     if (finalAmount === 0) {
@@ -1653,7 +1653,7 @@ app.post('/api/admin/pr-approve', requireAdmin, async (req, res) => {
 
     // Generate ticket + send email (same flow as normal payment)
     try {
-        const tType = sale.gender === 'male' ? 'Male Pass' : 'Female Pass';
+        const tType = sale.gender === 'male' ? 'GA Single' : 'VIP Single';
         const pdfPath = await buildTicketPdf({
             ticketId: sale.ticketId,
             name: sale.name,

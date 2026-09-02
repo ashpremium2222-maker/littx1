@@ -51,8 +51,8 @@ const EVENT_DETAILS = {
 // Ticket type display labels — maps internal gender/type value to display string
 const GENDER_LABEL = {
     // Legacy gendered passes (kept for backward compat)
-    female: 'Female Pass',
-    male: 'Male Pass',
+    female: 'VIP Single',
+    male: 'GA Single',
     // New GA / VIP pass types
     'GA Single': 'GA Single',
     'GA Group of 5': 'GA Group of 5',
@@ -95,8 +95,8 @@ async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount,
     const qrPngBuffer = await buildQrBuffer(ticketId);
 
     const isAura = event && event.toUpperCase().includes('AURA');
-    const brandName = isAura ? 'AURA GENESIS' : EVENT_DETAILS.brand;
-    const eventDate = isAura ? '14 AUG 2026' : EVENT_DETAILS.date;
+    const brandName = isAura ? 'DHOLIDA GARBA ROYALE' : EVENT_DETAILS.brand;
+    const eventDate = isAura ? '17 OCT 2026' : EVENT_DETAILS.date;
     const bannerFile = isAura ? AURA_BANNER_PATH : BANNER_PATH;
 
     const W = 380;
@@ -139,7 +139,7 @@ async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount,
         doc.font('Helvetica-Bold').fontSize(12).fillColor('#111111').text(`Attendee: ${name}`, 24, y);
         y += 22;
 
-        // Info pills: date / time / venue (Aura Genesis: date only)
+        // Info pills: date / time / venue (Dholida Garba Royale: date only)
         const pillY = y;
         const pillH = 26;
         const infoPills = isAura ? [eventDate] : [eventDate, EVENT_DETAILS.time, EVENT_DETAILS.venue];
