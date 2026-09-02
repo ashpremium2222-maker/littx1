@@ -206,6 +206,8 @@ export default function App({ isPresentation = false }: AppProps) {
   const [manualQty, setManualQty] = useState('1')
   const [manualAmount, setManualAmount] = useState('399')
   const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
+  const [manualPartner, setManualPartner] = useState('littlane')
+  const [manualPartnerPassword, setManualPartnerPassword] = useState('')
 
   const fetchSales = async (keyToUse = adminKey) => {
     if (!keyToUse) {
@@ -319,6 +321,23 @@ export default function App({ isPresentation = false }: AppProps) {
       return
     }
 
+    const partnerPassMap: Record<string, string> = {
+      'littlane': 'littlane2026',
+      'nitro': 'nitro2026',
+      '7th-heaven': '7thheaven2026'
+    }
+    const expectedPass = partnerPassMap[manualPartner] || 'littlane2026'
+    if (manualPartnerPassword !== expectedPass && manualPartnerPassword !== 'dash-2026' && manualPartnerPassword !== 'littx-master-2026') {
+      alert('Invalid Partner Authorization Password for selected partner.')
+      return
+    }
+
+    const partnerNameMap: Record<string, string> = {
+      'littlane': 'Littlane Entertainment',
+      'nitro': 'Nitro Events',
+      '7th-heaven': '7th Heaven'
+    }
+
     setIsManualSubmitting(true)
     try {
       const res = await fetch('/api/admin/generate-ticket', {
@@ -336,6 +355,8 @@ export default function App({ isPresentation = false }: AppProps) {
           quantity: manualQty,
           amount: manualAmount,
           event: manualEvent,
+          generatedBy: partnerNameMap[manualPartner],
+          partnerId: manualPartner
         }),
       })
       const data = await res.json()
@@ -344,6 +365,7 @@ export default function App({ isPresentation = false }: AppProps) {
         setManualName('')
         setManualEmail('')
         setManualPhone('')
+        setManualPartnerPassword('')
         setTimeout(() => {
           setManualSuccessMsg(null)
         }, 3000)
@@ -758,6 +780,30 @@ export default function App({ isPresentation = false }: AppProps) {
                 </div>
               </div>
               
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="field">
+                  <label>SENDING COMPANY</label>
+                  <select
+                    value={manualPartner}
+                    onChange={(e) => setManualPartner(e.target.value)}
+                  >
+                    <option value="littlane">Littlane Ent.</option>
+                    <option value="nitro">Nitro Events</option>
+                    <option value="7th-heaven">7th Heaven</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>AUTH PASSWORD</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Enter auth key"
+                    value={manualPartnerPassword}
+                    onChange={(e) => setManualPartnerPassword(e.target.value)}
+                  />
+                </div>
+              </div>
               <div style={{ marginTop: '16px' }}>
                 <button
                   type="submit"
