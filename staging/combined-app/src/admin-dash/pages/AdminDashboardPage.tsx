@@ -25,9 +25,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const paidSales = sales.filter(s =>
     ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
   )
-  const revenueSales = paidSales.filter(
-    s => !s.gender || !String(s.gender).toLowerCase().includes('exclusive')
-  )
+  const revenueSales = paidSales
 
   const totalRevenue = revenueSales.reduce((acc, s) => acc + (s.amount || 0), 0)
   const totalTickets = paidSales.reduce((acc, s) => acc + (s.quantity || 1), 0)
@@ -85,10 +83,12 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const eventBreakdown = useMemo(() => {
     if (dynamicEvents.length === 0) {
       return [
-        { name: 'Male Pass (₹699)', count: maleCount, pct: Math.round((maleCount / grandTotal) * 100), color: 'var(--grad-violet)' },
-        { name: 'Female Pass (₹599)', count: femaleCount, pct: Math.round((femaleCount / grandTotal) * 100), color: 'var(--grad-teal)' },
-        { name: 'Aura Genesis', count: auraCount, pct: Math.round((auraCount / grandTotal) * 100), color: 'var(--grad-gold)' },
-        { name: 'FT Lineup VIP Invite', count: inviteCount, pct: Math.round((inviteCount / grandTotal) * 100), color: 'var(--grad-orange)' },
+        { name: 'GA Single (₹399)', count: gaSingleCount, pct: Math.round((gaSingleCount / grandTotal) * 100), color: 'var(--grad-violet)' },
+        { name: 'GA Group of 5 (₹1,699)', count: gaGroup5Count, pct: Math.round((gaGroup5Count / grandTotal) * 100), color: 'var(--grad-teal)' },
+        { name: 'GA Group of 10 (₹2,999)', count: gaGroup10Count, pct: Math.round((gaGroup10Count / grandTotal) * 100), color: 'var(--grad-gold)' },
+        { name: 'VIP Single (₹599)', count: vipSingleCount, pct: Math.round((vipSingleCount / grandTotal) * 100), color: 'var(--grad-orange)' },
+        { name: 'VIP Group of 5 (₹2,799)', count: vipGroup5Count, pct: Math.round((vipGroup5Count / grandTotal) * 100), color: 'linear-gradient(135deg,#EC4899,#8B5CF6)' },
+        { name: 'VIP Group of 10 (₹4,999)', count: vipGroup10Count, pct: Math.round((vipGroup10Count / grandTotal) * 100), color: 'linear-gradient(135deg,#3B82F6,#0EA5E9)' },
       ]
     }
 
@@ -104,7 +104,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         color: evt.gradient || COLORS[idx % COLORS.length]
       }
     })
-  }, [dynamicEvents, paidSales, grandTotal, maleCount, femaleCount, auraCount, inviteCount])
+  }, [dynamicEvents, paidSales, grandTotal, gaSingleCount, gaGroup5Count, gaGroup10Count, vipSingleCount, vipGroup5Count, vipGroup10Count])
 
   // ==================== SELLER BREAKDOWN ====================
   const sellerSummary = useMemo(() => {
@@ -117,9 +117,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       const who = s.generatedBy || s.prUserId || 'Admin'
       if (!map[who]) map[who] = { sellerId: who, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
       map[who].ticketCount += (s.quantity || 1)
-      if (!String(s.gender || '').toLowerCase().includes('exclusive')) {
-        map[who].revenue += (s.amount || 0)
-      }
+      map[who].revenue += (s.amount || 0)
       if (!map[who].lastSale || (s.generatedAt && s.generatedAt > map[who].lastSale!)) {
         map[who].lastSale = s.generatedAt
       }
@@ -626,12 +624,12 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         <div className="right-col">
           {/* Creative Event Overview Cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' }}>
-            {/* Event 1: Dholida Garba Royale Male */}
+            {/* Dholida Garba Royale — GA Tickets */}
             <div
               className="card lt-hover-lift"
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'freshers male', top: rect.top + window.scrollY, left: rect.left - 520 })
+                setPopupEvent({ name: 'dholida ga', top: rect.top + window.scrollY, left: rect.left - 520 })
               }}
               style={{
                 cursor: 'pointer',
@@ -647,84 +645,22 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ fontSize: '15px' }}>🎉</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Dholida Garba Royale (Male)</h4>
+                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Dholida Garba Royale — GA</h4>
                 </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Male Passes Sold</p>
+                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>General Admission Passes Sold</p>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#7C5CFA', fontFamily: 'monospace' }}>{maleCount}</div>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: '#7C5CFA', fontFamily: 'monospace' }}>{gaSoldCount}</div>
                 <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
               </div>
             </div>
 
-            {/* Event 2: Dholida Garba Royale Female */}
+          {/* Dholida Garba Royale — VIP Tickets */}
             <div
               className="card lt-hover-lift"
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'freshers female', top: rect.top + window.scrollY, left: rect.left - 520 })
-              }}
-              style={{
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(244, 63, 94, 0.03) 100%)',
-                border: '1px solid var(--line)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '15px' }}>👩</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Dholida Garba Royale (Female)</h4>
-                </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Female Passes Sold</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#EC4899', fontFamily: 'monospace' }}>{femaleCount}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
-              </div>
-            </div>
-
-            {/* Event 3: Aura Genesis */}
-            <div
-              className="card lt-hover-lift"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'aura genesis', top: rect.top + window.scrollY, left: rect.left - 520 })
-              }}
-              style={{
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, rgba(56, 217, 196, 0.12) 0%, rgba(59, 130, 246, 0.03) 100%)',
-                border: '1px solid var(--line)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '15px' }}>✨</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Aura Genesis</h4>
-                </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Electronic Skyline Showcase</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#38D9C4', fontFamily: 'monospace' }}>{auraCount}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
-              </div>
-            </div>
-
-            {/* Event 4: FT Lineup Invite */}
-            <div
-              className="card lt-hover-lift"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'ft lineup invite', top: rect.top + window.scrollY, left: rect.left - 520 })
+                setPopupEvent({ name: 'dholida vip', top: rect.top + window.scrollY, left: rect.left - 520 })
               }}
               style={{
                 cursor: 'pointer',
@@ -740,17 +676,17 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ fontSize: '15px' }}>⭐</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>FT Lineup Invite</h4>
+                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Dholida Garba Royale — VIP</h4>
                 </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>VIP Exclusive Passes</p>
+                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>VIP Passes Sold</p>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#F5B942', fontFamily: 'monospace' }}>{inviteCount}</div>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: '#F5B942', fontFamily: 'monospace' }}>{vipSoldCount}</div>
                 <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
               </div>
             </div>
           </div>
-
+          
           {/* Activity Timeline Card */}
           <div className="card timeline-card" style={{ flex: 1 }}>
             <div className="card-head">
@@ -831,7 +767,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--ink)' }}>
-                  {popupEvent.name === 'freshers male' ? '🎉 Dholida Garba Royale (Male)' : popupEvent.name === 'freshers female' ? '👩 Dholida Garba Royale (Female)' : popupEvent.name === 'aura genesis' ? '✨ Aura Genesis' : '⭐ FT Lineup Invite'} — Buyers
+                  {popupEvent.name === 'dholida vip' ? '⭐ Dholida Garba Royale — VIP' : '🎉 Dholida Garba Royale — GA'} — Buyers
                 </h3>
                 <div style={{ fontSize: '11px', color: 'var(--ink-soft)', marginTop: '4px' }}>
                   {(() => {
@@ -903,7 +839,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                         width: '32px',
                         height: '32px',
                         borderRadius: '9px',
-                        background: popupEvent.name === 'freshers male' ? 'var(--grad-violet)' : popupEvent.name === 'freshers female' ? 'linear-gradient(135deg, #EC4899 0%, #F43F5E 100%)' : popupEvent.name === 'aura genesis' ? 'var(--grad-teal)' : 'var(--grad-gold)',
+                        background: popupEvent.name === 'dholida vip' ? 'var(--grad-gold)' : 'var(--grad-violet)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',

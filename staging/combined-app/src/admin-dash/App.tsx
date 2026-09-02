@@ -202,9 +202,9 @@ export default function App({ isPresentation = false }: AppProps) {
   const [manualName, setManualName] = useState('')
   const [manualEmail, setManualEmail] = useState('')
   const [manualPhone, setManualPhone] = useState('')
-  const [manualGender, setManualGender] = useState('male')
+  const [manualTicketType, setManualTicketType] = useState('GA Single')
   const [manualQty, setManualQty] = useState('1')
-  const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_male') || '699')
+  const [manualAmount, setManualAmount] = useState('399')
   const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
 
   const fetchSales = async (keyToUse = adminKey) => {
@@ -318,18 +318,6 @@ export default function App({ isPresentation = false }: AppProps) {
       alert('Name and Email are required')
       return
     }
-    const isAura = manualEvent === 'AURA GENESIS'
-    const isInvite = manualEvent === 'FT LINEUP INVITE'
-    const finalEvent = isInvite ? 'DHOLIDA GARBA ROYALE' : manualEvent
-    const finalGender = isInvite ? 'Exclusive' : (isAura ? 'aura' : manualGender)
-    const finalAmount = isInvite ? 0 : manualAmount
-    const finalTicketType = isInvite
-      ? 'Exclusive VIP Pass'
-      : isAura
-      ? 'Aura Genesis'
-      : manualGender === 'female'
-      ? 'Female Pass'
-      : 'Male Pass'
 
     setIsManualSubmitting(true)
     try {
@@ -343,11 +331,11 @@ export default function App({ isPresentation = false }: AppProps) {
           name: manualName,
           email: manualEmail,
           phone: manualPhone,
-          gender: finalGender,
-          ticketType: finalTicketType,
+          gender: 'General',
+          ticketType: manualTicketType,
           quantity: manualQty,
-          amount: finalAmount,
-          event: finalEvent,
+          amount: manualAmount,
+          event: manualEvent,
         }),
       })
       const data = await res.json()
@@ -359,13 +347,6 @@ export default function App({ isPresentation = false }: AppProps) {
         setTimeout(() => {
           setManualSuccessMsg(null)
         }, 3000)
-        if (manualEvent === 'AURA GENESIS') {
-          setManualAmount(localStorage.getItem('ft_price_aura') || '350')
-        } else if (manualGender === 'female') {
-          setManualAmount(localStorage.getItem('ft_price_female') || '599')
-        } else {
-          setManualAmount(localStorage.getItem('ft_price_male') || '699')
-        }
         fetchSales()
       } else {
         alert(`Failed: ${data.message}`)
@@ -377,15 +358,14 @@ export default function App({ isPresentation = false }: AppProps) {
     }
   }
 
-  const handleManualGenderChange = (val: string) => {
-    setManualGender(val)
-    if (manualEvent === 'DHOLIDA GARBA ROYALE') {
-      const saved = localStorage.getItem('ft_price_male') || '699'
-      setManualAmount(saved)
-    } else {
-      const saved = localStorage.getItem('ft_price_female') || '599'
-      setManualAmount(saved)
-    }
+  const handleManualTicketTypeChange = (val: string) => {
+    setManualTicketType(val)
+    if (val === 'GA Single') setManualAmount('399')
+    else if (val === 'GA Group of 5') setManualAmount('1699')
+    else if (val === 'GA Group of 10') setManualAmount('2999')
+    else if (val === 'VIP Single') setManualAmount('599')
+    else if (val === 'VIP Group of 5') setManualAmount('2799')
+    else if (val === 'VIP Group of 10') setManualAmount('4999')
   }
 
   // Auth checking screen
@@ -644,12 +624,12 @@ export default function App({ isPresentation = false }: AppProps) {
 
           <div
             className={`badge ${
-              testMode ? 'badge-amber' : 'badge-green'
+              testMode ? 'badge-green' : 'badge-green'
             }`}
             style={{ padding: '6px 12px', fontSize: '11px' }}
           >
             <span className="badge-dot" />
-            {testMode ? 'TEST MODE' : 'LIVE MODE'}
+            'LIVE MODE'
           </div>
 
           <button className="tb-icon-btn" title="Notifications">
@@ -714,21 +694,9 @@ export default function App({ isPresentation = false }: AppProps) {
                 <label>SELECT EVENT</label>
                 <select
                   value={manualEvent}
-                  onChange={(e) => {
-                    const evt = e.target.value
-                    setManualEvent(evt)
-                    if (evt === 'AURA GENESIS') {
-                      setManualGender('aura')
-                      setManualAmount(localStorage.getItem('ft_price_aura') || '350')
-                    } else if (manualGender === 'aura') {
-                      setManualGender('male')
-                      setManualAmount(localStorage.getItem('ft_price_male') || '699')
-                    }
-                  }}
+                  onChange={(e) => setManualEvent(e.target.value)}
                 >
                   <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
-                  <option value="AURA GENESIS">AURA GENESIS</option>
-                  <option value="FT LINEUP INVITE">FT LINEUP INVITE (FREE)</option>
                 </select>
               </div>
 
@@ -754,118 +722,50 @@ export default function App({ isPresentation = false }: AppProps) {
                 />
               </div>
 
-              {manualEvent !== 'FT LINEUP INVITE' && (
-                <div className="field">
-                  <label>ATTENDEE PHONE</label>
-                  <input
-                    type="text"
-                    placeholder="+91 99999 88888"
-                    value={manualPhone}
-                    onChange={(e) => setManualPhone(e.target.value)}
-                  />
-                </div>
-              )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: manualEvent === 'FT LINEUP INVITE' ? '1fr' : '1fr 1fr', gap: '10px' }}>
-                <div className="field">
-                  <label>PASS TYPE</label>
-                  {manualEvent === 'FT LINEUP INVITE' ? (
-                    <div
-                      style={{
-                        padding: '10px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid #7C5CFA',
-                        backgroundColor: 'rgba(124,92,250,0.12)',
-                        color: '#7C5CFA',
-                        fontWeight: 700,
-                        fontSize: '12px',
-                      }}
-                    >
-                      ✨ Exclusive VIP Invite (Free)
-                    </div>
-                  ) : manualEvent === 'AURA GENESIS' ? (
-                    <div
-                      style={{
-                        padding: '10px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid #F5B942',
-                        backgroundColor: 'rgba(245,185,66,0.12)',
-                        color: '#F5B942',
-                        fontWeight: 700,
-                        fontSize: '12px',
-                      }}
-                    >
-                      ✨ Aura Genesis Pass
-                    </div>
-                  ) : (
-                    <select
-                      value={manualGender}
-                      onChange={(e) => handleManualGenderChange(e.target.value)}
-                    >
-                      <option value="male">Freshers Male Pass (₹699)</option>
-                      <option value="female">Freshers Female Pass (₹599)</option>
-                    </select>
-                  )}
-                </div>
-
-                {manualEvent !== 'FT LINEUP INVITE' && (
-                  <div className="field">
-                    <label>PRICE (₹)</label>
-                    <input
-                      type="number"
-                      value={manualAmount}
-                      onChange={(e) => {
-                        const val = e.target.value
-                        setManualAmount(val)
-                        const key =
-                          manualEvent === 'AURA GENESIS'
-                            ? 'ft_price_aura'
-                            : manualGender === 'female'
-                            ? 'ft_price_female'
-                            : 'ft_price_male'
-                        localStorage.setItem(key, val)
-                      }}
-                    />
-                  </div>
-                )}
+              <div className="field">
+                <label>ATTENDEE PHONE</label>
+                <input
+                  type="text"
+                  placeholder="+91 99999 88888"
+                  value={manualPhone}
+                  onChange={(e) => setManualPhone(e.target.value)}
+                />
               </div>
 
-              {manualSuccessMsg && (
-                <div style={{
-                  padding: '10px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: 'rgba(61, 220, 132, 0.12)',
-                  border: '1px solid rgba(61, 220, 132, 0.3)',
-                  color: '#3DDC84',
-                  fontSize: '11.5px',
-                  fontWeight: 600,
-                  textAlign: 'center',
-                  marginTop: '4px',
-                }}>
-                  ✓ Ticket Sent successfully! Ready for next ticket.
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="field">
+                  <label>PASS TYPE</label>
+                  <select
+                    value={manualTicketType}
+                    onChange={(e) => handleManualTicketTypeChange(e.target.value)}
+                  >
+                    <option value="GA Single">GA Single</option>
+                    <option value="GA Group of 5">GA Group of 5</option>
+                    <option value="GA Group of 10">GA Group of 10</option>
+                    <option value="VIP Single">VIP Single</option>
+                    <option value="VIP Group of 5">VIP Group of 5</option>
+                    <option value="VIP Group of 10">VIP Group of 10</option>
+                  </select>
                 </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                <div className="field">
+                  <label>QUANTITY</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={manualQty}
+                    onChange={(e) => setManualQty(e.target.value)}
+                  />
+                </div>
+              </div>
+              
+              <div style={{ marginTop: '16px' }}>
                 <button
                   type="submit"
                   disabled={isManualSubmitting}
-                  className={manualSuccessMsg ? "btn-primary btn-success-glow" : "btn-primary"}
-                  style={{
-                    flex: 1,
-                    transition: 'all 0.2s',
-                  }}
+                  className="btn-primary"
+                  style={{ width: '100%', padding: '14px', fontSize: '14px' }}
                 >
-                  {isManualSubmitting ? 'Processing...' : manualSuccessMsg ? '✓ Ticket Sent!' : 'Generate & Email'}
-                </button>
-                <button
-                  type="button"
-                  disabled={isManualSubmitting}
-                  onClick={() => setShowManualModal(false)}
-                  className="btn-secondary"
-                  style={{ flex: 1 }}
-                >
-                  Cancel
+                  {isManualSubmitting ? 'Generating...' : manualSuccessMsg || 'Generate & Send →'}
                 </button>
               </div>
             </form>

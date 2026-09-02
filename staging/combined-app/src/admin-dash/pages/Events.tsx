@@ -19,39 +19,18 @@ interface Props {
 
 const EVENT_META: Record<string, { gradient: string; icon: string; tagline: string; isVip?: boolean }> = {
   'DHOLIDA GARBA ROYALE': {
-    gradient: 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',
+    gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
     icon: '🎉',
-    tagline: 'Pune College Fest · Main Event',
-  },
-  'AURA GENESIS': {
-    gradient: 'linear-gradient(135deg, #38D9C4 0%, #3B82F6 100%)',
-    icon: '✨',
-    tagline: 'Skyline Electronic Showcase',
-  },
-  'FT LINEUP INVITE': {
-    gradient: 'linear-gradient(135deg, #F5C542 0%, #F5854D 100%)',
-    icon: '⭐',
-    tagline: 'Exclusive VIP Access · Invite Only',
-    isVip: true,
-  },
+    tagline: 'Pethkar Ground, Kothrud, Pune · 17th October',
+  }
 }
 
 const LINEUPS: Record<string, { time: string; name: string; stage: string; status: string; badge: string }[]> = {
   'DHOLIDA GARBA ROYALE': [
-    { time: '8:00 PM', name: 'DJ Solace', stage: 'Main Stage · Opener', status: 'Confirmed', badge: 'green' },
-    { time: '9:30 PM', name: 'Kite & Ember', stage: 'Main Stage · Support', status: 'Confirmed', badge: 'green' },
-    { time: '11:00 PM', name: 'LitTix Headliner', stage: 'Main Stage · Headliner', status: 'VIP Invite', badge: 'amber' },
-  ],
-  'AURA GENESIS': [
-    { time: '7:00 PM', name: 'Aura Collective', stage: 'Skyline Stage · Debut', status: 'Confirmed', badge: 'green' },
-    { time: '9:00 PM', name: 'Electronic Showcase', stage: 'Skyline Stage · Main', status: 'Confirmed', badge: 'green' },
-    { time: '11:30 PM', name: 'Midnight Headliner', stage: 'Skyline Stage · Closer', status: 'Confirmed', badge: 'green' },
-  ],
-  'FT LINEUP INVITE': [
-    { time: 'All Access', name: 'Exclusive Backstage Tour', stage: 'All Stages · VIP Zone', status: 'VIP Only', badge: 'amber' },
-    { time: 'Priority', name: 'Artist Meet & Greet', stage: 'Green Room Access', status: 'Exclusive', badge: 'amber' },
-    { time: 'All Night', name: 'Priority Viewing Area', stage: 'Front Row · All Acts', status: 'Exclusive', badge: 'amber' },
-  ],
+    { time: '4:00 PM', name: 'Gates Open', stage: 'Main Entrance', status: 'Confirmed', badge: 'green' },
+    { time: '4:00 PM onwards', name: 'Garba & Performances', stage: 'Main Stage', status: 'Confirmed', badge: 'green' },
+    { time: 'VIP', name: 'VIP Zone Access', stage: 'VIP Section', status: 'VIP Pass', badge: 'amber' },
+  ]
 }
 
 export default function Events({ sales = [], onNavigateToTickets }: Props) {
@@ -63,33 +42,33 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
     name: string; totalRevenue: number; ticketsSold: number; scanned: number; firstSale: string; lastSale: string
   }>()
 
-  // Pre-seed all 3 events
+  // Pre-seed the 1 event
   Object.keys(EVENT_META).forEach(name => {
     eventMap.set(name, { name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' })
   })
 
   sales.forEach((s) => {
-    const isVip =
-      (s.gender || '').toLowerCase().includes('exclusive') ||
-      (s.ticketType || '').toLowerCase().includes('exclusive') ||
-      (s.ticketType || '').toLowerCase().includes('vip invite')
+    const name = 'DHOLIDA GARBA ROYALE'
+    const isPaid = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
 
-    const isAura = (s.event || '').toUpperCase().includes('AURA')
-    const name = isVip ? 'FT LINEUP INVITE' : isAura ? 'AURA GENESIS' : 'DHOLIDA GARBA ROYALE'
-
-    const isPaid = ['paid', 'scanned', 'generated', 'ticket_generated', 'emailed'].includes(s.status)
     const entry = eventMap.get(name)!
-    entry.totalRevenue += isPaid ? s.amount || 0 : 0
-    entry.ticketsSold += isPaid ? 1 : 0
-    entry.scanned += s.scannedAt ? 1 : 0
-    if (s.createdAt && (!entry.firstSale || s.createdAt < entry.firstSale)) entry.firstSale = s.createdAt
-    if (s.createdAt && (!entry.lastSale || s.createdAt > entry.lastSale)) entry.lastSale = s.createdAt
+    if (isPaid) {
+      entry.totalRevenue += (s.amount || 0)
+      entry.ticketsSold += 1
+    }
+    if (s.scannedAt || s.status === 'scanned') {
+      entry.scanned += 1
+    }
+    if (s.createdAt) {
+      if (!entry.firstSale || s.createdAt < entry.firstSale) entry.firstSale = s.createdAt
+      if (!entry.lastSale || s.createdAt > entry.lastSale) entry.lastSale = s.createdAt
+    }
   })
 
   const events = Array.from(eventMap.values())
-  const totalRevenueSum = events.reduce((a, e) => a + e.totalRevenue, 0)
-  const totalSoldSum = events.reduce((a, e) => a + e.ticketsSold, 0)
-  const totalScanned = events.reduce((a, e) => a + e.scanned, 0)
+  const totalRevenueSum = events.reduce((acc, evt) => acc + evt.totalRevenue, 0)
+  const totalSoldSum = events.reduce((acc, evt) => acc + evt.ticketsSold, 0)
+  const totalScanned = events.reduce((acc, evt) => acc + evt.scanned, 0)
 
   // ── Detail View ─────────────────────────────────────────────────────────
   if (selectedEvent) {
@@ -134,11 +113,6 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
               <span className="badge" style={{ background: 'rgba(61,220,132,0.25)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}>
                 <span className="badge-dot" style={{ background: '#3DDC84' }} /> LIVE
               </span>
-              {meta.isVip && (
-                <span className="badge" style={{ background: 'rgba(245,197,66,0.3)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}>
-                  ⭐ VIP EXCLUSIVE
-                </span>
-              )}
             </div>
             <div>
               <div style={{ fontSize: '32px', marginBottom: '4px' }}>{meta.icon}</div>
@@ -160,7 +134,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
               { label: 'PASSES SOLD', val: evtData.ticketsSold.toString() },
               { label: 'QR SCANNED', val: evtData.scanned.toString() },
               { label: 'SCAN RATE', val: `${scanPct}%` },
-              { label: 'TOTAL REVENUE', val: meta.isVip ? 'FREE' : `₹${evtData.totalRevenue.toLocaleString()}` },
+              { label: 'TOTAL REVENUE', val: `₹${evtData.totalRevenue.toLocaleString()}` },
             ].map(stat => (
               <div key={stat.label}>
                 <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--ink-faint)', marginBottom: '4px' }}>{stat.label}</div>
@@ -178,12 +152,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
               <div className="card-head">
                 <h3>👥 Ticket Buyers ({(() => {
                   const buyersList = sales.filter(s => {
-                    const isVip =
-                      (s.gender || '').toLowerCase().includes('exclusive') ||
-                      (s.ticketType || '').toLowerCase().includes('exclusive') ||
-                      (s.ticketType || '').toLowerCase().includes('vip')
-                    const isAura = (s.event || '').toUpperCase().includes('AURA')
-                    const category = isVip ? 'FT LINEUP INVITE' : isAura ? 'AURA GENESIS' : 'DHOLIDA GARBA ROYALE'
+                    const category = 'DHOLIDA GARBA ROYALE'
                     const isPaid = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
                     return isPaid && category === selectedEvent
                   })
@@ -194,12 +163,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
               <div className="scroll" style={{ maxHeight: '420px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {(() => {
                   const buyersList = sales.filter(s => {
-                    const isVip =
-                      (s.gender || '').toLowerCase().includes('exclusive') ||
-                      (s.ticketType || '').toLowerCase().includes('exclusive') ||
-                      (s.ticketType || '').toLowerCase().includes('vip')
-                    const isAura = (s.event || '').toUpperCase().includes('AURA')
-                    const category = isVip ? 'FT LINEUP INVITE' : isAura ? 'AURA GENESIS' : 'DHOLIDA GARBA ROYALE'
+                    const category = 'DHOLIDA GARBA ROYALE'
                     const isPaid = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
                     return isPaid && category === selectedEvent
                   })
@@ -230,7 +194,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
                           width: '36px',
                           height: '36px',
                           borderRadius: '10px',
-                          background: selectedEvent === 'DHOLIDA GARBA ROYALE' ? 'var(--grad-violet)' : selectedEvent === 'AURA GENESIS' ? 'var(--grad-teal)' : 'var(--grad-gold)',
+                          background: 'var(--grad-violet)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -247,9 +211,9 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ink)' }}>
-                          {meta.isVip ? 'FREE' : `₹${(s.amount || 0).toLocaleString()}`}
+                          {`₹${(s.amount || 0).toLocaleString()}`}
                         </div>
-                        <div style={{ fontSize: '10px', color: 'var(--ink-faint)' }}>{s.gender || 'pass'}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--ink-faint)' }}>{s.ticketType || s.gender || 'pass'}</div>
                       </div>
                     </div>
                   ))
@@ -258,41 +222,50 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
             </div>
           </div>
 
-          {/* Metrics Card */}
+          {/* Right Column: Lineup & Schedule */}
           <div className="right-col">
             <div className="card">
               <div className="card-head">
-                <h3>Sales & Gate Metrics</h3>
+                <h3>Event Schedule</h3>
+                <div className="muted-sm">Confirmed lineup & times</div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div className="tier-row">
-                  <div className="h">
-                    <span>Passes Sold</span>
-                    <span className="muted">{evtData.ticketsSold} passes</span>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {lineup.map((act, idx) => (
+                  <div key={idx} style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                    padding: '12px',
+                    background: 'var(--panel-2)',
+                    border: '1px solid var(--line)',
+                    borderRadius: '10px',
+                  }}>
+                    <div style={{
+                      padding: '4px 8px',
+                      background: 'var(--panel-3)',
+                      borderRadius: '6px',
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      color: 'var(--ink)',
+                      minWidth: '65px',
+                      textAlign: 'center',
+                    }}>
+                      {act.time}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ink)' }}>{act.name}</div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--ink-soft)' }}>{act.stage}</div>
+                    </div>
+                    <div>
+                      <span className={`badge badge-${act.badge}`} style={{ fontSize: '9px' }}>
+                        {act.status}
+                      </span>
+                    </div>
                   </div>
-                  <div className="bar">
-                    <div className="fill" style={{ width: '85%', background: meta.gradient }} />
-                  </div>
-                </div>
-                <div className="tier-row">
-                  <div className="h">
-                    <span>Gate Scan Rate</span>
-                    <span className="muted">{scanPct}%</span>
-                  </div>
-                  <div className="bar">
-                    <div className="fill" style={{ width: `${Math.max(2, scanPct)}%`, background: 'var(--grad-teal)' }} />
-                  </div>
-                </div>
-                <div className="tier-row">
-                  <div className="h">
-                    <span>Revenue Target</span>
-                    <span className="muted">{meta.isVip ? 'N/A' : `₹${evtData.totalRevenue.toLocaleString()}`}</span>
-                  </div>
-                  <div className="bar">
-                    <div className="fill" style={{ width: '70%', background: 'var(--grad-gold)' }} />
-                  </div>
-                </div>
+                ))}
               </div>
+              
               <div style={{ marginTop: '20px' }}>
                 <button className="btn-primary" style={{ width: '100%' }} onClick={() => onNavigateToTickets?.()}>
                   View Event Tickets →
@@ -312,14 +285,14 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
       <div className="kpi-row">
         <div className="tile tile-teal">
           <div className="tile-label">LIVE EVENTS</div>
-          <div className="tile-value">3</div>
-          <div className="tile-sub">Freshers · Aura · VIP</div>
+          <div className="tile-value">1</div>
+          <div className="tile-sub">Dholida Garba Royale</div>
           <div className="tile-delta"><span>🟢</span> All Live</div>
         </div>
         <div className="tile tile-gold">
           <div className="tile-label">TOTAL PASSES SOLD</div>
           <div className="tile-value">{totalSoldSum}</div>
-          <div className="tile-sub">Across all 3 events</div>
+          <div className="tile-sub">Dholida Garba Royale</div>
           <div className="tile-delta"><span>🎟</span> Active sales</div>
         </div>
         <div className="tile tile-orange">
@@ -403,7 +376,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
                 {/* Mini stats */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '14px' }}>
                   {[
-                    { label: 'REVENUE', val: meta.isVip ? 'FREE' : `₹${event.totalRevenue.toLocaleString()}` },
+                    { label: 'REVENUE', val: `₹${event.totalRevenue.toLocaleString()}` },
                     { label: 'PASSES', val: event.ticketsSold.toString() },
                     { label: 'SCANNED', val: event.scanned.toString() },
                   ].map(stat => (

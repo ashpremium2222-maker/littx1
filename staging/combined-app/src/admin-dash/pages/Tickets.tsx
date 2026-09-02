@@ -55,13 +55,7 @@ export default function Tickets({
   const baseTicketSales = sales.filter((s) => {
     if (!s.ticketId) return false
 
-    const isVip =
-      (s.gender || '').toLowerCase().includes('exclusive') ||
-      (s.ticketType || '').toLowerCase().includes('exclusive') ||
-      (s.ticketType || '').toLowerCase().includes('vip')
-
-    const isAura = (s.event || '').toUpperCase().includes('AURA')
-    const category = isVip ? 'ft lineup invite' : isAura ? 'aura genesis' : 'freshers takeover'
+    const category = 'dholida garba royale'
 
     if (eventFilter !== 'all' && category !== eventFilter)
       return false
@@ -143,14 +137,7 @@ export default function Tickets({
       email: s.email,
       phone: s.phone || '—',
       event: s.event || 'DHOLIDA GARBA ROYALE',
-      type:
-        s.gender === 'male'
-          ? 'Male Pass'
-          : s.gender === 'female'
-          ? 'Female Pass'
-          : String(s.gender || '').toLowerCase().includes('exclusive')
-          ? 'Exclusive VIP'
-          : 'General',
+      type: s.ticketType || 'GA Single',
       qty: s.quantity || 1,
       price: s.amount || 0,
       generated: s.generatedAt ? new Date(s.generatedAt).toLocaleString('en-IN') : '—',
@@ -229,9 +216,7 @@ export default function Tickets({
 
         <select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)}>
           <option value="all">All events</option>
-          <option value="freshers takeover">DHOLIDA GARBA ROYALE</option>
-          <option value="aura genesis">AURA GENESIS</option>
-          <option value="ft lineup invite">FT LINEUP INVITE</option>
+          <option value="dholida garba royale">DHOLIDA GARBA ROYALE</option>
         </select>
 
         <button

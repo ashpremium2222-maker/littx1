@@ -22,12 +22,6 @@ export type TicketType =
   | 'VIP Single'
   | 'VIP Group of 5'
   | 'VIP Group of 10'
-  | 'General'
-  | 'VIP'
-  | 'Backstage'
-  | 'Male Pass'
-  | 'Female Pass'
-  | 'Aura Genesis'
 export type TicketStatus = 'pending' | 'scanned'
 
 export interface Ticket {
@@ -105,8 +99,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               email: sale.email,
               phone: sale.phone || '',
               dateLabel: fmtIST(sale.generatedAt),
-              venue: 'Flo The Brewery, Pune',
-              ticketType: sale.gender === 'male' ? 'Male Pass' : sale.gender === 'female' ? 'Female Pass' : 'General',
+              venue: 'Pethkar Ground, Kothrud, Pune',
+              ticketType: (sale.ticketType as any) || 'GA Single',
               price: `₹${sale.amount}`,
               qty: sale.quantity || 1,
               generatedBy: 'Admin',
@@ -177,7 +171,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         attendee: data.ticket.attendee,
         email: data.ticket.email,
         dateLabel: new Date(data.ticket.generatedAt).toLocaleString(),
-        venue: 'Flo The Brewery, Pune',
+        venue: 'Pethkar Ground, Kothrud, Pune',
         ticketType: data.ticket.ticketType,
         price: `₹${data.ticket.price}`,
         qty: data.ticket.qty,
@@ -240,13 +234,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         const data = await res.json()
 
-        const mapGender = (g: string): TicketType => {
-          if (g === 'male') return 'Male Pass'
-          if (g === 'female') return 'Female Pass'
-          return 'General'
-        }
-
-        if (data.result === 'success') {
+                if (data.result === 'success') {
           const t = data.ticket
           // Build a fully-resolved ticket directly from server response
           const resolvedTicket: Ticket = {
@@ -256,8 +244,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             email: t.email || '—',
             phone: t.phone || 'N/A',
             dateLabel: t.generatedAt ? new Date(t.generatedAt).toLocaleString() : 'TBA',
-            venue: 'Flo The Brewery, Pune',
-            ticketType: mapGender(t.ticketType || t.gender || ''),
+            venue: 'Pethkar Ground, Kothrud, Pune',
+            ticketType: (t.ticketType as TicketType) || 'GA Single',
             price: `₹${t.amount || '—'}`,
             qty: t.quantity || 1,
             generatedBy: t.generatedBy || 'LITTX',
@@ -278,8 +266,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             email: t.email || '—',
             phone: t.phone || 'N/A',
             dateLabel: fmtIST(t.generatedAt),
-            venue: 'Flo The Brewery, Pune',
-            ticketType: mapGender(t.ticketType || t.gender || ''),
+            venue: 'Pethkar Ground, Kothrud, Pune',
+            ticketType: (t.ticketType as TicketType) || 'GA Single',
             price: `₹${t.amount || '—'}`,
             qty: t.quantity || 1,
             generatedBy: t.generatedBy || 'LITTX',
