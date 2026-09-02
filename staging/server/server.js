@@ -1441,25 +1441,147 @@ app.post('/api/auth/login', (req, res) => {
 
 // ==================== LITTX SELLER LOGIN SYSTEM ====================
 
-// POST /api/seller/login — validate credentials, issue token, enforce 1-session-per-seller
-app.post('/api/seller/login', (req, res) => {
-    const { sellerId, password } = req.body || {};
-    if (!sellerId || !password) {
-        return res.status(400).json({ success: false, message: 'Seller ID and password are required.' });
+
+// ==================== SELLER PORTAL WEBAUTHN ROUTES ====================
+app.post('/api/seller/login-step1', async (req, res) => {
+    try {
+        const { partnerId, password } = req.body || {};
+        if (!partnerId || !password) return res.status(400).json({ success: false, message: 'Missing fields' });
+        if (PARTNER_PASSWORDS[partnerId] !== password) {
+            return res.status(401).json({ success: false, message: 'Invalid partner password' });
+        }
+
+        const rawHost = req.hostname || 'localhost';
+        const rpID = rawHost.replace(/:\d+$/, '');
+        const origin = req.headers.origin || `https://${rawHost}`;
+
+        const authenticator = webauthnAuthenticators[partnerId];
+        if (!authenticator) {
+            // First time: Registration options
+            const options = await generateRegistrationOptions({
+                rpName,
+                rpID,
+                userID: Buffer.from(partnerId, 'utf-8'),
+                userName: PARTNER_NAMES[partnerId] || partnerId,
+                attestationType: 'none',
+                authenticatorSelection: {
+                    residentKey: 'preferred',
+                    userVerification: 'preferred',
+                },
+            });
+            webauthnChallenges[partnerId] = options.challenge;
+            return res.json({ success: true, isRegistration: true, options });
+        } else {
+            // Returning: Authentication options
+            const options = await generateAuthenticationOptions({
+                rpID,
+                allowCredentials: [{
+                    id: authenticator.credentialID,
+                    type: 'public-key',
+                    transports: authenticator.transports,
+                }],
+                userVerification: 'preferred',
+            });
+            webauthnChallenges[partnerId] = options.challenge;
+            return res.json({ success: true, isRegistration: false, options });
+        }
+    } catch (err) {
+        console.error('[WebAuthn Step1 Error]', err);
+        return res.status(500).json({ success: false, message: err.message || 'Authentication error' });
     }
-    const expected = SELLER_ACCOUNTS[sellerId.toUpperCase()];
-    if (!expected || expected !== password) {
-        return res.status(401).json({ success: false, message: 'Invalid Seller ID or password.' });
-    }
-    const sid = sellerId.toUpperCase();
-    const token = generateToken();
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    sellerSessions[sid] = { token, loginAt: new Date().toISOString(), ip };
-    console.log(`[Seller Login] ${sid} logged in from ${ip}`);
-    res.json({ success: true, sellerId: sid, token, loginAt: sellerSessions[sid].loginAt });
 });
 
-// POST /api/seller/logout — invalidate session
+app.post('/api/seller/login-step2', async (req, res) => {
+    try {
+        const { partnerId, response } = req.body || {};
+        if (!partnerId || !response) return res.status(400).json({ success: false, message: 'Missing fields' });
+
+        const expectedChallenge = webauthnChallenges[partnerId];
+        if (!expectedChallenge) return res.status(400).json({ success: false, message: 'No active authentication challenge found' });
+
+        const rawHost = req.hostname || 'localhost';
+        const rpID = rawHost.replace(/:\d+$/, '');
+        const expectedOrigin = req.headers.origin || `https://${rawHost}`;
+
+        const authenticator = webauthnAuthenticators[partnerId];
+        let verification;
+
+        if (!authenticator) {
+            // Verify Registration
+            verification = await verifyRegistrationResponse({
+                response,
+                expectedChallenge,
+                expectedOrigin,
+                expectedRPID: rpID,
+            });
+
+            if (verification.verified && verification.registrationInfo) {
+                const { credential } = verification.registrationInfo;
+                webauthnAuthenticators[partnerId] = {
+                    credentialID: credential ? credential.id : verification.registrationInfo.credentialID,
+                    credentialPublicKey: credential ? credential.publicKey : verification.registrationInfo.credentialPublicKey,
+                    counter: credential ? credential.counter : verification.registrationInfo.counter,
+                };
+            }
+        } else {
+            // Verify Authentication
+            verification = await verifyAuthenticationResponse({
+                response,
+                expectedChallenge,
+                expectedOrigin,
+                expectedRPID: rpID,
+                authenticator: {
+                    credentialID: authenticator.credentialID,
+                    credentialPublicKey: authenticator.credentialPublicKey,
+                    counter: authenticator.counter,
+                }
+            });
+
+            if (verification.verified && verification.authenticationInfo) {
+                webauthnAuthenticators[partnerId].counter = verification.authenticationInfo.newCounter;
+            }
+        }
+
+        if (verification && verification.verified) {
+            delete webauthnChallenges[partnerId];
+            const token = generateToken();
+            const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+            sellerSessions[partnerId] = { token, loginAt: new Date().toISOString(), ip };
+            console.log(`[Seller Login] ${partnerId} logged in via WebAuthn from ${ip}`);
+
+            return res.json({
+                success: true,
+                token,
+                partner: {
+                    id: partnerId,
+                    name: PARTNER_NAMES[partnerId],
+                    boundIp: ip
+                }
+            });
+        }
+
+        return res.status(400).json({ success: false, message: 'WebAuthn cryptographic verification failed' });
+    } catch (err) {
+        console.error('[WebAuthn Step2 Error]', err);
+        return res.status(400).json({ success: false, message: err.message || 'Verification error' });
+    }
+});
+
+app.get('/api/seller/verify-session', (req, res) => {
+    const token = req.headers['x-seller-token'];
+    const sid = authenticateSeller(token);
+    if (sid) {
+        return res.json({
+            success: true,
+            partner: {
+                id: sid,
+                name: PARTNER_NAMES[sid] || sid,
+                boundIp: sellerSessions[sid]?.ip || null
+            }
+        });
+    }
+    return res.status(401).json({ success: false, message: 'Session invalid or expired' });
+});
 app.post('/api/seller/logout', (req, res) => {
     const token = req.headers['x-seller-token'] || req.body?.token;
     const sid = authenticateSeller(token);
