@@ -2,7 +2,7 @@
 const { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } = require('@simplewebauthn/server');
 
 // WebAuthn state for Sellers
-const rpName = 'Littx Seller Portal'; // Vite default
+const rpName = 'Littx Seller Portal';
 
 const PARTNER_PASSWORDS = {
     'littlane': 'littlane2026',
@@ -16,9 +16,45 @@ const PARTNER_NAMES = {
     '7th-heaven': '7th Heaven'
 };
 
-// In-memory WebAuthn Authenticators and Challenges
-const webauthnAuthenticators = {}; // partnerId -> { credentialID, credentialPublicKey, counter }
+// Persistent WebAuthn authenticators in tmp/local to survive serverless cold starts
+const os = require('os');
+const fs = require('fs');
+const WEBAUTHN_FILE = path.join(os.tmpdir(), 'littx_seller_webauthn.json');
+const SESSIONS_FILE = path.join(os.tmpdir(), 'littx_seller_sessions.json');
+
+function loadPersisted(file) {
+    try {
+        if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (_) {}
+    return {};
+}
+
+function savePersisted(file, data) {
+    try {
+        fs.writeFileSync(file, JSON.stringify(data));
+    } catch (_) {}
+}
+
+const webauthnAuthenticators = loadPersisted(WEBAUTHN_FILE); // partnerId -> { credentialID, credentialPublicKey, counter }
 const webauthnChallenges = {}; // partnerId -> current challenge string
+const sellerSessions = loadPersisted(SESSIONS_FILE); // sid/token -> session
+
+function authenticateSeller(token) {
+    if (!token) return null;
+    // Check direct sellerSessions by partnerId/sid
+    for (const [sid, session] of Object.entries(sellerSessions)) {
+        if (session && (session.token === token || sid === token)) {
+            return sid;
+        }
+    }
+    // If token is in standard partner format (e.g. partner token)
+    if (token.startsWith('seller_') || token.startsWith('partner_')) {
+        for (const pid of Object.keys(PARTNER_NAMES)) {
+            if (token.includes(pid)) return pid;
+        }
+    }
+    return null;
+}
 
 
 require('dotenv').config({ path: require('path').join(__dirname, '.env'), quiet: true });
@@ -86,22 +122,7 @@ const SELLER_ACCOUNTS = {
     'SELLER-C': process.env.SELLER_C_PASS || 'littx-c-2026',
 };
 
-// In-memory session store: sellerId -> { token, loginAt, ip }
-// On server restart sessions clear (force re-login).
-const sellerSessions = {};
 
-function generateToken() {
-    return crypto.randomBytes(32).toString('hex');
-}
-
-// Returns sellerId if token is valid, null otherwise
-function authenticateSeller(token) {
-    if (!token) return null;
-    for (const [id, session] of Object.entries(sellerSessions)) {
-        if (session && session.token === token) return id;
-    }
-    return null;
-}
 
 function requireSeller(req, res, next) {
     const token = req.headers['x-seller-token'] || req.query.sellerToken;
@@ -1516,12 +1537,15 @@ app.post('/api/seller/login-step2', async (req, res) => {
             });
 
             if (verification.verified && verification.registrationInfo) {
-                const { credential } = verification.registrationInfo;
+                const reg = verification.registrationInfo;
+                const cred = reg.credential || {};
                 webauthnAuthenticators[partnerId] = {
-                    credentialID: credential ? credential.id : verification.registrationInfo.credentialID,
-                    credentialPublicKey: credential ? credential.publicKey : verification.registrationInfo.credentialPublicKey,
-                    counter: credential ? credential.counter : verification.registrationInfo.counter,
+                    credentialID: cred.id || reg.credentialID,
+                    credentialPublicKey: cred.publicKey || reg.credentialPublicKey,
+                    counter: (cred.counter !== undefined) ? cred.counter : ((reg.counter !== undefined) ? reg.counter : 0),
+                    transports: response.response?.transports || ['internal', 'hybrid', 'usb', 'nfc', 'ble']
                 };
+                savePersisted(WEBAUTHN_FILE, webauthnAuthenticators);
             }
         } else {
             // Verify Authentication
@@ -1533,12 +1557,13 @@ app.post('/api/seller/login-step2', async (req, res) => {
                 authenticator: {
                     credentialID: authenticator.credentialID,
                     credentialPublicKey: authenticator.credentialPublicKey,
-                    counter: authenticator.counter,
+                    counter: Number(authenticator.counter) || 0,
                 }
             });
 
             if (verification.verified && verification.authenticationInfo) {
-                webauthnAuthenticators[partnerId].counter = verification.authenticationInfo.newCounter;
+                webauthnAuthenticators[partnerId].counter = verification.authenticationInfo.newCounter || 0;
+                savePersisted(WEBAUTHN_FILE, webauthnAuthenticators);
             }
         }
 
@@ -1547,6 +1572,7 @@ app.post('/api/seller/login-step2', async (req, res) => {
             const token = generateToken();
             const ip = req.ip || req.connection?.remoteAddress || 'unknown';
             sellerSessions[partnerId] = { token, loginAt: new Date().toISOString(), ip };
+            savePersisted(SESSIONS_FILE, sellerSessions);
             console.log(`[Seller Login] ${partnerId} logged in via WebAuthn from ${ip}`);
 
             return res.json({
