@@ -40,70 +40,47 @@ export default function Settings({ adminKey }: SettingsProps) {
     setNotifs((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const loadSessions = async () => {
+  const loadSellerDeviceData = async () => {
     setLoadingSessions(true)
-    try {
-      const res = await fetch('/api/admin/seller-devices', {
-        headers: { 'x-auth-token': adminKey }
-      })
-      const data = await res.json()
-      if (data.success) {
-        setSessions((data.devices || []).filter((device: any) => device.online).map((device: any) => ({
-          userId: `partner:${device.partnerId}`,
-          displayName: device.name,
-          role: 'seller',
-          lockedIp: device.boundIp || '—',
-          loginAt: device.loginAt,
-        })))
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoadingSessions(false)
-    }
-  }
-
-  const loadPartnerLocks = async () => {
     setLoadingPartners(true)
-    try {
-      const res = await fetch('/api/admin/seller-devices', {
-        headers: { 'x-auth-token': adminKey }
-      })
-      const data = await res.json()
-      if (data.success) {
-        setPartnerLocks((data.devices || []).map((device: any) => ({
-          ...device,
-          webauthnCredentialId: device.passkeyBound ? device.registeredDeviceId || 'bound' : null,
-          registeredDeviceId: device.registeredDeviceId,
-        })))
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoadingPartners(false)
-    }
-  }
-
-  const loadSellerSessions = async () => {
     setLoadingSellerSessions(true)
     setDeviceError(null)
     try {
       const res = await fetch('/api/admin/seller-devices', {
         headers: { 'x-auth-token': adminKey }
       })
-      const data = await res.json()
-      if (data.success) {
-        setSellerSessions(data.devices || [])
-      } else {
-        setDeviceError(data.message || 'Could not load seller device status.')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.success) {
+        setDeviceError(data.message || 'Your admin session has expired. Sign in again, then refresh device status.')
+        return
       }
+      const devices = data.devices || []
+      setSellerSessions(devices)
+      setPartnerLocks(devices.map((device: any) => ({
+        ...device,
+        webauthnCredentialId: device.passkeyBound ? device.registeredDeviceId || 'bound' : null,
+      })))
+      setSessions(devices.filter((device: any) => device.online).map((device: any) => ({
+          userId: `partner:${device.partnerId}`,
+          displayName: device.name,
+          role: 'seller',
+          lockedIp: device.boundIp || '—',
+          loginAt: device.loginAt,
+      })))
     } catch (err) {
       setDeviceError('Could not connect to the seller device service.')
       console.error(err)
     } finally {
+      setLoadingSessions(false)
+      setLoadingPartners(false)
       setLoadingSellerSessions(false)
     }
   }
+
+  const loadSessions = loadSellerDeviceData
+
+  const loadPartnerLocks = loadSellerDeviceData
+  const loadSellerSessions = loadSellerDeviceData
 
   const forceLogoutSeller = async (partnerId: string, name: string) => {
     if (!confirm(`Force logout ${name}? They will be kicked immediately. Their device lock stays — only the session token is cleared.`)) return
@@ -127,9 +104,7 @@ export default function Settings({ adminKey }: SettingsProps) {
   // Auto-load all data when Active Sessions tab is shown
   useEffect(() => {
     if (tab === 'seller-locks') {
-      loadSessions()
-      loadPartnerLocks()
-      loadSellerSessions()
+      loadSellerDeviceData()
     }
   }, [tab])
 
