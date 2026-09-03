@@ -25,6 +25,7 @@ export default function Settings({ adminKey }: SettingsProps) {
   const [sellerSessions, setSellerSessions] = useState<any[]>([])
   const [loadingSellerSessions, setLoadingSellerSessions] = useState(false)
   const [kickingId, setKickingId] = useState<string | null>(null)
+  const [deviceError, setDeviceError] = useState<string | null>(null)
 
   // Notification toggle states
   const [notifs, setNotifs] = useState({
@@ -85,6 +86,7 @@ export default function Settings({ adminKey }: SettingsProps) {
 
   const loadSellerSessions = async () => {
     setLoadingSellerSessions(true)
+    setDeviceError(null)
     try {
       const res = await fetch('/api/admin/seller-devices', {
         headers: { 'x-auth-token': adminKey }
@@ -92,8 +94,11 @@ export default function Settings({ adminKey }: SettingsProps) {
       const data = await res.json()
       if (data.success) {
         setSellerSessions(data.devices || [])
+      } else {
+        setDeviceError(data.message || 'Could not load seller device status.')
       }
     } catch (err) {
+      setDeviceError('Could not connect to the seller device service.')
       console.error(err)
     } finally {
       setLoadingSellerSessions(false)
@@ -235,6 +240,11 @@ export default function Settings({ adminKey }: SettingsProps) {
                 {loadingSessions ? 'Refreshing...' : 'Refresh Sessions'}
               </button>
             </div>
+            {deviceError && (
+              <div style={{ marginTop: '12px', color: 'var(--red)', fontSize: '12px', fontWeight: 600 }}>
+                {deviceError}
+              </div>
+            )}
             <div className="table-scroll scroll" style={{ marginTop: '20px' }}>
               <table className="table">
                 <thead>

@@ -290,7 +290,7 @@ function computeAmount(gender, quantity) {
 // In-memory token store for unified auth sessions (populated by /api/auth/login)
 const platformAuthTokens = new Set();
 
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
     const key = req.headers['x-admin-key'] || req.query.key;
     const token = req.headers['x-auth-token'];
     const isPres = req.headers['x-presentation'] === 'true' || req.query.pres === 'true';
@@ -307,6 +307,17 @@ function requireAdmin(req, res, next) {
 
     // Accept unified auth tokens issued by /api/auth/login (master_admin or company_admin)
     if (token && platformAuthTokens.has(token)) return next();
+
+    // Persist platform sessions because Vercel requests do not share the
+    // process-local Set above.
+    if (token) {
+        try {
+            const session = await db.getUserSessionByToken(token);
+            if (session && ['master_admin', 'company_admin'].includes(session.role)) return next();
+        } catch (err) {
+            return next(err);
+        }
+    }
 
     return res.status(401).json({ success: false, message: 'Access Denied: Invalid admin credentials.' });
 }
@@ -1503,6 +1514,14 @@ app.post('/api/auth/login', async (req, res) => {
         const token = generateToken();
         // Register this token so requireAdmin accepts x-auth-token from the frontend
         platformAuthTokens.add(token);
+        await db.setUserSession(platformUser.userId, {
+            token,
+            ip: clientIp(req),
+            loginAt: new Date().toISOString(),
+            role: platformUser.role,
+            companyId: platformUser.companyId,
+            displayName: platformUser.displayName,
+        });
         return res.json({
             success: true,
             token,
