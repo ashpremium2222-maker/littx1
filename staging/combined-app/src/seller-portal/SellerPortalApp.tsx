@@ -145,7 +145,7 @@ export default function SellerPortalApp() {
       const step2Res = await fetch('/api/seller/login-step2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partnerId: selectedPartnerId, response: webauthnResponse })
+        body: JSON.stringify({ partnerId: selectedPartnerId, loginId: step1Data.loginId, response: webauthnResponse })
       })
 
       const step2Data = await step2Res.json()
@@ -202,7 +202,6 @@ export default function SellerPortalApp() {
         headers: {
           'Content-Type': 'application/json',
           'x-seller-token': activeToken,
-          'x-admin-key': 'dash-2026'
         },
         body: JSON.stringify({
           name,

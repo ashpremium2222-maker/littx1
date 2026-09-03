@@ -4,14 +4,15 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } = require('@simplewebauthn/server');
+require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
 
 // WebAuthn state for Sellers
 const rpName = 'Littx Seller Portal';
 
 const PARTNER_PASSWORDS = {
-    'littlane': 'littlane2026',
-    'nitro': 'nitro2026',
-    '7th-heaven': '7thheaven2026'
+    'littlane': process.env.SELLER_LITTLANE_PASS || 'littlane2026',
+    'nitro': process.env.SELLER_NITRO_PASS || 'nitro2026',
+    '7th-heaven': process.env.SELLER_7TH_HEAVEN_PASS || '7thheaven2026'
 };
 
 const PARTNER_NAMES = {
@@ -38,28 +39,72 @@ function savePersisted(file, data) {
 }
 
 const webauthnAuthenticators = loadPersisted(WEBAUTHN_FILE); // partnerId -> { credentialID, credentialPublicKey, counter }
-const webauthnChallenges = {}; // partnerId -> current challenge string
+const webauthnChallenges = new Map(); // loginId -> { partnerId, challenge, rpID, origin, createdAt }
 const sellerSessions = loadPersisted(SESSIONS_FILE); // sid/token -> session
+const SELLER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const WEBAUTHN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+
+function generateToken() {
+    return crypto.randomBytes(32).toString('base64url');
+}
+
+function createWebAuthnLogin(partnerId, challenge, rpID, origin) {
+    const loginId = crypto.randomBytes(24).toString('base64url');
+    webauthnChallenges.set(loginId, { partnerId, challenge, rpID, origin, createdAt: Date.now() });
+    return loginId;
+}
+
+function consumeWebAuthnLogin(loginId, partnerId) {
+    const login = webauthnChallenges.get(loginId);
+    webauthnChallenges.delete(loginId); // Challenges must be single-use, even if verification fails.
+    if (!login || login.partnerId !== partnerId || Date.now() - login.createdAt > WEBAUTHN_CHALLENGE_TTL_MS) {
+        return null;
+    }
+    return login;
+}
+
+function getWebAuthnRelyingParty(req) {
+    const configuredOrigin = process.env.WEBAUTHN_ORIGIN;
+    if (configuredOrigin) {
+        const origin = new URL(configuredOrigin).origin;
+        return { rpID: process.env.WEBAUTHN_RP_ID || new URL(origin).hostname, origin };
+    }
+
+    // Dynamic hosts are safe only for local development. Requiring an explicit
+    // production origin prevents a hostile Host/Origin header from creating a
+    // credential for an attacker-controlled domain.
+    const host = req.hostname;
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+        throw new Error('WEBAUTHN_ORIGIN must be configured for seller authentication.');
+    }
+    const origin = req.headers.origin || `http://${host}`;
+    const parsedOrigin = new URL(origin);
+    if (parsedOrigin.hostname !== host) throw new Error('Invalid WebAuthn origin.');
+    return { rpID: host, origin: parsedOrigin.origin };
+}
+
+function isValidSellerSession(session, token) {
+    if (!session || typeof session.token !== 'string') {
+        return false;
+    }
+    const expected = Buffer.from(session.token);
+    const supplied = Buffer.from(token);
+    if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) return false;
+    const loginAt = Date.parse(session.loginAt || '');
+    return Number.isFinite(loginAt) && Date.now() - loginAt < SELLER_SESSION_TTL_MS;
+}
 
 function authenticateSeller(token) {
-    if (!token) return null;
-    // Check direct sellerSessions by partnerId/sid
+    if (!token || typeof token !== 'string') return null;
     for (const [sid, session] of Object.entries(sellerSessions)) {
-        if (session && (session.token === token || sid === token)) {
+        if (isValidSellerSession(session, token)) {
             return sid;
-        }
-    }
-    // If token is in standard partner format (e.g. partner token)
-    if (token.startsWith('seller_') || token.startsWith('partner_')) {
-        for (const pid of Object.keys(PARTNER_NAMES)) {
-            if (token.includes(pid)) return pid;
         }
     }
     return null;
 }
 
 
-require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
 const express = require('express');
 const cors = require('cors');
 
@@ -97,6 +142,17 @@ const PRICING = {
     male: 699
 };
 
+// Prices issued by the seller portal are server-owned. Never trust an amount
+// supplied by the browser for a paid ticket.
+const SELLER_PASS_PRICES = {
+    'GA Single': 399,
+    'GA Group of 5': 1699,
+    'GA Group of 10': 2999,
+    'VIP Single': 599,
+    'VIP Group of 5': 2799,
+    'VIP Group of 10': 4999,
+};
+
 // ==================== RAZORPAY SETUP ====================
 const RZP_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 const RZP_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
@@ -125,7 +181,7 @@ const SELLER_ACCOUNTS = {
 
 
 function requireSeller(req, res, next) {
-    const token = req.headers['x-seller-token'] || req.query.sellerToken;
+    const token = req.headers['x-seller-token'];
     const sellerId = authenticateSeller(token);
     if (!sellerId) {
         return res.status(401).json({ success: false, message: 'Seller not authenticated. Please log in.' });
@@ -687,16 +743,28 @@ app.post('/api/admin/toggle-presentation', requireAdmin, async (req, res) => {
 app.post('/api/admin/generate-ticket', async (req, res) => {
     const { name, email, phone, gender, ticketType, quantity, amount, event, generatedBy } = req.body || {};
 
+    const sellerToken = req.headers['x-seller-token'];
+    const sellerId = authenticateSeller(sellerToken);
+    const adminKeyHdr = req.headers['x-admin-key'] || req.query.key;
+    const adminToken = req.headers['x-auth-token'];
+    const isAdmin = adminKeyHdr === ADMIN_KEY || (adminToken && platformAuthTokens.has(adminToken));
+    if (!sellerId && !isAdmin) {
+        return res.status(401).json({ success: false, message: 'Authentication is required to issue tickets.' });
+    }
+
     if (!name || !email) {
         return res.status(400).json({ success: false, message: 'Name and email are required.' });
     }
 
-    const qty = parseInt(quantity, 10) || 1;
+    const qty = Math.max(1, Math.min(20, parseInt(quantity, 10) || 1));
     const evtName = event || EVENT.name;
     const tType = ticketType || (gender === 'male' ? 'GA Single' : gender === 'female' ? 'VIP Single' : 'General');
     
     // Compute price dynamically from single source of truth: PRICING
-    let finalAmount = parseFloat(amount) || 0;
+    let finalAmount = sellerId ? SELLER_PASS_PRICES[tType] : parseFloat(amount) || 0;
+    if (sellerId && !finalAmount) {
+        return res.status(400).json({ success: false, message: 'Invalid seller pass type.' });
+    }
     const lowerType = tType.toLowerCase();
     const isExclusive = lowerType.includes('exclusive') || (gender && gender.toLowerCase().includes('exclusive'));
     if (finalAmount === 0 && !isExclusive) {
@@ -715,15 +783,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         const ticketId = generateTicketId();
         const generatedAt = new Date().toISOString();
 
-        const adminKeyHdr = req.headers['x-admin-key'] || req.query.key;
-        const sellerToken = req.headers['x-seller-token'] || req.query.sellerToken;
-        let resolvedBy = 'Admin';
-        if (sellerToken) {
-            const sid = authenticateSeller(sellerToken);
-            if (sid) resolvedBy = sid;
-        } else if (adminKeyHdr === ADMIN_KEY) {
-            resolvedBy = generatedBy || 'Admin';
-        }
+        const resolvedBy = sellerId || generatedBy || 'Admin';
 
         await db.createSaleRecord({
             orderId,
@@ -1472,9 +1532,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
             return res.status(401).json({ success: false, message: 'Invalid partner password' });
         }
 
-        const rawHost = req.hostname || 'localhost';
-        const rpID = rawHost.replace(/:\d+$/, '');
-        const origin = req.headers.origin || `https://${rawHost}`;
+        const { rpID, origin } = getWebAuthnRelyingParty(req);
 
         const authenticator = webauthnAuthenticators[partnerId];
         if (!authenticator) {
@@ -1490,8 +1548,8 @@ app.post('/api/seller/login-step1', async (req, res) => {
                     userVerification: 'preferred',
                 },
             });
-            webauthnChallenges[partnerId] = options.challenge;
-            return res.json({ success: true, isRegistration: true, options });
+            const loginId = createWebAuthnLogin(partnerId, options.challenge, rpID, origin);
+            return res.json({ success: true, isRegistration: true, loginId, options });
         } else {
             // Returning: Authentication options
             const options = await generateAuthenticationOptions({
@@ -1503,8 +1561,8 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 }],
                 userVerification: 'preferred',
             });
-            webauthnChallenges[partnerId] = options.challenge;
-            return res.json({ success: true, isRegistration: false, options });
+            const loginId = createWebAuthnLogin(partnerId, options.challenge, rpID, origin);
+            return res.json({ success: true, isRegistration: false, loginId, options });
         }
     } catch (err) {
         console.error('[WebAuthn Step1 Error]', err);
@@ -1514,15 +1572,11 @@ app.post('/api/seller/login-step1', async (req, res) => {
 
 app.post('/api/seller/login-step2', async (req, res) => {
     try {
-        const { partnerId, response } = req.body || {};
-        if (!partnerId || !response) return res.status(400).json({ success: false, message: 'Missing fields' });
+        const { partnerId, loginId, response } = req.body || {};
+        if (!partnerId || !loginId || !response) return res.status(400).json({ success: false, message: 'Missing fields' });
 
-        const expectedChallenge = webauthnChallenges[partnerId];
-        if (!expectedChallenge) return res.status(400).json({ success: false, message: 'No active authentication challenge found' });
-
-        const rawHost = req.hostname || 'localhost';
-        const rpID = rawHost.replace(/:\d+$/, '');
-        const expectedOrigin = req.headers.origin || `https://${rawHost}`;
+        const login = consumeWebAuthnLogin(loginId, partnerId);
+        if (!login) return res.status(400).json({ success: false, message: 'Authentication challenge is invalid or expired. Please try again.' });
 
         const authenticator = webauthnAuthenticators[partnerId];
         let verification;
@@ -1531,9 +1585,9 @@ app.post('/api/seller/login-step2', async (req, res) => {
             // Verify Registration
             verification = await verifyRegistrationResponse({
                 response,
-                expectedChallenge,
-                expectedOrigin,
-                expectedRPID: rpID,
+                expectedChallenge: login.challenge,
+                expectedOrigin: login.origin,
+                expectedRPID: login.rpID,
             });
 
             if (verification.verified && verification.registrationInfo) {
@@ -1551,9 +1605,9 @@ app.post('/api/seller/login-step2', async (req, res) => {
             // Verify Authentication
             verification = await verifyAuthenticationResponse({
                 response,
-                expectedChallenge,
-                expectedOrigin,
-                expectedRPID: rpID,
+                expectedChallenge: login.challenge,
+                expectedOrigin: login.origin,
+                expectedRPID: login.rpID,
                 authenticator: {
                     credentialID: authenticator.credentialID,
                     credentialPublicKey: authenticator.credentialPublicKey,
@@ -1568,7 +1622,6 @@ app.post('/api/seller/login-step2', async (req, res) => {
         }
 
         if (verification && verification.verified) {
-            delete webauthnChallenges[partnerId];
             const token = generateToken();
             const ip = req.ip || req.connection?.remoteAddress || 'unknown';
             sellerSessions[partnerId] = { token, loginAt: new Date().toISOString(), ip };
@@ -1613,6 +1666,7 @@ app.post('/api/seller/logout', (req, res) => {
     const sid = authenticateSeller(token);
     if (sid) {
         delete sellerSessions[sid];
+        savePersisted(SESSIONS_FILE, sellerSessions);
         console.log(`[Seller Logout] ${sid} logged out`);
     }
     res.json({ success: true });
@@ -1620,7 +1674,7 @@ app.post('/api/seller/logout', (req, res) => {
 
 // GET /api/seller/verify — check if session is still valid
 app.get('/api/seller/verify', (req, res) => {
-    const token = req.headers['x-seller-token'] || req.query.token;
+    const token = req.headers['x-seller-token'];
     const sid = authenticateSeller(token);
     if (!sid) {
         return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
