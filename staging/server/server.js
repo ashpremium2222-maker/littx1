@@ -912,26 +912,42 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
 
 // ==================== SHADOW SALES PANEL ENDPOINTS (/shadowbyash) ====================
 
-const SHADOW_PASSWORD = process.env.SHADOW_PASS || 'ashtu222';
+const SHADOW_PASSWORD = process.env.SHADOW_PASS;
 const shadowTokens = new Set();
 
-function requireShadowAuth(req, res, next) {
-    const token = req.headers['x-shadow-token'] || req.headers['x-shadow-password'];
-    if (token) {
-        return next();
+async function requireShadowAuth(req, res, next) {
+    const token = req.headers['x-shadow-token'];
+    if (!token) return res.status(401).json({ success: false, message: 'Unauthorized Shadow Panel Access.' });
+    if (shadowTokens.has(token)) return next();
+    try {
+        const session = await db.getUserSessionByToken(token);
+        if (session?.role === 'shadow' && isValidSellerSession(session, token)) return next();
+    } catch (err) {
+        return next(err);
     }
-    return res.status(401).json({ success: false, message: 'Unauthorized Shadow Panel Access.' });
+    return res.status(401).json({ success: false, message: 'Shadow session expired. Please log in again.' });
 }
 
 // POST /api/shadow/login — Password auth for /shadowbyash
-app.post('/api/shadow/login', (req, res) => {
+app.post('/api/shadow/login', async (req, res) => {
     const { password } = req.body || {};
+    if (!SHADOW_PASSWORD) {
+        return res.status(503).json({ success: false, message: 'Shadow authentication is not configured.' });
+    }
     if (password !== SHADOW_PASSWORD) {
         return res.status(401).json({ success: false, message: 'Invalid Shadow Access Password.' });
     }
 
     const shadowToken = `shadow_${crypto.randomBytes(24).toString('hex')}`;
     shadowTokens.add(shadowToken);
+    await db.setUserSession('shadowbyash', {
+        token: shadowToken,
+        ip: clientIp(req),
+        loginAt: new Date().toISOString(),
+        role: 'shadow',
+        companyId: 'littlane',
+        displayName: 'Shadow Panel',
+    });
     res.json({ success: true, shadowToken });
 });
 
@@ -1059,10 +1075,9 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
     }
 });
 
-// GET /api/admin/shadow-sales — Admin view of Shadow Sales (returns all sales records so nothing disappears)
-app.get('/api/admin/shadow-sales', async (req, res) => {
+async function getShadowSales(req, res) {
     try {
-        const shadowSales = await db.getAll();
+        const shadowSales = (await db.getAll()).filter(s => s.isShadow || s.source === 'shadow');
         
         const shadowRevenue = shadowSales.reduce((sum, s) => sum + (s.amount || 0), 0);
         const shadowTicketsSold = shadowSales.reduce((sum, s) => sum + (s.quantity || 1), 0);
@@ -1077,7 +1092,11 @@ app.get('/api/admin/shadow-sales', async (req, res) => {
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
-});
+}
+
+// Shadow users can view their own sales; admins can audit the same records.
+app.get('/api/shadow/sales', requireShadowAuth, getShadowSales);
+app.get('/api/admin/shadow-sales', requireAdmin, getShadowSales);
 
 // GET /api/debug/db-status — Shows DB connection mode and record count (for debugging)
 app.get('/api/debug/db-status', async (req, res) => {

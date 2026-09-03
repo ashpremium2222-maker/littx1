@@ -86,11 +86,9 @@ export default function ShadowPanelApp() {
     if (!shadowToken) return
     if (isInitial) setLoadingOrders(true)
     try {
-      const res = await fetch('/api/admin/shadow-sales', {
+      const res = await fetch('/api/shadow/sales', {
         headers: {
           'x-shadow-token': shadowToken,
-          'x-admin-key': 'dash-2026',
-          'x-master-token': 'littx-master-2026'
         }
       })
       const data = await res.json()
@@ -134,12 +132,6 @@ export default function ShadowPanelApp() {
     setLoginError(null)
     setLoginLoading(true)
 
-    if (password !== 'ashtu222') {
-      setLoginError('Access Denied: Invalid Shadow Password.')
-      setLoginLoading(false)
-      return
-    }
-
     try {
       const res = await fetch('/api/shadow/login', {
         method: 'POST',
@@ -152,17 +144,9 @@ export default function ShadowPanelApp() {
         setShadowToken(data.shadowToken)
         sessionStorage.setItem('littx_shadow_token', data.shadowToken)
         setPassword('')
-      } else {
-        const token = `shadow_local_${Date.now()}`
-        setShadowToken(token)
-        sessionStorage.setItem('littx_shadow_token', token)
-        setPassword('')
-      }
+      } else setLoginError(data.message || 'Access Denied: Invalid Shadow Password.')
     } catch (err) {
-      const token = `shadow_local_${Date.now()}`
-      setShadowToken(token)
-      sessionStorage.setItem('littx_shadow_token', token)
-      setPassword('')
+      setLoginError('Network error connecting to the Shadow Panel.')
     } finally {
       setLoginLoading(false)
     }
@@ -210,7 +194,7 @@ export default function ShadowPanelApp() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-shadow-token': shadowToken || 'ashtu222'
+          'x-shadow-token': shadowToken || ''
         },
         body: JSON.stringify({
           name,
