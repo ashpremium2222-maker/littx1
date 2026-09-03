@@ -36,7 +36,11 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
 
       const data = await res.json()
       if (data.success && data.user) {
-        const tokenVal = data.token || 'dash-2026'
+        if (!data.token) {
+          setError('Login did not return a valid session. Please try again.')
+          return
+        }
+        const tokenVal = data.token
         localStorage.setItem('littx_user', JSON.stringify(data.user))
         localStorage.setItem('littx_token', tokenVal)
         sessionStorage.setItem('littx_user', JSON.stringify(data.user))

@@ -4,13 +4,12 @@ import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 export interface PartnerOption {
   id: string
   name: string
-  defaultPass: string
 }
 
 export const PARTNERS: PartnerOption[] = [
-  { id: 'littlane', name: 'Littlane Entertainment', defaultPass: 'littlane2026' },
-  { id: 'nitro', name: 'Nitro Events', defaultPass: 'nitro2026' },
-  { id: '7th-heaven', name: '7th Heaven', defaultPass: '7thheaven2026' },
+  { id: 'littlane', name: 'Littlane Entertainment' },
+  { id: 'nitro', name: 'Nitro Events' },
+  { id: '7th-heaven', name: '7th Heaven' },
 ]
 
 interface PartnerSessionData {

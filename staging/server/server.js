@@ -10,9 +10,9 @@ require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
 const rpName = 'Littx Seller Portal';
 
 const PARTNER_PASSWORDS = {
-    'littlane': process.env.SELLER_LITTLANE_PASS || 'littlane2026',
-    'nitro': process.env.SELLER_NITRO_PASS || 'nitro2026',
-    '7th-heaven': process.env.SELLER_7TH_HEAVEN_PASS || '7thheaven2026'
+    'littlane': process.env.SELLER_LITTLANE_PASS,
+    'nitro': process.env.SELLER_NITRO_PASS,
+    '7th-heaven': process.env.SELLER_7TH_HEAVEN_PASS
 };
 
 const PARTNER_NAMES = {
@@ -1581,6 +1581,9 @@ app.post('/api/seller/login-step1', async (req, res) => {
     try {
         const { partnerId, password } = req.body || {};
         if (!partnerId || !password) return res.status(400).json({ success: false, message: 'Missing fields' });
+        if (!PARTNER_PASSWORDS[partnerId]) {
+            return res.status(503).json({ success: false, message: 'Seller authentication is not configured for this partner.' });
+        }
         if (PARTNER_PASSWORDS[partnerId] !== password) {
             return res.status(401).json({ success: false, message: 'Invalid partner password' });
         }
@@ -1691,10 +1694,14 @@ app.post('/api/seller/login-step2', async (req, res) => {
                 expectedChallenge: login.challenge,
                 expectedOrigin: login.origin,
                 expectedRPID: login.rpID,
-                authenticator: {
-                    credentialID: authenticator.credentialID,
-                    credentialPublicKey: authenticator.credentialPublicKey,
+                // @simplewebauthn/server v13 expects `credential`; the older
+                // `authenticator` shape leaves it undefined and crashes when
+                // Safari submits a valid passkey assertion.
+                credential: {
+                    id: authenticator.credentialID,
+                    publicKey: authenticator.credentialPublicKey,
                     counter: Number(authenticator.counter) || 0,
+                    transports: authenticator.transports,
                 }
             });
 
