@@ -48,15 +48,27 @@ function generateToken() {
     return crypto.randomBytes(32).toString('base64url');
 }
 
-function createWebAuthnLogin(partnerId, challenge, rpID, origin) {
+async function createWebAuthnLogin(partnerId, challenge, rpID, origin) {
     const loginId = crypto.randomBytes(24).toString('base64url');
-    webauthnChallenges.set(loginId, { partnerId, challenge, rpID, origin, createdAt: Date.now() });
+    const login = { partnerId, challenge, rpID, origin, createdAt: Date.now() };
+    webauthnChallenges.set(loginId, login);
+    // Vercel requests can run on different instances, so the challenge must be
+    // available outside process memory as well.
+    await db.savePartnerLock(partnerId, { currentChallenge: JSON.stringify({ loginId, ...login }) });
     return loginId;
 }
 
-function consumeWebAuthnLogin(loginId, partnerId) {
-    const login = webauthnChallenges.get(loginId);
+async function consumeWebAuthnLogin(loginId, partnerId) {
+    let login = webauthnChallenges.get(loginId);
+    if (!login) {
+        const lock = await db.getPartnerLock(partnerId);
+        try {
+            const stored = lock?.currentChallenge ? JSON.parse(lock.currentChallenge) : null;
+            if (stored?.loginId === loginId) login = stored;
+        } catch (_) {}
+    }
     webauthnChallenges.delete(loginId); // Challenges must be single-use, even if verification fails.
+    await db.savePartnerLock(partnerId, { currentChallenge: null });
     if (!login || login.partnerId !== partnerId || Date.now() - login.createdAt > WEBAUTHN_CHALLENGE_TTL_MS) {
         return null;
     }
@@ -94,10 +106,32 @@ function isValidSellerSession(session, token) {
     return Number.isFinite(loginAt) && Date.now() - loginAt < SELLER_SESSION_TTL_MS;
 }
 
-function authenticateSeller(token) {
+function clientIp(req) {
+    return String(req.headers['x-forwarded-for'] || req.ip || req.connection?.remoteAddress || 'unknown').split(',')[0].trim();
+}
+
+function deviceNameFromUserAgent(userAgent = '') {
+    if (/iPhone/i.test(userAgent)) return 'iPhone passkey';
+    if (/iPad/i.test(userAgent)) return 'iPad passkey';
+    if (/Android/i.test(userAgent)) return 'Android passkey';
+    if (/Macintosh|Mac OS X/i.test(userAgent)) return 'Mac passkey';
+    if (/Windows/i.test(userAgent)) return 'Windows passkey';
+    return 'Passkey device';
+}
+
+async function authenticateSeller(token) {
     if (!token || typeof token !== 'string') return null;
     for (const [sid, session] of Object.entries(sellerSessions)) {
         if (isValidSellerSession(session, token)) {
+            return sid;
+        }
+    }
+    // Serverless instances do not share memory. Recover the session from the
+    // persistent store whenever this instance has no cached copy.
+    for (const sid of [...Object.keys(PARTNER_NAMES), ...Object.keys(SELLER_ACCOUNTS)]) {
+        const session = await db.getSellerSession(sid);
+        if (isValidSellerSession(session, token)) {
+            sellerSessions[sid] = session;
             return sid;
         }
     }
@@ -182,12 +216,11 @@ const SELLER_ACCOUNTS = {
 
 function requireSeller(req, res, next) {
     const token = req.headers['x-seller-token'];
-    const sellerId = authenticateSeller(token);
-    if (!sellerId) {
-        return res.status(401).json({ success: false, message: 'Seller not authenticated. Please log in.' });
-    }
-    req.sellerId = sellerId;
-    next();
+    authenticateSeller(token).then(sellerId => {
+        if (!sellerId) return res.status(401).json({ success: false, message: 'Seller not authenticated. Please log in.' });
+        req.sellerId = sellerId;
+        next();
+    }).catch(next);
 }
 
 // Serve generated ticket PDFs at /ticket-files
@@ -744,7 +777,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
     const { name, email, phone, gender, ticketType, quantity, amount, event, generatedBy } = req.body || {};
 
     const sellerToken = req.headers['x-seller-token'];
-    const sellerId = authenticateSeller(sellerToken);
+    const sellerId = await authenticateSeller(sellerToken);
     const adminKeyHdr = req.headers['x-admin-key'] || req.query.key;
     const adminToken = req.headers['x-auth-token'];
     const isAdmin = adminKeyHdr === ADMIN_KEY || (adminToken && platformAuthTokens.has(adminToken));
@@ -1456,7 +1489,7 @@ const PR_USERS_AUTH = [
     { username: 'partner5', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five', id: 'pr5' },
 ];
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body || {};
     if (!username || !password) {
         return res.status(400).json({ success: false, message: 'Username and password are required.' });
@@ -1505,6 +1538,7 @@ app.post('/api/auth/login', (req, res) => {
     if (SELLER_ACCOUNTS[sid] && SELLER_ACCOUNTS[sid] === password) {
         const token = generateToken();
         sellerSessions[sid] = { token, loginAt: new Date().toISOString() };
+        await db.setSellerSession(sid, sellerSessions[sid]);
         return res.json({
             success: true,
             token,
@@ -1534,7 +1568,15 @@ app.post('/api/seller/login-step1', async (req, res) => {
 
         const { rpID, origin } = getWebAuthnRelyingParty(req);
 
-        const authenticator = webauthnAuthenticators[partnerId];
+        const partnerLock = await db.getPartnerLock(partnerId);
+        const authenticator = partnerLock?.webauthnCredentialId
+            ? {
+                credentialID: partnerLock.webauthnCredentialId,
+                credentialPublicKey: Buffer.from(partnerLock.webauthnPublicKey, 'base64url'),
+                counter: partnerLock.webauthnCounter || 0,
+                transports: partnerLock.webauthnTransports || [],
+            }
+            : webauthnAuthenticators[partnerId];
         if (!authenticator) {
             // First time: Registration options
             const options = await generateRegistrationOptions({
@@ -1548,7 +1590,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
                     userVerification: 'preferred',
                 },
             });
-            const loginId = createWebAuthnLogin(partnerId, options.challenge, rpID, origin);
+            const loginId = await createWebAuthnLogin(partnerId, options.challenge, rpID, origin);
             return res.json({ success: true, isRegistration: true, loginId, options });
         } else {
             // Returning: Authentication options
@@ -1561,7 +1603,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 }],
                 userVerification: 'preferred',
             });
-            const loginId = createWebAuthnLogin(partnerId, options.challenge, rpID, origin);
+            const loginId = await createWebAuthnLogin(partnerId, options.challenge, rpID, origin);
             return res.json({ success: true, isRegistration: false, loginId, options });
         }
     } catch (err) {
@@ -1575,10 +1617,18 @@ app.post('/api/seller/login-step2', async (req, res) => {
         const { partnerId, loginId, response } = req.body || {};
         if (!partnerId || !loginId || !response) return res.status(400).json({ success: false, message: 'Missing fields' });
 
-        const login = consumeWebAuthnLogin(loginId, partnerId);
+        const login = await consumeWebAuthnLogin(loginId, partnerId);
         if (!login) return res.status(400).json({ success: false, message: 'Authentication challenge is invalid or expired. Please try again.' });
 
-        const authenticator = webauthnAuthenticators[partnerId];
+        const partnerLock = await db.getPartnerLock(partnerId);
+        const authenticator = partnerLock?.webauthnCredentialId
+            ? {
+                credentialID: partnerLock.webauthnCredentialId,
+                credentialPublicKey: Buffer.from(partnerLock.webauthnPublicKey, 'base64url'),
+                counter: partnerLock.webauthnCounter || 0,
+                transports: partnerLock.webauthnTransports || [],
+            }
+            : webauthnAuthenticators[partnerId];
         let verification;
 
         if (!authenticator) {
@@ -1600,6 +1650,20 @@ app.post('/api/seller/login-step2', async (req, res) => {
                     transports: response.response?.transports || ['internal', 'hybrid', 'usb', 'nfc', 'ble']
                 };
                 savePersisted(WEBAUTHN_FILE, webauthnAuthenticators);
+                const stored = webauthnAuthenticators[partnerId];
+                const userAgent = req.headers['user-agent'] || '';
+                await db.savePartnerLock(partnerId, {
+                    name: PARTNER_NAMES[partnerId],
+                    password: PARTNER_PASSWORDS[partnerId],
+                    webauthnCredentialId: stored.credentialID,
+                    webauthnPublicKey: Buffer.from(stored.credentialPublicKey).toString('base64url'),
+                    webauthnCounter: stored.counter,
+                    webauthnTransports: stored.transports,
+                    deviceRegisteredAt: new Date().toISOString(),
+                    registeredDeviceId: String(stored.credentialID).slice(-8),
+                    deviceName: deviceNameFromUserAgent(userAgent),
+                    lastUserAgent: userAgent,
+                });
             }
         } else {
             // Verify Authentication
@@ -1616,16 +1680,26 @@ app.post('/api/seller/login-step2', async (req, res) => {
             });
 
             if (verification.verified && verification.authenticationInfo) {
-                webauthnAuthenticators[partnerId].counter = verification.authenticationInfo.newCounter || 0;
-                savePersisted(WEBAUTHN_FILE, webauthnAuthenticators);
+                const newCounter = verification.authenticationInfo.newCounter || 0;
+                if (webauthnAuthenticators[partnerId]) {
+                    webauthnAuthenticators[partnerId].counter = newCounter;
+                    savePersisted(WEBAUTHN_FILE, webauthnAuthenticators);
+                }
+                await db.savePartnerLock(partnerId, {
+                    webauthnCounter: newCounter,
+                    lastSeenAt: new Date().toISOString(),
+                    lastUserAgent: req.headers['user-agent'] || partnerLock?.lastUserAgent || '',
+                });
             }
         }
 
         if (verification && verification.verified) {
             const token = generateToken();
-            const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+            const ip = clientIp(req);
             sellerSessions[partnerId] = { token, loginAt: new Date().toISOString(), ip };
             savePersisted(SESSIONS_FILE, sellerSessions);
+            await db.setSellerSession(partnerId, sellerSessions[partnerId]);
+            await db.savePartnerLock(partnerId, { boundIp: ip, boundAt: partnerLock?.boundAt || new Date().toISOString(), lastSeenAt: new Date().toISOString() });
             console.log(`[Seller Login] ${partnerId} logged in via WebAuthn from ${ip}`);
 
             return res.json({
@@ -1646,40 +1720,47 @@ app.post('/api/seller/login-step2', async (req, res) => {
     }
 });
 
-app.get('/api/seller/verify-session', (req, res) => {
+app.get('/api/seller/verify-session', async (req, res) => {
     const token = req.headers['x-seller-token'];
-    const sid = authenticateSeller(token);
+    const sid = await authenticateSeller(token);
     if (sid) {
+        const session = sellerSessions[sid] || await db.getSellerSession(sid);
+        const lock = await db.getPartnerLock(sid);
         return res.json({
             success: true,
             partner: {
                 id: sid,
                 name: PARTNER_NAMES[sid] || sid,
-                boundIp: sellerSessions[sid]?.ip || null
+                boundIp: session?.ip || lock?.boundIp || null,
+                registeredDeviceId: lock?.registeredDeviceId || null,
+                webauthnCredentialId: lock?.webauthnCredentialId || null,
+                sessionVersion: lock?.sessionVersion || 1,
             }
         });
     }
     return res.status(401).json({ success: false, message: 'Session invalid or expired' });
 });
-app.post('/api/seller/logout', (req, res) => {
+app.post('/api/seller/logout', async (req, res) => {
     const token = req.headers['x-seller-token'] || req.body?.token;
-    const sid = authenticateSeller(token);
+    const sid = await authenticateSeller(token);
     if (sid) {
         delete sellerSessions[sid];
         savePersisted(SESSIONS_FILE, sellerSessions);
+        await db.deleteSellerSession(sid);
         console.log(`[Seller Logout] ${sid} logged out`);
     }
     res.json({ success: true });
 });
 
 // GET /api/seller/verify — check if session is still valid
-app.get('/api/seller/verify', (req, res) => {
+app.get('/api/seller/verify', async (req, res) => {
     const token = req.headers['x-seller-token'];
-    const sid = authenticateSeller(token);
+    const sid = await authenticateSeller(token);
     if (!sid) {
         return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
     }
-    res.json({ success: true, sellerId: sid, loginAt: sellerSessions[sid]?.loginAt });
+    const session = sellerSessions[sid] || await db.getSellerSession(sid);
+    res.json({ success: true, sellerId: sid, loginAt: session?.loginAt });
 });
 
 // GET /api/seller/sales — returns sales made by THIS seller
@@ -1693,6 +1774,52 @@ app.get('/api/seller/sales', requireSeller, async (req, res) => {
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
+});
+
+// Admin-facing device inventory for the /seller portal. Tokens and public keys
+// are intentionally never returned to the browser.
+app.get('/api/admin/seller-devices', requireAdmin, async (req, res) => {
+    try {
+        const [locks, sessions] = await Promise.all([db.getAllPartnerLocks(), db.getAllSellerSessions()]);
+        const sessionBySeller = new Map(sessions.map(session => [session.sellerId, session]));
+        const devices = Object.keys(PARTNER_NAMES).map(partnerId => {
+            const lock = locks.find(item => item.partnerId === partnerId) || {};
+            const session = sessionBySeller.get(partnerId);
+            return {
+                partnerId,
+                name: PARTNER_NAMES[partnerId],
+                passkeyBound: Boolean(lock.webauthnCredentialId),
+                registeredDeviceId: lock.registeredDeviceId || null,
+                deviceName: lock.deviceName || null,
+                boundIp: session?.ip || lock.boundIp || null,
+                boundAt: lock.boundAt || null,
+                lastSeenAt: lock.lastSeenAt || session?.loginAt || null,
+                loginAt: session?.loginAt || null,
+                online: Boolean(session && isValidSellerSession(session, session.token)),
+                sessionVersion: lock.sessionVersion || 1,
+            };
+        });
+        res.json({ success: true, devices });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/admin/seller-devices/:partnerId/logout', requireAdmin, async (req, res) => {
+    const { partnerId } = req.params;
+    if (!PARTNER_NAMES[partnerId]) return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
+    delete sellerSessions[partnerId];
+    await db.deleteSellerSession(partnerId);
+    res.json({ success: true, message: `${PARTNER_NAMES[partnerId]} has been logged out.` });
+});
+
+app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireAdmin, async (req, res) => {
+    const { partnerId } = req.params;
+    if (!PARTNER_NAMES[partnerId]) return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
+    delete sellerSessions[partnerId];
+    delete webauthnAuthenticators[partnerId];
+    await Promise.all([db.deleteSellerSession(partnerId), db.resetPartnerLock(partnerId)]);
+    res.json({ success: true, message: `${PARTNER_NAMES[partnerId]}'s passkey was reset. The next login can bind a new device.` });
 });
 
 // GET /api/admin/seller-summary — admin can see all sellers' totals

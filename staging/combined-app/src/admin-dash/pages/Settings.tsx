@@ -42,13 +42,18 @@ export default function Settings({ adminKey }: SettingsProps) {
   const loadSessions = async () => {
     setLoadingSessions(true)
     try {
-      // Load ALL active sessions for ALL roles (unified UserSession store)
-      const res = await fetch('/api/master/sessions', {
-        headers: { 'x-master-token': 'littx-master-2026' }
+      const res = await fetch('/api/admin/seller-devices', {
+        headers: { 'x-auth-token': adminKey }
       })
       const data = await res.json()
       if (data.success) {
-        setSessions(data.sessions)
+        setSessions((data.devices || []).filter((device: any) => device.online).map((device: any) => ({
+          userId: `partner:${device.partnerId}`,
+          displayName: device.name,
+          role: 'seller',
+          lockedIp: device.boundIp || '—',
+          loginAt: device.loginAt,
+        })))
       }
     } catch (err) {
       console.error(err)
@@ -60,12 +65,16 @@ export default function Settings({ adminKey }: SettingsProps) {
   const loadPartnerLocks = async () => {
     setLoadingPartners(true)
     try {
-      const res = await fetch('/api/master/partner-locks', {
-        headers: { 'x-master-token': 'littx-master-2026' }
+      const res = await fetch('/api/admin/seller-devices', {
+        headers: { 'x-auth-token': adminKey }
       })
       const data = await res.json()
       if (data.success) {
-        setPartnerLocks(data.locks || [])
+        setPartnerLocks((data.devices || []).map((device: any) => ({
+          ...device,
+          webauthnCredentialId: device.passkeyBound ? device.registeredDeviceId || 'bound' : null,
+          registeredDeviceId: device.registeredDeviceId,
+        })))
       }
     } catch (err) {
       console.error(err)
@@ -77,12 +86,12 @@ export default function Settings({ adminKey }: SettingsProps) {
   const loadSellerSessions = async () => {
     setLoadingSellerSessions(true)
     try {
-      const res = await fetch('/api/master/partner-locks', {
-        headers: { 'x-master-token': 'littx-master-2026' }
+      const res = await fetch('/api/admin/seller-devices', {
+        headers: { 'x-auth-token': adminKey }
       })
       const data = await res.json()
       if (data.success) {
-        setSellerSessions(data.locks || [])
+        setSellerSessions(data.devices || [])
       }
     } catch (err) {
       console.error(err)
@@ -95,10 +104,9 @@ export default function Settings({ adminKey }: SettingsProps) {
     if (!confirm(`Force logout ${name}? They will be kicked immediately. Their device lock stays — only the session token is cleared.`)) return
     setKickingId(partnerId)
     try {
-      const res = await fetch(`/api/master/reset-partner-lock`, {
+      const res = await fetch(`/api/admin/seller-devices/${encodeURIComponent(partnerId)}/logout`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-master-token': 'littx-master-2026' },
-        body: JSON.stringify({ partnerId, sessionOnly: true })
+        headers: { 'x-auth-token': adminKey }
       })
       const data = await res.json()
       alert(data.message || (data.success ? 'Logged out.' : 'Failed.'))
@@ -123,13 +131,11 @@ export default function Settings({ adminKey }: SettingsProps) {
   const handleResetPartnerLock = async (partnerId: string, name: string) => {
     if (!confirm(`Reset permanent device lock for ${name}? The next successful login from ANY device will set the new bound IP.`)) return
     try {
-      const res = await fetch('/api/master/reset-partner-lock', {
+      const res = await fetch(`/api/admin/seller-devices/${encodeURIComponent(partnerId)}/reset-passkey`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-master-token': 'littx-master-2026'
-        },
-        body: JSON.stringify({ partnerId })
+          'x-auth-token': adminKey
+        }
       })
       const data = await res.json()
       if (data.success) {

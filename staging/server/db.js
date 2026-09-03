@@ -249,6 +249,8 @@ const PartnerLockSchema = new mongoose.Schema({
     webauthnTransports: { type: [String], default: [] },
     deviceRegisteredAt: { type: String, default: null },
     registeredDeviceId: { type: String, default: null },
+    deviceName: { type: String, default: null },
+    lastUserAgent: { type: String, default: null },
 
     // Device IP & Session Versioning
     boundIp: { type: String, default: null },
