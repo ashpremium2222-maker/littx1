@@ -51,6 +51,15 @@ export default function Settings({ adminKey }: SettingsProps) {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.success) {
+        if (res.status === 401) {
+          // Tokens issued before persistent sessions were enabled cannot be
+          // validated after a serverless instance change. Start a clean login.
+          sessionStorage.removeItem('littx_user')
+          sessionStorage.removeItem('littx_token')
+          localStorage.removeItem('littx_user')
+          localStorage.removeItem('littx_token')
+          window.setTimeout(() => window.location.assign('/admin'), 700)
+        }
         setDeviceError(data.message || 'Your admin session has expired. Sign in again, then refresh device status.')
         return
       }
