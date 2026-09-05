@@ -357,6 +357,27 @@ html, body {
 .thermal-printer__slot-inner { background: linear-gradient(180deg, #000, #121216); box-shadow: inset 0 2px 4px #000, inset 0 -1px rgba(255,255,255,.09); }
 .thermal-printer__slot::after { right: 0; bottom: -2px; left: 0; height: 2px; background: rgba(255,255,255,.17); opacity: .45; }
 
+/* Liquid-glass edition: translucent housing, retained full-width physical paper path. */
+.thermal-printer {
+  overflow: visible;
+  border-color: rgba(255,255,255,.42);
+  background: radial-gradient(circle at 12% 13%, rgba(255,255,255,.52), transparent 17%), linear-gradient(125deg, rgba(239,100,232,.66), rgba(113,111,255,.5) 42%, rgba(63,221,222,.55));
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+  box-shadow: 0 24px 38px rgba(0,0,0,.48), 0 0 28px rgba(113,123,255,.34), 0 2px 0 rgba(255,255,255,.38) inset, 0 -14px 24px rgba(19,17,88,.22) inset;
+}
+.thermal-printer::before { background: linear-gradient(180deg, rgba(255,255,255,.36), rgba(255,255,255,.07)); border-color: rgba(255,255,255,.3); box-shadow: inset 0 1px rgba(255,255,255,.38), 0 4px 12px rgba(53,39,141,.18); }
+.thermal-printer__handle { background: rgba(36,20,92,.42); box-shadow: inset 0 1px rgba(255,255,255,.42), 0 1px 3px rgba(24,17,80,.18); }
+.thermal-printer__lid { border-color: rgba(255,255,255,.3); background: linear-gradient(130deg, rgba(34,22,91,.66), rgba(13,17,58,.63) 55%, rgba(12,63,100,.56)); backdrop-filter: blur(15px) saturate(145%); -webkit-backdrop-filter: blur(15px) saturate(145%); box-shadow: inset 0 1px rgba(255,255,255,.3), inset 0 -9px 13px rgba(9,7,42,.34), 0 5px 10px rgba(0,0,0,.25); }
+.thermal-printer__lid::before { background: linear-gradient(90deg, transparent, rgba(255,255,255,.28) 15% 85%, transparent); }
+.thermal-printer__lid::after { background: linear-gradient(90deg, rgba(255,255,255,.05), rgba(255,255,255,.3), rgba(255,255,255,.05)); }
+.thermal-printer__lid i { background: #d2e8ff; box-shadow: 0 0 7px rgba(194,228,255,.8); }
+.thermal-printer__indicator { background: #d8ff91; box-shadow: 0 0 0 2px rgba(255,255,255,.24), 0 0 10px rgba(214,255,118,.85); }
+.thermal-printer__indicator--violet { background: #e0bcff; box-shadow: 0 0 0 2px rgba(255,255,255,.24), 0 0 10px rgba(224,188,255,.75); }
+.thermal-printer__slot { border-color: rgba(255,255,255,.28); background: linear-gradient(130deg, rgba(45,24,104,.76), rgba(11,17,59,.86)); backdrop-filter: blur(13px); -webkit-backdrop-filter: blur(13px); box-shadow: 0 5px 9px rgba(0,0,0,.44), inset 0 2px 4px rgba(0,0,0,.68), inset 0 -1px rgba(255,255,255,.25); }
+.thermal-printer__slot-inner { background: linear-gradient(180deg, rgba(2,2,12,.9), rgba(38,24,75,.74)); box-shadow: inset 0 2px 4px rgba(0,0,0,.82), inset 0 -1px rgba(255,255,255,.18); }
+.thermal-printer__slot::after { background: linear-gradient(90deg, rgba(255,150,226,.58), rgba(205,211,255,.74), rgba(108,247,244,.58)); opacity: .75; }
+
 @keyframes thermal-ticket-feed {
   0% {
     clip-path: inset(0 0 100% 0 round 32px);
