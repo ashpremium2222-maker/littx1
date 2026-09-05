@@ -1,9 +1,9 @@
-package in.littx.seller.nativeapp.data
+package com.littx.seller.nativeapp.data
 
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import in.littx.seller.nativeapp.data.model.Partner
+import com.littx.seller.nativeapp.data.model.Partner
 
 class SecureSessionStore(context: Context) {
     private val prefs = EncryptedSharedPreferences.create(

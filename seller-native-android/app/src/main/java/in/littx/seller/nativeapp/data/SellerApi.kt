@@ -1,6 +1,6 @@
-package in.littx.seller.nativeapp.data
+package com.littx.seller.nativeapp.data
 
-import in.littx.seller.nativeapp.data.model.*
+import com.littx.seller.nativeapp.data.model.*
 import retrofit2.http.*
 
 interface SellerApi {

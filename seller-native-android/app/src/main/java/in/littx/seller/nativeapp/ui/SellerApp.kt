@@ -1,4 +1,4 @@
-package in.littx.seller.nativeapp.ui
+package com.littx.seller.nativeapp.ui
 
 import android.content.Intent
 import android.net.Uri
@@ -12,8 +12,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import in.littx.seller.nativeapp.BuildConfig
-import in.littx.seller.nativeapp.data.model.*
+import com.littx.seller.nativeapp.BuildConfig
+import com.littx.seller.nativeapp.data.model.*
 
 private val partners = listOf("littlane" to "Littlane Entertainment", "nitro" to "Nitro Events", "7th-heaven" to "7th Heaven")
 
@@ -49,6 +49,7 @@ private val partners = listOf("littlane" to "Littlane Entertainment", "nitro" to
         Button(onClick = { model.login(partner, password) }, enabled = password.isNotBlank() && !model.state.loading && BuildConfig.SELLER_API_BASE_URL.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(if (model.state.loading) "Verifying device…" else "Sign in with passkey") }
     }
 }
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun SellerHome(model: SellerViewModel) {
     var tab by remember { mutableStateOf(0) }
     Scaffold(topBar = { TopAppBar(title = { Text("LITTX Seller · ${model.state.partner?.name}") }, actions = { TextButton({ model.loadConfig() }) { Text("Refresh") }; TextButton({ model.logout() }) { Text("Sign out") } }) }, bottomBar = { NavigationBar { listOf("Issue ticket", "History").forEachIndexed { i, label -> NavigationBarItem(selected = tab == i, onClick = { tab = i; if (i == 1) model.loadSales() }, icon = {}, label = { Text(label) }) } } }) { padding ->

@@ -1,4 +1,4 @@
-package in.littx.seller.nativeapp.data.model
+package com.littx.seller.nativeapp.data.model
 
 import com.google.gson.JsonObject
 

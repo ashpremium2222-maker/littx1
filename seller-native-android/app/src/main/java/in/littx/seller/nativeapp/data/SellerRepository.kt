@@ -1,7 +1,7 @@
-package in.littx.seller.nativeapp.data
+package com.littx.seller.nativeapp.data
 
-import in.littx.seller.nativeapp.BuildConfig
-import in.littx.seller.nativeapp.data.model.*
+import com.littx.seller.nativeapp.BuildConfig
+import com.littx.seller.nativeapp.data.model.*
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit

@@ -79,7 +79,12 @@ function getWebAuthnRelyingParty(req) {
     const configuredOrigin = process.env.WEBAUTHN_ORIGIN;
     if (configuredOrigin) {
         const origin = new URL(configuredOrigin).origin;
-        return { rpID: process.env.WEBAUTHN_RP_ID || new URL(origin).hostname, origin };
+        // A native Android passkey has a signed-app origin rather than the
+        // browser HTTPS origin. It is opt-in through Vercel/server config and
+        // must be the SHA-256 hash of this app's release signing certificate.
+        const androidOrigin = process.env.WEBAUTHN_ANDROID_ORIGIN;
+        const expectedOrigin = androidOrigin ? [origin, androidOrigin] : origin;
+        return { rpID: process.env.WEBAUTHN_RP_ID || new URL(origin).hostname, origin: expectedOrigin };
     }
 
     // Dynamic hosts are safe only for local development. Requiring an explicit

@@ -44,6 +44,7 @@ littx_temp/
 # ---- Native Android local/build artifacts ----
 seller-native-android/.gradle/
 seller-native-android/app/build/
+seller-native-android/build/
 seller-native-android/local.properties
 seller-native-android/*.jks
 seller-native-android/*.keystore

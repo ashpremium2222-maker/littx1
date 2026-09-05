@@ -1,14 +1,14 @@
-package in.littx.seller.nativeapp.ui
+package com.littx.seller.nativeapp.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import in.littx.seller.nativeapp.data.*
-import in.littx.seller.nativeapp.data.model.*
-import in.littx.seller.nativeapp.security.PasskeyAuthenticator
-import in.littx.seller.nativeapp.update.AppUpdate
-import in.littx.seller.nativeapp.update.GitHubUpdateChecker
+import com.littx.seller.nativeapp.data.*
+import com.littx.seller.nativeapp.data.model.*
+import com.littx.seller.nativeapp.security.PasskeyAuthenticator
+import com.littx.seller.nativeapp.update.AppUpdate
+import com.littx.seller.nativeapp.update.GitHubUpdateChecker
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

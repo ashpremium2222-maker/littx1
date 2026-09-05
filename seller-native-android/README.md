@@ -15,7 +15,9 @@ The app uses the existing seller endpoints:
 
 Login uses Android Credential Manager/FIDO2 passkeys natively. Its registration and assertion JSON are submitted to the existing SimpleWebAuthn server endpoints; no browser is opened. This preserves the server’s existing passkey/device enrollment authority. Existing web passkeys must be re-enrolled on Android, because WebAuthn credentials are authenticator- and relying-party-bound; use the current admin **reset passkey** action only for the intended seller.
 
-Before enabling Android passkeys, host an Android Digital Asset Links document at `https://<WEBAUTHN_RP_ID>/.well-known/assetlinks.json`. It must name `in.littx.seller.nativeapp` and the SHA-256 fingerprint of the **release signing certificate**. This is a deployment prerequisite, not a client-side bypass; the existing server must continue validating its configured WebAuthn origin and relying-party ID.
+Before enabling Android passkeys, host an Android Digital Asset Links document at `https://<WEBAUTHN_RP_ID>/.well-known/assetlinks.json`. It must name `com.littx.seller.nativeapp` and the SHA-256 fingerprint of the **release signing certificate**. This is a deployment prerequisite, not a client-side bypass; the existing server must continue validating its configured WebAuthn origin and relying-party ID.
+
+For this release key, configure the server/Vercel environment variable `WEBAUTHN_ANDROID_ORIGIN` as `android:apk-key-hash:EprvD2mpp-L7adOWyjXOg-tLkCjpSDAshqYdOPFYaVc`. Keep `WEBAUTHN_ORIGIN=https://littx1.vercel.app` and `WEBAUTHN_RP_ID=littx1.vercel.app`. The first native passkey test must use the signed release APK—not the debug app—because Android verifies the release certificate against the published association file.
 
 ## Build locally
 

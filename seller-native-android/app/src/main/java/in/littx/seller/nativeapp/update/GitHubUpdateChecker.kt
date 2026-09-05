@@ -1,6 +1,6 @@
-package in.littx.seller.nativeapp.update
+package com.littx.seller.nativeapp.update
 
-import in.littx.seller.nativeapp.BuildConfig
+import com.littx.seller.nativeapp.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -17,7 +17,7 @@ class GitHubUpdateChecker {
             .header("Accept", "application/vnd.github+json").header("User-Agent", "Littx-Seller-Android").build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return null
-            val json = JSONObject(response.body.string())
+            val json = JSONObject(response.body?.string() ?: return null)
             val version = json.optString("tag_name").removePrefix("seller-v").removePrefix("v")
             val assets = json.optJSONArray("assets") ?: return null
             val apk = (0 until assets.length()).map { assets.getJSONObject(it) }.firstOrNull { it.optString("name").endsWith(".apk") } ?: return null

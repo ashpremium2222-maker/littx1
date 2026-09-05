@@ -1,4 +1,4 @@
-package in.littx.seller.nativeapp.security
+package com.littx.seller.nativeapp.security
 
 import android.content.Context
 import androidx.credentials.*

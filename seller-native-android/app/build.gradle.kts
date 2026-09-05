@@ -19,11 +19,16 @@ val signingKeyPassword = configured("SELLER_SIGNING_KEY_PASSWORD")
 val hasReleaseSigning = listOf(signingStore, signingStorePassword, signingKeyAlias, signingKeyPassword).all { it.isNotBlank() }
 
 android {
-    namespace = "in.littx.seller.nativeapp"
+    namespace = "com.littx.seller.nativeapp"
     compileSdk = 35
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     defaultConfig {
-        applicationId = "in.littx.seller.nativeapp"
+        applicationId = "com.littx.seller.nativeapp"
         minSdk = 26
         targetSdk = 35
         versionCode = configured("SELLER_VERSION_CODE").toIntOrNull() ?: 1
@@ -57,6 +62,10 @@ android {
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 tasks.configureEach {
