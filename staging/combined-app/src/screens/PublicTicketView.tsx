@@ -38,8 +38,11 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
 
   useEffect(() => {
     async function fetchTicket() {
+      const controller = new AbortController()
+      const timeout = window.setTimeout(() => controller.abort(), 12000)
       try {
-        const res = await fetch(`/api/ticket/${ticketId}`)
+        const res = await fetch(`/api/ticket/${ticketId}`, { signal: controller.signal })
+        if (!res.ok) throw new Error(`Ticket request failed (${res.status})`)
         const data = await res.json()
         if (data.success && data.ticket) {
           // Normalize ticket properties
@@ -62,8 +65,11 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
           setError(data.message || 'Ticket not found')
         }
       } catch (err) {
-        setError('Failed to load ticket')
+        setError(err instanceof DOMException && err.name === 'AbortError'
+          ? 'This ticket is taking too long to load. Please try again.'
+          : 'Failed to load ticket')
       } finally {
+        window.clearTimeout(timeout)
         setLoading(false)
       }
     }
@@ -143,10 +149,10 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
   const isScanned = ticket.status === 'scanned'
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center font-sans antialiased text-white p-0 sm:p-4 overflow-x-hidden">
+    <div className="ticket-page-shell min-h-screen flex items-center justify-center font-sans antialiased text-white p-0 sm:p-6 overflow-x-hidden">
       {/* Mobile Device Mockup Wrapper */}
       <div 
-        className="w-full sm:w-[393px] h-screen sm:h-[852px] overflow-hidden relative sm:rounded-[40px] sm:shadow-2xl sm:border-[8px] sm:border-[#222] flex flex-col"
+        className="ticket-phone-frame w-full sm:w-[393px] h-screen sm:h-[852px] overflow-hidden relative sm:rounded-[40px] flex flex-col"
         style={{ background: eventTheme.gradient }}
       >
         <AnimatePresence initial={false} custom={dir}>
@@ -158,23 +164,25 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: dir < 0 ? 393 : -393, opacity: 0 }}
               transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-              className="absolute inset-0 flex flex-col p-6 pt-12 pb-24 overflow-y-auto"
+              className="absolute inset-0 flex flex-col p-5 pt-[max(2.25rem,env(safe-area-inset-top))] pb-28 sm:p-6 sm:pt-12 overflow-y-auto"
             >
               {/* Header */}
               <header className="flex items-center justify-between mb-6 z-10">
                 <button 
-                  onClick={handleGoToDetails} 
+                  onClick={handleGoToDetails}
+                  aria-label="View event details"
                   className="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition border border-white/10 active:scale-95"
                 >
                   <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
-                <h1 className="text-white text-base font-bold tracking-wide">Your Ticket</h1>
+                <h1 className="text-white text-[13px] font-extrabold tracking-[0.14em] uppercase">Entry pass</h1>
                 <a 
                   href={`/api/ticket/${ticket.id}/download`} 
                   target="_blank" 
                   rel="noreferrer"
+                  aria-label="Download ticket PDF"
                   className="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition border border-white/10 active:scale-95"
                 >
                   <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -199,12 +207,6 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
                 )}
                 <div
                   className={`thermal-ticket-paper rounded-[32px] w-full flex flex-col shadow-2xl relative ${!ticketEntranceDone ? 'thermal-ticket-print' : ''}`}
-                  style={{
-                    background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255,255,255,0.08)'
-                  }}
                   onAnimationEnd={(event) => {
                     if (event.currentTarget === event.target) {
                       setTicketEntranceDone(true)
@@ -212,44 +214,43 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
                   }}
                 >
                 {/* Top Section */}
-                <div className="px-6 pt-8 pb-6 flex flex-col items-center">
-                  <h2 className="text-white text-[24px] font-black text-center leading-tight mb-2 tracking-tight">
+                <div className="ticket-paper__top px-5 sm:px-6 pt-7 pb-6 flex flex-col items-center">
+                  <div className="ticket-paper__eyebrow">LITTX · ADMIT ONE</div>
+                  <h2 className="text-white text-[clamp(1.35rem,6vw,1.65rem)] font-black text-center leading-[1.08] mb-2 tracking-[-0.045em]">
                     {ticket.event}
                   </h2>
-                  <p className="text-gray-400 text-xs text-center mb-1">
+                  <p className="text-white/52 text-xs text-center mb-1">
                     Show this QR code at the event entrance
                   </p>
-                  <p className="text-purple-400/90 text-xs font-semibold text-center mb-6 font-mono">
-                    ID: {ticket.id}
+                  <p className="ticket-paper__id text-xs font-bold text-center mb-5 font-mono">
+                    PASS · {ticket.id}
                   </p>
 
                   {/* QR Code */}
-                  <div className="p-3 bg-white rounded-3xl shadow-xl flex items-center justify-center mb-4 transition duration-300 hover:scale-[1.02]">
-                    <QRCode value={`LITTIX:${ticket.id}`} size={200} />
+                  <div className="ticket-qr p-3 bg-white rounded-[26px] flex items-center justify-center mb-4 transition duration-300 hover:scale-[1.02]">
+                    <QRCode value={`LITTIX:${ticket.id}`} size={190} />
                   </div>
 
                   {/* Scan Badge */}
-                  <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider ${isScanned ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-green-500/20 text-green-400 border border-green-500/30'}`}>
+                  <span className={`ticket-status text-[10px] font-extrabold px-3 py-1.5 rounded-full uppercase tracking-[0.12em] ${isScanned ? 'ticket-status--used' : 'ticket-status--valid'}`}>
+                    <span aria-hidden="true" />
                     {isScanned ? `Scanned at ${ticket.scannedAt || 'TBA'}` : 'Active / Valid'}
                   </span>
                 </div>
 
                 {/* Ticket Cutouts & Divider */}
                 <div className="relative w-full h-8 flex items-center">
-                  <div className="absolute left-[-16px] w-8 h-8 bg-[#0a0a0a] rounded-full border-r border-white/10 z-10 shadow-[inset_-4px_0_6px_rgba(0,0,0,0.5)]" />
-                  <div className="absolute right-[-16px] w-8 h-8 bg-[#0a0a0a] rounded-full border-l border-white/10 z-10 shadow-[inset_4px_0_6px_rgba(0,0,0,0.5)]" />
-                  <div className="w-full border-t border-dashed border-white/15 mx-6" />
+                  <div className="ticket-notch absolute left-[-16px] w-8 h-8 rounded-full z-10" />
+                  <div className="ticket-notch ticket-notch--right absolute right-[-16px] w-8 h-8 rounded-full z-10" />
+                  <div className="ticket-perforation w-full mx-6" />
                 </div>
 
                 {/* Bottom Section */}
-                <div className="px-6 pb-6 pt-2">
-                  <div 
-                    className="p-4 rounded-2xl flex flex-col gap-3.5 border border-white/10 shadow-lg relative overflow-hidden"
-                    style={{ background: 'rgba(20, 20, 20, 0.7)', backdropFilter: 'blur(12px)' }}
-                  >
+                <div className="px-5 sm:px-6 pb-6 pt-2">
+                  <div className="ticket-details p-4 rounded-2xl flex flex-col gap-3.5 relative overflow-hidden">
                     {/* Attendee */}
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-sm">👤</div>
+                      <div className="ticket-detail-icon" aria-hidden="true">A</div>
                       <div className="flex flex-col">
                         <span className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">Attendee</span>
                         <span className="text-white text-sm font-bold leading-tight">{ticket.attendee}</span>
@@ -258,7 +259,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
 
                     {/* Venue */}
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-sm">📍</div>
+                      <div className="ticket-detail-icon" aria-hidden="true">⌖</div>
                       <div className="flex flex-col">
                         <span className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">Venue</span>
                         <span className="text-white text-sm font-medium leading-tight">{ticket.venue}</span>
@@ -267,7 +268,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
 
                     {/* Date */}
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-sm">📅</div>
+                      <div className="ticket-detail-icon" aria-hidden="true">◷</div>
                       <div className="flex flex-col">
                         <span className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">Date & Time</span>
                         <span className="text-white text-sm font-medium leading-tight">{ticket.dateLabel}</span>
@@ -275,7 +276,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
                     </div>
 
                     {/* Ticket Type & Qty */}
-                    <div className="flex items-center justify-between border-t border-white/5 pt-3 mt-1">
+                    <div className="flex items-center justify-between border-t border-white/10 pt-3 mt-1">
                       <div className="flex flex-col">
                         <span className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">Pass Type</span>
                         <span className="text-white text-xs font-bold">{ticket.ticketType} x {ticket.qty}</span>
@@ -291,12 +292,12 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
               </div>
 
               {/* Action Button */}
-              <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent pt-12">
+              <div className="absolute bottom-0 left-0 right-0 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent pt-12">
                 <a 
                   href={`/api/ticket/${ticket.id}/download`} 
                   target="_blank" 
                   rel="noreferrer"
-                  className="w-full bg-white text-black font-extrabold rounded-full py-4 text-sm flex items-center justify-center gap-2 hover:bg-gray-100 transition active:scale-[0.98] shadow-lg"
+                  className="ticket-download w-full bg-white text-black font-extrabold rounded-full py-4 text-sm flex items-center justify-center gap-2 hover:bg-gray-100 transition active:scale-[0.98]"
                 >
                   <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
