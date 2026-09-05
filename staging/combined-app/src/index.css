@@ -418,6 +418,20 @@ html, body {
   100% { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(.99); }
 }
 
+/* Ultra-slim liquid-glass printer rail. */
+.thermal-ticket-stage { padding-top: 13px; }
+.thermal-printer { top: -39px; height: 55px; border-radius: 18px 18px 10px 10px; }
+.thermal-printer::before { top: 6px; right: 12px; left: 12px; height: 10px; border-radius: 7px; }
+.thermal-printer__handle { top: 9px; width: 56px; height: 3px; }
+.thermal-printer__lid { top: 19px; right: 8px; left: 8px; height: 25px; border-radius: 8px 8px 6px 6px; }
+.thermal-printer__lid::before { top: 7px; left: 10px; right: 10px; }
+.thermal-printer__lid::after { right: 10px; left: 10px; bottom: 5px; }
+.thermal-printer__lid i { width: 2.5px; height: 2.5px; }
+.thermal-printer__indicator { top: 10px; right: 17px; width: 3px; height: 3px; }
+.thermal-printer__indicator--violet { right: 27px; }
+.thermal-printer__slot { right: 4%; bottom: -5px; left: 4%; height: 11px; padding: 2px 5px; }
+.thermal-printer__slot::after { height: 1px; bottom: -1px; }
+
 @keyframes thermal-ticket-feed {
   0% {
     clip-path: inset(0 0 100% 0 round 32px);
