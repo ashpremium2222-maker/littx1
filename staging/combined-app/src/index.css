@@ -490,24 +490,24 @@ html, body {
 /* Feed moment only — no fake printer remains on the finished ticket. */
 .thermal-ticket-stage { padding-top: 0; }
 .thermal-printer {
-  top: -9px;
-  width: 66%;
-  height: 14px;
+  top: -2px;
+  width: 78%;
+  height: 16px;
   border: 1px solid rgba(255,255,255,.36);
   border-radius: 999px;
   background: linear-gradient(100deg, rgba(255,188,240,.52), rgba(165,175,255,.44) 50%, rgba(116,247,240,.48));
   box-shadow: 0 6px 16px rgba(20,10,57,.26), inset 0 1px rgba(255,255,255,.62);
   animation: ticket-feed-aperture .9s cubic-bezier(.22,1,.36,1) both;
 }
-.thermal-printer__slot { top: 4px; right: 7px; left: 7px; height: 5px; padding: 1px; border: 0; background: rgba(12,8,35,.8); box-shadow: inset 0 1px 2px rgba(0,0,0,.72); }
+.thermal-printer__slot { top: 5px; right: 8px; left: 8px; height: 6px; padding: 1px; border: 0; background: rgba(12,8,35,.8); box-shadow: inset 0 1px 2px rgba(0,0,0,.72); }
 .thermal-printer__slot-inner { background: #070611; }
 .thermal-ticket-print { animation: ticket-feed-from-slot .9s cubic-bezier(.22,1,.36,1) both; }
 
 @keyframes ticket-feed-aperture {
-  0%, 55% { opacity: 0; transform: translateX(-50%) translateY(-5px) scaleX(.82); }
+  0%, 55% { opacity: 0; transform: translateX(-50%) translateY(-3px) scaleX(.82); }
   12% { opacity: 1; transform: translateX(-50%) translateY(0) scaleX(1); }
   70% { opacity: 1; transform: translateX(-50%) translateY(0) scaleX(1); }
-  100% { opacity: 0; transform: translateX(-50%) translateY(-4px) scaleX(.9); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-2px) scaleX(.9); }
 }
 
 @keyframes ticket-feed-from-slot {
