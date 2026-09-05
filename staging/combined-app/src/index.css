@@ -378,6 +378,46 @@ html, body {
 .thermal-printer__slot-inner { background: linear-gradient(180deg, rgba(2,2,12,.9), rgba(38,24,75,.74)); box-shadow: inset 0 2px 4px rgba(0,0,0,.82), inset 0 -1px rgba(255,255,255,.18); }
 .thermal-printer__slot::after { background: linear-gradient(90deg, rgba(255,150,226,.58), rgba(205,211,255,.74), rgba(108,247,244,.58)); opacity: .75; }
 
+/* Low-profile feed: the pass is visibly pulled from the printer rather than revealed under it. */
+.thermal-ticket-stage { padding-top: 20px; }
+.thermal-printer {
+  top: -52px;
+  height: 74px;
+  border-radius: 21px 21px 12px 12px;
+  animation-duration: 1.85s;
+}
+.thermal-printer::before { top: 7px; right: 14px; left: 14px; height: 14px; border-radius: 8px; }
+.thermal-printer__handle { top: 12px; width: 66px; height: 4px; }
+.thermal-printer__lid { top: 25px; right: 10px; left: 10px; height: 35px; border-radius: 11px 11px 8px 8px; }
+.thermal-printer__lid::before { top: 10px; left: 13px; right: 13px; }
+.thermal-printer__lid::after { right: 13px; left: 13px; bottom: 7px; }
+.thermal-printer__lid i { width: 3px; height: 3px; }
+.thermal-printer__indicator { top: 14px; right: 20px; width: 4px; height: 4px; }
+.thermal-printer__indicator--violet { right: 32px; }
+.thermal-printer__slot { right: 4%; bottom: -6px; left: 4%; height: 14px; padding: 3px 6px; }
+.thermal-printer__slot::after { bottom: -2px; height: 2px; }
+.thermal-ticket-print { animation-duration: 1.85s; }
+
+@keyframes thermal-ticket-feed {
+  0%, 19% { clip-path: inset(0 0 100% 0 round 32px); transform: translateY(-28px); }
+  27% { clip-path: inset(0 0 92% 0 round 32px); transform: translateY(-26px); }
+  76% { clip-path: inset(0 0 0 0 round 32px); transform: translateY(0); }
+  88% { clip-path: inset(0 0 0 0 round 32px); transform: translateY(1px); }
+  100% { clip-path: inset(0 0 0 0 round 32px); transform: translateY(0); }
+}
+
+@keyframes thermal-printer-run {
+  0% { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(.97); }
+  12% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  31% { transform: translateX(-50%) translateY(0); }
+  43% { transform: translateX(-50%) translateY(-.4px); }
+  55% { transform: translateX(-50%) translateY(.4px); }
+  67% { transform: translateX(-50%) translateY(-.25px); }
+  78% { transform: translateX(-50%) translateY(0); }
+  92% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(.99); }
+}
+
 @keyframes thermal-ticket-feed {
   0% {
     clip-path: inset(0 0 100% 0 round 32px);
