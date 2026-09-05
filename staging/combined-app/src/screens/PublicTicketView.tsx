@@ -198,6 +198,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
                     <div className="thermal-printer" aria-hidden="true">
                       <div className="thermal-printer__handle" />
                       <div className="thermal-printer__brand">LITTX <span>PRINT LAB</span></div>
+                      <div className="thermal-printer__display"><b>PASS</b><span>READY</span></div>
                       <div className="thermal-printer__lid"><i /><i /><i /></div>
                       <div className="thermal-printer__indicator" />
                       <div className="thermal-printer__indicator thermal-printer__indicator--violet" />
