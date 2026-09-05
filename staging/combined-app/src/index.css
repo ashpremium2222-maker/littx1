@@ -89,6 +89,43 @@ html, body {
   min-height: 100vh;
 }
 
+.ticket-page-shell {
+  background:
+    radial-gradient(circle at 14% 12%, rgba(255, 68, 152, .28), transparent 23rem),
+    radial-gradient(circle at 88% 18%, rgba(88, 117, 255, .32), transparent 25rem),
+    radial-gradient(circle at 52% 100%, rgba(255, 171, 51, .18), transparent 30rem),
+    #090510;
+}
+
+.ticket-phone-frame {
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 28px 80px rgba(0,0,0,.6), 0 0 0 7px rgba(255,255,255,.025), 0 0 90px rgba(157,79,255,.24);
+}
+
+.thermal-ticket-stage { padding-top: 18px; }
+
+.thermal-ticket-paper {
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    linear-gradient(130deg, rgba(255,255,255,.12), rgba(255,255,255,.025) 40%, rgba(255,255,255,.08)),
+    linear-gradient(180deg, #251534 0%, #181226 48%, #10101a 100%);
+  border: 1px solid rgba(255,255,255,.15);
+  box-shadow: 0 24px 50px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.18);
+}
+
+.thermal-ticket-paper::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  opacity: .52;
+  background-image: radial-gradient(rgba(255,255,255,.15) .6px, transparent .8px);
+  background-size: 5px 5px;
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
 .thermal-ticket-print {
   transform-origin: top center;
   will-change: clip-path, transform;
@@ -98,61 +135,73 @@ html, body {
 .thermal-printer {
   position: absolute;
   z-index: 20;
-  top: -62px;
+  top: -50px;
   left: 50%;
   width: min(84%, 330px);
-  height: 72px;
+  height: 84px;
   transform: translateX(-50%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 15px 15px 10px 10px;
-  background: linear-gradient(160deg, #272727 0%, #111 45%, #080808 100%);
-  box-shadow: 0 17px 30px rgba(0, 0, 0, 0.46), inset 0 1px rgba(255, 255, 255, 0.1), inset 0 -12px 18px rgba(0, 0, 0, 0.54);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 22px 22px 13px 13px;
+  background: linear-gradient(120deg, #f250a8 0%, #994eef 27%, #4a6ce8 57%, #24c9c0 100%);
+  box-shadow: 0 22px 35px rgba(0, 0, 0, 0.48), 0 0 22px rgba(152,78,239,.42), inset 0 1px rgba(255, 255, 255, 0.55), inset 0 -14px 20px rgba(21, 17, 81, 0.38);
   pointer-events: none;
   animation: thermal-printer-run 2.7s cubic-bezier(0.25, 1, 0.5, 1) both;
 }
 
 .thermal-printer__lid {
   position: absolute;
-  top: 11px;
-  right: 17px;
-  left: 17px;
-  height: 21px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.01));
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05), 0 4px 8px rgba(0, 0, 0, 0.18);
+  top: 27px;
+  right: 18px;
+  left: 18px;
+  height: 27px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(21,16,55,.65), rgba(6,4,24,.78));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.13), 0 4px 8px rgba(15, 4, 40, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
+
+.thermal-printer__lid i { width: 4px; height: 4px; border-radius: 99px; background: rgba(255,255,255,.5); box-shadow: 0 0 7px #fff; }
+.thermal-printer__lid i:nth-child(2) { background: #ffcf4b; box-shadow: 0 0 7px #ffcf4b; }
+
+.thermal-printer__handle { position:absolute; width: 72px; height: 8px; border-radius: 99px; top: 9px; left: 50%; transform: translateX(-50%); background: rgba(20,6,55,.5); box-shadow: inset 0 1px rgba(255,255,255,.28); }
+.thermal-printer__brand { position:absolute; top: 10px; left: 20px; color:#fff; font-size: 7px; letter-spacing:.16em; font-weight:900; text-shadow:0 1px 3px rgba(25,0,65,.45); }
+.thermal-printer__brand span { opacity:.7; font-weight:700; font-size:5px; letter-spacing:.1em; }
 
 .thermal-printer__indicator {
   position: absolute;
-  top: 19px;
-  right: 25px;
-  width: 4px;
-  height: 4px;
+  top: 16px;
+  right: 20px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: #cad4a1;
-  box-shadow: 0 0 0 1px rgba(202, 212, 161, 0.28), 0 0 7px rgba(202, 212, 161, 0.45);
+  background: #d5ff81;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.17), 0 0 9px rgba(213, 255, 129, .9);
   animation: thermal-indicator 2.7s steps(1, end) both;
 }
+.thermal-printer__indicator--violet { right: 32px; background:#ee92ff; box-shadow:0 0 0 2px rgba(255,255,255,.17), 0 0 9px #ee92ff; }
 
 .thermal-printer__slot {
   position: absolute;
-  right: 12%;
-  bottom: -7px;
-  left: 12%;
-  height: 13px;
+  right: 10%;
+  bottom: -8px;
+  left: 10%;
+  height: 15px;
   padding: 3px 5px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 3px;
-  background: #181818;
-  box-shadow: 0 6px 9px rgba(0, 0, 0, 0.58), inset 0 2px 3px rgba(0, 0, 0, 0.85), inset 0 -1px rgba(255, 255, 255, 0.07);
+  background: #31205d;
+  box-shadow: 0 7px 10px rgba(0, 0, 0, 0.48), inset 0 2px 4px rgba(7,0,20,.8), inset 0 -1px rgba(255, 255, 255, 0.22);
 }
 
 .thermal-printer__slot-inner {
   width: 100%;
   height: 100%;
   border-radius: 1px;
-  background: #020202;
+  background: linear-gradient(90deg, #080411, #20113f 45%, #090510);
   box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.04);
 }
 
@@ -172,15 +221,37 @@ html, body {
 .thermal-print-head {
   position: absolute;
   z-index: 12;
-  top: 3px;
+  top: 17px;
   left: 13%;
   width: 74%;
   height: 2px;
   border-radius: 999px;
-  background: rgba(255, 248, 221, 0.72);
-  box-shadow: 0 0 7px rgba(255, 248, 221, 0.35);
+  background: linear-gradient(90deg, #ffda5c, #fff, #f58fff, #73ecff);
+  box-shadow: 0 0 10px rgba(255, 167, 228, 0.85);
   pointer-events: none;
   animation: thermal-print-head-scan 2.7s ease-in-out both;
+}
+
+.ticket-paper__top { position: relative; overflow: hidden; }
+.ticket-paper__aurora { position:absolute; z-index:-1; width: 260px; height:170px; top:-115px; left:50%; transform:translateX(-50%); background: conic-gradient(from 180deg, #f8ba3c, #fb589c, #9c55ff, #44d9f5, #f8ba3c); filter: blur(33px); opacity:.56; border-radius:50%; }
+.ticket-paper__eyebrow { color:#ffd261; font-size:9px; font-weight:900; letter-spacing:.17em; margin-bottom:12px; padding:5px 9px; border-radius:99px; border:1px solid rgba(255,211,97,.26); background:rgba(255,183,48,.09); }
+.ticket-paper__id { color:#e9adff; letter-spacing:.04em; text-shadow:0 0 13px rgba(222,114,255,.55); }
+.ticket-qr { box-shadow: 0 14px 25px rgba(0,0,0,.35), 0 0 0 4px rgba(255,255,255,.08), 0 0 24px rgba(255,195,95,.12); }
+.ticket-status { display:inline-flex; align-items:center; gap:6px; border:1px solid; }
+.ticket-status > span { width:6px; height:6px; background:currentColor; border-radius:50%; box-shadow:0 0 8px currentColor; }
+.ticket-status--valid { color:#65f5a8; background:rgba(39,213,125,.12); border-color:rgba(55,244,147,.32); }
+.ticket-status--used { color:#ff9a9a; background:rgba(255,84,84,.14); border-color:rgba(255,120,120,.32); }
+.ticket-notch { background: #130e1e; box-shadow: inset -3px 0 5px rgba(0,0,0,.4); }
+.ticket-notch--right { box-shadow: inset 3px 0 5px rgba(0,0,0,.4); }
+.ticket-perforation { border-top: 2px dashed rgba(255,205,238,.22); }
+.ticket-details { background:linear-gradient(145deg, rgba(255,255,255,.10), rgba(255,255,255,.035)); border:1px solid rgba(255,255,255,.13); box-shadow:inset 0 1px rgba(255,255,255,.08), 0 13px 23px rgba(0,0,0,.16); }
+.ticket-detail-icon { width:32px; height:32px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; color:#ffc45f; font-size:15px; font-weight:900; border-radius:11px; background:linear-gradient(135deg, rgba(255,187,59,.18), rgba(240,91,184,.18)); border:1px solid rgba(255,210,99,.17); }
+.ticket-download { box-shadow: 0 10px 26px rgba(238,112,255,.22), 0 0 0 1px rgba(255,255,255,.4) inset; }
+
+@media (max-width: 420px) {
+  .thermal-printer { width: min(88%, 330px); }
+  .ticket-qr > div { transform: scale(.9); }
+  .ticket-qr { margin-top:-9px; margin-bottom:-5px; }
 }
 
 @keyframes thermal-ticket-feed {
