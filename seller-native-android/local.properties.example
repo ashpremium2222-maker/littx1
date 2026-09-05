@@ -1,0 +1,4 @@
+# Do not commit local.properties. This URL is not a secret, but production builds should
+# receive it from CI or a protected Gradle property rather than a developer workstation.
+SELLER_API_BASE_URL=https://seller-api.example.com/
+SELLER_UPDATE_REPOSITORY=YOUR_GITHUB_ORGANIZATION/YOUR_REPOSITORY

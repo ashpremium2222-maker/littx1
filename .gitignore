@@ -40,3 +40,10 @@ yarn-error.log*
 *.zip
 littx_temp/
 .vercel
+
+# ---- Native Android local/build artifacts ----
+seller-native-android/.gradle/
+seller-native-android/app/build/
+seller-native-android/local.properties
+seller-native-android/*.jks
+seller-native-android/*.keystore

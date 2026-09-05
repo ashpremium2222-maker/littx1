@@ -178,7 +178,7 @@ const PRICING = {
 
 // Prices issued by the seller portal are server-owned. Never trust an amount
 // supplied by the browser for a paid ticket.
-const SELLER_PASS_PRICES = {
+const DEFAULT_SELLER_PASS_PRICES = {
     'GA Single': 399,
     'GA Group of 5': 1699,
     'GA Group of 10': 2999,
@@ -186,6 +186,29 @@ const SELLER_PASS_PRICES = {
     'VIP Group of 5': 2799,
     'VIP Group of 10': 4999,
 };
+
+// Native seller apps fetch this additive, authenticated configuration. Keeping it
+// in Git means a normal backend deployment can update content without a new APK.
+// Ticket issuance still validates ticket type and price from this server-owned source.
+const SELLER_MOBILE_CONFIG_FILE = path.join(__dirname, 'config', 'seller-mobile.json');
+function getSellerMobileConfig() {
+    const parsed = JSON.parse(fs.readFileSync(SELLER_MOBILE_CONFIG_FILE, 'utf8'));
+    if (!parsed?.event?.name || !Array.isArray(parsed?.passes) || !parsed.passes.length ||
+        !parsed.passes.every(pass => typeof pass.id === 'string' && pass.id && typeof pass.label === 'string' && Number.isFinite(pass.price) && pass.price >= 0)) {
+        throw new Error('Invalid seller mobile configuration');
+    }
+    return parsed;
+}
+function getSellerPassPrices() {
+    try {
+        return Object.fromEntries(getSellerMobileConfig().passes.map(pass => [pass.id, pass.price]));
+    } catch (err) {
+        // Preserve existing ticket issuance if a deployment has an unreadable
+        // optional mobile-config file. The mobile route itself reports its error.
+        console.error('[Seller pricing config]', err.message);
+        return DEFAULT_SELLER_PASS_PRICES;
+    }
+}
 
 // ==================== RAZORPAY SETUP ====================
 const RZP_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
@@ -805,7 +828,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
     const tType = ticketType || (gender === 'male' ? 'GA Single' : gender === 'female' ? 'VIP Single' : 'General');
     
     // Compute price dynamically from single source of truth: PRICING
-    let finalAmount = sellerId ? SELLER_PASS_PRICES[tType] : parseFloat(amount) || 0;
+    let finalAmount = sellerId ? getSellerPassPrices()[tType] : parseFloat(amount) || 0;
     if (sellerId && !finalAmount) {
         return res.status(400).json({ success: false, message: 'Invalid seller pass type.' });
     }
@@ -1818,6 +1841,18 @@ app.get('/api/seller/sales', requireSeller, async (req, res) => {
         res.json({ success: true, sellerId: req.sellerId, sales: mySales });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// The mobile client alone consumes this route. It is deliberately authenticated:
+// seller availability and commercial configuration are not public data.
+app.get('/api/mobile/seller-config', requireSeller, (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, config: getSellerMobileConfig() });
+    } catch (err) {
+        console.error('[Seller mobile config]', err.message);
+        res.status(500).json({ success: false, message: 'Seller configuration is unavailable.' });
     }
 });
 

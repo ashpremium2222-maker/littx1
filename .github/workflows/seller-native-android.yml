@@ -1,0 +1,28 @@
+name: Seller Native Android
+
+on:
+  push:
+    paths: ["seller-native-android/**", ".github/workflows/seller-native-android.yml"]
+  pull_request:
+    paths: ["seller-native-android/**", ".github/workflows/seller-native-android.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: seller-native-android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Assemble native debug APK
+        run: gradle :app:assembleDebug -PSELLER_API_BASE_URL=https://ci.invalid/
