@@ -1,1 +1,4 @@
-<resources><string name="app_name">LITTX Seller</string></resources>
+<resources>
+    <string name="app_name">LITTX Seller</string>
+    <string name="asset_statements" translatable="false">[{"include":"https://littx1.vercel.app/.well-known/assetlinks.json"}]</string>
+</resources>

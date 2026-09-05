@@ -9,6 +9,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.LittxSeller"
         android:usesCleartextTraffic="false">
+        <!-- Lets Credential Manager verify this signed app against the
+             published Digital Asset Links statement for native passkeys. -->
+        <meta-data
+            android:name="asset_statements"
+            android:resource="@string/asset_statements" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
