@@ -193,21 +193,6 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
 
               {/* Ticket Card Container */}
               <div className="thermal-ticket-stage relative w-full mb-6">
-                {!ticketEntranceDone && (
-                  <>
-                    <div className="thermal-printer" aria-hidden="true">
-                      <div className="thermal-printer__handle" />
-                      <div className="thermal-printer__brand">LITTX <span>PRINT LAB</span></div>
-                      <div className="thermal-printer__display"><b>PASS</b><span>READY</span></div>
-                      <div className="thermal-printer__lid"><i /><i /><i /></div>
-                      <div className="thermal-printer__indicator" />
-                      <div className="thermal-printer__indicator thermal-printer__indicator--violet" />
-                      <div className="thermal-printer__slot">
-                        <div className="thermal-printer__slot-inner" />
-                      </div>
-                    </div>
-                  </>
-                )}
                 <div
                   className={`thermal-ticket-paper rounded-[32px] w-full flex flex-col shadow-2xl relative ${!ticketEntranceDone ? 'thermal-ticket-print' : ''}`}
                   onAnimationEnd={(event) => {

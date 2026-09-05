@@ -517,6 +517,35 @@ html, body {
   100% { clip-path: inset(0 0 0 0 round 32px); transform: translateY(0); }
 }
 
+/* Premium receipt reveal: the ticket owns the animation, not an artificial prop. */
+.thermal-ticket-stage { padding-top: 0; }
+.thermal-ticket-print {
+  animation: ticket-receipt-reveal .78s cubic-bezier(.16,1,.3,1) both;
+}
+.thermal-ticket-print::after {
+  content: '';
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(112deg, transparent 33%, rgba(255,255,255,.42) 49%, transparent 64%);
+  mix-blend-mode: screen;
+  animation: ticket-receipt-sheen .72s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes ticket-receipt-reveal {
+  0% { opacity: 0; clip-path: inset(0 0 100% 0 round 32px); transform: translateY(-24px) scale(.985); }
+  32% { opacity: 1; clip-path: inset(0 0 48% 0 round 32px); transform: translateY(-9px) scale(.99); }
+  72% { clip-path: inset(0 0 0 0 round 32px); transform: translateY(0) scale(1); }
+  100% { clip-path: inset(0 0 0 0 round 32px); transform: translateY(0) scale(1); }
+}
+@keyframes ticket-receipt-sheen {
+  0% { opacity: 0; transform: translateX(-90%); }
+  24% { opacity: .12; }
+  72% { opacity: .62; transform: translateX(90%); }
+  100% { opacity: 0; transform: translateX(105%); }
+}
+
 @keyframes thermal-ticket-feed {
   0% {
     clip-path: inset(0 0 100% 0 round 32px);
