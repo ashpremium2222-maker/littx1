@@ -206,7 +206,6 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
                         <div className="thermal-printer__slot-inner" />
                       </div>
                     </div>
-                    <div className="thermal-print-head" aria-hidden="true" />
                   </>
                 )}
                 <div
