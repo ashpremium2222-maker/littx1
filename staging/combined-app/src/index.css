@@ -432,6 +432,61 @@ html, body {
 .thermal-printer__slot { right: 4%; bottom: -5px; left: 4%; height: 11px; padding: 2px 5px; }
 .thermal-printer__slot::after { height: 1px; bottom: -1px; }
 
+/* A glass ticket outlet, not a literal printer: one rail, one paper aperture. */
+.thermal-ticket-stage { padding-top: 0; }
+.thermal-printer {
+  top: -14px;
+  height: 28px;
+  border-radius: 999px;
+  border-color: rgba(255,255,255,.4);
+  background: linear-gradient(100deg, rgba(255,171,235,.45), rgba(159,170,255,.36) 48%, rgba(106,247,238,.4));
+  box-shadow: 0 9px 20px rgba(18,9,49,.38), inset 0 1px rgba(255,255,255,.58), inset 0 -1px rgba(18,15,73,.32);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+.thermal-printer::before,
+.thermal-printer__handle,
+.thermal-printer__brand,
+.thermal-printer__display,
+.thermal-printer__lid,
+.thermal-printer__indicator { display: none; }
+.thermal-printer__slot {
+  top: 9px;
+  right: 8%;
+  bottom: auto;
+  left: 8%;
+  height: 11px;
+  padding: 2px 5px;
+  border-color: rgba(255,255,255,.28);
+  border-radius: 999px;
+  background: rgba(22,14,58,.58);
+  box-shadow: inset 0 2px 3px rgba(0,0,0,.48), 0 1px rgba(255,255,255,.24);
+}
+.thermal-printer__slot-inner { border-radius: 999px; background: linear-gradient(90deg, rgba(18,9,51,.92), rgba(5,4,15,.92), rgba(17,42,67,.88)); }
+.thermal-printer__slot::after { display: none; }
+.thermal-printer::after { right: 15%; bottom: -8px; left: 15%; height: 9px; opacity: .44; }
+
+/* Final finishing: a precise, quiet glass rail around the ticket feed. */
+.thermal-printer {
+  top: -11px;
+  height: 23px;
+  border-radius: 999px;
+  background: linear-gradient(100deg, rgba(255,182,238,.38), rgba(174,183,255,.29) 48%, rgba(112,242,237,.34));
+  box-shadow: 0 8px 18px rgba(18,9,49,.28), inset 0 1px rgba(255,255,255,.58), inset 0 -1px rgba(17,15,70,.3);
+}
+.thermal-printer__slot {
+  top: 7px;
+  right: 9%;
+  left: 9%;
+  height: 8px;
+  padding: 2px 4px;
+  border-color: rgba(255,255,255,.25);
+  background: rgba(19,12,50,.68);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.55), 0 1px rgba(255,255,255,.2);
+}
+.thermal-printer__slot-inner { background: linear-gradient(90deg, rgba(10,6,28,.96), rgba(2,2,8,.96) 50%, rgba(8,24,38,.95)); }
+.thermal-printer::after { right: 18%; bottom: -5px; left: 18%; height: 6px; opacity: .28; }
+
 @keyframes thermal-ticket-feed {
   0% {
     clip-path: inset(0 0 100% 0 round 32px);
