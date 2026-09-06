@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -87,12 +88,103 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 
 @Composable private fun LoginBackdrop() { Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF090910), midnight, Color(0xFF100C1B))))) { Box(Modifier.fillMaxWidth().height(650.dp).background(Brush.radialGradient(listOf(Color(0x4D7042C4), Color.Transparent), center = Offset(720f, 340f), radius = 720f))); Box(Modifier.fillMaxWidth().height(380.dp).padding(start = 240.dp, top = 230.dp).background(Brush.linearGradient(listOf(Color.Transparent, Color(0xAA6B34D0), Color.Transparent)))); Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(180.dp).background(Brush.radialGradient(listOf(Color(0x993B2168), Color.Transparent), radius = 650f))) } }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun SellerHome(model: SellerViewModel) {
-    var tab by remember { mutableStateOf(0) }
-    Scaffold(containerColor = midnight, topBar = { TopAppBar(colors = TopAppBarDefaults.topAppBarColors(containerColor = midnight, titleContentColor = Color.White), title = { Column { Text("LITTX SELLER", letterSpacing = 3.sp, fontSize = 15.sp); Text(model.state.partner?.name.orEmpty(), color = softText, fontSize = 12.sp) } }, actions = { TextButton({ model.loadConfig() }) { Text("Refresh") }; TextButton({ model.logout() }) { Text("Sign out") } }) }, bottomBar = { NavigationBar(containerColor = panel) { listOf("Issue ticket", "History").forEachIndexed { i, label -> NavigationBarItem(selected = tab == i, onClick = { tab = i; if (i == 1) model.loadSales() }, icon = { Icon(if (i == 0) Icons.Default.Lock else Icons.Default.Visibility, null) }, label = { Text(label) }) } } }) { padding -> Column(Modifier.padding(padding).padding(20.dp).fillMaxSize()) { model.state.error?.let { Notice(it, true, model::dismissNotice) }; model.state.message?.let { Notice(it, false, model::dismissNotice) }; if (tab == 0) TicketForm(model, model.state.config) else History(model.state.sales) } }
+    var tab by rememberSaveable { mutableStateOf(0) }
+    Scaffold(
+        containerColor = midnight,
+        bottomBar = {
+            NavigationBar(containerColor = Color(0xFF12121F), tonalElevation = 0.dp) {
+                NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Default.ConfirmationNumber, null) }, label = { Text("Issue ticket") })
+                NavigationBarItem(selected = tab == 1, onClick = { tab = 1; model.loadSales() }, icon = { Icon(Icons.Default.History, null) }, label = { Text("History") })
+            }
+        }
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            SellerHeader(model.state.partner?.name.orEmpty(), model::loadConfig, model::logout)
+            model.state.error?.let { Notice(it, true, model::dismissNotice) }
+            model.state.message?.let { Notice(it, false, model::dismissNotice) }
+            if (tab == 0) TicketForm(model, model.state.config) else History(model.state.sales, model.state.loading, model::loadSales)
+        }
+    }
 }
 
-@Composable private fun TicketForm(model: SellerViewModel, config: SellerConfig?) { if (config == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("Loading seller configuration…"); TextButton({ model.loadConfig() }) { Text("Retry") } } }; return }; var name by remember { mutableStateOf("") }; var email by remember { mutableStateOf("") }; var phone by remember { mutableStateOf("") }; var passId by remember(config.version) { mutableStateOf(config.passes.first().id) }; val pass = config.passes.firstOrNull { it.id == passId } ?: config.passes.first(); LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) { item { Text("Generate partner ticket", style = MaterialTheme.typography.headlineSmall, color = Color.White); Text(config.event.displayName, color = softText) }; item { OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Attendee full name") }) }; item { OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text("Attendee email") }) }; item { OutlinedTextField(phone, { phone = it }, Modifier.fillMaxWidth(), label = { Text("Attendee phone") }) }; items(config.passes) { option -> FilterChip(selected = pass.id == option.id, onClick = { passId = option.id }, label = { Text("${option.label} · ₹${option.price.toInt()}") }) }; item { Button(onClick = { model.submitTicket(name, email, phone, pass.id, pass.price, config.event.name) }, enabled = name.isNotBlank() && email.isNotBlank() && !model.state.loading, modifier = Modifier.fillMaxWidth()) { Text(if (model.state.loading) "Submitting…" else "Generate ticket · ₹${pass.price.toInt()}") } } } }
-@Composable private fun History(sales: List<Sale>) { LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { item { Text("Sales history", style = MaterialTheme.typography.headlineSmall, color = Color.White) }; if (sales.isEmpty()) item { Text("No sales available.", color = softText) }; items(sales.size) { i -> val s = sales[i]; ListItem(headlineContent = { Text(s.name ?: "Ticket", color = Color.White) }, supportingContent = { Text("${s.ticketType ?: "Pass"} · ${s.status ?: "Unknown"}") }, trailingContent = { Text("₹${s.amount?.toInt() ?: 0}") }); HorizontalDivider(color = Color(0xFF282633)) } } }
+@Composable private fun SellerHeader(partnerName: String, refresh: () -> Unit, signOut: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)).background(Brush.linearGradient(listOf(Color(0xFF7C45E9), Color(0xFFC782FF)))), contentAlignment = Alignment.Center) { Text("N", color = Color(0xFF0A0810), fontWeight = FontWeight.Black, fontSize = 27.sp) }
+        Column(Modifier.padding(start = 12.dp).weight(1f)) { Text("LITTX SELLER", color = Color.White, letterSpacing = 3.sp, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); Text(partnerName, color = softText, fontSize = 13.sp) }
+        HeaderAction(Icons.Default.Refresh, "Refresh", refresh)
+        Spacer(Modifier.width(8.dp))
+        HeaderAction(Icons.Default.Logout, "Sign out", signOut)
+    }
+}
+
+@Composable private fun HeaderAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, click: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = click).padding(5.dp)) {
+        Box(Modifier.size(39.dp).border(1.dp, Color(0xFF3B374B), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Icon(icon, label, tint = Color(0xFFC9B2FF), modifier = Modifier.size(20.dp)) }
+        Text(label, color = Color(0xFFD5D1DD), fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+    }
+}
+
+@Composable private fun TicketForm(model: SellerViewModel, config: SellerConfig?) {
+    if (config == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(color = lilac); Spacer(Modifier.height(12.dp)); Text("Loading seller configuration…", color = softText); TextButton(model::loadConfig) { Text("Retry") } } }
+        return
+    }
+    if (config.passes.isEmpty()) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No ticket types are currently available.", color = softText) }; return }
+    var name by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var passId by rememberSaveable(config.version) { mutableStateOf(config.passes.first().id) }
+    val pass = config.passes.firstOrNull { it.id == passId } ?: config.passes.first()
+    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item { EventHero(config.event) }
+        item { Column(Modifier.padding(top = 8.dp)) { Text("G E N E R A T E  T I C K E T", style = labelStyle(), color = Color(0xFFC6A9FF)); Spacer(Modifier.height(8.dp)); Text("Attendee Details", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold); Text("Enter attendee information to generate a partner ticket", color = softText, fontSize = 14.sp) } }
+        item { SellerTextField(name, { name = it }, "Attendee full name", Icons.Default.Person) }
+        item { SellerTextField(email, { email = it }, "Attendee email", Icons.Default.Email) }
+        item { SellerTextField(phone, { phone = it }, "Attendee phone number", Icons.Default.Phone) }
+        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Select Ticket Type", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 19.sp); Text("Live prices", color = softText, fontSize = 13.sp) } }
+        items(config.passes.chunked(2)) { pair ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                pair.forEach { option -> PassCard(option, option.id == pass.id, Modifier.weight(1f)) { passId = option.id } }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+        item { Button(onClick = { model.submitTicket(name, email, phone, pass.id, pass.price, config.event.name) }, enabled = name.isNotBlank() && email.isNotBlank() && phone.isNotBlank() && !model.state.loading, modifier = Modifier.fillMaxWidth().height(62.dp), shape = RoundedCornerShape(20.dp), colors = ButtonDefaults.buttonColors(containerColor = lilac, contentColor = Color(0xFF120B1D), disabledContainerColor = Color(0xFF332B43))) { if (model.state.loading) CircularProgressIndicator(Modifier.size(23.dp), color = Color.White, strokeWidth = 2.dp) else { Icon(Icons.Default.ConfirmationNumber, null); Spacer(Modifier.width(12.dp)); Text("Generate Partner Ticket", fontSize = 17.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(8.dp)); Icon(Icons.Default.ArrowForward, null) } } }
+    }
+}
+
+@Composable private fun EventHero(event: SellerEvent) {
+    Box(Modifier.fillMaxWidth().height(250.dp).clip(RoundedCornerShape(23.dp)).border(1.dp, Color(0xFF3D354D), RoundedCornerShape(23.dp)).background(Brush.linearGradient(listOf(Color(0xFF10111C), Color(0xFF25143B), Color(0xFF090911))))) {
+        Box(Modifier.align(Alignment.TopEnd).size(220.dp).background(Brush.radialGradient(listOf(Color(0xFF8E42FF).copy(alpha = .72f), Color.Transparent))))
+        Column(Modifier.align(Alignment.BottomStart).padding(22.dp)) {
+            Surface(color = Color(0xFF1B1730), shape = RoundedCornerShape(8.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF514071))) { Text("LIVE EVENT", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = labelStyle(), color = Color(0xFFD5BFFF)) }
+            Spacer(Modifier.height(15.dp)); Text(event.displayName.ifBlank { event.name }.uppercase(), color = Color.White, fontWeight = FontWeight.Black, fontSize = 33.sp, lineHeight = 35.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(10.dp)); Text("SELLER ACCESS  •  LIVE TICKET ISSUE", color = Color(0xFFD6CCEA), style = labelStyle())
+        }
+        Text("LITTX", Modifier.align(Alignment.TopEnd).padding(18.dp), color = Color(0xFFCFB9FF), style = labelStyle())
+    }
+}
+
+@Composable private fun SellerTextField(value: String, change: (String) -> Unit, hint: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    OutlinedTextField(value = value, onValueChange = change, modifier = Modifier.fillMaxWidth(), placeholder = { Text(hint, color = Color(0xFF9993A8)) }, singleLine = true, leadingIcon = { Icon(icon, null, tint = Color(0xFFC5AAFF)) }, shape = RoundedCornerShape(16.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = lilac, unfocusedBorderColor = Color(0xFF464153), focusedContainerColor = Color(0xFF12111B), unfocusedContainerColor = Color(0xFF12111B), focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+}
+
+@Composable private fun PassCard(pass: SellerPass, selected: Boolean, modifier: Modifier, click: () -> Unit) {
+    val border = if (selected) lilac else Color(0xFF464152)
+    Row(modifier.heightIn(min = 115.dp).clip(RoundedCornerShape(16.dp)).background(if (selected) Color(0xFF26194A) else Color(0xFF11111A)).border(if (selected) 2.dp else 1.dp, border, RoundedCornerShape(16.dp)).clickable(onClick = click).padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) { Icon(Icons.Default.ConfirmationNumber, null, tint = Color(0xFFC2A3FF)); Spacer(Modifier.height(8.dp)); Text(pass.label, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis); Spacer(Modifier.height(3.dp)); Text("₹${pass.price.toInt()}", color = Color(0xFFC09AFF), fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+        Box(Modifier.size(22.dp).border(2.dp, if (selected) lilac else Color(0xFF817A91), CircleShape), contentAlignment = Alignment.Center) { if (selected) Icon(Icons.Default.Check, null, tint = lilac, modifier = Modifier.size(15.dp)) }
+    }
+}
+
+@Composable private fun History(sales: List<Sale>, loading: Boolean, refresh: () -> Unit) {
+    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Sales History", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold); Text("Tickets issued from this seller account", color = softText, fontSize = 14.sp) }; IconButton(refresh) { Icon(Icons.Default.Refresh, "Refresh sales", tint = Color(0xFFC5AAFF)) } } }
+        if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth(), color = lilac, trackColor = panel) }
+        if (!loading && sales.isEmpty()) item { Surface(Modifier.fillMaxWidth().padding(top = 34.dp), color = panel, shape = RoundedCornerShape(20.dp)) { Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.History, null, tint = softText, modifier = Modifier.size(36.dp)); Spacer(Modifier.height(10.dp)); Text("No tickets issued yet", color = Color.White, fontWeight = FontWeight.SemiBold); Text("Issued tickets will appear here.", color = softText) } } }
+        items(sales) { sale -> SaleCard(sale) }
+    }
+}
+
+@Composable private fun SaleCard(sale: Sale) { Surface(color = panel, shape = RoundedCornerShape(17.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2F2D3B))) { Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(42.dp).background(Color(0xFF241A40), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Icon(Icons.Default.ConfirmationNumber, null, tint = Color(0xFFC8A9FF)) }; Column(Modifier.padding(start = 13.dp).weight(1f)) { Text(sale.name ?: "Ticket", color = Color.White, fontWeight = FontWeight.SemiBold); Text("${sale.ticketType ?: "Pass"}  •  ${sale.status ?: "Issued"}", color = softText, fontSize = 13.sp) }; Text("₹${sale.amount?.toInt() ?: 0}", color = Color(0xFFC8A9FF), fontWeight = FontWeight.Bold, fontSize = 18.sp) } } }
 @Composable private fun Notice(text: String, error: Boolean, dismiss: () -> Unit) { AssistChip(onClick = dismiss, label = { Text(text) }, colors = AssistChipDefaults.assistChipColors(containerColor = if (error) Color(0xFF5B2C39) else Color(0xFF2D3B35), labelColor = Color.White)) }
