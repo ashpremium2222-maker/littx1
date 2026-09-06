@@ -141,10 +141,16 @@ export default function Settings({ adminKey }: SettingsProps) {
   const unlockSeller = async (userId: string) => {
     if (!confirm(`Are you sure you want to kick and unlock ${userId}?`)) return
     try {
-      // Generalized endpoint — works for all roles, not just legacy 3 sellers
-      const res = await fetch(`/api/master/sessions/${encodeURIComponent(userId)}`, {
-        method: 'DELETE',
-        headers: { 'x-master-token': 'littx-master-2026' }
+      const partnerId = userId.startsWith('partner:') ? userId.slice('partner:'.length) : null
+      if (!partnerId) {
+        alert('This control currently supports seller partner sessions only.')
+        return
+      }
+      // This protected route removes both the current seller session and its
+      // device/passkey lock, which is what “Kick & Unlock” promises to do.
+      const res = await fetch(`/api/admin/seller-devices/${encodeURIComponent(partnerId)}/reset-passkey`, {
+        method: 'POST',
+        headers: { 'x-auth-token': adminKey }
       })
       const data = await res.json()
       if (data.success) {
