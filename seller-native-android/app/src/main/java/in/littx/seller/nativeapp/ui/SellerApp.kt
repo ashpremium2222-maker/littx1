@@ -92,12 +92,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
     var tab by rememberSaveable { mutableStateOf(0) }
     Scaffold(
         containerColor = midnight,
-        bottomBar = {
-            NavigationBar(containerColor = Color(0xFF12121F), tonalElevation = 0.dp) {
-                NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Default.ConfirmationNumber, null) }, label = { Text("Issue ticket") })
-                NavigationBarItem(selected = tab == 1, onClick = { tab = 1; model.loadSales() }, icon = { Icon(Icons.Default.History, null) }, label = { Text("History") })
-            }
-        }
+        bottomBar = { SellerBottomTabs(tab, { tab = 0 }, { tab = 1; model.loadSales() }) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             SellerHeader(model.state.partner?.name.orEmpty(), model::loadConfig, model::logout)
@@ -110,12 +105,28 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 
 @Composable private fun SellerHeader(partnerName: String, refresh: () -> Unit, signOut: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)).background(Brush.linearGradient(listOf(Color(0xFF7C45E9), Color(0xFFC782FF)))), contentAlignment = Alignment.Center) { Text("N", color = Color(0xFF0A0810), fontWeight = FontWeight.Black, fontSize = 27.sp) }
+        Text("N", color = Color(0xFFA968FF), fontWeight = FontWeight.Black, fontSize = 48.sp, modifier = Modifier.padding(end = 10.dp))
         Column(Modifier.padding(start = 12.dp).weight(1f)) { Text("LITTX SELLER", color = Color.White, letterSpacing = 3.sp, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); Text(partnerName, color = softText, fontSize = 13.sp) }
         HeaderAction(Icons.Default.Refresh, "Refresh", refresh)
         Spacer(Modifier.width(8.dp))
         HeaderAction(Icons.Default.Logout, "Sign out", signOut)
     }
+}
+
+@Composable private fun SellerBottomTabs(tab: Int, issue: () -> Unit, history: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp).height(78.dp).clip(RoundedCornerShape(23.dp)).background(Color(0xFF151420)).border(1.dp, Color(0xFF373345), RoundedCornerShape(23.dp)).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        BottomTab("Issue ticket", Icons.Default.ConfirmationNumber, tab == 0, Modifier.weight(1f), issue)
+        BottomTab("History", Icons.Default.History, tab == 1, Modifier.weight(1f), history)
+    }
+}
+
+@Composable private fun BottomTab(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, modifier: Modifier, click: () -> Unit) {
+    val background = if (selected) Brush.linearGradient(listOf(Color(0xFF32285A), Color(0xFF241B43))) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
+    Row(
+        modifier.fillMaxHeight().clip(RoundedCornerShape(17.dp)).background(background).clickable(onClick = click).padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) { Icon(icon, null, tint = if (selected) Color(0xFFD2BAFF) else softText); Spacer(Modifier.width(8.dp)); Text(label, color = if (selected) Color.White else softText, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) }
 }
 
 @Composable private fun HeaderAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, click: () -> Unit) {
@@ -159,7 +170,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
         Column(Modifier.align(Alignment.BottomStart).padding(22.dp)) {
             Surface(color = Color(0xFF1B1730), shape = RoundedCornerShape(8.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF514071))) { Text("LIVE EVENT", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = labelStyle(), color = Color(0xFFD5BFFF)) }
             Spacer(Modifier.height(15.dp)); Text(event.displayName.ifBlank { event.name }.uppercase(), color = Color.White, fontWeight = FontWeight.Black, fontSize = 33.sp, lineHeight = 35.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(10.dp)); Text("SELLER ACCESS  •  LIVE TICKET ISSUE", color = Color(0xFFD6CCEA), style = labelStyle())
+            Spacer(Modifier.height(10.dp)); Text("MUSIC  •  CULTURE  •  PEOPLE  •  TOGETHER", color = Color(0xFFD6CCEA), style = labelStyle())
         }
         Text("LITTX", Modifier.align(Alignment.TopEnd).padding(18.dp), color = Color(0xFFCFB9FF), style = labelStyle())
     }
@@ -172,9 +183,15 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 @Composable private fun PassCard(pass: SellerPass, selected: Boolean, modifier: Modifier, click: () -> Unit) {
     val border = if (selected) lilac else Color(0xFF464152)
     Row(modifier.heightIn(min = 115.dp).clip(RoundedCornerShape(16.dp)).background(if (selected) Color(0xFF26194A) else Color(0xFF11111A)).border(if (selected) 2.dp else 1.dp, border, RoundedCornerShape(16.dp)).clickable(onClick = click).padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) { Icon(Icons.Default.ConfirmationNumber, null, tint = Color(0xFFC2A3FF)); Spacer(Modifier.height(8.dp)); Text(pass.label, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis); Spacer(Modifier.height(3.dp)); Text("₹${pass.price.toInt()}", color = Color(0xFFC09AFF), fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+        Column(Modifier.weight(1f)) { Icon(Icons.Default.ConfirmationNumber, null, tint = Color(0xFFC2A3FF)); Spacer(Modifier.height(8.dp)); Text(pass.label, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis); Text(passDescription(pass.label), color = softText, fontSize = 12.sp, maxLines = 1); Spacer(Modifier.height(3.dp)); Text("₹${pass.price.toInt()}", color = Color(0xFFC09AFF), fontSize = 20.sp, fontWeight = FontWeight.Bold) }
         Box(Modifier.size(22.dp).border(2.dp, if (selected) lilac else Color(0xFF817A91), CircleShape), contentAlignment = Alignment.Center) { if (selected) Icon(Icons.Default.Check, null, tint = lilac, modifier = Modifier.size(15.dp)) }
     }
+}
+
+private fun passDescription(label: String): String {
+    val lower = label.lowercase()
+    val group = Regex("group\\s+of\\s+(\\d+)").find(lower)?.groupValues?.getOrNull(1)
+    return when { group != null -> "For $group people"; "vip" in lower -> "VIP Access"; else -> "General Access" }
 }
 
 @Composable private fun History(sales: List<Sale>, loading: Boolean, refresh: () -> Unit) {
