@@ -1638,6 +1638,10 @@ app.post('/api/seller/login-step1', async (req, res) => {
         const { rpID, origin } = getWebAuthnRelyingParty(req);
 
         const partnerLock = await db.getPartnerLock(partnerId);
+        // The database lock is the sole source of truth. A stale /tmp value
+        // from a prior serverless instance must never turn an unbound seller
+        // into an authentication flow: native Android needs a registration
+        // request for the first device binding.
         const authenticator = partnerLock?.webauthnCredentialId
             ? {
                 credentialID: partnerLock.webauthnCredentialId,
@@ -1645,7 +1649,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 counter: partnerLock.webauthnCounter || 0,
                 transports: partnerLock.webauthnTransports || [],
             }
-            : webauthnAuthenticators[partnerId];
+            : null;
         if (!authenticator) {
             // First time: Registration options
             const options = await generateRegistrationOptions({
@@ -1690,6 +1694,8 @@ app.post('/api/seller/login-step2', async (req, res) => {
         if (!login) return res.status(400).json({ success: false, message: 'Authentication challenge is invalid or expired. Please try again.' });
 
         const partnerLock = await db.getPartnerLock(partnerId);
+        // Match step 1: only a durable database credential can select the
+        // authentication verification path.
         const authenticator = partnerLock?.webauthnCredentialId
             ? {
                 credentialID: partnerLock.webauthnCredentialId,
@@ -1697,7 +1703,7 @@ app.post('/api/seller/login-step2', async (req, res) => {
                 counter: partnerLock.webauthnCounter || 0,
                 transports: partnerLock.webauthnTransports || [],
             }
-            : webauthnAuthenticators[partnerId];
+            : null;
         let verification;
 
         if (!authenticator) {
