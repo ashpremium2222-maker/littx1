@@ -106,7 +106,13 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 @Composable private fun SellerHeader(partnerName: String, refresh: () -> Unit, signOut: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("N", color = Color(0xFFA968FF), fontWeight = FontWeight.Black, fontSize = 48.sp, modifier = Modifier.padding(end = 10.dp))
-        Column(Modifier.padding(start = 12.dp).weight(1f)) { Text("LITTX SELLER", color = Color.White, letterSpacing = 3.sp, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); Text(partnerName, color = softText, fontSize = 13.sp) }
+        Column(Modifier.padding(start = 8.dp).weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("LITTX SELLER", color = Color.White, letterSpacing = 1.sp, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("APP BY ASHTU", color = Color(0xFF9B8DB5), letterSpacing = 1.sp, fontSize = 7.sp, modifier = Modifier.padding(start = 7.dp, top = 2.dp))
+            }
+            Text(partnerName, color = softText, fontSize = 13.sp)
+        }
         HeaderAction(Icons.Default.Refresh, "Refresh", refresh)
         Spacer(Modifier.width(8.dp))
         HeaderAction(Icons.Default.Logout, "Sign out", signOut)
