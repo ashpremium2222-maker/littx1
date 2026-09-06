@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -63,14 +64,14 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
     var passwordVisible by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(midnight)) {
         LoginBackdrop()
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 28.dp), contentPadding = PaddingValues(top = 42.dp, bottom = 36.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) { Text("L I T T X", color = Color.White, fontSize = 24.sp, letterSpacing = 8.sp, fontWeight = FontWeight.Light); Column(horizontalAlignment = Alignment.End) { Text("EVENTS", style = labelStyle()); Text("PEOPLE", style = labelStyle()); Text("EXPERIENCES", style = labelStyle()); HorizontalDivider(Modifier.width(36.dp).padding(top = 12.dp), color = Color(0xFF777282)) } } }
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 28.dp), contentPadding = PaddingValues(top = 34.dp, bottom = 36.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) { Column { Text("L I T T X", color = Color.White, fontSize = 22.sp, letterSpacing = 7.sp, fontWeight = FontWeight.Light); Text("SELLER PORTAL", color = Color(0xFF9C90AF), fontSize = 8.sp, letterSpacing = 3.sp, modifier = Modifier.padding(top = 6.dp)) }; Column(horizontalAlignment = Alignment.End) { Text("EVENTS", style = labelStyle()); Text("PEOPLE", style = labelStyle()); Text("EXPERIENCES", style = labelStyle()); HorizontalDivider(Modifier.width(36.dp).padding(top = 12.dp), color = Color(0xFF777282)) } } }
             item { Spacer(Modifier.height(0.dp)) }
-            item { Row(verticalAlignment = Alignment.CenterVertically) { Surface(shape = RoundedCornerShape(50), color = Color(0xFF1E1932).copy(alpha = .8f)) { Text("S E L L E R", Modifier.padding(horizontal = 16.dp, vertical = 7.dp), color = Color(0xFFD3BEFF), fontSize = 11.sp, letterSpacing = 4.sp) }; Text("APP BY ASHTU", color = Color(0xFF9B8DB5), fontSize = 8.sp, letterSpacing = 1.sp, modifier = Modifier.padding(start = 10.dp)) } }
-            item { Text("Access\nMore Than\nEvents", color = Color(0xFFF3F0F9), fontSize = 48.sp, lineHeight = 51.sp, fontWeight = FontWeight.Light); Spacer(Modifier.height(20.dp)); Text("NATIVE DEVICE-BOUND\nSELLER ACCESS", style = labelStyle(), color = Color(0xFFC8C2D5)) }
+            item { Row(verticalAlignment = Alignment.CenterVertically) { Surface(shape = RoundedCornerShape(50), color = Color(0xFF1E1932).copy(alpha = .8f), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF5B3A85))) { Text("S E L L E R", Modifier.padding(horizontal = 16.dp, vertical = 7.dp), color = Color(0xFFD3BEFF), fontSize = 11.sp, letterSpacing = 4.sp) }; Text("APP BY ASHTU", color = Color(0xFF9B8DB5), fontSize = 8.sp, letterSpacing = 1.sp, modifier = Modifier.padding(start = 10.dp)) } }
+            item { Text("Access\nMore Than\nEvents", color = Color(0xFFF3F0F9), fontSize = 45.sp, lineHeight = 48.sp, fontWeight = FontWeight.Light); Spacer(Modifier.height(16.dp)); Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.width(26.dp).height(1.dp).background(lilac)); Spacer(Modifier.width(9.dp)); Text("NATIVE DEVICE-BOUND\nSELLER ACCESS", style = labelStyle(), color = Color(0xFFC8C2D5)) } }
             items(partners) { partner -> PartnerCard(partner, partnerId == partner.id) { partnerId = partner.id } }
             item { Spacer(Modifier.height(10.dp)) }
-            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Partner password", color = Color(0xFFD9D5E2), fontSize = 16.sp); Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Lock, null, tint = softText, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(7.dp)); Text("Secure Access", color = softText, fontSize = 13.sp) } } }
+            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Partner password", color = Color(0xFFD9D5E2), fontSize = 15.sp, fontWeight = FontWeight.Medium); Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Lock, null, tint = softText, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(7.dp)); Text("Secure Access", color = softText, fontSize = 13.sp) } } }
             item { OutlinedTextField(value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Enter partner password", color = Color(0xFF777381)) }, singleLine = true, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Show password", tint = softText) } }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = lilac, unfocusedBorderColor = Color(0xFF4A4657), focusedContainerColor = Color(0xFF12121E).copy(alpha = .9f), unfocusedContainerColor = Color(0xFF12121E).copy(alpha = .9f)), shape = RoundedCornerShape(16.dp)) }
             item { model.state.error?.let { Notice(it, true, model::dismissNotice) } }
             item { Button(onClick = { model.login(partnerId, password) }, enabled = password.isNotBlank() && !model.state.loading && BuildConfig.SELLER_API_BASE_URL.isNotBlank(), modifier = Modifier.fillMaxWidth().height(68.dp).shadow(18.dp, RoundedCornerShape(36.dp), ambientColor = lilac, spotColor = lilac), shape = RoundedCornerShape(36.dp), colors = ButtonDefaults.buttonColors(containerColor = lilac, disabledContainerColor = Color(0xFF312A43))) { if (model.state.loading) CircularProgressIndicator(Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp) else { Text("Sign in with passkey", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)); Surface(color = Color(0xFF17121F), shape = CircleShape, modifier = Modifier.size(54.dp)) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.ArrowForward, null, tint = Color.White, modifier = Modifier.size(28.dp)) } } } } }
@@ -81,10 +82,11 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 
 @Composable private fun PartnerCard(partner: PartnerVisual, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(21.dp)
-    Row(Modifier.fillMaxWidth().clip(shape).background(if (selected) Color(0xFF17132A).copy(alpha = .94f) else panel.copy(alpha = .9f)).border(1.dp, if (selected) lilac else Color(0xFF252431), shape).clickable(onClick = onClick).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    val background = if (selected) Brush.linearGradient(listOf(Color(0xFF241745), Color(0xFF17132A), Color(0xFF27164A))) else Brush.linearGradient(listOf(panel.copy(alpha = .9f), panel.copy(alpha = .9f)))
+    Row(Modifier.fillMaxWidth().shadow(if (selected) 22.dp else 0.dp, shape, ambientColor = Color(0xFF7E43EF), spotColor = Color(0xFFAF77FF)).clip(shape).background(background).border(if (selected) 2.dp else 1.dp, if (selected) Color(0xFFB47AFF) else Color(0xFF252431), shape).clickable(onClick = onClick).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(64.dp).clip(RoundedCornerShape(15.dp)).background(Color(0xFF181724)).border(1.dp, if (selected) Color(0xFF7045B8) else Color(0xFF2A2937), RoundedCornerShape(15.dp)), contentAlignment = Alignment.Center) { Text(partner.mark, color = if (selected) lilac else Color(0xFF9B97AA), fontWeight = FontWeight.Bold, fontSize = if (partner.mark.length > 1) 23.sp else 31.sp) }
         Column(Modifier.padding(start = 15.dp).weight(1f)) { Text(partner.name, color = Color.White, fontWeight = FontWeight.Medium, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis); Spacer(Modifier.height(7.dp)); Text(partner.line, style = labelStyle(), color = Color(0xFFAAA4B7)) }
-        Box(Modifier.size(34.dp).border(3.dp, if (selected) lilac else Color(0xFF565261), CircleShape), contentAlignment = Alignment.Center) { if (selected) Box(Modifier.size(15.dp).background(lilac, CircleShape)) }
+        Box(Modifier.size(34.dp).shadow(if (selected) 12.dp else 0.dp, CircleShape, ambientColor = lilac, spotColor = lilac).border(3.dp, if (selected) Color(0xFFC699FF) else Color(0xFF565261), CircleShape), contentAlignment = Alignment.Center) { if (selected) Box(Modifier.size(15.dp).background(Brush.radialGradient(listOf(Color(0xFFE7D0FF), lilac)), CircleShape)) }
     }
 }
 
@@ -108,7 +110,13 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 @Composable private fun SellerHeader(partnerName: String, refresh: () -> Unit, signOut: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         SellerBrandMark(Modifier.padding(end = 10.dp))
-        Column(Modifier.padding(start = 8.dp).weight(1f)) { Text("LITTX SELLER", color = Color.White, letterSpacing = 1.sp, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); Text(partnerName, color = softText, fontSize = 13.sp) }
+        Column(Modifier.padding(start = 8.dp).weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("LITTX SELLER", color = Color.White, letterSpacing = .5.sp, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("APP BY ASHTU", color = Color(0xFF9D8DB8), letterSpacing = .8.sp, fontSize = 7.sp, modifier = Modifier.padding(start = 7.dp, top = 2.dp))
+            }
+            Text(partnerName, color = softText, fontSize = 13.sp)
+        }
         HeaderAction(Icons.Default.Refresh, "Refresh", refresh)
         Spacer(Modifier.width(8.dp))
         HeaderAction(Icons.Default.Logout, "Sign out", signOut)
@@ -129,16 +137,16 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
     Canvas(modifier.size(56.dp)) {
         drawCircle(Color(0x553E187D), radius = size.minDimension * .52f, center = Offset(size.width * .5f, size.height * .5f))
         val mark = Path().apply {
-            moveTo(size.width * .05f, size.height * .04f)
-            lineTo(size.width * .28f, size.height * .04f)
-            lineTo(size.width * .72f, size.height * .66f)
-            lineTo(size.width * .72f, size.height * .04f)
-            lineTo(size.width * .95f, size.height * .04f)
-            lineTo(size.width * .95f, size.height * .96f)
-            lineTo(size.width * .72f, size.height * .96f)
-            lineTo(size.width * .28f, size.height * .34f)
-            lineTo(size.width * .28f, size.height * .96f)
-            lineTo(size.width * .05f, size.height * .96f)
+            moveTo(size.width * .13f, size.height * .10f)
+            lineTo(size.width * .30f, size.height * .10f)
+            lineTo(size.width * .70f, size.height * .67f)
+            lineTo(size.width * .70f, size.height * .10f)
+            lineTo(size.width * .87f, size.height * .10f)
+            lineTo(size.width * .87f, size.height * .90f)
+            lineTo(size.width * .70f, size.height * .90f)
+            lineTo(size.width * .30f, size.height * .33f)
+            lineTo(size.width * .30f, size.height * .90f)
+            lineTo(size.width * .13f, size.height * .90f)
             close()
         }
         drawPath(mark, Brush.linearGradient(listOf(Color(0xFFD48BFF), Color(0xFF844AFF), Color(0xFF6A39C6))))
@@ -239,7 +247,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
                 Box(Modifier.size(29.dp).clip(RoundedCornerShape(8.dp)).background(if (selected) Brush.linearGradient(listOf(Color(0xFFB675FF), Color(0xFF7650DD))) else Brush.linearGradient(listOf(Color(0xFF292637), Color(0xFF201E2B)))), contentAlignment = Alignment.Center) { Icon(Icons.Default.ConfirmationNumber, null, tint = if (selected) Color.White else Color(0xFFCCB4FF), modifier = Modifier.size(17.dp)) }
                 if (selected) Text(" SELECTED", color = Color(0xFFD8C4FF), fontSize = 8.sp, letterSpacing = 1.sp, modifier = Modifier.padding(start = 6.dp))
             }
-            Spacer(Modifier.height(8.dp)); Text(pass.label, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis); Text(passDescription(pass.label), color = softText, fontSize = 12.sp, maxLines = 1); Spacer(Modifier.height(3.dp)); Text("₹${pass.price.toInt()}", color = Color(0xFFC99EFF), fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp)); Text(pass.label, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis); Text(passDescription(pass.label), color = softText, fontSize = 12.sp, maxLines = 1); Spacer(Modifier.height(3.dp)); Text("₹${pass.price.toInt()}", color = Color(0xFFC99EFF), fontSize = 22.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.Serif, letterSpacing = .4.sp)
         }
         Box(Modifier.size(24.dp).border(2.dp, if (selected) Color(0xFFB87BFF) else Color(0xFF817A91), CircleShape), contentAlignment = Alignment.Center) { if (selected) Icon(Icons.Default.Check, null, tint = Color(0xFFE2D2FF), modifier = Modifier.size(16.dp)) }
     }
