@@ -84,7 +84,13 @@ function getWebAuthnRelyingParty(req) {
         // must be the SHA-256 hash of this app's release signing certificate.
         const androidOrigin = process.env.WEBAUTHN_ANDROID_ORIGIN;
         const expectedOrigin = androidOrigin ? [origin, androidOrigin] : origin;
-        return { rpID: process.env.WEBAUTHN_RP_ID || new URL(origin).hostname, origin: expectedOrigin };
+        // Environment dashboards often receive a full URL or a trailing slash.
+        // WebAuthn rp.id must be a bare hostname, never a URL or path.
+        const configuredRpId = (process.env.WEBAUTHN_RP_ID || '').trim();
+        const rpID = configuredRpId
+            ? new URL(configuredRpId.includes('://') ? configuredRpId : `https://${configuredRpId}`).hostname
+            : new URL(origin).hostname;
+        return { rpID, origin: expectedOrigin };
     }
 
     // Dynamic hosts are safe only for local development. Requiring an explicit
