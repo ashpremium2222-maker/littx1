@@ -117,22 +117,6 @@ function isValidSellerSession(session, token) {
     return Number.isFinite(loginAt) && Date.now() - loginAt < SELLER_SESSION_TTL_MS;
 }
 
-// Public, non-sensitive deployment diagnostic. This intentionally exposes
-// only the WebAuthn relying-party values that must also be public in Android
-// asset links; it never exposes credentials, sessions, challenges, or keys.
-app.get('/api/seller/webauthn-public-config', (req, res) => {
-    try {
-        const relyingParty = getWebAuthnRelyingParty(req);
-        res.json({
-            success: true,
-            rpID: relyingParty.rpID,
-            origin: relyingParty.origin,
-        });
-    } catch (err) {
-        res.status(503).json({ success: false, message: 'WebAuthn relying-party configuration is unavailable.' });
-    }
-});
-
 function clientIp(req) {
     return String(req.headers['x-forwarded-for'] || req.ip || req.connection?.remoteAddress || 'unknown').split(',')[0].trim();
 }
@@ -177,6 +161,22 @@ const { sendTicketEmail } = require('./mailer');
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Public, non-sensitive deployment diagnostic. This intentionally exposes
+// only the WebAuthn relying-party values that must also be public in Android
+// asset links; it never exposes credentials, sessions, challenges, or keys.
+app.get('/api/seller/webauthn-public-config', (req, res) => {
+    try {
+        const relyingParty = getWebAuthnRelyingParty(req);
+        res.json({
+            success: true,
+            rpID: relyingParty.rpID,
+            origin: relyingParty.origin,
+        });
+    } catch (err) {
+        res.status(503).json({ success: false, message: 'WebAuthn relying-party configuration is unavailable.' });
+    }
+});
 
 // Vercel may invoke an API route before the module-level MongoDB connection
 // has completed. Awaiting the shared connection here avoids Mongoose's
