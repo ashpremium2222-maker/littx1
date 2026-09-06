@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -63,8 +65,8 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
         LoginBackdrop()
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 28.dp), contentPadding = PaddingValues(top = 42.dp, bottom = 36.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) { Text("L I T T X", color = Color.White, fontSize = 24.sp, letterSpacing = 8.sp, fontWeight = FontWeight.Light); Column(horizontalAlignment = Alignment.End) { Text("EVENTS", style = labelStyle()); Text("PEOPLE", style = labelStyle()); Text("EXPERIENCES", style = labelStyle()); HorizontalDivider(Modifier.width(36.dp).padding(top = 12.dp), color = Color(0xFF777282)) } } }
-            item { Spacer(Modifier.height(40.dp)) }
-            item { Surface(shape = RoundedCornerShape(50), color = Color(0xFF1E1932).copy(alpha = .8f)) { Text("S E L L E R", Modifier.padding(horizontal = 16.dp, vertical = 7.dp), color = Color(0xFFD3BEFF), fontSize = 11.sp, letterSpacing = 4.sp) } }
+            item { Spacer(Modifier.height(0.dp)) }
+            item { Row(verticalAlignment = Alignment.CenterVertically) { Surface(shape = RoundedCornerShape(50), color = Color(0xFF1E1932).copy(alpha = .8f)) { Text("S E L L E R", Modifier.padding(horizontal = 16.dp, vertical = 7.dp), color = Color(0xFFD3BEFF), fontSize = 11.sp, letterSpacing = 4.sp) }; Text("APP BY ASHTU", color = Color(0xFF9B8DB5), fontSize = 8.sp, letterSpacing = 1.sp, modifier = Modifier.padding(start = 10.dp)) } }
             item { Text("Access\nMore Than\nEvents", color = Color(0xFFF3F0F9), fontSize = 48.sp, lineHeight = 51.sp, fontWeight = FontWeight.Light); Spacer(Modifier.height(20.dp)); Text("NATIVE DEVICE-BOUND\nSELLER ACCESS", style = labelStyle(), color = Color(0xFFC8C2D5)) }
             items(partners) { partner -> PartnerCard(partner, partnerId == partner.id) { partnerId = partner.id } }
             item { Spacer(Modifier.height(10.dp)) }
@@ -105,14 +107,8 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 
 @Composable private fun SellerHeader(partnerName: String, refresh: () -> Unit, signOut: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("N", color = Color(0xFFA968FF), fontWeight = FontWeight.Black, fontSize = 48.sp, modifier = Modifier.padding(end = 10.dp))
-        Column(Modifier.padding(start = 8.dp).weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("LITTX SELLER", color = Color.White, letterSpacing = 1.sp, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Text("APP BY ASHTU", color = Color(0xFF9B8DB5), letterSpacing = 1.sp, fontSize = 7.sp, modifier = Modifier.padding(start = 7.dp, top = 2.dp))
-            }
-            Text(partnerName, color = softText, fontSize = 13.sp)
-        }
+        SellerBrandMark(Modifier.padding(end = 10.dp))
+        Column(Modifier.padding(start = 8.dp).weight(1f)) { Text("LITTX SELLER", color = Color.White, letterSpacing = 1.sp, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); Text(partnerName, color = softText, fontSize = 13.sp) }
         HeaderAction(Icons.Default.Refresh, "Refresh", refresh)
         Spacer(Modifier.width(8.dp))
         HeaderAction(Icons.Default.Logout, "Sign out", signOut)
@@ -120,9 +116,32 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 }
 
 @Composable private fun SellerBottomTabs(tab: Int, issue: () -> Unit, history: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp).height(78.dp).clip(RoundedCornerShape(23.dp)).background(Color(0xFF151420)).border(1.dp, Color(0xFF373345), RoundedCornerShape(23.dp)).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        BottomTab("Issue ticket", Icons.Default.ConfirmationNumber, tab == 0, Modifier.weight(1f), issue)
-        BottomTab("History", Icons.Default.History, tab == 1, Modifier.weight(1f), history)
+    Column(Modifier.fillMaxWidth().background(midnight)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp).height(82.dp).clip(RoundedCornerShape(23.dp)).background(Color(0xFF151420)).border(1.dp, Color(0xFF373345), RoundedCornerShape(23.dp)).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BottomTab("Issue ticket", Icons.Default.ConfirmationNumber, tab == 0, Modifier.weight(1f), issue)
+            BottomTab("History", Icons.Default.History, tab == 1, Modifier.weight(1f), history)
+        }
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable private fun SellerBrandMark(modifier: Modifier = Modifier) {
+    Canvas(modifier.size(56.dp)) {
+        drawCircle(Color(0x553E187D), radius = size.minDimension * .52f, center = Offset(size.width * .5f, size.height * .5f))
+        val mark = Path().apply {
+            moveTo(size.width * .05f, size.height * .04f)
+            lineTo(size.width * .28f, size.height * .04f)
+            lineTo(size.width * .72f, size.height * .66f)
+            lineTo(size.width * .72f, size.height * .04f)
+            lineTo(size.width * .95f, size.height * .04f)
+            lineTo(size.width * .95f, size.height * .96f)
+            lineTo(size.width * .72f, size.height * .96f)
+            lineTo(size.width * .28f, size.height * .34f)
+            lineTo(size.width * .28f, size.height * .96f)
+            lineTo(size.width * .05f, size.height * .96f)
+            close()
+        }
+        drawPath(mark, Brush.linearGradient(listOf(Color(0xFFD48BFF), Color(0xFF844AFF), Color(0xFF6A39C6))))
     }
 }
 
@@ -171,14 +190,39 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 }
 
 @Composable private fun EventHero(event: SellerEvent) {
-    Box(Modifier.fillMaxWidth().height(250.dp).clip(RoundedCornerShape(23.dp)).border(1.dp, Color(0xFF3D354D), RoundedCornerShape(23.dp)).background(Brush.linearGradient(listOf(Color(0xFF10111C), Color(0xFF25143B), Color(0xFF090911))))) {
-        Box(Modifier.align(Alignment.TopEnd).size(220.dp).background(Brush.radialGradient(listOf(Color(0xFF8E42FF).copy(alpha = .72f), Color.Transparent))))
+    Box(Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(23.dp)).border(1.dp, Color(0xFF4A3D60), RoundedCornerShape(23.dp)).background(Color(0xFF11111A))) {
+        ConcertBackdrop()
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xE60A0910), Color(0x9A0A0910), Color(0x250A0910)))))
+        Box(Modifier.align(Alignment.TopEnd).size(180.dp).background(Brush.radialGradient(listOf(Color(0xFF8E42FF).copy(alpha = .35f), Color.Transparent))))
         Column(Modifier.align(Alignment.BottomStart).padding(22.dp)) {
             Surface(color = Color(0xFF1B1730), shape = RoundedCornerShape(8.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF514071))) { Text("LIVE EVENT", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = labelStyle(), color = Color(0xFFD5BFFF)) }
-            Spacer(Modifier.height(15.dp)); Text(event.displayName.ifBlank { event.name }.uppercase(), color = Color.White, fontWeight = FontWeight.Black, fontSize = 33.sp, lineHeight = 35.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(10.dp)); Text("MUSIC  •  CULTURE  •  PEOPLE  •  TOGETHER", color = Color(0xFFD6CCEA), style = labelStyle())
+            Spacer(Modifier.height(12.dp)); Text(event.displayName.ifBlank { event.name }.uppercase(), color = Color.White, fontWeight = FontWeight.Black, fontSize = 23.sp, lineHeight = 26.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(8.dp)); Text("MUSIC  •  CULTURE  •  PEOPLE  •  TOGETHER", color = Color(0xFFD6CCEA), fontSize = 8.sp, letterSpacing = 2.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text("LITTX", Modifier.align(Alignment.TopEnd).padding(18.dp), color = Color(0xFFCFB9FF), style = labelStyle())
+    }
+}
+
+@Composable private fun ConcertBackdrop() {
+    Canvas(Modifier.fillMaxSize()) {
+        drawRect(Brush.linearGradient(listOf(Color(0xFF0C0A16), Color(0xFF1E1034), Color(0xFF080910))))
+        drawCircle(Brush.radialGradient(listOf(Color(0xCC934DFF), Color.Transparent)), radius = size.width * .56f, center = Offset(size.width * .72f, size.height * .12f))
+        drawCircle(Brush.radialGradient(listOf(Color(0x886B32D1), Color.Transparent)), radius = size.width * .48f, center = Offset(size.width * .16f, size.height * .62f))
+        drawLine(Color(0x55C7A1FF), Offset(size.width * .70f, 0f), Offset(size.width * .40f, size.height), strokeWidth = 3.dp.toPx())
+        drawLine(Color(0x55F19DFF), Offset(size.width * .88f, 0f), Offset(size.width * .56f, size.height), strokeWidth = 2.dp.toPx())
+        val crowd = Path().apply {
+            moveTo(0f, size.height)
+            lineTo(0f, size.height * .81f)
+            for (index in 0..16) {
+                val x = size.width * index / 16f
+                val peak = size.height * (.73f + (index % 4) * .035f)
+                lineTo(x + size.width / 32f, peak)
+                lineTo(x + size.width / 16f, size.height * .82f)
+            }
+            lineTo(size.width, size.height)
+            close()
+        }
+        drawPath(crowd, Color(0xE3080911))
     }
 }
 
@@ -188,9 +232,16 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 
 @Composable private fun PassCard(pass: SellerPass, selected: Boolean, modifier: Modifier, click: () -> Unit) {
     val border = if (selected) lilac else Color(0xFF464152)
-    Row(modifier.heightIn(min = 115.dp).clip(RoundedCornerShape(16.dp)).background(if (selected) Color(0xFF26194A) else Color(0xFF11111A)).border(if (selected) 2.dp else 1.dp, border, RoundedCornerShape(16.dp)).clickable(onClick = click).padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) { Icon(Icons.Default.ConfirmationNumber, null, tint = Color(0xFFC2A3FF)); Spacer(Modifier.height(8.dp)); Text(pass.label, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis); Text(passDescription(pass.label), color = softText, fontSize = 12.sp, maxLines = 1); Spacer(Modifier.height(3.dp)); Text("₹${pass.price.toInt()}", color = Color(0xFFC09AFF), fontSize = 20.sp, fontWeight = FontWeight.Bold) }
-        Box(Modifier.size(22.dp).border(2.dp, if (selected) lilac else Color(0xFF817A91), CircleShape), contentAlignment = Alignment.Center) { if (selected) Icon(Icons.Default.Check, null, tint = lilac, modifier = Modifier.size(15.dp)) }
+    val cardBackground = if (selected) Brush.linearGradient(listOf(Color(0xFF38205E), Color(0xFF211735), Color(0xFF161420))) else Brush.linearGradient(listOf(Color(0xFF15151F), Color(0xFF0F1017)))
+    Row(modifier.heightIn(min = 124.dp).clip(RoundedCornerShape(18.dp)).background(cardBackground).border(if (selected) 2.dp else 1.dp, border, RoundedCornerShape(18.dp)).clickable(onClick = click).padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(29.dp).clip(RoundedCornerShape(8.dp)).background(if (selected) Brush.linearGradient(listOf(Color(0xFFB675FF), Color(0xFF7650DD))) else Brush.linearGradient(listOf(Color(0xFF292637), Color(0xFF201E2B)))), contentAlignment = Alignment.Center) { Icon(Icons.Default.ConfirmationNumber, null, tint = if (selected) Color.White else Color(0xFFCCB4FF), modifier = Modifier.size(17.dp)) }
+                if (selected) Text(" SELECTED", color = Color(0xFFD8C4FF), fontSize = 8.sp, letterSpacing = 1.sp, modifier = Modifier.padding(start = 6.dp))
+            }
+            Spacer(Modifier.height(8.dp)); Text(pass.label, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis); Text(passDescription(pass.label), color = softText, fontSize = 12.sp, maxLines = 1); Spacer(Modifier.height(3.dp)); Text("₹${pass.price.toInt()}", color = Color(0xFFC99EFF), fontSize = 21.sp, fontWeight = FontWeight.Bold)
+        }
+        Box(Modifier.size(24.dp).border(2.dp, if (selected) Color(0xFFB87BFF) else Color(0xFF817A91), CircleShape), contentAlignment = Alignment.Center) { if (selected) Icon(Icons.Default.Check, null, tint = Color(0xFFE2D2FF), modifier = Modifier.size(16.dp)) }
     }
 }
 
