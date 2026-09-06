@@ -51,18 +51,18 @@ class SellerViewModel(activity: ComponentActivity) : ViewModel() {
         try {
             val response = repository.createTicket(TicketRequest(name, email, phone, ticketType, ticketType, 1, amount, event, partner.name, partner.id))
             state = state.copy(loading = false, message = response.message ?: if (response.success) "Ticket generated and submitted to the server." else "Ticket generation failed.", error = if (response.success) null else response.message)
-        } catch (e: Exception) { state = state.copy(loading = false, error = e.message ?: "Network error.") }
+        } catch (e: Exception) { handleRequestError(e, "Network error.") }
     }
     fun loadSales() = viewModelScope.launch {
         state = state.copy(loading = true, error = null)
         try { val response = repository.sales(); state = state.copy(loading = false, sales = response.sales, error = if (response.success) null else response.message) }
-        catch (e: Exception) { state = state.copy(loading = false, error = e.message ?: "Could not load history.") }
+        catch (e: Exception) { handleRequestError(e, "Could not load history.") }
     }
     fun loadConfig() = viewModelScope.launch {
         try {
             val response = repository.config()
             state = state.copy(config = response.config, error = if (response.success) null else response.message)
-        } catch (e: Exception) { state = state.copy(error = e.message ?: "Could not refresh seller configuration.") }
+        } catch (e: Exception) { handleRequestError(e, "Could not refresh seller configuration.") }
     }
     fun checkForUpdate() = viewModelScope.launch {
         val checker = GitHubUpdateChecker()
@@ -72,4 +72,11 @@ class SellerViewModel(activity: ComponentActivity) : ViewModel() {
     fun dismissUpdate() { state = state.copy(update = null) }
     fun logout() = viewModelScope.launch { repository.logout(); state = SellerUiState(loading = false) }
     fun dismissNotice() { state = state.copy(error = null, message = null) }
+    private fun handleRequestError(error: Exception, fallback: String) {
+        state = if (error is SellerSessionExpiredException) {
+            SellerUiState(loading = false, error = error.message)
+        } else {
+            state.copy(loading = false, error = error.message ?: fallback)
+        }
+    }
 }

@@ -5,8 +5,11 @@ import com.littx.seller.nativeapp.data.model.*
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
+import retrofit2.HttpException
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
+
+class SellerSessionExpiredException : SecurityException("Your session has expired. Please sign in again.")
 
 class SellerRepository(private val store: SecureSessionStore) {
     private val api: SellerApi by lazy {
@@ -22,13 +25,22 @@ class SellerRepository(private val store: SecureSessionStore) {
         if (result.success && result.token != null && result.partner != null) store.save(result.token, result.partner)
         return result
     }
+    private suspend fun <T> authenticatedRequest(request: suspend () -> T): T = try {
+        request()
+    } catch (error: HttpException) {
+        if (error.code() == 401) {
+            store.clear()
+            throw SellerSessionExpiredException()
+        }
+        throw error
+    }
     suspend fun restore(): SessionResponse? {
         val token = store.token() ?: return null
-        return try { api.verify(token).also { if (!it.success) store.clear() } } catch (_: Exception) { null }
+        return try { authenticatedRequest { api.verify(token) }.also { if (!it.success) store.clear() } } catch (_: Exception) { null }
     }
-    suspend fun createTicket(request: TicketRequest): ApiResponse = api.generateTicket(requireToken(), request)
-    suspend fun sales(): SalesResponse = api.sales(requireToken())
-    suspend fun config(): SellerConfigResponse = api.mobileConfig(requireToken())
+    suspend fun createTicket(request: TicketRequest): ApiResponse = authenticatedRequest { api.generateTicket(requireToken(), request) }
+    suspend fun sales(): SalesResponse = authenticatedRequest { api.sales(requireToken()) }
+    suspend fun config(): SellerConfigResponse = authenticatedRequest { api.mobileConfig(requireToken()) }
     suspend fun logout() { val token = store.token(); if (token != null) runCatching { api.logout(token) }; store.clear() }
     fun cachedPartner() = store.partner()
     private fun requireToken() = store.token() ?: throw SecurityException("Your secure session has expired. Please sign in again.")
