@@ -152,6 +152,7 @@ async function authenticateSeller(token) {
 
 const express = require('express');
 const cors = require('cors');
+const { whatsappWebhook } = require('./whatsapp-webhook');
 
 const db = require('./db');
 const { atomicClaimOrder } = db;
@@ -161,6 +162,21 @@ const { sendTicketEmail } = require('./mailer');
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// A malformed Meta payload should still be acknowledged promptly. This handler
+// is deliberately limited to the WhatsApp endpoint so existing API error
+// behavior remains unchanged.
+app.use((err, req, res, next) => {
+    if (req.path === '/api/whatsapp/webhook' && err?.type === 'entity.parse.failed') {
+        console.warn('[WhatsApp webhook] Ignored malformed JSON payload');
+        return res.status(200).json({ received: true });
+    }
+    next(err);
+});
+
+// Keep this before the /api database middleware. Meta only needs a quick 200
+// acknowledgement and webhook verification must not depend on MongoDB.
+app.all('/api/whatsapp/webhook', whatsappWebhook);
 
 // Public, non-sensitive deployment diagnostic. This intentionally exposes
 // only the WebAuthn relying-party values that must also be public in Android
@@ -2172,9 +2188,16 @@ app.get('*splat', (req, res) => {
 });
 
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`\n🎟  ${EVENT.name} ticketing server running on port ${PORT}`);
-    console.log(`   Mode: ${TEST_MODE ? 'TEST MODE (no real payments)' : 'LIVE (Razorpay)'}`);
-    console.log(`   Admin dashboard: ${BASE_URL}/dashboard  (key required)\n`);
-});
+// Vercel imports this Express application from api/index.js. Keep listen() for
+// direct local development only; calling it during an import prevents Vercel
+// from managing the serverless request lifecycle.
+if (require.main === module) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+        console.log(`\n🎟  ${EVENT.name} ticketing server running on port ${PORT}`);
+        console.log(`   Mode: ${TEST_MODE ? 'TEST MODE (no real payments)' : 'LIVE (Razorpay)'}`);
+        console.log(`   Admin dashboard: ${BASE_URL}/dashboard  (key required)\n`);
+    });
+}
+
+module.exports = app;
