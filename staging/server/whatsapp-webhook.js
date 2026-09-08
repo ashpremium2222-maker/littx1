@@ -54,7 +54,8 @@ function whatsappWebhook(req, res) {
         const verifyToken = req.query?.['hub.verify_token'];
         const challenge = req.query?.['hub.challenge'];
 
-        if (mode === 'subscribe' && tokensMatch(process.env.WHATSAPP_VERIFY_TOKEN, verifyToken)) {
+        const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN || 'littx_meta_verify_2026';
+        if (mode === 'subscribe' && tokensMatch(expectedToken, verifyToken)) {
             return res.status(200).type('text/plain').send(String(challenge ?? ''));
         }
 
