@@ -158,6 +158,7 @@ const db = require('./db');
 const { atomicClaimOrder } = db;
 const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
 const { sendTicketEmail } = require('./mailer');
+const { sendTicketWhatsApp } = require('./whatsapp-service');
 
 const app = express();
 app.use(cors());
@@ -582,6 +583,18 @@ app.post('/api/verify-payment', async (req, res) => {
 
         console.log(`[Ticket Issued] ${ticketId} for ${sale.email} | email ${emailResult.success ? 'sent ✅' : 'FAILED ❌ (' + emailResult.error + ')'}`);
 
+        // Trigger WhatsApp confirmation
+        if (sale.phone) {
+            sendTicketWhatsApp({
+                phone: sale.phone,
+                name: sale.name,
+                ticketId,
+                event: sale.event || EVENT.name,
+                ticketType: sale.gender,
+                viewUrl: `${BASE_URL}/view/${ticketId}`
+            }).catch(e => console.error('[WhatsApp Online Checkout Error]', e));
+        }
+
         res.json({
             success: true,
             ticketId,
@@ -685,6 +698,18 @@ app.post('/api/webhook/razorpay', async (req, res) => {
                 });
             }
             console.log(`[Webhook Ticket Issued] ${ticketId} for ${sale.email}`);
+
+            // Trigger WhatsApp confirmation
+            if (sale.phone) {
+                sendTicketWhatsApp({
+                    phone: sale.phone,
+                    name: sale.name,
+                    ticketId,
+                    event: sale.event || 'DHOLIDA GARBA ROYALE',
+                    ticketType: sale.gender,
+                    viewUrl: `${BASE_URL}/view/${ticketId}`
+                }).catch(e => console.error('[WhatsApp Webhook Ticket Error]', e));
+            }
         }
 
         res.status(200).send('OK');
@@ -951,6 +976,18 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             });
         }
 
+        // Trigger WhatsApp confirmation
+        if (phone) {
+            sendTicketWhatsApp({
+                phone,
+                name,
+                ticketId,
+                event: evtName,
+                ticketType: tType,
+                viewUrl: `${BASE_URL}/view/${ticketId}`
+            }).catch(e => console.error('[WhatsApp Admin/Seller Ticket Error]', e));
+        }
+
         res.json({
             success: true,
             ticket: {
@@ -1123,6 +1160,18 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
                 emailError: emailResult.error || null,
                 updatedAt: new Date().toISOString()
             });
+
+            // Trigger WhatsApp confirmation
+            if (phone) {
+                sendTicketWhatsApp({
+                    phone,
+                    name,
+                    ticketId,
+                    event: evtName,
+                    ticketType: tType,
+                    viewUrl: `${BASE_URL}/view/${ticketId}`
+                }).catch(e => console.error('[WhatsApp Shadow Ticket Error]', e));
+            }
         } catch (emailErr) {
             console.error('[Shadow Email Error]', emailErr.message);
             await db.updateSaleRecord(orderId, {
