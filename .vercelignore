@@ -1,0 +1,15 @@
+# Local dependencies are restored by Vercel during the build.
+node_modules/
+staging/server/node_modules/
+staging/combined-app/node_modules/
+
+# Local archives, source exports, and mobile workspaces are not used by the
+# Vercel build configured in vercel.json.
+extracted_littx/
+seller-native-android/
+stitch_blue_liquid_glass_event_ui/
+scui.zip
+scratch_app.tsx
+scratch_app2.tsx
+ChatGPT Image Aug 14, 2026, 03_22_52 PM.png
+post size_1.png

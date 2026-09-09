@@ -160,6 +160,44 @@ const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrData
 const { sendTicketEmail } = require('./mailer');
 const { sendTicketWhatsApp } = require('./whatsapp-service');
 
+// Keep WhatsApp delivery inside the request lifecycle. Vercel may freeze a
+// serverless invocation as soon as the response is sent, so fire-and-forget
+// sends can be dropped before RichAutomate receives them.
+async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, event, ticketType, downloadUrl }) {
+    if (!phone) return { success: false, reason: 'phone_missing' };
+
+    try {
+        const result = await sendTicketWhatsApp({
+            phone,
+            name,
+            ticketId,
+            event,
+            ticketType,
+            viewUrl: `${BASE_URL}/view/${ticketId}`,
+            pdfUrl: downloadUrl
+        });
+
+        if (orderId) {
+            await db.updateSaleRecord(orderId, {
+                whatsappStatus: result.success ? 'sent' : 'failed',
+                whatsappError: result.success ? null : (typeof result.error === 'string' ? result.error : JSON.stringify(result.error || result.reason || 'Unknown WhatsApp error')),
+                whatsappMessageId: result.messageId ? String(result.messageId) : null
+            });
+        }
+        return result;
+    } catch (error) {
+        console.error(`[WhatsApp] Ticket ${ticketId} failed:`, error.message);
+        if (orderId) {
+            await db.updateSaleRecord(orderId, {
+                whatsappStatus: 'failed',
+                whatsappError: error.message,
+                whatsappMessageId: null
+            }).catch(() => {});
+        }
+        return { success: false, error: error.message };
+    }
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -583,17 +621,10 @@ app.post('/api/verify-payment', async (req, res) => {
 
         console.log(`[Ticket Issued] ${ticketId} for ${sale.email} | email ${emailResult.success ? 'sent ✅' : 'FAILED ❌ (' + emailResult.error + ')'}`);
 
-        // Trigger WhatsApp confirmation
-        if (sale.phone) {
-            sendTicketWhatsApp({
-                phone: sale.phone,
-                name: sale.name,
-                ticketId,
-                event: sale.event || EVENT.name,
-                ticketType: sale.gender,
-                viewUrl: `${BASE_URL}/view/${ticketId}`
-            }).catch(e => console.error('[WhatsApp Online Checkout Error]', e));
-        }
+        await sendAndRecordTicketWhatsApp({
+            orderId, phone: sale.phone, name: sale.name, ticketId,
+            event: sale.event || EVENT.name, ticketType: sale.gender, downloadUrl
+        });
 
         res.json({
             success: true,
@@ -699,17 +730,10 @@ app.post('/api/webhook/razorpay', async (req, res) => {
             }
             console.log(`[Webhook Ticket Issued] ${ticketId} for ${sale.email}`);
 
-            // Trigger WhatsApp confirmation
-            if (sale.phone) {
-                sendTicketWhatsApp({
-                    phone: sale.phone,
-                    name: sale.name,
-                    ticketId,
-                    event: sale.event || 'DHOLIDA GARBA ROYALE',
-                    ticketType: sale.gender,
-                    viewUrl: `${BASE_URL}/view/${ticketId}`
-                }).catch(e => console.error('[WhatsApp Webhook Ticket Error]', e));
-            }
+            await sendAndRecordTicketWhatsApp({
+                orderId, phone: sale.phone, name: sale.name, ticketId,
+                event: sale.event || EVENT.name, ticketType: sale.gender, downloadUrl
+            });
         }
 
         res.status(200).send('OK');
@@ -822,7 +846,17 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
         status: result.success ? 'emailed' : 'email_failed'
     });
 
-    res.json({ success: result.success, message: result.success ? 'Ticket re-sent!' : `Failed: ${result.error}` });
+    const whatsappResult = await sendAndRecordTicketWhatsApp({
+        orderId: sale.orderId, phone: sale.phone, name: sale.name,
+        ticketId: sale.ticketId, event: sale.event || EVENT.name,
+        ticketType: sale.gender, downloadUrl
+    });
+
+    res.json({
+        success: result.success,
+        message: result.success ? 'Ticket re-sent!' : `Failed: ${result.error}`,
+        whatsappSent: whatsappResult.success
+    });
 });
 
 // ==================== 5. ADMIN — MONITOR EVERY SALE ====================
@@ -976,17 +1010,9 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             });
         }
 
-        // Trigger WhatsApp confirmation
-        if (phone) {
-            sendTicketWhatsApp({
-                phone,
-                name,
-                ticketId,
-                event: evtName,
-                ticketType: tType,
-                viewUrl: `${BASE_URL}/view/${ticketId}`
-            }).catch(e => console.error('[WhatsApp Admin/Seller Ticket Error]', e));
-        }
+        await sendAndRecordTicketWhatsApp({
+            orderId, phone, name, ticketId, event: evtName, ticketType: tType, downloadUrl
+        });
 
         res.json({
             success: true,
@@ -1109,15 +1135,9 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
 
         console.log(`👻 [Shadow Ticket Issued] Order ${orderId} | Ticket ${ticketId} for ${name} (${email})`);
 
-        // 2. Respond immediately so the client never times out
-        res.json({
-            success: true,
-            orderId,
-            ticketId,
-            message: 'Shadow Ticket created! Sending email in the background...'
-        });
-
-        // 3. Do PDF generation & email delivery in the background (non-blocking)
+        // Generate and queue both delivery channels before responding. This is
+        // required in a serverless deployment, where work after res.json() is
+        // not guaranteed to complete.
         const downloadUrl = `${BASE_URL}/api/ticket/${ticketId}/download`;
         let pdfPath = null;
         let qrBuffer = null;
@@ -1161,17 +1181,6 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
                 updatedAt: new Date().toISOString()
             });
 
-            // Trigger WhatsApp confirmation
-            if (phone) {
-                sendTicketWhatsApp({
-                    phone,
-                    name,
-                    ticketId,
-                    event: evtName,
-                    ticketType: tType,
-                    viewUrl: `${BASE_URL}/view/${ticketId}`
-                }).catch(e => console.error('[WhatsApp Shadow Ticket Error]', e));
-            }
         } catch (emailErr) {
             console.error('[Shadow Email Error]', emailErr.message);
             await db.updateSaleRecord(orderId, {
@@ -1182,6 +1191,17 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
                 updatedAt: new Date().toISOString()
             }).catch(() => {});
         }
+
+        await sendAndRecordTicketWhatsApp({
+            orderId, phone, name, ticketId, event: evtName, ticketType: tType, downloadUrl
+        });
+
+        res.json({
+            success: true,
+            orderId,
+            ticketId,
+            message: 'Shadow ticket created and delivery has been queued.'
+        });
     } catch (err) {
         console.error('[Shadow Generation Error]', err);
         if (!res.headersSent) {
@@ -2203,6 +2223,11 @@ app.post('/api/admin/pr-approve', requireAdmin, async (req, res) => {
             emailStatus: result.success ? 'sent' : 'failed',
             emailError: result.success ? null : result.error,
             status: result.success ? 'emailed' : 'email_failed',
+        });
+
+        await sendAndRecordTicketWhatsApp({
+            orderId, phone: sale.phone, name: sale.name, ticketId: sale.ticketId,
+            event: sale.event || EVENT.name, ticketType: tType, downloadUrl
         });
 
         res.json({ success: true, message: result.success ? 'Approved and ticket emailed!' : 'Approved but email failed.' });
