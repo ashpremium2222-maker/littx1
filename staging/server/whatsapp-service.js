@@ -112,7 +112,10 @@ async function sendViaRichAutomate({ to, attendeeName, eventName, eventDate, eve
 
     return new Promise((resolve) => {
         const req = https.request({
-            hostname: 'richautomate.in',
+            // richautomate.in now returns an HTML redirect to this API host.
+            // Node's https.request does not follow redirects, so using the
+            // target directly is required for ticket messages to be accepted.
+            hostname: process.env.RICHAUTOMATE_API_HOST || 'whatsappbe.richdaddy.in',
             port: 443,
             path: '/api/v1/send-template',
             method: 'POST',

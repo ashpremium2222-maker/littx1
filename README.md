@@ -66,6 +66,7 @@ Add these variables in Vercel for each environment where messages should send:
 | `RICHAUTOMATE_TEMPLATE_NAME` | Exact name of the approved ticket template. |
 | `RICHAUTOMATE_TEMPLATE_LANG` | Template language code, such as `en`. |
 | `RICHAUTOMATE_ATTACH_PDF` | Set to `true` only when that template has a document header; it attaches the ticket PDF. |
+| `RICHAUTOMATE_API_HOST` | Optional override for the API host. Defaults to `whatsappbe.richdaddy.in`. |
 
 The template body receives these variables in order: attendee name, event name,
 event date, venue, pass type, ticket ID, and the ticket-view link. Its variables
