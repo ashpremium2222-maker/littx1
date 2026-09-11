@@ -53,8 +53,8 @@ This repository does not contain any sensitive keys or passwords. Make sure to *
 
 ## WhatsApp ticket delivery
 
-Every generated ticket is also queued as a WhatsApp template through
-RichAutomate when a buyer phone number is present. Email delivery remains
+Every generated ticket is also queued as a WhatsApp template through the Meta
+WhatsApp Cloud API when a buyer phone number is present. Email delivery remains
 enabled independently, so a WhatsApp failure does not prevent the ticket email.
 The sale record stores the WhatsApp send result for diagnostics.
 
@@ -62,20 +62,18 @@ Add these variables in Vercel for each environment where messages should send:
 
 | Variable | Purpose |
 | --- | --- |
-| `RICHAUTOMATE_API_KEY` | API key generated in RichAutomate Settings → API Keys. |
-| `RICHAUTOMATE_TEMPLATE_NAME` | Exact name of the approved ticket template. |
-| `RICHAUTOMATE_TEMPLATE_LANG` | Template language code, such as `en`. |
-| `RICHAUTOMATE_ATTACH_PDF` | Set to `true` only when that template has a document header; it attaches the ticket PDF. |
-| `RICHAUTOMATE_API_HOST` | Optional override for the API host. Defaults to `whatsappbe.richdaddy.in`. |
+| `WHATSAPP_ACCESS_TOKEN` | Permanent Meta system-user access token with WhatsApp messaging permission. |
+| `WHATSAPP_PHONE_NUMBER_ID` | The sending number's Phone Number ID from Meta. |
+| `WHATSAPP_TEMPLATE_NAME` | Exact name of the Meta-approved ticket template. |
+| `WHATSAPP_TEMPLATE_LANG` | Exact Meta template language code, such as `en_US`. |
+| `WHATSAPP_ATTACH_PDF` | Set to `true` only when that Meta template has a document header; it attaches the ticket PDF. |
 
 The template body receives these variables in order: attendee name, event name,
 event date, venue, pass type, ticket ID, and the ticket-view link. Its variables
-must match that order. RichAutomate requires an approved WhatsApp template for
-outbound messages.
+must match that order. Meta requires an approved WhatsApp template for outbound
+messages.
 
 The Meta webhook endpoint remains `https://<your-domain>/api/whatsapp/webhook`.
-If you use the direct Meta fallback instead of RichAutomate, configure
-`WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`.
 
 No WhatsApp values belong in source control or frontend variables. In the Meta
 developer dashboard, use the endpoint above as the callback URL and subscribe

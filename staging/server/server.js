@@ -162,7 +162,7 @@ const { sendTicketWhatsApp } = require('./whatsapp-service');
 
 // Keep WhatsApp delivery inside the request lifecycle. Vercel may freeze a
 // serverless invocation as soon as the response is sent, so fire-and-forget
-// sends can be dropped before RichAutomate receives them.
+// sends can be dropped before Meta receives them.
 async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, event, ticketType, downloadUrl }) {
     if (!phone) return { success: false, reason: 'phone_missing' };
 
