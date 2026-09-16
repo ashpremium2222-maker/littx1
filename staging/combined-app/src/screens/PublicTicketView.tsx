@@ -164,7 +164,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: dir < 0 ? 393 : -393, opacity: 0 }}
               transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-              className="absolute inset-0 flex flex-col p-5 pt-[max(2.25rem,env(safe-area-inset-top))] pb-28 sm:p-6 sm:pt-12 overflow-y-auto"
+              className="absolute inset-0 flex flex-col p-5 pt-[max(2.25rem,env(safe-area-inset-top))] pb-36 sm:p-6 sm:pt-12 overflow-y-auto"
             >
               {/* Header */}
               <header className="flex items-center justify-between mb-6 z-10">

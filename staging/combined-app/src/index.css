@@ -270,7 +270,7 @@ html, body {
 @media (max-width: 420px) {
   .thermal-printer { width: calc(100% - 2px); }
   .ticket-qr > div { transform: scale(.9); }
-  .ticket-qr { margin-top:-9px; margin-bottom:-5px; }
+  .ticket-qr { margin-top:-9px; margin-bottom:.5rem; }
 }
 
 /* Premium graphite ticket printer: colour belongs to the event pass, not the hardware. */
