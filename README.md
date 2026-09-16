@@ -75,6 +75,13 @@ messages.
 
 The Meta webhook endpoint remains `https://<your-domain>/api/whatsapp/webhook`.
 
+## Production domain
+
+The production web and API origin is `https://www.littx.in`. Keep this value
+consistent in Vercel's `BASE_URL`, `WEBAUTHN_ORIGIN`, `WEBAUTHN_RP_ID`, and
+`SELLER_API_BASE_URL` variables. The legacy `littx1.vercel.app` address remains
+supported for existing links and passkeys during the migration.
+
 No WhatsApp values belong in source control or frontend variables. In the Meta
 developer dashboard, use the endpoint above as the callback URL and subscribe
 to the WhatsApp Business Account fields needed by your integration (typically
