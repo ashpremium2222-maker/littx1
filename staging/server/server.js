@@ -175,6 +175,11 @@ const { sendTicketWhatsApp } = require('./whatsapp-service');
 async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, event, ticketType, downloadUrl }) {
     if (!phone) return { success: false, reason: 'phone_missing' };
 
+    // WhatsApp ticket links must always use the public canonical domain.
+    // Keep this independent from BASE_URL so an internal or legacy base URL
+    // can never be sent to attendees.
+    const ticketPublicOrigin = (process.env.PUBLIC_TICKET_ORIGIN || 'https://www.littx.in').replace(/\/+$/, '');
+
     try {
         const result = await sendTicketWhatsApp({
             phone,
@@ -182,7 +187,7 @@ async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, eve
             ticketId,
             event,
             ticketType,
-            viewUrl: `${BASE_URL}/view/${ticketId}`,
+            viewUrl: `${ticketPublicOrigin}/view/${ticketId}`,
             pdfUrl: downloadUrl
         });
 
