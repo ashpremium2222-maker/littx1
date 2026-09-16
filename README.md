@@ -82,6 +82,8 @@ consistent in Vercel's `BASE_URL`, `WEBAUTHN_ORIGIN`, `WEBAUTHN_RP_ID`, and
 `SELLER_API_BASE_URL` variables. The legacy `littx1.vercel.app` address remains
 supported for existing links and passkeys during the migration.
 
+Deployments from the `main` branch are production releases.
+
 No WhatsApp values belong in source control or frontend variables. In the Meta
 developer dashboard, use the endpoint above as the callback URL and subscribe
 to the WhatsApp Business Account fields needed by your integration (typically
