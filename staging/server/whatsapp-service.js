@@ -22,6 +22,7 @@ async function sendTicketWhatsApp({ phone, name, ticketId, event, date, venue, t
     let to = String(phone).replace(/[^0-9]/g, '');
     if (to.length === 10) to = `91${to}`;
 
+    const publicOrigin = process.env.BASE_URL || 'https://www.littx.in';
     return sendViaMetaCloudApi({
         to,
         phoneNumberId,
@@ -32,8 +33,8 @@ async function sendTicketWhatsApp({ phone, name, ticketId, event, date, venue, t
         eventVenue: venue || 'Pethkar Ground, Kothrud, Pune',
         passType: ticketType || 'Pass',
         ticketId,
-        ticketLink: viewUrl || `https://littx1.vercel.app/view/${ticketId}`,
-        downloadLink: pdfUrl || `https://littx1.vercel.app/api/ticket/${ticketId}/download`
+        ticketLink: viewUrl || `${publicOrigin}/view/${ticketId}`,
+        downloadLink: pdfUrl || `${publicOrigin}/api/ticket/${ticketId}/download`
     });
 }
 

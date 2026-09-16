@@ -139,14 +139,15 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
         } else {
             const viewUrl = downloadUrl ? downloadUrl.replace('/download', '').replace('/api/ticket/', `${process.env.BASE_URL || ''}/view/`) : null;
             // Build a clean view URL: BASE_URL/view/:ticketId
-            const ticketViewUrl = `${process.env.BASE_URL || 'https://littx1.vercel.app'}/view/${ticketId}`;
+            const publicOrigin = process.env.BASE_URL || 'https://www.littx.in';
+            const ticketViewUrl = `${publicOrigin}/view/${ticketId}`;
 
             html = `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #ffffff; border-radius: 24px; overflow: hidden;">
               
               <!-- Header Banner -->
               <div style="background: linear-gradient(135deg, #1a0a2e 0%, #0d0d0d 100%); padding: 40px 32px 32px; text-align: center; border-bottom: 1px solid #1e1e1e;">
-                <img src="https://littx1.vercel.app/logo.png" alt="LITTX" style="height: 36px; width: auto; display: block; margin: 0 auto 16px;" />
+                <img src="${publicOrigin}/logo.png" alt="LITTX" style="height: 36px; width: auto; display: block; margin: 0 auto 16px;" />
                 <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">🎉 You're In!</h1>
                 <p style="margin: 8px 0 0; font-size: 14px; color: #a0a0a0;">Your ticket to <strong style="color: #c084fc;">${eventTitle}</strong> is confirmed</p>
               </div>

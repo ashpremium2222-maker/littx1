@@ -77,8 +77,17 @@ async function consumeWebAuthnLogin(loginId, partnerId) {
 
 function getWebAuthnRelyingParty(req) {
     const configuredOrigin = process.env.WEBAUTHN_ORIGIN;
-    if (configuredOrigin) {
-        const origin = new URL(configuredOrigin).origin;
+    const legacyOrigin = process.env.WEBAUTHN_LEGACY_ORIGIN || 'https://littx1.vercel.app';
+    const legacyRpId = process.env.WEBAUTHN_LEGACY_RP_ID || 'littx1.vercel.app';
+    const requestHost = String(req.hostname || '').toLowerCase();
+    // Keep previously issued passkeys working while users move from the
+    // Vercel hostname to the custom domain. This is host-gated rather than
+    // derived from request headers, so an arbitrary Host cannot choose an RP.
+    const useLegacyRelyingParty = legacyOrigin && requestHost === new URL(legacyOrigin).hostname.toLowerCase();
+    const activeOrigin = useLegacyRelyingParty ? legacyOrigin : configuredOrigin;
+    const activeRpId = useLegacyRelyingParty ? legacyRpId : process.env.WEBAUTHN_RP_ID;
+    if (activeOrigin) {
+        const origin = new URL(activeOrigin).origin;
         // A native Android passkey has a signed-app origin rather than the
         // browser HTTPS origin. It is opt-in through Vercel/server config and
         // must be the SHA-256 hash of this app's release signing certificate.
@@ -86,7 +95,7 @@ function getWebAuthnRelyingParty(req) {
         const expectedOrigin = androidOrigin ? [origin, androidOrigin] : origin;
         // Environment dashboards often receive a full URL or a trailing slash.
         // WebAuthn rp.id must be a bare hostname, never a URL or path.
-        const configuredRpId = (process.env.WEBAUTHN_RP_ID || '').trim();
+        const configuredRpId = (activeRpId || '').trim();
         const rpID = configuredRpId
             ? new URL(configuredRpId.includes('://') ? configuredRpId : `https://${configuredRpId}`).hostname
             : new URL(origin).hostname;

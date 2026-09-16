@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">LITTX Seller</string>
     <!-- Keep the backslashes: Android's resource compiler otherwise strips JSON quotes. -->
-    <string name="asset_statements" translatable="false"><![CDATA[[{\"include\":\"https://littx1.vercel.app/.well-known/assetlinks.json\"}]]]></string>
+    <string name="asset_statements" translatable="false"><![CDATA[[{\"include\":\"https://www.littx.in/.well-known/assetlinks.json\"},{\"include\":\"https://littx1.vercel.app/.well-known/assetlinks.json\"}]]]></string>
 </resources>
