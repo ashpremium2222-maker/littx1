@@ -221,7 +221,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
                   </div>
 
                   {/* Scan Badge */}
-                  <span className={`ticket-status text-[10px] font-extrabold px-3 py-1.5 rounded-full uppercase tracking-[0.12em] ${isScanned ? 'ticket-status--used' : 'ticket-status--valid'}`}>
+                  <span className={`ticket-status mt-2 text-[10px] font-extrabold px-3 py-1.5 rounded-full uppercase tracking-[0.12em] ${isScanned ? 'ticket-status--used' : 'ticket-status--valid'}`}>
                     <span aria-hidden="true" />
                     {isScanned ? `Scanned at ${ticket.scannedAt || 'TBA'}` : 'Active / Valid'}
                   </span>
