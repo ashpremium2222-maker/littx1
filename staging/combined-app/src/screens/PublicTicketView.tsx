@@ -164,7 +164,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: dir < 0 ? 393 : -393, opacity: 0 }}
               transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-              className="absolute inset-0 flex flex-col p-5 pt-[max(2.25rem,env(safe-area-inset-top))] pb-36 sm:p-6 sm:pt-12 overflow-y-auto"
+              className="absolute inset-0 flex flex-col p-5 pt-[max(2.25rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6 sm:pt-12 overflow-y-auto"
             >
               {/* Header */}
               <header className="flex items-center justify-between mb-6 z-10">
@@ -281,7 +281,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
               </div>
 
               {/* Action Button */}
-              <div className="absolute bottom-0 left-0 right-0 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent pt-12">
+              <div className="mt-auto pt-6">
                 <a 
                   href={`/api/ticket/${ticket.id}/download`} 
                   target="_blank" 
