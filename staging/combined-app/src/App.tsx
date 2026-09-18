@@ -118,7 +118,7 @@ function DirectScannerGate() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (password === 'littx') {
+    if (password === 'dgr') {
       sessionStorage.setItem('direct_scanner_auth', 'true')
       setAuth(true)
       setError('')
