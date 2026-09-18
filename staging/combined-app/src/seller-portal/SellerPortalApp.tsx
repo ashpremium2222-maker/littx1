@@ -498,15 +498,44 @@ export default function SellerPortalApp() {
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Commission</label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {['0', '5', '10', '15', '20'].map(value => <button key={value} type="button" onClick={() => setCommissionChoice(value)} className={`rounded-lg border py-2 text-[11px] font-bold ${commissionChoice === value ? 'border-violet-500 bg-violet-500/15 text-violet-300' : 'border-slate-800 bg-slate-950 text-slate-400'}`}>{value}%</button>)}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: '0', label: '0%' },
+                    { value: '5', label: '5%' },
+                    { value: '10', label: '10%' },
+                    { value: '15', label: '15%' },
+                    { value: '20', label: '20%' },
+                    { value: 'custom', label: 'Custom' }
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setCommissionChoice(option.value)}
+                      aria-pressed={commissionChoice === option.value}
+                      className={`rounded-lg border py-2 text-[11px] font-bold ${commissionChoice === option.value ? 'border-violet-500 bg-violet-500/15 text-violet-300' : 'border-slate-800 bg-slate-950 text-slate-400'}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
                 </div>
+                {commissionChoice === 'custom' && (
+                  <div className="mt-3">
+                    <label className="mb-1.5 block text-[11px] font-bold text-slate-400">Custom commission (%)</label>
+                    <input
+                      autoFocus
+                      type="number"
+                      min="0"
+                      max="20"
+                      step="0.01"
+                      value={customCommission}
+                      onChange={(event) => setCustomCommission(event.target.value)}
+                      placeholder="Enter 0 to 20"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
+                    />
+                    {commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Enter a commission between 0% and 20%.</p>}
+                  </div>
+                )}
               </div>
-            </div>
-
-            <div>
-              <button type="button" onClick={() => setCommissionChoice('custom')} className={`text-xs font-bold ${commissionChoice === 'custom' ? 'text-violet-300' : 'text-slate-400 hover:text-slate-200'}`}>Custom Commission</button>
-              {commissionChoice === 'custom' && <div className="mt-2"><input type="number" min="0" max="20" step="0.01" value={customCommission} onChange={(event) => setCustomCommission(event.target.value)} placeholder="Enter a percentage" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500" />{commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Maximum commission allowed is 20%.</p>}</div>}
             </div>
 
             <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2 text-sm">

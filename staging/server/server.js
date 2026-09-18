@@ -364,7 +364,12 @@ async function getEventPricing(eventName) {
         || events.find(item => item.active);
     if (!event) return null;
     let sourcePasses = [...(event.tiers || []), ...(event.ticketTypes || [])];
-    if (!sourcePasses.length) {
+    const passNames = new Set(sourcePasses.map(pass => String(pass.name || '').toLowerCase()));
+    const isLegacyDholidaCatalog = String(event.name || '').toLowerCase().includes('dholida')
+        && passNames.size === 2
+        && passNames.has('male pass')
+        && passNames.has('female pass');
+    if (!sourcePasses.length || isLegacyDholidaCatalog) {
         event = await db.saveEvent({ ...event, tiers: LEGACY_EVENT_TIER_SEED, ticketTypes: LEGACY_EVENT_TIER_SEED });
         sourcePasses = LEGACY_EVENT_TIER_SEED;
     }
@@ -375,7 +380,8 @@ async function getEventPricing(eventName) {
             price: normalizePrice(pass.price),
             gender: pass.gender || 'unisex'
         }))
-        .filter(pass => pass.name && pass.price !== null);
+        .filter(pass => pass.name && pass.price !== null)
+        .filter((pass, index, all) => all.findIndex(item => item.id === pass.id || item.name === pass.name) === index);
     return { event, passes };
 }
 
