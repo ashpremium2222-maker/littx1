@@ -20,12 +20,14 @@ interface ShadowPanelProps {
   apiPrefix?: string
   sessionKey?: string
   panelTitle?: string
+  brandSubtitle?: string
 }
 
 export default function ShadowPanelApp({
   apiPrefix = '/api/shadow',
   sessionKey = 'littx_shadow_token',
-  panelTitle = 'SHADOW BY ASH'
+  panelTitle = 'SHADOW BY ASH',
+  brandSubtitle = 'BY ASH'
 }: ShadowPanelProps) {
   const [password, setPassword] = useState('')
   const [shadowToken, setShadowToken] = useState<string | null>(() => {
@@ -326,7 +328,7 @@ export default function ShadowPanelApp({
           <div className="shadow-auth-card">
             <div className="shadow-brand">
               <div className="shadow-logo-title">SHADOW</div>
-              <div className="shadow-logo-sub">BY ASH</div>
+              {brandSubtitle && <div className="shadow-logo-sub">{brandSubtitle}</div>}
               <div className="shadow-logo-badge">SHADOW SALES PANEL</div>
             </div>
 
@@ -376,7 +378,7 @@ export default function ShadowPanelApp({
         <aside className="shadow-sidebar">
           <div className="shadow-brand">
             <div className="shadow-logo-title">SHADOW</div>
-            <div className="shadow-logo-sub">BY ASH</div>
+            {brandSubtitle && <div className="shadow-logo-sub">{brandSubtitle}</div>}
             <div className="shadow-logo-badge">SHADOW SALES PANEL</div>
           </div>
 

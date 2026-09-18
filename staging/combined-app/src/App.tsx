@@ -104,6 +104,7 @@ function MainAppShell() {
       apiPrefix="/api/shadow-private"
       sessionKey="littx_shadow_private_token"
       panelTitle="PRIVATE SHADOW"
+      brandSubtitle=""
     />
   }
 
