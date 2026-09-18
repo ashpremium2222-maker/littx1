@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import PartnerPricing from './PartnerPricing'
 
-type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller-locks'
+type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller-locks' | 'partners' | 'pricing'
 
 const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
   littlane:    { name: 'LITTLANE',    emoji: '🏟️' },
@@ -200,6 +201,8 @@ export default function Settings({ adminKey }: SettingsProps) {
           {(
             [
               { id: 'seller-locks', label: 'Active Sessions' },
+              { id: 'partners', label: 'Partners' },
+              { id: 'pricing', label: 'Pricing' },
               { id: 'profile', label: 'Profile & Workspace' },
               { id: 'smtp', label: 'SMTP Config' },
               { id: 'payments', label: 'Payment Gateways' },
@@ -217,6 +220,9 @@ export default function Settings({ adminKey }: SettingsProps) {
           ))}
         </div>
       </div>
+
+      {tab === 'partners' && <PartnerPricing adminKey={adminKey} mode="partners" />}
+      {tab === 'pricing' && <PartnerPricing adminKey={adminKey} mode="pricing" />}
 
       {tab === 'seller-locks' && (
         <>

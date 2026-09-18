@@ -85,6 +85,11 @@ const UserSchema = new mongoose.Schema({
     password: { type: String, required: true },
     displayName: { type: String },
     role: { type: String, enum: ['master_admin', 'company_admin', 'seller', 'pr'], default: 'pr' },
+    // New accounts use passwordHash. `password` remains for legacy seeded users
+    // while they are migrated through the existing admin flow.
+    passwordHash: { type: String, default: null },
+    active: { type: Boolean, default: true },
+    sellerSlot: { type: String, default: null, sparse: true, unique: true },
     blocked: { type: Boolean, default: false },
     allowedPasses: [{
         eventId: { type: String }, // Can store Event ID or Event Name
@@ -517,6 +522,14 @@ async function updateUser(userId, updates) {
         { $set: updates },
         { returnDocument: 'after', lean: true }
     );
+}
+
+async function createUser(userData) {
+    return await new User(userData).save();
+}
+
+async function getUserBySellerSlot(sellerSlot) {
+    return await User.findOne({ sellerSlot }).lean();
 }
 
 // ==================== CUSTOMER HELPERS ====================
@@ -1047,6 +1060,23 @@ module.exports = {
         }
         return await updateUser(userId, updates);
     },
+    createUser: async (userData) => {
+        if (useMock()) {
+            if (mockDb.users.some(u => u.userId.toLowerCase() === String(userData.userId).toLowerCase() || (userData.sellerSlot && u.sellerSlot === userData.sellerSlot))) {
+                const error = new Error('A user with this identifier already exists.');
+                error.code = 11000;
+                throw error;
+            }
+            const user = { ...userData };
+            mockDb.users.push(user);
+            return user;
+        }
+        return await createUser(userData);
+    },
+    getUserBySellerSlot: async (sellerSlot) => {
+        if (useMock()) return mockDb.users.find(u => u.sellerSlot === sellerSlot) || null;
+        return await getUserBySellerSlot(sellerSlot);
+    },
 
     // Customer Helpers
     createCustomer: async (customerData) => {
@@ -1540,4 +1570,3 @@ const _mockEvents = new Map([
         ]
     }]
 ]);
-
