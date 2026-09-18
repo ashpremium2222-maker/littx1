@@ -1060,8 +1060,18 @@ app.post('/api/admin/partners', requirePartnerAdmin, async (req, res) => {
     }
     try {
         const existing = await db.getAllUsers();
-        if (existing.some(user => user.userId.toLowerCase() === normalizedId || user.sellerSlot === sellerSlot)) {
-            return res.status(409).json({ success: false, message: 'That identifier or partner login slot is already in use.' });
+        const existingIdentifier = existing.find(user => user.userId.toLowerCase() === normalizedId);
+        if (existingIdentifier) {
+            return res.status(409).json({ success: false, message: 'That identifier is already in use.' });
+        }
+        const slotOwner = existing.find(user => user.sellerSlot === sellerSlot);
+        if (slotOwner && slotOwner.active !== false && !slotOwner.blocked) {
+            return res.status(409).json({ success: false, message: 'That partner login slot is assigned to an active partner.' });
+        }
+        if (slotOwner) {
+            // An inactive partner must not permanently consume a scarce login slot.
+            await db.releaseSellerSlot(slotOwner.userId);
+            await db.deleteSellerSession(slotOwner.sellerSlot || slotOwner.userId);
         }
         const created = await db.createUser({
             userId: normalizedId,

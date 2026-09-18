@@ -536,6 +536,14 @@ async function updateUser(userId, updates) {
     );
 }
 
+async function releaseSellerSlot(userId) {
+    return await User.findOneAndUpdate(
+        { userId },
+        { $unset: { sellerSlot: 1 } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
 async function createUser(userData) {
     return await new User(userData).save();
 }
@@ -1080,6 +1088,15 @@ module.exports = {
             return null;
         }
         return await updateUser(userId, updates);
+    },
+    releaseSellerSlot: async (userId) => {
+        if (useMock()) {
+            const user = mockDb.users.find(item => item.userId === userId);
+            if (!user) return null;
+            delete user.sellerSlot;
+            return user;
+        }
+        return await releaseSellerSlot(userId);
     },
     createUser: async (userData) => {
         if (useMock()) {
