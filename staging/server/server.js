@@ -335,6 +335,26 @@ function normalizePrice(value) {
     return Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric * 100) / 100 : null;
 }
 
+function normalizeDiscountPercentage(value) {
+    if (value === undefined || value === null || value === '') return 0;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return null;
+    // Check before rounding so 20.001 cannot become a permitted 20.00.
+    if (numeric > 20) return 'maximum_exceeded';
+    return Math.round(numeric * 100) / 100;
+}
+
+function applyDiscount(basePrice, discountPercentage) {
+    const basePaise = Math.round(Number(basePrice) * 100);
+    const percentageBasisPoints = Math.round(discountPercentage * 100);
+    const discountPaise = Math.round((basePaise * percentageBasisPoints) / 10000);
+    return {
+        basePrice: basePaise / 100,
+        discountAmount: discountPaise / 100,
+        finalPrice: (basePaise - discountPaise) / 100,
+    };
+}
+
 async function getEventPricing(eventName) {
     const events = await db.getAllEvents();
     const normalizedName = String(eventName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1087,7 +1107,7 @@ app.get('/api/seller/pricing', requireSeller, async (req, res) => {
 });
 
 app.post('/api/admin/generate-ticket', async (req, res) => {
-    const { name, email, phone, gender, ticketType, quantity, amount, event, generatedBy } = req.body || {};
+    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, discountPercentage } = req.body || {};
 
     const sellerToken = req.headers['x-seller-token'];
     const sellerId = await authenticateSeller(sellerToken);
@@ -1108,7 +1128,15 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
     if (!pricedTicket) {
         return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
     }
-    const { qty, amount: finalAmount, ticketType: tType, event: evtName } = pricedTicket;
+    const normalizedDiscount = normalizeDiscountPercentage(discountPercentage);
+    if (normalizedDiscount === 'maximum_exceeded') {
+        return res.status(400).json({ success: false, message: 'Discount cannot exceed 20%.' });
+    }
+    if (normalizedDiscount === null) {
+        return res.status(400).json({ success: false, message: 'Discount must be a valid non-negative percentage.' });
+    }
+    const { qty, amount: baseAmount, ticketType: tType, event: evtName } = pricedTicket;
+    const { basePrice, discountAmount, finalPrice: finalAmount } = applyDiscount(baseAmount, normalizedDiscount);
 
     try {
         const orderId = `order_manual_${crypto.randomBytes(8).toString('hex')}`;
@@ -1121,7 +1149,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             orderId,
             event: evtName,
             name, email, phone: phone || '', gender: gender || 'general',
-            quantity: qty, amount: finalAmount, currency: 'INR',
+            quantity: qty, basePrice, discountPercentage: normalizedDiscount, discountAmount, amount: finalAmount, currency: 'INR',
             status: 'paid', paymentId: 'manual', ticketId,
             emailStatus: 'pending', emailError: null, errorLog: [],
             createdAt: generatedAt, paidAt: generatedAt, generatedAt,
@@ -1188,6 +1216,9 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
                 phone,
                 ticketType: tType,
                 price: finalAmount.toString(),
+                basePrice: basePrice.toString(),
+                discountPercentage: normalizedDiscount,
+                discountAmount: discountAmount.toString(),
                 qty,
                 generatedBy: resolvedBy,
                 generatedAt,
