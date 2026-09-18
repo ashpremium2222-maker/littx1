@@ -10,6 +10,26 @@ interface DashboardProps {
   onManualGenerate: () => void
 }
 
+const PASS_SECTIONS = [
+  { id: 'ga-single', label: 'GA Single', color: '#7C5CFA', background: 'linear-gradient(135deg, rgba(124, 92, 250, 0.12) 0%, rgba(59, 99, 232, 0.03) 100%)' },
+  { id: 'ga-group-5', label: 'GA Group of 5', color: '#38D9C4', background: 'linear-gradient(135deg, rgba(56, 217, 196, 0.12) 0%, rgba(59, 130, 246, 0.03) 100%)' },
+  { id: 'ga-group-10', label: 'GA Group of 10', color: '#F5B942', background: 'linear-gradient(135deg, rgba(245, 185, 66, 0.12) 0%, rgba(245, 133, 77, 0.03) 100%)' },
+  { id: 'vip-single', label: 'VIP Single', color: '#EC4899', background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(244, 63, 94, 0.03) 100%)' },
+  { id: 'vip-group-5', label: 'VIP Group of 5', color: '#F97316', background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.12) 0%, rgba(245, 133, 77, 0.03) 100%)' },
+  { id: 'vip-group-10', label: 'VIP Group of 10', color: '#60A5FA', background: 'linear-gradient(135deg, rgba(96, 165, 250, 0.12) 0%, rgba(59, 99, 232, 0.03) 100%)' },
+] as const
+
+function getPassSectionId(sale: any) {
+  const pass = String(sale.ticketType || sale.gender || '').toLowerCase()
+  if (pass.includes('ga group of 10')) return 'ga-group-10'
+  if (pass.includes('ga group of 5')) return 'ga-group-5'
+  if (pass.includes('vip group of 10')) return 'vip-group-10'
+  if (pass.includes('vip group of 5')) return 'vip-group-5'
+  if (pass.includes('vip single') || pass === 'female') return 'vip-single'
+  if (pass.includes('ga single') || pass === 'male') return 'ga-single'
+  return null
+}
+
 export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate }: DashboardProps) {
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
   const [chartMode, setChartMode] = useState<'actual' | 'forecast'>('actual')
@@ -41,34 +61,15 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const ticketFailures = sales.filter(s => s.status === 'ticket_generation_failed').length
   const qrScannedCount = sales.filter(s => s.status === 'scanned' || !!s.scannedAt).length
 
-  // Event breakdown
-  const freshersMale = paidSales.filter(
-    s =>
-      (s.event || '').toUpperCase().includes('FRESHERS') &&
-      (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male'))
-  )
-  const freshersFemale = paidSales.filter(
-    s =>
-      (s.event || '').toUpperCase().includes('FRESHERS') &&
-      (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female'))
-  )
-  const auraGenesis = paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
-  const ftInvite = paidSales.filter(
-    s =>
-      (s.gender || '').toLowerCase().includes('exclusive') ||
-      (s.ticketType || '').toLowerCase().includes('exclusive')
-  )
-
-  const maleCount = freshersMale.reduce((acc, s) => acc + (s.quantity || 1), 0)
-  const femaleCount = freshersFemale.reduce((acc, s) => acc + (s.quantity || 1), 0)
-  const auraCount = auraGenesis.reduce((acc, s) => acc + (s.quantity || 1), 0)
-  const inviteCount = ftInvite.reduce((acc, s) => acc + (s.quantity || 1), 0)
-  const grandTotal = Math.max(1, totalTickets)
-
-  const malePct = Math.round((maleCount / grandTotal) * 100)
-  const femalePct = Math.round((femaleCount / grandTotal) * 100)
-  const auraPct = Math.round((auraCount / grandTotal) * 100)
-  const invitePct = Math.round((inviteCount / grandTotal) * 100)
+  const sectionTicketTotal = Math.max(1, paidSales
+    .filter(s => getPassSectionId(s))
+    .reduce((total, sale) => total + (sale.quantity || 1), 0))
+  const ticketSections = PASS_SECTIONS.map(section => {
+    const sectionSales = paidSales.filter(s => getPassSectionId(s) === section.id)
+    const count = sectionSales.reduce((total, sale) => total + (sale.quantity || 1), 0)
+    return { ...section, count, pct: Math.round((count / sectionTicketTotal) * 100), sales: sectionSales }
+  })
+  const activePopupSection = popupEvent ? ticketSections.find(section => section.id === popupEvent.name) : null
 
   // ==================== SELLER BREAKDOWN ====================
   const [knownSellerIds, setKnownSellerIds] = useState<string[]>([])
@@ -452,57 +453,17 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>Male Pass (₹699)</span>
-                    <span className="muted">{maleCount} ({malePct}%)</span>
+                {ticketSections.map(section => (
+                  <div className="tier-row" key={section.id}>
+                    <div className="h">
+                      <span style={{ color: 'var(--ink)' }}>{section.label}</span>
+                      <span className="muted">{section.count} ({section.pct}%)</span>
+                    </div>
+                    <div className="bar">
+                      <div className="fill" style={{ width: `${section.pct}%`, background: section.color }} />
+                    </div>
                   </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${malePct}%`, background: 'var(--grad-violet)' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>Female Pass (₹599)</span>
-                    <span className="muted">{femaleCount} ({femalePct}%)</span>
-                  </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${femalePct}%`, background: 'var(--grad-teal)' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>Aura Genesis</span>
-                    <span className="muted">{auraCount} ({auraPct}%)</span>
-                  </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${auraPct}%`, background: 'var(--grad-gold)' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>FT Lineup VIP Invite</span>
-                    <span className="muted">{inviteCount} ({invitePct}%)</span>
-                  </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${invitePct}%`, background: 'var(--grad-orange)' }}
-                    />
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </div>
@@ -510,131 +471,28 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
 
         {/* Right Column */}
         <div className="right-col">
-          {/* Creative Event Overview Cards */}
+          {/* Ticket section overview */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' }}>
-            {/* Event 1: Dholida Garba Royale Male */}
-            <div
-              className="card lt-hover-lift"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'freshers male', top: rect.top + window.scrollY, left: rect.left - 520 })
-              }}
-              style={{
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, rgba(108, 76, 224, 0.12) 0%, rgba(59, 99, 232, 0.03) 100%)',
-                border: '1px solid var(--line)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '15px' }}>🎉</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Dholida Garba Royale (Male)</h4>
+            {ticketSections.map(section => (
+              <div
+                key={section.id}
+                className="card lt-hover-lift"
+                onClick={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect()
+                  setPopupEvent({ name: section.id, top: rect.top + window.scrollY, left: rect.left - 520 })
+                }}
+                style={{ cursor: 'pointer', background: section.background, border: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderRadius: 'var(--radius-md)' }}
+              >
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>{section.label}</h4>
+                  <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Dholida Garba Royale</p>
                 </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Male Passes Sold</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#7C5CFA', fontFamily: 'monospace' }}>{maleCount}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
-              </div>
-            </div>
-
-            {/* Event 2: Dholida Garba Royale Female */}
-            <div
-              className="card lt-hover-lift"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'freshers female', top: rect.top + window.scrollY, left: rect.left - 520 })
-              }}
-              style={{
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(244, 63, 94, 0.03) 100%)',
-                border: '1px solid var(--line)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '15px' }}>👩</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Dholida Garba Royale (Female)</h4>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: section.color, fontFamily: 'monospace' }}>{section.count}</div>
+                  <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
                 </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Female Passes Sold</p>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#EC4899', fontFamily: 'monospace' }}>{femaleCount}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
-              </div>
-            </div>
-
-            {/* Event 3: Aura Genesis */}
-            <div
-              className="card lt-hover-lift"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'aura genesis', top: rect.top + window.scrollY, left: rect.left - 520 })
-              }}
-              style={{
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, rgba(56, 217, 196, 0.12) 0%, rgba(59, 130, 246, 0.03) 100%)',
-                border: '1px solid var(--line)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '15px' }}>✨</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>Aura Genesis</h4>
-                </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Electronic Skyline Showcase</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#38D9C4', fontFamily: 'monospace' }}>{auraCount}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
-              </div>
-            </div>
-
-            {/* Event 4: FT Lineup Invite */}
-            <div
-              className="card lt-hover-lift"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                setPopupEvent({ name: 'ft lineup invite', top: rect.top + window.scrollY, left: rect.left - 520 })
-              }}
-              style={{
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, rgba(245, 197, 66, 0.12) 0%, rgba(245, 133, 77, 0.03) 100%)',
-                border: '1px solid var(--line)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '15px' }}>⭐</span>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>FT Lineup Invite</h4>
-                </div>
-                <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>VIP Exclusive Passes</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#F5B942', fontFamily: 'monospace' }}>{inviteCount}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--ink-faint)', letterSpacing: '0.05em' }}>SOLD</div>
-              </div>
-            </div>
+            ))}
           </div>
 
           {/* Activity Timeline Card */}
@@ -717,19 +575,10 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--ink)' }}>
-                  {popupEvent.name === 'freshers male' ? '🎉 Dholida Garba Royale (Male)' : popupEvent.name === 'freshers female' ? '👩 Dholida Garba Royale (Female)' : popupEvent.name === 'aura genesis' ? '✨ Aura Genesis' : '⭐ FT Lineup Invite'} — Buyers
+                  {activePopupSection?.label || 'Ticket section'} — Buyers
                 </h3>
                 <div style={{ fontSize: '11px', color: 'var(--ink-soft)', marginTop: '4px' }}>
-                  {(() => {
-                    const list = popupEvent.name === 'freshers male'
-                       ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male')))
-                       : popupEvent.name === 'freshers female'
-                       ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female')))
-                       : popupEvent.name === 'aura genesis'
-                       ? paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
-                       : paidSales.filter(s => (s.gender || '').toLowerCase().includes('exclusive') || (s.ticketType || '').toLowerCase().includes('exclusive'))
-                    return `${list.length} ticket buyers`
-                  })()}
+                  {activePopupSection?.sales.length || 0} ticket buyers
                 </div>
               </div>
               <button
@@ -755,13 +604,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             {/* Buyer List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {(() => {
-                const list = popupEvent.name === 'freshers male'
-                  ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male')))
-                  : popupEvent.name === 'freshers female'
-                  ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female')))
-                  : popupEvent.name === 'aura genesis'
-                  ? paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
-                  : paidSales.filter(s => (s.gender || '').toLowerCase().includes('exclusive') || (s.ticketType || '').toLowerCase().includes('exclusive'))
+                const list = activePopupSection?.sales || []
 
                 if (list.length === 0) {
                   return (
@@ -789,7 +632,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                         width: '32px',
                         height: '32px',
                         borderRadius: '9px',
-                        background: popupEvent.name === 'freshers male' ? 'var(--grad-violet)' : popupEvent.name === 'freshers female' ? 'linear-gradient(135deg, #EC4899 0%, #F43F5E 100%)' : popupEvent.name === 'aura genesis' ? 'var(--grad-teal)' : 'var(--grad-gold)',
+                        background: activePopupSection?.color || 'var(--grad-violet)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
