@@ -76,6 +76,22 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
     if (data.success) load()
   }
 
+  const deletePartner = async (partner: Partner) => {
+    const slot = slotLabel(partner.sellerSlot)
+    if (!window.confirm(`Delete ${partner.displayName}? This clears ${slot}, logs it out, and removes its passkey. The slot will return to its empty login state.`)) return
+    try {
+      const response = await fetch(`/api/admin/partners/${encodeURIComponent(partner.userId)}`, {
+        method: 'DELETE',
+        headers: headers(adminKey),
+      })
+      const data = await response.json()
+      setNotice(data.message || (data.success ? `${slot} was cleared.` : 'Unable to delete partner.'))
+      if (data.success) load()
+    } catch {
+      setNotice('Unable to delete partner.')
+    }
+  }
+
   const savePricing = async (event: EventPricing) => {
     const response = await fetch(`/api/admin/pricing/${encodeURIComponent(event.id)}`, {
       method: 'PATCH', headers: headers(adminKey), body: JSON.stringify({ tiers: event.tiers })
@@ -102,7 +118,7 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
       <div className="card">
         <div className="card-head"><h3>Partners</h3><button className="btn-secondary" onClick={load}>Refresh</button></div>
         {notice && <p className="muted-sm" style={{ marginTop: 12 }}>{notice}</p>}
-        <div className="table-scroll scroll" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Partner</th><th>Slot</th><th>Company</th><th>Status</th><th /></tr></thead><tbody>{partners.map(partner => <tr key={partner.userId}><td>{partner.displayName}<div className="muted-sm">{partner.userId}</div></td><td>{partner.managed === false ? 'System seller' : slotLabel(partner.sellerSlot)}</td><td>{partner.companyId}</td><td>{partner.active ? 'Active' : 'Inactive'}</td><td>{partner.managed === false ? <span className="muted-sm">Available in /seller</span> : <button className="btn-secondary" onClick={() => togglePartner(partner)}>{partner.active ? 'Deactivate' : 'Activate'}</button>}</td></tr>)}{partners.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No seller accounts are available.</td></tr>}</tbody></table></div>
+        <div className="table-scroll scroll" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Partner</th><th>Slot</th><th>Company</th><th>Status</th><th /></tr></thead><tbody>{partners.map(partner => <tr key={partner.userId}><td>{partner.displayName}<div className="muted-sm">{partner.userId}</div></td><td>{partner.managed === false ? 'System seller' : slotLabel(partner.sellerSlot)}</td><td>{partner.companyId}</td><td>{partner.active ? 'Active' : 'Inactive'}</td><td>{partner.managed === false ? <span className="muted-sm">Available in /seller</span> : <div style={{ display: 'flex', gap: 8 }}><button className="btn-secondary" onClick={() => togglePartner(partner)}>{partner.active ? 'Deactivate' : 'Activate'}</button><button className="btn-secondary" onClick={() => deletePartner(partner)} style={{ color: 'var(--red)' }}>Delete</button></div>}</td></tr>)}{partners.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No seller accounts are available.</td></tr>}</tbody></table></div>
       </div>
     </div>
   )

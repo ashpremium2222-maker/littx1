@@ -1144,6 +1144,31 @@ app.patch('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) =
     res.json({ success: true, partner });
 });
 
+app.delete('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) => {
+    const user = await db.getUserById(req.params.userId);
+    if (!user || user.role !== 'seller' || !PARTNER_LOGIN_SLOTS.includes(user.sellerSlot)) {
+        return res.status(404).json({ success: false, message: 'Only managed Partner Login accounts can be deleted.' });
+    }
+
+    const slot = user.sellerSlot;
+    try {
+        await Promise.all([
+            db.deleteUser(user.userId),
+            db.deleteSellerSession(slot),
+            db.deleteSellerDevice(slot),
+            db.resetPartnerLock(slot),
+        ]);
+        delete sellerSessions[slot];
+        delete webauthnAuthenticators[slot];
+        savePersisted(SESSIONS_FILE, sellerSessions);
+        savePersisted(WEBAUTHN_FILE, webauthnAuthenticators);
+        res.json({ success: true, message: `${slot === 'partner-slot-1' ? 'Partner Login 1' : 'Partner Login 2'} was cleared and is ready for a new partner.` });
+    } catch (err) {
+        console.error('[DELETE PARTNER ERROR]', err);
+        res.status(500).json({ success: false, message: 'Unable to delete the partner account.' });
+    }
+});
+
 app.get('/api/admin/pricing', requirePartnerAdmin, async (_req, res) => {
     const events = await db.getAllEvents();
     const pricedEvents = await Promise.all(events.map(async event => {

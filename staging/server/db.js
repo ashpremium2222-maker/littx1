@@ -548,6 +548,10 @@ async function createUser(userData) {
     return await new User(userData).save();
 }
 
+async function deleteUser(userId) {
+    return await User.findOneAndDelete({ userId }).lean();
+}
+
 async function getUserBySellerSlot(sellerSlot) {
     return await User.findOne({ sellerSlot }).lean();
 }
@@ -1110,6 +1114,14 @@ module.exports = {
             return user;
         }
         return await createUser(userData);
+    },
+    deleteUser: async (userId) => {
+        if (useMock()) {
+            const index = mockDb.users.findIndex(user => user.userId === userId);
+            if (index === -1) return null;
+            return mockDb.users.splice(index, 1)[0];
+        }
+        return await deleteUser(userId);
     },
     getUserBySellerSlot: async (sellerSlot) => {
         if (useMock()) return mockDb.users.find(u => u.sellerSlot === sellerSlot) || null;
