@@ -61,14 +61,23 @@ export default function SellerPortalApp() {
   const currentPartner = PARTNERS.find((p) => p.id === selectedPartnerId) || PARTNERS[0]
   const selectedPass = passes.find((pass) => pass.name === ticketType)
   const ticketQuantity = Math.max(1, Math.min(20, Number.parseInt(quantity, 10) || 1))
-  const customCommissionValue = Number(customCommission)
-  const commissionPercentage = commissionChoice === 'custom'
-    ? (customCommission.trim() === '' ? 0 : customCommissionValue)
-    : Number(commissionChoice)
-  const commissionInvalid = !Number.isFinite(commissionPercentage) || commissionPercentage < 0 || commissionPercentage > 20
   const customerTotal = (selectedPass?.price || 0) * ticketQuantity
-  const commissionAmount = commissionInvalid ? 0 : Math.round(customerTotal * commissionPercentage) / 100
+  const customCommissionValue = Number(customCommission)
+  const hasValidCustomCommissionAmount = customCommission.trim() !== '' && Number.isFinite(customCommissionValue)
+  const customCommissionAmount = hasValidCustomCommissionAmount ? Math.round(customCommissionValue * 100) / 100 : 0
+  const commissionAmount = commissionChoice === 'custom'
+    ? customCommissionAmount
+    : Math.round(customerTotal * Number(commissionChoice)) / 100
+  const commissionPercentage = commissionChoice === 'custom'
+    ? (customerTotal > 0 ? (commissionAmount / customerTotal) * 100 : 0)
+    : Number(commissionChoice)
+  const commissionInvalid = commissionChoice === 'custom'
+    ? !hasValidCustomCommissionAmount || customCommissionAmount < 0 || commissionPercentage > 20
+    : !Number.isFinite(commissionPercentage) || commissionPercentage < 0 || commissionPercentage > 20
   const rateAfterCommission = customerTotal - commissionAmount
+  const displayedCommissionPercentage = Number.isFinite(commissionPercentage)
+    ? commissionPercentage.toFixed(2).replace(/\.00$/, '')
+    : '0'
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value)
 
   useEffect(() => {
@@ -224,7 +233,7 @@ export default function SellerPortalApp() {
       return
     }
     if (commissionInvalid) {
-      setFeedback({ type: 'error', msg: 'Maximum commission allowed is 20%.' })
+      setFeedback({ type: 'error', msg: 'Enter a valid commission amount that is no more than 20% of the official total.' })
       return
     }
 
@@ -247,6 +256,7 @@ export default function SellerPortalApp() {
           ticketType,
           quantity: parseInt(quantity, 10) || 1,
           commissionPercentage,
+          commissionAmount: commissionChoice === 'custom' ? commissionAmount : undefined,
           event,
           generatedBy: authenticatedPartner?.name,
           partnerId: authenticatedPartner?.id
@@ -520,19 +530,18 @@ export default function SellerPortalApp() {
                 </div>
                 {commissionChoice === 'custom' && (
                   <div className="mt-3">
-                    <label className="mb-1.5 block text-[11px] font-bold text-slate-400">Custom commission (%)</label>
+                    <label className="mb-1.5 block text-[11px] font-bold text-slate-400">Custom commission amount (₹)</label>
                     <input
                       autoFocus
                       type="number"
                       min="0"
-                      max="20"
                       step="0.01"
                       value={customCommission}
                       onChange={(event) => setCustomCommission(event.target.value)}
-                      placeholder="Enter 0 to 20"
+                      placeholder="Enter amount"
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
                     />
-                    {commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Enter a commission between 0% and 20%.</p>}
+                    {commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Enter a valid amount up to 20% of the official total.</p>}
                   </div>
                 )}
               </div>
@@ -540,7 +549,7 @@ export default function SellerPortalApp() {
 
             <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2 text-sm">
               <div className="flex items-center justify-between text-slate-400"><span>Official Ticket Rate</span><span>{pricingLoading ? 'Loading...' : formatCurrency(customerTotal)}</span></div>
-              <div className="flex items-center justify-between text-slate-400"><span>Commission</span><span>{commissionInvalid ? 'Invalid' : `${commissionPercentage}%`}</span></div>
+              <div className="flex items-center justify-between text-slate-400"><span>Commission</span><span>{commissionInvalid ? 'Invalid' : `${displayedCommissionPercentage}%`}</span></div>
               <div className="flex items-center justify-between text-slate-400"><span>Commission Amount</span><span className="text-amber-300">-{formatCurrency(commissionAmount)}</span></div>
               <div className="flex items-center justify-between border-t border-slate-800 pt-2 font-bold text-white"><span>Rate After Commission</span><span className="text-lg text-emerald-400">{formatCurrency(rateAfterCommission)}</span></div>
             </div>

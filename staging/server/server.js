@@ -344,10 +344,18 @@ function normalizeCommissionPercentage(value) {
     return Math.round(numeric * 100) / 100;
 }
 
-function applyCommission(customerTotal, commissionPercentage, quantity) {
+function normalizeCommissionAmount(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return null;
+    return Math.round(numeric * 100);
+}
+
+function applyCommission(customerTotal, commissionPercentage, quantity, commissionAmountPaise = null) {
     const customerTotalPaise = Math.round(Number(customerTotal) * 100);
     const percentageBasisPoints = Math.round(commissionPercentage * 100);
-    const commissionPaise = Math.round((customerTotalPaise * percentageBasisPoints) / 10000);
+    const commissionPaise = commissionAmountPaise === null
+        ? Math.round((customerTotalPaise * percentageBasisPoints) / 10000)
+        : commissionAmountPaise;
     return {
         officialRate: Math.round((customerTotalPaise / Math.max(1, quantity))) / 100,
         customerTotal: customerTotalPaise / 100,
@@ -1121,7 +1129,7 @@ app.get('/api/seller/pricing', requireSeller, async (req, res) => {
 });
 
 app.post('/api/admin/generate-ticket', async (req, res) => {
-    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, commissionPercentage } = req.body || {};
+    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, commissionPercentage, commissionAmount: requestedCommissionAmount } = req.body || {};
 
     const sellerToken = req.headers['x-seller-token'];
     const sellerId = await authenticateSeller(sellerToken);
@@ -1142,15 +1150,33 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
     if (!pricedTicket) {
         return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
     }
-    const normalizedCommission = normalizeCommissionPercentage(commissionPercentage);
-    if (normalizedCommission === 'maximum_exceeded') {
-        return res.status(400).json({ success: false, message: 'Commission cannot exceed 20%.' });
-    }
-    if (normalizedCommission === null) {
-        return res.status(400).json({ success: false, message: 'Commission must be a valid non-negative percentage.' });
-    }
     const { qty, amount: customerTotal, ticketType: tType, event: evtName } = pricedTicket;
-    const commission = applyCommission(customerTotal, normalizedCommission, qty);
+    const hasCustomCommissionAmount = Object.prototype.hasOwnProperty.call(req.body || {}, 'commissionAmount');
+    let normalizedCommission;
+    let commission;
+
+    if (hasCustomCommissionAmount) {
+        const commissionAmountPaise = normalizeCommissionAmount(requestedCommissionAmount);
+        const customerTotalPaise = Math.round(customerTotal * 100);
+        if (commissionAmountPaise === null) {
+            return res.status(400).json({ success: false, message: 'Commission amount must be a valid non-negative number.' });
+        }
+        // Use the server-derived official total to prevent an amount above 20%.
+        if (commissionAmountPaise * 100 > customerTotalPaise * 20) {
+            return res.status(400).json({ success: false, message: 'Commission cannot exceed 20% of the official ticket total.' });
+        }
+        normalizedCommission = customerTotalPaise ? (commissionAmountPaise * 100) / customerTotalPaise : 0;
+        commission = applyCommission(customerTotal, normalizedCommission, qty, commissionAmountPaise);
+    } else {
+        normalizedCommission = normalizeCommissionPercentage(commissionPercentage);
+        if (normalizedCommission === 'maximum_exceeded') {
+            return res.status(400).json({ success: false, message: 'Commission cannot exceed 20%.' });
+        }
+        if (normalizedCommission === null) {
+            return res.status(400).json({ success: false, message: 'Commission must be a valid non-negative percentage.' });
+        }
+        commission = applyCommission(customerTotal, normalizedCommission, qty);
+    }
 
     try {
         const orderId = `order_manual_${crypto.randomBytes(8).toString('hex')}`;
