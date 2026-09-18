@@ -172,7 +172,7 @@ async function authenticateSeller(token) {
     }
     // Serverless instances do not share memory. Recover the session from the
     // persistent store whenever this instance has no cached copy.
-    for (const sid of [...Object.keys(PARTNER_NAMES), ...Object.keys(SELLER_ACCOUNTS)]) {
+    for (const sid of [...Object.keys(PARTNER_NAMES), ...Object.keys(SELLER_ACCOUNTS), ...PARTNER_LOGIN_SLOTS]) {
         const session = await db.getSellerSession(sid);
         if (isValidSellerSession(session, token)) {
             sellerSessions[sid] = session;
@@ -276,6 +276,27 @@ app.get('/api/seller/webauthn-public-config', (req, res) => {
         });
     } catch (err) {
         res.status(503).json({ success: false, message: 'WebAuthn relying-party configuration is unavailable.' });
+    }
+});
+
+// The seller login page uses these database-backed slot names, so changing a
+// Partner Login in Admin is reflected in /seller without a frontend deploy.
+app.get('/api/seller/partners', async (_req, res) => {
+    try {
+        const users = await db.getAllUsers();
+        const partners = PARTNER_LOGIN_SLOTS.map((id, index) => {
+            const user = users.find(item => item.sellerSlot === id && item.role === 'seller');
+            return {
+                id,
+                name: user?.displayName || `Partner Login ${index + 1}`,
+                active: Boolean(user && user.active !== false && !user.blocked),
+                configured: Boolean(user),
+            };
+        });
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, partners });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Unable to load seller partners.' });
     }
 });
 
@@ -1047,7 +1068,7 @@ app.get('/api/admin/partners', requirePartnerAdmin, async (_req, res) => {
     res.json({
         success: true,
         partners: users
-            .filter(user => user.role === 'seller')
+            .filter(user => user.role === 'seller' && PARTNER_LOGIN_SLOTS.includes(user.sellerSlot))
             .map(({ password, passwordHash, ...user }) => ({ ...user, active: user.active !== false && !user.blocked }))
     });
 });

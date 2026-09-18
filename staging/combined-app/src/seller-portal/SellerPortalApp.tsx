@@ -4,14 +4,13 @@ import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 export interface PartnerOption {
   id: string
   name: string
+  active: boolean
+  configured: boolean
 }
 
-export const PARTNERS: PartnerOption[] = [
-  { id: 'littlane', name: 'Littlane Entertainment' },
-  { id: 'nitro', name: 'Nitro Events' },
-  { id: '7th-heaven', name: '7th Heaven' },
-  { id: 'partner-slot-1', name: 'Partner Login' },
-  { id: 'partner-slot-2', name: 'Partner Login' },
+const DEFAULT_PARTNERS: PartnerOption[] = [
+  { id: 'partner-slot-1', name: 'Partner Login 1', active: false, configured: false },
+  { id: 'partner-slot-2', name: 'Partner Login 2', active: false, configured: false },
 ]
 
 interface PartnerSessionData {
@@ -24,7 +23,8 @@ interface PartnerSessionData {
 }
 
 export default function SellerPortalApp() {
-  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('littlane')
+  const [partners, setPartners] = useState<PartnerOption[]>(DEFAULT_PARTNERS)
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('partner-slot-1')
   const [passwordInput, setPasswordInput] = useState<string>('')
   
   const [authenticatedPartner, setAuthenticatedPartner] = useState<PartnerSessionData | null>(() => {
@@ -58,7 +58,7 @@ export default function SellerPortalApp() {
   const [activationNotice, setActivationNotice] = useState(false)
   const [successTicket, setSuccessTicket] = useState<{ id: string; attendee: string; price: string } | null>(null)
 
-  const currentPartner = PARTNERS.find((p) => p.id === selectedPartnerId) || PARTNERS[0]
+  const currentPartner = partners.find((p) => p.id === selectedPartnerId) || partners[0]
   const selectedPass = passes.find((pass) => pass.name === ticketType)
   const ticketQuantity = Math.max(1, Math.min(20, Number.parseInt(quantity, 10) || 1))
   const customerTotal = (selectedPass?.price || 0) * ticketQuantity
@@ -79,6 +79,23 @@ export default function SellerPortalApp() {
     ? commissionPercentage.toFixed(2).replace(/\.00$/, '')
     : '0'
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value)
+
+  useEffect(() => {
+    const loadPartners = async () => {
+      try {
+        const response = await fetch('/api/seller/partners', { cache: 'no-store' })
+        const data = await response.json()
+        if (!response.ok || !data.success || !Array.isArray(data.partners)) return
+        setPartners(data.partners)
+        setSelectedPartnerId(current => data.partners.some((partner: PartnerOption) => partner.id === current && partner.active)
+          ? current
+          : data.partners.find((partner: PartnerOption) => partner.active)?.id || data.partners[0]?.id || current)
+      } catch {
+        // Keep the two neutral slot labels if the public configuration is temporarily unavailable.
+      }
+    }
+    loadPartners()
+  }, [])
 
   useEffect(() => {
     if (!authenticatedPartner) return
@@ -325,22 +342,23 @@ export default function SellerPortalApp() {
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Select Partner</label>
               <div className="grid grid-cols-1 gap-2">
-                {PARTNERS.map((p) => (
+                {partners.map((p) => (
                   <button
                     key={p.id}
                     type="button"
+                    disabled={!p.active}
                     onClick={() => {
                       setSelectedPartnerId(p.id)
                       setLoginError(null)
                     }}
-                    className={`flex items-center justify-between p-3 rounded-xl border text-sm font-medium transition-all ${
+                    className={`flex items-center justify-between p-3 rounded-xl border text-sm font-medium transition-all disabled:cursor-not-allowed disabled:opacity-45 ${
                       selectedPartnerId === p.id
                         ? 'border-violet-500 bg-violet-500/10 text-white ring-1 ring-violet-500'
                         : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
                     }`}
                   >
                     <span>{p.name}</span>
-                    {selectedPartnerId === p.id && <span className="text-violet-400 text-xs font-bold">● Selected</span>}
+                    {p.active ? selectedPartnerId === p.id && <span className="text-violet-400 text-xs font-bold">● Selected</span> : <span className="text-slate-600 text-xs font-bold">Unavailable</span>}
                   </button>
                 ))}
               </div>

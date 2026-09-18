@@ -11,6 +11,7 @@ const PARTNER_LOGIN_SLOTS = [
   { id: 'partner-slot-1', label: 'Partner Login 1' },
   { id: 'partner-slot-2', label: 'Partner Login 2' },
 ]
+const slotLabel = (slot?: string) => PARTNER_LOGIN_SLOTS.find(item => item.id === slot)?.label || 'Partner Login'
 
 const headers = (adminKey: string) => ({ 'Content-Type': 'application/json', 'x-auth-token': adminKey })
 
@@ -101,7 +102,7 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
       <div className="card">
         <div className="card-head"><h3>Partners</h3><button className="btn-secondary" onClick={load}>Refresh</button></div>
         {notice && <p className="muted-sm" style={{ marginTop: 12 }}>{notice}</p>}
-        <div className="table-scroll scroll" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Partner</th><th>Slot</th><th>Company</th><th>Status</th><th /></tr></thead><tbody>{partners.map(partner => <tr key={partner.userId}><td>{partner.displayName}<div className="muted-sm">{partner.userId}</div></td><td>{partner.sellerSlot || 'Legacy seller'}</td><td>{partner.companyId}</td><td>{partner.active ? 'Active' : 'Inactive'}</td><td><button className="btn-secondary" onClick={() => togglePartner(partner)}>{partner.active ? 'Deactivate' : 'Activate'}</button></td></tr>)}</tbody></table></div>
+        <div className="table-scroll scroll" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Partner</th><th>Slot</th><th>Company</th><th>Status</th><th /></tr></thead><tbody>{partners.map(partner => <tr key={partner.userId}><td>{partner.displayName}<div className="muted-sm">{partner.userId}</div></td><td>{slotLabel(partner.sellerSlot)}</td><td>{partner.companyId}</td><td>{partner.active ? 'Active' : 'Inactive'}</td><td><button className="btn-secondary" onClick={() => togglePartner(partner)}>{partner.active ? 'Deactivate' : 'Activate'}</button></td></tr>)}{partners.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No Partner Login accounts have been created yet.</td></tr>}</tbody></table></div>
       </div>
     </div>
   )
