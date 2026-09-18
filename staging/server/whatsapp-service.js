@@ -118,4 +118,44 @@ async function sendViaMetaCloudApi({ to, phoneNumberId, accessToken, attendeeNam
     });
 }
 
-module.exports = { sendTicketWhatsApp };
+// Read-only diagnostic used by the private panel to distinguish an expired
+// token or incorrect Phone Number ID from a template/delivery problem.
+async function getWhatsAppConfigurationStatus() {
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+    if (!phoneNumberId || !accessToken) {
+        return { success: false, reason: 'credentials_missing', phoneNumberIdConfigured: Boolean(phoneNumberId), accessTokenConfigured: Boolean(accessToken) };
+    }
+
+    return new Promise((resolve) => {
+        const req = https.request({
+            hostname: 'graph.facebook.com',
+            port: 443,
+            path: `/v21.0/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,code_verification_status`,
+            method: 'GET',
+            headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: 12000
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => { data += chunk; });
+            res.on('end', () => {
+                try {
+                    const result = JSON.parse(data);
+                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                        resolve({ success: true, phoneNumberId, phone: result.display_phone_number, verifiedName: result.verified_name, quality: result.quality_rating, verificationStatus: result.code_verification_status });
+                    } else {
+                        const error = result?.error || result;
+                        resolve({ success: false, phoneNumberId, error: error?.message || 'Meta rejected the configuration check', code: error?.code || null });
+                    }
+                } catch (_) {
+                    resolve({ success: false, phoneNumberId, error: 'Invalid response from Meta API' });
+                }
+            });
+        });
+        req.on('error', err => resolve({ success: false, phoneNumberId, error: err.message }));
+        req.on('timeout', () => req.destroy(new Error('Meta WhatsApp request timed out')));
+        req.end();
+    });
+}
+
+module.exports = { sendTicketWhatsApp, getWhatsAppConfigurationStatus };

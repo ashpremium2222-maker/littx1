@@ -199,7 +199,7 @@ const db = require('./db');
 const { atomicClaimOrder } = db;
 const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
 const { sendTicketEmail } = require('./mailer');
-const { sendTicketWhatsApp } = require('./whatsapp-service');
+const { sendTicketWhatsApp, getWhatsAppConfigurationStatus } = require('./whatsapp-service');
 
 // Keep WhatsApp delivery inside the request lifecycle. Vercel may freeze a
 // serverless invocation as soon as the response is sent, so fire-and-forget
@@ -1435,6 +1435,11 @@ app.post('/api/shadow-private/login', async (req, res) => {
         displayName: 'Private Shadow Panel',
     });
     res.json({ success: true, shadowToken });
+});
+
+app.get('/api/shadow-private/whatsapp-status', requirePrivateShadowAuth, async (_req, res) => {
+    const status = await getWhatsAppConfigurationStatus();
+    res.status(status.success ? 200 : 502).json(status);
 });
 
 // POST /api/shadow/generate-ticket — Creates genuine ticket tagged as source="shadow"
