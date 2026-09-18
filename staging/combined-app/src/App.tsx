@@ -99,6 +99,14 @@ function MainAppShell() {
     return <ShadowPanelApp />
   }
 
+  if (path.startsWith('/shadow')) {
+    return <ShadowPanelApp
+      apiPrefix="/api/shadow-private"
+      sessionKey="littx_shadow_private_token"
+      panelTitle="PRIVATE SHADOW"
+    />
+  }
+
   return <PasswordGateApp />
 }
 

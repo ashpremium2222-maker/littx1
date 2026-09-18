@@ -16,10 +16,20 @@ interface ShadowOrder {
   createdAt: string
 }
 
-export default function ShadowPanelApp() {
+interface ShadowPanelProps {
+  apiPrefix?: string
+  sessionKey?: string
+  panelTitle?: string
+}
+
+export default function ShadowPanelApp({
+  apiPrefix = '/api/shadow',
+  sessionKey = 'littx_shadow_token',
+  panelTitle = 'SHADOW BY ASH'
+}: ShadowPanelProps) {
   const [password, setPassword] = useState('')
   const [shadowToken, setShadowToken] = useState<string | null>(() => {
-    return sessionStorage.getItem('littx_shadow_token')
+    return sessionStorage.getItem(sessionKey)
   })
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loginLoading, setLoginLoading] = useState(false)
@@ -86,7 +96,7 @@ export default function ShadowPanelApp() {
     if (!shadowToken) return
     if (isInitial) setLoadingOrders(true)
     try {
-      const res = await fetch('/api/shadow/sales', {
+      const res = await fetch(`${apiPrefix}/sales`, {
         headers: {
           'x-shadow-token': shadowToken,
         }
@@ -125,7 +135,7 @@ export default function ShadowPanelApp() {
       }, 4000)
       return () => clearInterval(timer)
     }
-  }, [shadowToken])
+  }, [shadowToken, apiPrefix])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -133,7 +143,7 @@ export default function ShadowPanelApp() {
     setLoginLoading(true)
 
     try {
-      const res = await fetch('/api/shadow/login', {
+      const res = await fetch(`${apiPrefix}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password })
@@ -142,7 +152,7 @@ export default function ShadowPanelApp() {
       const data = await res.json()
       if (res.ok && data.success) {
         setShadowToken(data.shadowToken)
-        sessionStorage.setItem('littx_shadow_token', data.shadowToken)
+        sessionStorage.setItem(sessionKey, data.shadowToken)
         setPassword('')
       } else setLoginError(data.message || 'Access Denied: Invalid Shadow Password.')
     } catch (err) {
@@ -153,7 +163,7 @@ export default function ShadowPanelApp() {
   }
 
   const handleLogout = () => {
-    sessionStorage.removeItem('littx_shadow_token')
+    sessionStorage.removeItem(sessionKey)
     setShadowToken(null)
   }
 
@@ -190,7 +200,7 @@ export default function ShadowPanelApp() {
     setFeedback(null)
 
     try {
-      const res = await fetch('/api/shadow/generate-ticket', {
+      const res = await fetch(`${apiPrefix}/generate-ticket`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -477,7 +487,7 @@ export default function ShadowPanelApp() {
           <header className="shadow-header">
             <div className="shadow-welcome">
               <span>🛡️</span>
-              <span>Welcome, Shadow Operator</span>
+              <span>Welcome, {panelTitle} Operator</span>
             </div>
 
             <button className="shadow-logout-btn" onClick={handleLogout}>
@@ -1241,7 +1251,7 @@ export default function ShadowPanelApp() {
             {/* Bottom Metallic Banner */}
             <div className="shadow-footer-banner">
               <span>🛡️</span>
-              <span>SHADOW BY ASH</span>
+              <span>{panelTitle}</span>
             </div>
           </div>
         </main>

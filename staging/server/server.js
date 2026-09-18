@@ -383,6 +383,8 @@ app.get('/seller/:splat', (req, res) => res.sendFile(distIndexHtml));
 // Shadow panel
 app.get('/shadowbyash', (req, res) => res.sendFile(distIndexHtml));
 app.get('/shadowbyash/:splat', (req, res) => res.sendFile(distIndexHtml));
+app.get('/shadow', (req, res) => res.sendFile(distIndexHtml));
+app.get('/shadow/:splat', (req, res) => res.sendFile(distIndexHtml));
 
 // Public ticket view — /view/:ticketId — linked from emails
 app.get('/view/:ticketId', (req, res) => res.sendFile(distIndexHtml));
@@ -1056,6 +1058,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
 // ==================== SHADOW SALES PANEL ENDPOINTS (/shadowbyash) ====================
 
 const SHADOW_PASSWORD = process.env.SHADOW_PASS;
+const SHADOW_PRIVATE_PASSWORD = process.env.SHADOW_PRIVATE_PASS;
 const shadowTokens = new Set();
 
 async function requireShadowAuth(req, res, next) {
@@ -1094,8 +1097,41 @@ app.post('/api/shadow/login', async (req, res) => {
     res.json({ success: true, shadowToken });
 });
 
+async function requirePrivateShadowAuth(req, res, next) {
+    const token = req.headers['x-shadow-token'];
+    if (!token) return res.status(401).json({ success: false, message: 'Unauthorized private Shadow access.' });
+    try {
+        const session = await db.getUserSessionByToken(token);
+        if (session?.role === 'shadow_private' && isValidSellerSession(session, token)) return next();
+    } catch (err) {
+        return next(err);
+    }
+    return res.status(401).json({ success: false, message: 'Private Shadow session expired. Please log in again.' });
+}
+
+app.post('/api/shadow-private/login', async (req, res) => {
+    const { password } = req.body || {};
+    if (!SHADOW_PRIVATE_PASSWORD) {
+        return res.status(503).json({ success: false, message: 'Private Shadow authentication is not configured.' });
+    }
+    if (password !== SHADOW_PRIVATE_PASSWORD) {
+        return res.status(401).json({ success: false, message: 'Invalid private Shadow access password.' });
+    }
+
+    const shadowToken = `shadow_private_${crypto.randomBytes(24).toString('hex')}`;
+    await db.setUserSession('shadow-private', {
+        token: shadowToken,
+        ip: clientIp(req),
+        loginAt: new Date().toISOString(),
+        role: 'shadow_private',
+        companyId: 'littlane',
+        displayName: 'Private Shadow Panel',
+    });
+    res.json({ success: true, shadowToken });
+});
+
 // POST /api/shadow/generate-ticket — Creates genuine ticket tagged as source="shadow"
-app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
+async function generateShadowTicket(req, res, source, paymentMethod, generatedBy) {
     const { name, email, phone, gender, ticketType, quantity, amount, event } = req.body || {};
 
     if (!name || !email) {
@@ -1131,7 +1167,7 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
             currency: 'INR',
             status: 'paid',
             paymentId: `pay_shadow_${crypto.randomBytes(6).toString('hex')}`,
-            paymentMethod: 'Shadow Private Panel',
+            paymentMethod,
             emailStatus: 'pending',
             emailError: null,
             errorLog: [],
@@ -1139,8 +1175,8 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
             updatedAt: generatedAt,
             paidAt: generatedAt,
             generatedAt,
-            generatedBy: 'Shadow Sale',
-            source: 'shadow',
+            generatedBy,
+            source,
             isShadow: true,
             showInPres: false
         };
@@ -1188,7 +1224,7 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
 
             await db.updateSaleRecord(orderId, {
                 status: 'ticket_generated',
-                source: 'shadow',
+                source,
                 isShadow: true,
                 emailStatus: emailResult.success ? 'sent' : 'failed',
                 emailError: emailResult.error || null,
@@ -1198,7 +1234,7 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
         } catch (emailErr) {
             console.error('[Shadow Email Error]', emailErr.message);
             await db.updateSaleRecord(orderId, {
-                source: 'shadow',
+                source,
                 isShadow: true,
                 emailStatus: 'failed',
                 emailError: emailErr.message,
@@ -1222,11 +1258,18 @@ app.post('/api/shadow/generate-ticket', requireShadowAuth, async (req, res) => {
             res.status(500).json({ success: false, message: 'Server error generating shadow ticket.' });
         }
     }
-});
+}
+
+app.post('/api/shadow/generate-ticket', requireShadowAuth, (req, res) =>
+    generateShadowTicket(req, res, 'shadow', 'Shadow Private Panel', 'Shadow Sale')
+);
+app.post('/api/shadow-private/generate-ticket', requirePrivateShadowAuth, (req, res) =>
+    generateShadowTicket(req, res, 'shadow_private', 'Private Shadow Panel', 'Private Shadow Sale')
+);
 
 async function getShadowSales(req, res) {
     try {
-        const shadowSales = (await db.getAll()).filter(s => s.isShadow || s.source === 'shadow');
+        const shadowSales = (await db.getAll()).filter(s => s.source === 'shadow');
         
         const shadowRevenue = shadowSales.reduce((sum, s) => sum + (s.amount || 0), 0);
         const shadowTicketsSold = shadowSales.reduce((sum, s) => sum + (s.quantity || 1), 0);
@@ -1246,6 +1289,20 @@ async function getShadowSales(req, res) {
 // Shadow users can view their own sales; admins can audit the same records.
 app.get('/api/shadow/sales', requireShadowAuth, getShadowSales);
 app.get('/api/admin/shadow-sales', requireAdmin, getShadowSales);
+app.get('/api/shadow-private/sales', requirePrivateShadowAuth, async (req, res) => {
+    try {
+        const sales = (await db.getAll()).filter(s => s.source === 'shadow_private');
+        res.json({
+            success: true,
+            count: sales.length,
+            shadowRevenue: sales.reduce((sum, s) => sum + (s.amount || 0), 0),
+            shadowTicketsSold: sales.reduce((sum, s) => sum + (s.quantity || 1), 0),
+            sales
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
 
 // GET /api/debug/db-status — Shows DB connection mode and record count (for debugging)
 app.get('/api/debug/db-status', async (req, res) => {

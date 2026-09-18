@@ -60,6 +60,14 @@
       "destination": "/app.html"
     },
     {
+      "source": "/shadow",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/shadow/(.*)",
+      "destination": "/app.html"
+    },
+    {
       "source": "/view/(.*)",
       "destination": "/app.html"
     },
