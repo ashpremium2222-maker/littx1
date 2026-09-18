@@ -40,13 +40,7 @@ async function sendTicketWhatsApp({ phone, name, ticketId, event, date, venue, t
 
 async function sendViaMetaCloudApi({ to, phoneNumberId, accessToken, attendeeName, eventName, eventDate, eventVenue, passType, ticketId, ticketLink, downloadLink }) {
     const templateName = process.env.WHATSAPP_TEMPLATE_NAME;
-    const configuredLanguage = process.env.WHATSAPP_TEMPLATE_LANG;
-    // Meta identifies the English template locale as en_US. Accepting the
-    // common shorthand "en" prevents a valid English template from being
-    // rejected solely because its locale was entered in the shorter form.
-    const langCode = configuredLanguage && configuredLanguage.trim().toLowerCase() === 'en'
-        ? 'en_US'
-        : configuredLanguage && configuredLanguage.trim().replace('-', '_');
+    const langCode = process.env.WHATSAPP_TEMPLATE_LANG;
     if (!templateName || !langCode) {
         console.warn('[WhatsApp] Skipped: WHATSAPP_TEMPLATE_NAME and WHATSAPP_TEMPLATE_LANG are required.');
         return { success: false, reason: 'template_configuration_missing' };

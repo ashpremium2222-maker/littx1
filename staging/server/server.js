@@ -244,6 +244,19 @@ async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, eve
     }
 }
 
+// Meta error responses contain a useful message/code but no credential. Return
+// just that actionable part to the ticket screen rather than incorrectly
+// claiming a message was delivered.
+function publicWhatsAppError(result) {
+    if (!result || result.success) return null;
+    if (typeof result.error === 'string') return result.error;
+    const metaError = result.error?.error || result.error;
+    if (metaError?.message) {
+        return metaError.code ? `Meta error ${metaError.code}: ${metaError.message}` : metaError.message;
+    }
+    return result.reason || 'Meta did not accept the WhatsApp message.';
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -1541,6 +1554,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             orderId,
             ticketId,
             whatsappSent: whatsappResult.success,
+            whatsappError: publicWhatsAppError(whatsappResult),
             message: 'Shadow ticket created and delivery has been queued.'
         });
     } catch (err) {
