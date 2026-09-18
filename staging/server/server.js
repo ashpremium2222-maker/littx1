@@ -973,14 +973,19 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
 });
 
 // ==================== 5. ADMIN — MONITOR EVERY SALE ====================
+// Private Shadow sales belong exclusively to the /shadow panel.  Keep this
+// predicate central so that aggregate/admin endpoints never accidentally
+// expose them as the application grows.
+const isPrivateShadowSale = (sale) => sale?.source === 'shadow_private';
+
 app.get('/api/admin/sales', requireAdmin, async (req, res) => {
-    const allSales = await db.getAll();
+    const allSales = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
     const isShadowOnly = req.query.shadowOnly === 'true';
     const includeShadow = req.query.includeShadow === 'true';
     
     let sales = allSales;
     if (isShadowOnly) {
-        sales = allSales.filter(s => s.source === 'shadow' || s.isShadow === true);
+        sales = allSales.filter(s => s.source === 'shadow');
     } else if (!includeShadow) {
         sales = allSales.filter(s => s.source !== 'shadow' && !s.isShadow);
     }
@@ -1578,10 +1583,11 @@ app.post('/api/admin/cancel-ticket', async (req, res) => {
 // invalid scans survive a refresh, logout, or a different scanner device.
 app.get('/api/scan-stats', async (req, res) => {
     try {
-        const [sales, scanStats] = await Promise.all([
+        const [allSales, scanStats] = await Promise.all([
             db.getAll(),
             db.getScanStats(null, new Date(0))
         ]);
+        const sales = allSales.filter(s => !isPrivateShadowSale(s));
         const accepted = sales.filter(s => s.status === 'scanned').length;
         res.json({
             success: true,
@@ -1761,7 +1767,7 @@ app.get('/api/events', (req, res) => {
 // GET /api/admin/sellers — dynamic seller list derived from sales records
 app.get('/api/admin/sellers', async (req, res) => {
     try {
-        const all = await db.getAll();
+        const all = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
         const sellerSet = new Set();
         all.forEach(s => {
             const who = s.generatedBy || s.prUserId || null;
@@ -1780,7 +1786,7 @@ app.get('/api/admin/sellers', async (req, res) => {
 app.get('/api/master/companies', async (req, res) => {
     try {
         const list = await db.getAllCompanies();
-        const allSales = await db.getAll();
+        const allSales = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
         const paidSales = allSales.filter(s => ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status));
 
         const companiesWithStats = list.map(c => {
@@ -2209,7 +2215,7 @@ app.get('/api/seller/verify', async (req, res) => {
 // GET /api/seller/sales — returns sales made by THIS seller
 app.get('/api/seller/sales', requireSeller, async (req, res) => {
     try {
-        const all = await db.getAll();
+        const all = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
         const mySales = all.filter(s =>
             s.generatedBy === req.sellerId || s.prUserId === req.sellerId
         );
@@ -2290,7 +2296,7 @@ app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireAdmin, asy
 // GET /api/admin/seller-summary — admin can see all sellers' totals
 app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
     try {
-        const all = await db.getAll();
+        const all = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
         const paid = all.filter(s =>
             ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
         );
