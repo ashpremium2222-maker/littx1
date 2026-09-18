@@ -143,11 +143,13 @@ const SaleSchema = new mongoose.Schema({
     phone: { type: String },
     gender: { type: String },
     quantity: { type: Number },
-    // Immutable transaction snapshot: changing an event tier later never
-    // changes the financial facts of an already-issued ticket.
-    basePrice: { type: Number },
-    discountPercentage: { type: Number, default: 0 },
-    discountAmount: { type: Number, default: 0 },
+    // Immutable transaction snapshot: customer-facing totals retain the
+    // official event rate; commission is seller-internal settlement data.
+    officialRate: { type: Number },
+    customerTotal: { type: Number },
+    commissionPercentage: { type: Number, default: 0 },
+    commissionAmount: { type: Number, default: 0 },
+    rateAfterCommission: { type: Number },
     amount: { type: Number },
     currency: { type: String },
     status: { type: String },

@@ -335,7 +335,7 @@ function normalizePrice(value) {
     return Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric * 100) / 100 : null;
 }
 
-function normalizeDiscountPercentage(value) {
+function normalizeCommissionPercentage(value) {
     if (value === undefined || value === null || value === '') return 0;
     const numeric = Number(value);
     if (!Number.isFinite(numeric) || numeric < 0) return null;
@@ -344,14 +344,15 @@ function normalizeDiscountPercentage(value) {
     return Math.round(numeric * 100) / 100;
 }
 
-function applyDiscount(basePrice, discountPercentage) {
-    const basePaise = Math.round(Number(basePrice) * 100);
-    const percentageBasisPoints = Math.round(discountPercentage * 100);
-    const discountPaise = Math.round((basePaise * percentageBasisPoints) / 10000);
+function applyCommission(customerTotal, commissionPercentage, quantity) {
+    const customerTotalPaise = Math.round(Number(customerTotal) * 100);
+    const percentageBasisPoints = Math.round(commissionPercentage * 100);
+    const commissionPaise = Math.round((customerTotalPaise * percentageBasisPoints) / 10000);
     return {
-        basePrice: basePaise / 100,
-        discountAmount: discountPaise / 100,
-        finalPrice: (basePaise - discountPaise) / 100,
+        officialRate: Math.round((customerTotalPaise / Math.max(1, quantity))) / 100,
+        customerTotal: customerTotalPaise / 100,
+        commissionAmount: commissionPaise / 100,
+        rateAfterCommission: (customerTotalPaise - commissionPaise) / 100,
     };
 }
 
@@ -1107,7 +1108,7 @@ app.get('/api/seller/pricing', requireSeller, async (req, res) => {
 });
 
 app.post('/api/admin/generate-ticket', async (req, res) => {
-    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, discountPercentage } = req.body || {};
+    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, commissionPercentage } = req.body || {};
 
     const sellerToken = req.headers['x-seller-token'];
     const sellerId = await authenticateSeller(sellerToken);
@@ -1128,15 +1129,15 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
     if (!pricedTicket) {
         return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
     }
-    const normalizedDiscount = normalizeDiscountPercentage(discountPercentage);
-    if (normalizedDiscount === 'maximum_exceeded') {
-        return res.status(400).json({ success: false, message: 'Discount cannot exceed 20%.' });
+    const normalizedCommission = normalizeCommissionPercentage(commissionPercentage);
+    if (normalizedCommission === 'maximum_exceeded') {
+        return res.status(400).json({ success: false, message: 'Commission cannot exceed 20%.' });
     }
-    if (normalizedDiscount === null) {
-        return res.status(400).json({ success: false, message: 'Discount must be a valid non-negative percentage.' });
+    if (normalizedCommission === null) {
+        return res.status(400).json({ success: false, message: 'Commission must be a valid non-negative percentage.' });
     }
-    const { qty, amount: baseAmount, ticketType: tType, event: evtName } = pricedTicket;
-    const { basePrice, discountAmount, finalPrice: finalAmount } = applyDiscount(baseAmount, normalizedDiscount);
+    const { qty, amount: customerTotal, ticketType: tType, event: evtName } = pricedTicket;
+    const commission = applyCommission(customerTotal, normalizedCommission, qty);
 
     try {
         const orderId = `order_manual_${crypto.randomBytes(8).toString('hex')}`;
@@ -1149,7 +1150,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             orderId,
             event: evtName,
             name, email, phone: phone || '', gender: gender || 'general',
-            quantity: qty, basePrice, discountPercentage: normalizedDiscount, discountAmount, amount: finalAmount, currency: 'INR',
+            quantity: qty, ...commission, commissionPercentage: normalizedCommission, amount: commission.customerTotal, currency: 'INR',
             status: 'paid', paymentId: 'manual', ticketId,
             emailStatus: 'pending', emailError: null, errorLog: [],
             createdAt: generatedAt, paidAt: generatedAt, generatedAt,
@@ -1165,7 +1166,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             email,
             gender: tType,
             quantity: qty,
-            amount: finalAmount,
+            amount: commission.customerTotal,
             createdAt: generatedAt,
             event: evtName
         });
@@ -1183,7 +1184,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             ticketId,
             gender: tType,
             quantity: qty,
-            amount: finalAmount,
+            amount: commission.customerTotal,
             pdfPath,
             qrBuffer,
             downloadUrl,
@@ -1215,10 +1216,13 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
                 email,
                 phone,
                 ticketType: tType,
-                price: finalAmount.toString(),
-                basePrice: basePrice.toString(),
-                discountPercentage: normalizedDiscount,
-                discountAmount: discountAmount.toString(),
+                // Public ticket fields always represent the official price.
+                price: commission.customerTotal.toString(),
+                officialRate: commission.officialRate.toString(),
+                customerTotal: commission.customerTotal.toString(),
+                commissionPercentage: normalizedCommission,
+                commissionAmount: commission.commissionAmount.toString(),
+                rateAfterCommission: commission.rateAfterCommission.toString(),
                 qty,
                 generatedBy: resolvedBy,
                 generatedAt,

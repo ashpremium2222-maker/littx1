@@ -50,8 +50,8 @@ export default function SellerPortalApp() {
   const [quantity, setQuantity] = useState('1')
   const [passes, setPasses] = useState<Array<{ id: string; name: string; price: number }>>([])
   const [pricingLoading, setPricingLoading] = useState(false)
-  const [discountChoice, setDiscountChoice] = useState('0')
-  const [customDiscount, setCustomDiscount] = useState('')
+  const [commissionChoice, setCommissionChoice] = useState('0')
+  const [customCommission, setCustomCommission] = useState('')
 
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
@@ -61,14 +61,14 @@ export default function SellerPortalApp() {
   const currentPartner = PARTNERS.find((p) => p.id === selectedPartnerId) || PARTNERS[0]
   const selectedPass = passes.find((pass) => pass.name === ticketType)
   const ticketQuantity = Math.max(1, Math.min(20, Number.parseInt(quantity, 10) || 1))
-  const customDiscountValue = Number(customDiscount)
-  const discountPercentage = discountChoice === 'custom'
-    ? (customDiscount.trim() === '' ? 0 : customDiscountValue)
-    : Number(discountChoice)
-  const discountInvalid = !Number.isFinite(discountPercentage) || discountPercentage < 0 || discountPercentage > 20
-  const basePrice = (selectedPass?.price || 0) * ticketQuantity
-  const discountAmount = discountInvalid ? 0 : Math.round(basePrice * discountPercentage) / 100
-  const finalPrice = basePrice - discountAmount
+  const customCommissionValue = Number(customCommission)
+  const commissionPercentage = commissionChoice === 'custom'
+    ? (customCommission.trim() === '' ? 0 : customCommissionValue)
+    : Number(commissionChoice)
+  const commissionInvalid = !Number.isFinite(commissionPercentage) || commissionPercentage < 0 || commissionPercentage > 20
+  const customerTotal = (selectedPass?.price || 0) * ticketQuantity
+  const commissionAmount = commissionInvalid ? 0 : Math.round(customerTotal * commissionPercentage) / 100
+  const rateAfterCommission = customerTotal - commissionAmount
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value)
 
   useEffect(() => {
@@ -223,8 +223,8 @@ export default function SellerPortalApp() {
       setFeedback({ type: 'error', msg: 'Name and Email are required.' })
       return
     }
-    if (discountInvalid) {
-      setFeedback({ type: 'error', msg: 'Maximum discount allowed is 20%.' })
+    if (commissionInvalid) {
+      setFeedback({ type: 'error', msg: 'Maximum commission allowed is 20%.' })
       return
     }
 
@@ -246,7 +246,7 @@ export default function SellerPortalApp() {
           gender: ticketType,
           ticketType,
           quantity: parseInt(quantity, 10) || 1,
-          discountPercentage,
+          commissionPercentage,
           event,
           generatedBy: authenticatedPartner?.name,
           partnerId: authenticatedPartner?.id
@@ -497,28 +497,28 @@ export default function SellerPortalApp() {
                 <input type="number" min="1" max="20" value={quantity} onChange={(event) => setQuantity(event.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500" />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Discount</label>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Commission</label>
                 <div className="grid grid-cols-5 gap-1.5">
-                  {['0', '5', '10', '15', '20'].map(value => <button key={value} type="button" onClick={() => setDiscountChoice(value)} className={`rounded-lg border py-2 text-[11px] font-bold ${discountChoice === value ? 'border-violet-500 bg-violet-500/15 text-violet-300' : 'border-slate-800 bg-slate-950 text-slate-400'}`}>{value}%</button>)}
+                  {['0', '5', '10', '15', '20'].map(value => <button key={value} type="button" onClick={() => setCommissionChoice(value)} className={`rounded-lg border py-2 text-[11px] font-bold ${commissionChoice === value ? 'border-violet-500 bg-violet-500/15 text-violet-300' : 'border-slate-800 bg-slate-950 text-slate-400'}`}>{value}%</button>)}
                 </div>
               </div>
             </div>
 
             <div>
-              <button type="button" onClick={() => setDiscountChoice('custom')} className={`text-xs font-bold ${discountChoice === 'custom' ? 'text-violet-300' : 'text-slate-400 hover:text-slate-200'}`}>Custom Discount</button>
-              {discountChoice === 'custom' && <div className="mt-2"><input type="number" min="0" max="20" step="0.01" value={customDiscount} onChange={(event) => setCustomDiscount(event.target.value)} placeholder="Enter a percentage" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500" />{discountInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Maximum discount allowed is 20%.</p>}</div>}
+              <button type="button" onClick={() => setCommissionChoice('custom')} className={`text-xs font-bold ${commissionChoice === 'custom' ? 'text-violet-300' : 'text-slate-400 hover:text-slate-200'}`}>Custom Commission</button>
+              {commissionChoice === 'custom' && <div className="mt-2"><input type="number" min="0" max="20" step="0.01" value={customCommission} onChange={(event) => setCustomCommission(event.target.value)} placeholder="Enter a percentage" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500" />{commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Maximum commission allowed is 20%.</p>}</div>}
             </div>
 
             <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2 text-sm">
-              <div className="flex items-center justify-between text-slate-400"><span>Ticket Price</span><span>{pricingLoading ? 'Loading...' : formatCurrency(basePrice)}</span></div>
-              <div className="flex items-center justify-between text-slate-400"><span>Discount</span><span>{discountInvalid ? 'Invalid' : `${discountPercentage}%`}</span></div>
-              <div className="flex items-center justify-between text-slate-400"><span>Discount Amount</span><span className="text-rose-300">-{formatCurrency(discountAmount)}</span></div>
-              <div className="flex items-center justify-between border-t border-slate-800 pt-2 font-bold text-white"><span>Final Price</span><span className="text-lg text-emerald-400">{formatCurrency(finalPrice)}</span></div>
+              <div className="flex items-center justify-between text-slate-400"><span>Official Ticket Rate</span><span>{pricingLoading ? 'Loading...' : formatCurrency(customerTotal)}</span></div>
+              <div className="flex items-center justify-between text-slate-400"><span>Commission</span><span>{commissionInvalid ? 'Invalid' : `${commissionPercentage}%`}</span></div>
+              <div className="flex items-center justify-between text-slate-400"><span>Commission Amount</span><span className="text-amber-300">-{formatCurrency(commissionAmount)}</span></div>
+              <div className="flex items-center justify-between border-t border-slate-800 pt-2 font-bold text-white"><span>Rate After Commission</span><span className="text-lg text-emerald-400">{formatCurrency(rateAfterCommission)}</span></div>
             </div>
 
             <button
               type="submit"
-              disabled={submitting || pricingLoading || !ticketType || discountInvalid}
+              disabled={submitting || pricingLoading || !ticketType || commissionInvalid}
               className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold py-3.5 px-4 rounded-xl text-sm transition-all shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2"
             >
               {submitting ? (
