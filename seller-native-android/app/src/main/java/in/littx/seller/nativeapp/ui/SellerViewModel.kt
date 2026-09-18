@@ -15,7 +15,8 @@ import kotlinx.coroutines.withContext
 
 data class SellerUiState(
     val loading: Boolean = true, val partner: Partner? = null, val error: String? = null,
-    val message: String? = null, val sales: List<Sale> = emptyList(), val config: SellerConfig? = null, val update: AppUpdate? = null
+    val message: String? = null, val sales: List<Sale> = emptyList(), val config: SellerConfig? = null,
+    val pricing: SellerPricingResponse? = null, val update: AppUpdate? = null
 )
 
 class SellerViewModel(activity: ComponentActivity) : ViewModel() {
@@ -45,12 +46,13 @@ class SellerViewModel(activity: ComponentActivity) : ViewModel() {
             state = state.copy(loading = false, error = e.message ?: "Secure sign-in failed.")
         }
     }
-    fun submitTicket(name: String, email: String, phone: String, ticketType: String, amount: Double, event: String) = viewModelScope.launch {
+    fun submitTicket(name: String, email: String, phone: String, ticketType: String, quantity: Int, commissionPercentage: Double, event: String) = viewModelScope.launch {
         val partner = state.partner ?: return@launch
         state = state.copy(loading = true, error = null, message = null)
         try {
-            val response = repository.createTicket(TicketRequest(name, email, phone, ticketType, ticketType, 1, amount, event, partner.name, partner.id))
-            state = state.copy(loading = false, message = response.message ?: if (response.success) "Ticket generated and submitted to the server." else "Ticket generation failed.", error = if (response.success) null else response.message)
+            val response = repository.createTicket(TicketRequest(name, email, phone, ticketType, ticketType, quantity, commissionPercentage, event, partner.name, partner.id))
+            val confirmation = response.ticket?.id?.let { "Ticket #$it issued successfully." }
+            state = state.copy(loading = false, message = confirmation ?: response.message ?: if (response.success) "Ticket generated and submitted to the server." else "Ticket generation failed.", error = if (response.success) null else response.message)
         } catch (e: Exception) { handleRequestError(e, "Network error.") }
     }
     fun loadSales() = viewModelScope.launch {
@@ -61,7 +63,12 @@ class SellerViewModel(activity: ComponentActivity) : ViewModel() {
     fun loadConfig() = viewModelScope.launch {
         try {
             val response = repository.config()
-            state = state.copy(config = response.config, error = if (response.success) null else response.message)
+            if (!response.success || response.config == null) {
+                state = state.copy(error = response.message ?: "Seller configuration is unavailable.")
+                return@launch
+            }
+            val pricing = repository.pricing(response.config.event.name)
+            state = state.copy(config = response.config, pricing = pricing.takeIf { it.success }, error = if (pricing.success) null else pricing.message)
         } catch (e: Exception) { handleRequestError(e, "Could not refresh seller configuration.") }
     }
     fun checkForUpdate() = viewModelScope.launch {
