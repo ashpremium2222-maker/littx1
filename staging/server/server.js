@@ -775,7 +775,7 @@ app.post('/api/verify-payment', async (req, res) => {
 
         console.log(`[Ticket Issued] ${ticketId} for ${sale.email} | email ${emailResult.success ? 'sent ✅' : 'FAILED ❌ (' + emailResult.error + ')'}`);
 
-        await sendAndRecordTicketWhatsApp({
+        const whatsappResult = await sendAndRecordTicketWhatsApp({
             orderId, phone: sale.phone, name: sale.name, ticketId,
             event: sale.event || EVENT.name, ticketType: sale.gender, downloadUrl
         });
@@ -787,6 +787,7 @@ app.post('/api/verify-payment', async (req, res) => {
             qrDataUrl,
             emailSent: emailResult.success,
             emailError: emailResult.success ? null : emailResult.error,
+            whatsappSent: whatsappResult.success,
             event: EVENT.name,
             name: sale.name,
             email: sale.email,
@@ -1312,7 +1313,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             });
         }
 
-        await sendAndRecordTicketWhatsApp({
+        const whatsappResult = await sendAndRecordTicketWhatsApp({
             orderId, phone, name, ticketId, event: evtName, ticketType: tType, downloadUrl
         });
 
@@ -1325,6 +1326,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
                 attendee: name,
                 email,
                 phone,
+                whatsappSent: whatsappResult.success,
                 ticketType: tType,
                 // Public ticket fields always represent the official price.
                 price: commission.customerTotal.toString(),
@@ -1530,7 +1532,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             }).catch(() => {});
         }
 
-        await sendAndRecordTicketWhatsApp({
+        const whatsappResult = await sendAndRecordTicketWhatsApp({
             orderId, phone, name, ticketId, event: evtName, ticketType: tType, downloadUrl
         });
 
@@ -1538,6 +1540,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             success: true,
             orderId,
             ticketId,
+            whatsappSent: whatsappResult.success,
             message: 'Shadow ticket created and delivery has been queued.'
         });
     } catch (err) {
