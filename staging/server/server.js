@@ -1582,6 +1582,27 @@ app.post('/api/admin/danger-wipe-test-data', async (req, res) => {
     }
 });
 
+// Permanently remove every sale and its generated ticket PDF. This requires a
+// signed-in admin session plus a confirmation phrase so it cannot run by accident.
+app.post('/api/admin/clear-sales', requireAdmin, async (req, res) => {
+    if (req.body?.confirmation !== 'DELETE ALL SALES') {
+        return res.status(400).json({ success: false, message: 'Type DELETE ALL SALES to confirm this action.' });
+    }
+
+    try {
+        const [deletedCount, ticketFiles] = await Promise.all([
+            db.clearAllSales(),
+            fs.promises.readdir(TICKETS_DIR, { withFileTypes: true }).catch(err => err.code === 'ENOENT' ? [] : Promise.reject(err))
+        ]);
+        const pdfFiles = ticketFiles.filter(file => file.isFile() && file.name.toLowerCase().endsWith('.pdf'));
+        await Promise.all(pdfFiles.map(file => fs.promises.unlink(path.join(TICKETS_DIR, file.name))));
+        res.json({ success: true, deletedCount, deletedPdfCount: pdfFiles.length, message: `Permanently deleted ${deletedCount} sales and ${pdfFiles.length} ticket PDFs.` });
+    } catch (err) {
+        console.error('[CLEAR SALES ERROR]', err);
+        res.status(500).json({ success: false, message: 'Could not clear sales data.' });
+    }
+});
+
 // ==================== 6C. CANCEL DELIVERED TICKET (ADMIN ONLY) ====================
 app.post('/api/admin/cancel-ticket', async (req, res) => {
     const clientKey = req.query.key || req.headers['x-admin-key'];

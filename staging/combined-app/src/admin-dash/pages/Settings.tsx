@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import PartnerPricing from './PartnerPricing'
 
-type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller-locks' | 'partners' | 'pricing'
+type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller-locks' | 'partners' | 'pricing' | 'data'
 
 const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
   littlane:    { name: 'LITTLANE',    emoji: '🏟️' },
@@ -167,17 +167,19 @@ export default function Settings({ adminKey }: SettingsProps) {
   }
 
   const handleWipe = async () => {
-    if (
-      !window.confirm(
-        'WARNING: This will permanently delete all ticket sales and reset revenue stats to ₹0. Are you sure?'
-      )
-    ) {
+    const confirmation = window.prompt('This permanently deletes every sale and generated ticket PDF. Type DELETE ALL SALES to continue.')
+    if (confirmation !== 'DELETE ALL SALES') {
       return
     }
     setWiping(true)
     try {
-      const res = await fetch(`/api/admin/danger-wipe-test-data?key=${adminKey}`, {
+      const res = await fetch('/api/admin/clear-sales', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': adminKey,
+        },
+        body: JSON.stringify({ confirmation }),
       })
       const data = await res.json()
       if (data.success) {
@@ -203,6 +205,7 @@ export default function Settings({ adminKey }: SettingsProps) {
               { id: 'seller-locks', label: 'Active Sessions' },
               { id: 'partners', label: 'Partners' },
               { id: 'pricing', label: 'Pricing' },
+              { id: 'data', label: 'Data' },
               { id: 'profile', label: 'Profile & Workspace' },
               { id: 'smtp', label: 'SMTP Config' },
               { id: 'payments', label: 'Payment Gateways' },
@@ -223,6 +226,25 @@ export default function Settings({ adminKey }: SettingsProps) {
 
       {tab === 'partners' && <PartnerPricing adminKey={adminKey} mode="partners" />}
       {tab === 'pricing' && <PartnerPricing adminKey={adminKey} mode="pricing" />}
+      {tab === 'data' && (
+        <div className="card" style={{ borderColor: 'rgba(255, 107, 107, 0.42)' }}>
+          <div className="card-head">
+            <div>
+              <h3 style={{ color: 'var(--red)' }}>Clear All Sales</h3>
+              <div className="muted-sm">Permanently deletes every sale record, dashboard total, and generated ticket PDF.</div>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={wiping}
+              onClick={handleWipe}
+              style={{ color: 'var(--red)', borderColor: 'rgba(255, 107, 107, 0.5)' }}
+            >
+              {wiping ? 'Clearing sales...' : 'Clear all sales'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {tab === 'seller-locks' && (
         <>

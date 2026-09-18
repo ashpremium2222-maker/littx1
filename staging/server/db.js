@@ -497,6 +497,11 @@ async function getAll() {
     return await Sale.find({}).sort({ createdAt: -1 }).lean();
 }
 
+async function clearAllSales() {
+    const result = await Sale.deleteMany({});
+    return result.deletedCount;
+}
+
 async function atomicClaimOrder(orderId, paymentId) {
     const updated = await Sale.findOneAndUpdate(
         { orderId, status: 'created' },
@@ -1028,6 +1033,15 @@ module.exports = {
             return [...mockDb.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         }
         return await getAll();
+    },
+    clearAllSales: async () => {
+        if (useMock()) {
+            const deletedCount = mockDb.sales.length;
+            mockDb.sales = [];
+            _saveMockSales(mockDb.sales);
+            return deletedCount;
+        }
+        return await clearAllSales();
     },
     atomicClaimOrder: async (orderId, paymentId) => {
         if (useMock()) {
