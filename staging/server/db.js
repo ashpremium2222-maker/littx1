@@ -497,6 +497,11 @@ async function getAll() {
     return await Sale.find({}).sort({ createdAt: -1 }).lean();
 }
 
+async function clearAllSales() {
+    const result = await Sale.deleteMany({});
+    return result.deletedCount;
+}
+
 async function atomicClaimOrder(orderId, paymentId) {
     const updated = await Sale.findOneAndUpdate(
         { orderId, status: 'created' },
@@ -531,8 +536,20 @@ async function updateUser(userId, updates) {
     );
 }
 
+async function releaseSellerSlot(userId) {
+    return await User.findOneAndUpdate(
+        { userId },
+        { $unset: { sellerSlot: 1 } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
 async function createUser(userData) {
     return await new User(userData).save();
+}
+
+async function deleteUser(userId) {
+    return await User.findOneAndDelete({ userId }).lean();
 }
 
 async function getUserBySellerSlot(sellerSlot) {
@@ -1029,6 +1046,15 @@ module.exports = {
         }
         return await getAll();
     },
+    clearAllSales: async () => {
+        if (useMock()) {
+            const deletedCount = mockDb.sales.length;
+            mockDb.sales = [];
+            _saveMockSales(mockDb.sales);
+            return deletedCount;
+        }
+        return await clearAllSales();
+    },
     atomicClaimOrder: async (orderId, paymentId) => {
         if (useMock()) {
             const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.status === 'created');
@@ -1067,6 +1093,15 @@ module.exports = {
         }
         return await updateUser(userId, updates);
     },
+    releaseSellerSlot: async (userId) => {
+        if (useMock()) {
+            const user = mockDb.users.find(item => item.userId === userId);
+            if (!user) return null;
+            delete user.sellerSlot;
+            return user;
+        }
+        return await releaseSellerSlot(userId);
+    },
     createUser: async (userData) => {
         if (useMock()) {
             if (mockDb.users.some(u => u.userId.toLowerCase() === String(userData.userId).toLowerCase() || (userData.sellerSlot && u.sellerSlot === userData.sellerSlot))) {
@@ -1079,6 +1114,14 @@ module.exports = {
             return user;
         }
         return await createUser(userData);
+    },
+    deleteUser: async (userId) => {
+        if (useMock()) {
+            const index = mockDb.users.findIndex(user => user.userId === userId);
+            if (index === -1) return null;
+            return mockDb.users.splice(index, 1)[0];
+        }
+        return await deleteUser(userId);
     },
     getUserBySellerSlot: async (sellerSlot) => {
         if (useMock()) return mockDb.users.find(u => u.sellerSlot === sellerSlot) || null;

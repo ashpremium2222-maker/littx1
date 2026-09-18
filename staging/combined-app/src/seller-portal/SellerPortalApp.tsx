@@ -4,14 +4,13 @@ import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 export interface PartnerOption {
   id: string
   name: string
+  active: boolean
+  configured: boolean
 }
 
-export const PARTNERS: PartnerOption[] = [
-  { id: 'littlane', name: 'Littlane Entertainment' },
-  { id: 'nitro', name: 'Nitro Events' },
-  { id: '7th-heaven', name: '7th Heaven' },
-  { id: 'partner-slot-1', name: 'Partner Login' },
-  { id: 'partner-slot-2', name: 'Partner Login' },
+const DEFAULT_PARTNERS: PartnerOption[] = [
+  { id: 'partner-slot-1', name: 'Partner Login 1', active: false, configured: false },
+  { id: 'partner-slot-2', name: 'Partner Login 2', active: false, configured: false },
 ]
 
 interface PartnerSessionData {
@@ -24,7 +23,8 @@ interface PartnerSessionData {
 }
 
 export default function SellerPortalApp() {
-  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('littlane')
+  const [partners, setPartners] = useState<PartnerOption[]>(DEFAULT_PARTNERS)
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('partner-slot-1')
   const [passwordInput, setPasswordInput] = useState<string>('')
   
   const [authenticatedPartner, setAuthenticatedPartner] = useState<PartnerSessionData | null>(() => {
@@ -58,18 +58,44 @@ export default function SellerPortalApp() {
   const [activationNotice, setActivationNotice] = useState(false)
   const [successTicket, setSuccessTicket] = useState<{ id: string; attendee: string; price: string } | null>(null)
 
-  const currentPartner = PARTNERS.find((p) => p.id === selectedPartnerId) || PARTNERS[0]
+  const currentPartner = partners.find((p) => p.id === selectedPartnerId) || partners[0]
   const selectedPass = passes.find((pass) => pass.name === ticketType)
   const ticketQuantity = Math.max(1, Math.min(20, Number.parseInt(quantity, 10) || 1))
-  const customCommissionValue = Number(customCommission)
-  const commissionPercentage = commissionChoice === 'custom'
-    ? (customCommission.trim() === '' ? 0 : customCommissionValue)
-    : Number(commissionChoice)
-  const commissionInvalid = !Number.isFinite(commissionPercentage) || commissionPercentage < 0 || commissionPercentage > 20
   const customerTotal = (selectedPass?.price || 0) * ticketQuantity
-  const commissionAmount = commissionInvalid ? 0 : Math.round(customerTotal * commissionPercentage) / 100
+  const customCommissionValue = Number(customCommission)
+  const hasValidCustomCommissionAmount = customCommission.trim() !== '' && Number.isFinite(customCommissionValue)
+  const customCommissionAmount = hasValidCustomCommissionAmount ? Math.round(customCommissionValue * 100) / 100 : 0
+  const commissionAmount = commissionChoice === 'custom'
+    ? customCommissionAmount
+    : Math.round(customerTotal * Number(commissionChoice)) / 100
+  const commissionPercentage = commissionChoice === 'custom'
+    ? (customerTotal > 0 ? (commissionAmount / customerTotal) * 100 : 0)
+    : Number(commissionChoice)
+  const commissionInvalid = commissionChoice === 'custom'
+    ? !hasValidCustomCommissionAmount || customCommissionAmount < 0 || commissionPercentage > 20
+    : !Number.isFinite(commissionPercentage) || commissionPercentage < 0 || commissionPercentage > 20
   const rateAfterCommission = customerTotal - commissionAmount
+  const displayedCommissionPercentage = Number.isFinite(commissionPercentage)
+    ? commissionPercentage.toFixed(2).replace(/\.00$/, '')
+    : '0'
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value)
+
+  useEffect(() => {
+    const loadPartners = async () => {
+      try {
+        const response = await fetch('/api/seller/partners', { cache: 'no-store' })
+        const data = await response.json()
+        if (!response.ok || !data.success || !Array.isArray(data.partners)) return
+        setPartners(data.partners)
+        setSelectedPartnerId(current => data.partners.some((partner: PartnerOption) => partner.id === current && partner.active)
+          ? current
+          : data.partners.find((partner: PartnerOption) => partner.active)?.id || data.partners[0]?.id || current)
+      } catch {
+        // Keep the two neutral slot labels if the public configuration is temporarily unavailable.
+      }
+    }
+    loadPartners()
+  }, [])
 
   useEffect(() => {
     if (!authenticatedPartner) return
@@ -224,7 +250,7 @@ export default function SellerPortalApp() {
       return
     }
     if (commissionInvalid) {
-      setFeedback({ type: 'error', msg: 'Maximum commission allowed is 20%.' })
+      setFeedback({ type: 'error', msg: 'Enter a valid commission amount that is no more than 20% of the official total.' })
       return
     }
 
@@ -247,6 +273,7 @@ export default function SellerPortalApp() {
           ticketType,
           quantity: parseInt(quantity, 10) || 1,
           commissionPercentage,
+          commissionAmount: commissionChoice === 'custom' ? commissionAmount : undefined,
           event,
           generatedBy: authenticatedPartner?.name,
           partnerId: authenticatedPartner?.id
@@ -315,22 +342,23 @@ export default function SellerPortalApp() {
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Select Partner</label>
               <div className="grid grid-cols-1 gap-2">
-                {PARTNERS.map((p) => (
+                {partners.map((p) => (
                   <button
                     key={p.id}
                     type="button"
+                    disabled={!p.active}
                     onClick={() => {
                       setSelectedPartnerId(p.id)
                       setLoginError(null)
                     }}
-                    className={`flex items-center justify-between p-3 rounded-xl border text-sm font-medium transition-all ${
+                    className={`flex items-center justify-between p-3 rounded-xl border text-sm font-medium transition-all disabled:cursor-not-allowed disabled:opacity-45 ${
                       selectedPartnerId === p.id
                         ? 'border-violet-500 bg-violet-500/10 text-white ring-1 ring-violet-500'
                         : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700'
                     }`}
                   >
                     <span>{p.name}</span>
-                    {selectedPartnerId === p.id && <span className="text-violet-400 text-xs font-bold">● Selected</span>}
+                    {p.active ? selectedPartnerId === p.id && <span className="text-violet-400 text-xs font-bold">● Selected</span> : <span className="text-slate-600 text-xs font-bold">Unavailable</span>}
                   </button>
                 ))}
               </div>
@@ -498,20 +526,48 @@ export default function SellerPortalApp() {
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Commission</label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {['0', '5', '10', '15', '20'].map(value => <button key={value} type="button" onClick={() => setCommissionChoice(value)} className={`rounded-lg border py-2 text-[11px] font-bold ${commissionChoice === value ? 'border-violet-500 bg-violet-500/15 text-violet-300' : 'border-slate-800 bg-slate-950 text-slate-400'}`}>{value}%</button>)}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: '0', label: '0%' },
+                    { value: '5', label: '5%' },
+                    { value: '10', label: '10%' },
+                    { value: '15', label: '15%' },
+                    { value: '20', label: '20%' },
+                    { value: 'custom', label: 'Custom' }
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setCommissionChoice(option.value)}
+                      aria-pressed={commissionChoice === option.value}
+                      className={`rounded-lg border py-2 text-[11px] font-bold ${commissionChoice === option.value ? 'border-violet-500 bg-violet-500/15 text-violet-300' : 'border-slate-800 bg-slate-950 text-slate-400'}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
                 </div>
+                {commissionChoice === 'custom' && (
+                  <div className="mt-3">
+                    <label className="mb-1.5 block text-[11px] font-bold text-slate-400">Custom commission amount (₹)</label>
+                    <input
+                      autoFocus
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={customCommission}
+                      onChange={(event) => setCustomCommission(event.target.value)}
+                      placeholder="Enter amount"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
+                    />
+                    {commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Enter a valid amount up to 20% of the official total.</p>}
+                  </div>
+                )}
               </div>
-            </div>
-
-            <div>
-              <button type="button" onClick={() => setCommissionChoice('custom')} className={`text-xs font-bold ${commissionChoice === 'custom' ? 'text-violet-300' : 'text-slate-400 hover:text-slate-200'}`}>Custom Commission</button>
-              {commissionChoice === 'custom' && <div className="mt-2"><input type="number" min="0" max="20" step="0.01" value={customCommission} onChange={(event) => setCustomCommission(event.target.value)} placeholder="Enter a percentage" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500" />{commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Maximum commission allowed is 20%.</p>}</div>}
             </div>
 
             <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2 text-sm">
               <div className="flex items-center justify-between text-slate-400"><span>Official Ticket Rate</span><span>{pricingLoading ? 'Loading...' : formatCurrency(customerTotal)}</span></div>
-              <div className="flex items-center justify-between text-slate-400"><span>Commission</span><span>{commissionInvalid ? 'Invalid' : `${commissionPercentage}%`}</span></div>
+              <div className="flex items-center justify-between text-slate-400"><span>Commission</span><span>{commissionInvalid ? 'Invalid' : `${displayedCommissionPercentage}%`}</span></div>
               <div className="flex items-center justify-between text-slate-400"><span>Commission Amount</span><span className="text-amber-300">-{formatCurrency(commissionAmount)}</span></div>
               <div className="flex items-center justify-between border-t border-slate-800 pt-2 font-bold text-white"><span>Rate After Commission</span><span className="text-lg text-emerald-400">{formatCurrency(rateAfterCommission)}</span></div>
             </div>

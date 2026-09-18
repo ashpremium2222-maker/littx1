@@ -208,11 +208,17 @@ function OrderDrawer({
               <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{order.gateway} ({order.txnId})</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
-              <span style={{ color: 'var(--ink-soft)' }}>Subtotal</span>
+              <span style={{ color: 'var(--ink-soft)' }}>Official total</span>
               <span style={{ fontWeight: 600, color: 'var(--ink)' }}>₹{order.subtotal.toLocaleString()}</span>
             </div>
+            {order.discount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
+                <span style={{ color: 'var(--ink-soft)' }}>Commission</span>
+                <span style={{ fontWeight: 600, color: 'var(--orange)' }}>-₹{order.discount.toLocaleString()}</span>
+              </div>
+            )}
             <div style={{ borderTop: '1px solid var(--line)', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 800 }}>
-              <span style={{ color: 'var(--ink)' }}>Total Paid</span>
+              <span style={{ color: 'var(--ink)' }}>Seller net amount</span>
               <span style={{ color: 'var(--violet)' }}>₹{order.final.toLocaleString()}</span>
             </div>
           </div>
@@ -288,13 +294,14 @@ export default function Orders({
         }
 
         const tType =
-          s.gender === 'male'
+          s.ticketType ||
+          (s.gender === 'male'
             ? 'GA Single'
             : s.gender === 'female'
             ? 'VIP Single'
             : String(s.gender || '').toLowerCase().includes('exclusive')
             ? 'Exclusive VIP'
-            : 'General'
+            : 'General')
 
         return {
           id: s.orderId,
@@ -304,10 +311,11 @@ export default function Orders({
           event: s.event || 'DHOLIDA GARBA ROYALE',
           ticketType: tType,
           qty: s.quantity || 1,
-          subtotal: s.amount,
+          subtotal: Number(s.customerTotal ?? s.amount ?? 0),
           tax: 0,
-          discount: 0,
-          final: s.amount,
+          discount: Number(s.commissionAmount ?? 0),
+          // Public tickets retain the official amount; this is the seller's internal net settlement amount.
+          final: Number(s.rateAfterCommission ?? s.amount ?? 0),
           gateway: s.paymentId === 'manual' ? 'Manual' : 'Razorpay',
           txnId: s.paymentId || '—',
           paymentStatus,

@@ -5,8 +5,13 @@ interface PartnerPricingProps {
   mode: 'partners' | 'pricing'
 }
 
-type Partner = { userId: string; displayName: string; companyId: string; sellerSlot?: string; active: boolean }
+type Partner = { userId: string; displayName: string; companyId: string; sellerSlot?: string; active: boolean; managed?: boolean }
 type EventPricing = { id: string; name: string; tiers: Array<{ id?: string; name: string; price: number; gender?: string }> }
+const PARTNER_LOGIN_SLOTS = [
+  { id: 'partner-slot-1', label: 'Partner Login 1' },
+  { id: 'partner-slot-2', label: 'Partner Login 2' },
+]
+const slotLabel = (slot?: string) => PARTNER_LOGIN_SLOTS.find(item => item.id === slot)?.label || 'Partner Login'
 
 const headers = (adminKey: string) => ({ 'Content-Type': 'application/json', 'x-auth-token': adminKey })
 
@@ -35,6 +40,19 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
 
   useEffect(() => { load() }, [mode, adminKey])
 
+  useEffect(() => {
+    if (mode !== 'partners' || !partners.length) return
+    const activeSlots = new Set(partners.filter(partner => partner.active).map(partner => partner.sellerSlot))
+    const firstAvailable = PARTNER_LOGIN_SLOTS.find(slot => !activeSlots.has(slot.id))
+    if (firstAvailable && activeSlots.has(form.sellerSlot)) {
+      setForm(current => ({ ...current, sellerSlot: firstAvailable.id }))
+    }
+  }, [mode, partners])
+
+  const partnerForSlot = (slot: string) => partners.find(partner => partner.sellerSlot === slot)
+  const activeSlots = new Set(partners.filter(partner => partner.active).map(partner => partner.sellerSlot))
+  const selectedSlotOwner = partnerForSlot(form.sellerSlot)
+
   const createPartner = async (event: FormEvent) => {
     event.preventDefault()
     setNotice('')
@@ -42,7 +60,8 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
       const response = await fetch('/api/admin/partners', { method: 'POST', headers: headers(adminKey), body: JSON.stringify(form) })
       const data = await response.json()
       if (!response.ok) throw new Error(data.message || 'Unable to create partner.')
-      setForm({ userId: '', displayName: '', password: '', companyId: 'littlane', sellerSlot: 'partner-slot-1' })
+      const nextSlot = PARTNER_LOGIN_SLOTS.find(slot => !partners.some(partner => partner.active && partner.sellerSlot === slot.id))
+      setForm({ userId: '', displayName: '', password: '', companyId: 'littlane', sellerSlot: nextSlot?.id || 'partner-slot-1' })
       setNotice('Partner created and activated.')
       load()
     } catch (error: any) { setNotice(error.message || 'Unable to create partner.') }
@@ -55,6 +74,22 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
     const data = await response.json()
     setNotice(data.message || (data.success ? `Partner ${partner.active ? 'deactivated' : 'activated'}.` : 'Unable to update partner.'))
     if (data.success) load()
+  }
+
+  const deletePartner = async (partner: Partner) => {
+    const slot = slotLabel(partner.sellerSlot)
+    if (!window.confirm(`Delete ${partner.displayName}? This clears ${slot}, logs it out, and removes its passkey. The slot will return to its empty login state.`)) return
+    try {
+      const response = await fetch(`/api/admin/partners/${encodeURIComponent(partner.userId)}`, {
+        method: 'DELETE',
+        headers: headers(adminKey),
+      })
+      const data = await response.json()
+      setNotice(data.message || (data.success ? `${slot} was cleared.` : 'Unable to delete partner.'))
+      if (data.success) load()
+    } catch {
+      setNotice('Unable to delete partner.')
+    }
   }
 
   const savePricing = async (event: EventPricing) => {
@@ -76,14 +111,14 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
           <div className="field"><label>Identifier</label><input required value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} placeholder="partner@example.com" /></div>
           <div className="field"><label>Display name</label><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} placeholder="Partner company" /></div>
           <div className="field"><label>Initial password</label><input required minLength={8} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></div>
-          <div className="field"><label>Login slot</label><select value={form.sellerSlot} onChange={e => setForm({ ...form, sellerSlot: e.target.value })}><option value="partner-slot-1">Partner Login 1</option><option value="partner-slot-2">Partner Login 2</option></select></div>
-          <button className="btn-primary" type="submit" style={{ alignSelf: 'end' }}>Create partner</button>
+          <div className="field"><label>Login slot</label><select value={form.sellerSlot} onChange={e => setForm({ ...form, sellerSlot: e.target.value })}>{PARTNER_LOGIN_SLOTS.map(slot => { const owner = partnerForSlot(slot.id); return <option key={slot.id} value={slot.id} disabled={activeSlots.has(slot.id)}>{slot.label}{owner?.active ? ' — in use' : owner ? ' — replaces inactive partner' : ' — available'}</option> })}</select>{selectedSlotOwner && !selectedSlotOwner.active && <small className="muted-sm">Creating this partner will release the inactive {selectedSlotOwner.displayName} account from this login slot.</small>}</div>
+          <button className="btn-primary" type="submit" disabled={PARTNER_LOGIN_SLOTS.every(slot => activeSlots.has(slot.id))} style={{ alignSelf: 'end' }}>Create partner</button>
         </form>
       </div>
       <div className="card">
         <div className="card-head"><h3>Partners</h3><button className="btn-secondary" onClick={load}>Refresh</button></div>
         {notice && <p className="muted-sm" style={{ marginTop: 12 }}>{notice}</p>}
-        <div className="table-scroll scroll" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Partner</th><th>Slot</th><th>Company</th><th>Status</th><th /></tr></thead><tbody>{partners.map(partner => <tr key={partner.userId}><td>{partner.displayName}<div className="muted-sm">{partner.userId}</div></td><td>{partner.sellerSlot || 'Legacy seller'}</td><td>{partner.companyId}</td><td>{partner.active ? 'Active' : 'Inactive'}</td><td><button className="btn-secondary" onClick={() => togglePartner(partner)}>{partner.active ? 'Deactivate' : 'Activate'}</button></td></tr>)}</tbody></table></div>
+        <div className="table-scroll scroll" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Partner</th><th>Slot</th><th>Company</th><th>Status</th><th /></tr></thead><tbody>{partners.map(partner => <tr key={partner.userId}><td>{partner.displayName}<div className="muted-sm">{partner.userId}</div></td><td>{partner.managed === false ? 'System seller' : slotLabel(partner.sellerSlot)}</td><td>{partner.companyId}</td><td>{partner.active ? 'Active' : 'Inactive'}</td><td>{partner.managed === false ? <span className="muted-sm">Available in /seller</span> : <div style={{ display: 'flex', gap: 8 }}><button className="btn-secondary" onClick={() => togglePartner(partner)}>{partner.active ? 'Deactivate' : 'Activate'}</button><button className="btn-secondary" onClick={() => deletePartner(partner)} style={{ color: 'var(--red)' }}>Delete</button></div>}</td></tr>)}{partners.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No seller accounts are available.</td></tr>}</tbody></table></div>
       </div>
     </div>
   )

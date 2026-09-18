@@ -172,7 +172,7 @@ async function authenticateSeller(token) {
     }
     // Serverless instances do not share memory. Recover the session from the
     // persistent store whenever this instance has no cached copy.
-    for (const sid of [...Object.keys(PARTNER_NAMES), ...Object.keys(SELLER_ACCOUNTS)]) {
+    for (const sid of [...Object.keys(PARTNER_NAMES), ...Object.keys(SELLER_ACCOUNTS), ...PARTNER_LOGIN_SLOTS]) {
         const session = await db.getSellerSession(sid);
         if (isValidSellerSession(session, token)) {
             sellerSessions[sid] = session;
@@ -279,6 +279,33 @@ app.get('/api/seller/webauthn-public-config', (req, res) => {
     }
 });
 
+// The seller login page uses these database-backed slot names, so changing a
+// Partner Login in Admin is reflected in /seller without a frontend deploy.
+app.get('/api/seller/partners', async (_req, res) => {
+    try {
+        const users = await db.getAllUsers();
+        const systemPartners = Object.entries(PARTNER_NAMES).map(([id, name]) => ({
+            id,
+            name,
+            active: true,
+            configured: true,
+        }));
+        const configuredSlots = PARTNER_LOGIN_SLOTS.map((id, index) => {
+            const user = users.find(item => item.sellerSlot === id && item.role === 'seller');
+            return {
+                id,
+                name: user?.displayName || `Partner Login ${index + 1}`,
+                active: Boolean(user && user.active !== false && !user.blocked),
+                configured: Boolean(user),
+            };
+        });
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, partners: [...systemPartners, ...configuredSlots] });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Unable to load seller partners.' });
+    }
+});
+
 // Vercel may invoke an API route before the module-level MongoDB connection
 // has completed. Awaiting the shared connection here avoids Mongoose's
 // "buffering timed out" failure on cold starts.
@@ -344,10 +371,18 @@ function normalizeCommissionPercentage(value) {
     return Math.round(numeric * 100) / 100;
 }
 
-function applyCommission(customerTotal, commissionPercentage, quantity) {
+function normalizeCommissionAmount(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return null;
+    return Math.round(numeric * 100);
+}
+
+function applyCommission(customerTotal, commissionPercentage, quantity, commissionAmountPaise = null) {
     const customerTotalPaise = Math.round(Number(customerTotal) * 100);
     const percentageBasisPoints = Math.round(commissionPercentage * 100);
-    const commissionPaise = Math.round((customerTotalPaise * percentageBasisPoints) / 10000);
+    const commissionPaise = commissionAmountPaise === null
+        ? Math.round((customerTotalPaise * percentageBasisPoints) / 10000)
+        : commissionAmountPaise;
     return {
         officialRate: Math.round((customerTotalPaise / Math.max(1, quantity))) / 100,
         customerTotal: customerTotalPaise / 100,
@@ -364,7 +399,12 @@ async function getEventPricing(eventName) {
         || events.find(item => item.active);
     if (!event) return null;
     let sourcePasses = [...(event.tiers || []), ...(event.ticketTypes || [])];
-    if (!sourcePasses.length) {
+    const passNames = new Set(sourcePasses.map(pass => String(pass.name || '').toLowerCase()));
+    const isLegacyDholidaCatalog = String(event.name || '').toLowerCase().includes('dholida')
+        && passNames.size === 2
+        && passNames.has('male pass')
+        && passNames.has('female pass');
+    if (!sourcePasses.length || isLegacyDholidaCatalog) {
         event = await db.saveEvent({ ...event, tiers: LEGACY_EVENT_TIER_SEED, ticketTypes: LEGACY_EVENT_TIER_SEED });
         sourcePasses = LEGACY_EVENT_TIER_SEED;
     }
@@ -375,7 +415,8 @@ async function getEventPricing(eventName) {
             price: normalizePrice(pass.price),
             gender: pass.gender || 'unisex'
         }))
-        .filter(pass => pass.name && pass.price !== null);
+        .filter(pass => pass.name && pass.price !== null)
+        .filter((pass, index, all) => all.findIndex(item => item.id === pass.id || item.name === pass.name) === index);
     return { event, passes };
 }
 
@@ -1030,11 +1071,20 @@ app.post('/api/admin/toggle-presentation', requireAdmin, async (req, res) => {
 // ==================== 6. ADMIN — GENERATE TICKET MANUALLY ====================
 app.get('/api/admin/partners', requirePartnerAdmin, async (_req, res) => {
     const users = await db.getAllUsers();
+    const systemPartners = Object.entries(PARTNER_NAMES).map(([userId, displayName]) => ({
+        userId,
+        displayName,
+        companyId: 'littlane',
+        sellerSlot: null,
+        active: true,
+        managed: false,
+    }));
+    const managedPartners = users
+        .filter(user => user.role === 'seller' && PARTNER_LOGIN_SLOTS.includes(user.sellerSlot))
+        .map(({ password, passwordHash, ...user }) => ({ ...user, active: user.active !== false && !user.blocked, managed: true }));
     res.json({
         success: true,
-        partners: users
-            .filter(user => user.role === 'seller')
-            .map(({ password, passwordHash, ...user }) => ({ ...user, active: user.active !== false && !user.blocked }))
+        partners: [...systemPartners, ...managedPartners]
     });
 });
 
@@ -1046,8 +1096,18 @@ app.post('/api/admin/partners', requirePartnerAdmin, async (req, res) => {
     }
     try {
         const existing = await db.getAllUsers();
-        if (existing.some(user => user.userId.toLowerCase() === normalizedId || user.sellerSlot === sellerSlot)) {
-            return res.status(409).json({ success: false, message: 'That identifier or partner login slot is already in use.' });
+        const existingIdentifier = existing.find(user => user.userId.toLowerCase() === normalizedId);
+        if (existingIdentifier) {
+            return res.status(409).json({ success: false, message: 'That identifier is already in use.' });
+        }
+        const slotOwner = existing.find(user => user.sellerSlot === sellerSlot);
+        if (slotOwner && slotOwner.active !== false && !slotOwner.blocked) {
+            return res.status(409).json({ success: false, message: 'That partner login slot is assigned to an active partner.' });
+        }
+        if (slotOwner) {
+            // An inactive partner must not permanently consume a scarce login slot.
+            await db.releaseSellerSlot(slotOwner.userId);
+            await db.deleteSellerSession(slotOwner.sellerSlot || slotOwner.userId);
         }
         const created = await db.createUser({
             userId: normalizedId,
@@ -1084,6 +1144,31 @@ app.patch('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) =
     res.json({ success: true, partner });
 });
 
+app.delete('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) => {
+    const user = await db.getUserById(req.params.userId);
+    if (!user || user.role !== 'seller' || !PARTNER_LOGIN_SLOTS.includes(user.sellerSlot)) {
+        return res.status(404).json({ success: false, message: 'Only managed Partner Login accounts can be deleted.' });
+    }
+
+    const slot = user.sellerSlot;
+    try {
+        await Promise.all([
+            db.deleteUser(user.userId),
+            db.deleteSellerSession(slot),
+            db.deleteSellerDevice(slot),
+            db.resetPartnerLock(slot),
+        ]);
+        delete sellerSessions[slot];
+        delete webauthnAuthenticators[slot];
+        savePersisted(SESSIONS_FILE, sellerSessions);
+        savePersisted(WEBAUTHN_FILE, webauthnAuthenticators);
+        res.json({ success: true, message: `${slot === 'partner-slot-1' ? 'Partner Login 1' : 'Partner Login 2'} was cleared and is ready for a new partner.` });
+    } catch (err) {
+        console.error('[DELETE PARTNER ERROR]', err);
+        res.status(500).json({ success: false, message: 'Unable to delete the partner account.' });
+    }
+});
+
 app.get('/api/admin/pricing', requirePartnerAdmin, async (_req, res) => {
     const events = await db.getAllEvents();
     const pricedEvents = await Promise.all(events.map(async event => {
@@ -1115,7 +1200,7 @@ app.get('/api/seller/pricing', requireSeller, async (req, res) => {
 });
 
 app.post('/api/admin/generate-ticket', async (req, res) => {
-    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, commissionPercentage } = req.body || {};
+    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, commissionPercentage, commissionAmount: requestedCommissionAmount } = req.body || {};
 
     const sellerToken = req.headers['x-seller-token'];
     const sellerId = await authenticateSeller(sellerToken);
@@ -1136,15 +1221,33 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
     if (!pricedTicket) {
         return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
     }
-    const normalizedCommission = normalizeCommissionPercentage(commissionPercentage);
-    if (normalizedCommission === 'maximum_exceeded') {
-        return res.status(400).json({ success: false, message: 'Commission cannot exceed 20%.' });
-    }
-    if (normalizedCommission === null) {
-        return res.status(400).json({ success: false, message: 'Commission must be a valid non-negative percentage.' });
-    }
     const { qty, amount: customerTotal, ticketType: tType, event: evtName } = pricedTicket;
-    const commission = applyCommission(customerTotal, normalizedCommission, qty);
+    const hasCustomCommissionAmount = Object.prototype.hasOwnProperty.call(req.body || {}, 'commissionAmount');
+    let normalizedCommission;
+    let commission;
+
+    if (hasCustomCommissionAmount) {
+        const commissionAmountPaise = normalizeCommissionAmount(requestedCommissionAmount);
+        const customerTotalPaise = Math.round(customerTotal * 100);
+        if (commissionAmountPaise === null) {
+            return res.status(400).json({ success: false, message: 'Commission amount must be a valid non-negative number.' });
+        }
+        // Use the server-derived official total to prevent an amount above 20%.
+        if (commissionAmountPaise * 100 > customerTotalPaise * 20) {
+            return res.status(400).json({ success: false, message: 'Commission cannot exceed 20% of the official ticket total.' });
+        }
+        normalizedCommission = customerTotalPaise ? (commissionAmountPaise * 100) / customerTotalPaise : 0;
+        commission = applyCommission(customerTotal, normalizedCommission, qty, commissionAmountPaise);
+    } else {
+        normalizedCommission = normalizeCommissionPercentage(commissionPercentage);
+        if (normalizedCommission === 'maximum_exceeded') {
+            return res.status(400).json({ success: false, message: 'Commission cannot exceed 20%.' });
+        }
+        if (normalizedCommission === null) {
+            return res.status(400).json({ success: false, message: 'Commission must be a valid non-negative percentage.' });
+        }
+        commission = applyCommission(customerTotal, normalizedCommission, qty);
+    }
 
     try {
         const orderId = `order_manual_${crypto.randomBytes(8).toString('hex')}`;
@@ -1547,6 +1650,27 @@ app.post('/api/admin/danger-wipe-test-data', async (req, res) => {
     } catch (err) {
         console.error('[WIPE ERROR]', err);
         res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// Permanently remove every sale and its generated ticket PDF. This requires a
+// signed-in admin session plus a confirmation phrase so it cannot run by accident.
+app.post('/api/admin/clear-sales', requireAdmin, async (req, res) => {
+    if (req.body?.confirmation !== 'DELETE ALL SALES') {
+        return res.status(400).json({ success: false, message: 'Type DELETE ALL SALES to confirm this action.' });
+    }
+
+    try {
+        const [deletedCount, ticketFiles] = await Promise.all([
+            db.clearAllSales(),
+            fs.promises.readdir(TICKETS_DIR, { withFileTypes: true }).catch(err => err.code === 'ENOENT' ? [] : Promise.reject(err))
+        ]);
+        const pdfFiles = ticketFiles.filter(file => file.isFile() && file.name.toLowerCase().endsWith('.pdf'));
+        await Promise.all(pdfFiles.map(file => fs.promises.unlink(path.join(TICKETS_DIR, file.name))));
+        res.json({ success: true, deletedCount, deletedPdfCount: pdfFiles.length, message: `Permanently deleted ${deletedCount} sales and ${pdfFiles.length} ticket PDFs.` });
+    } catch (err) {
+        console.error('[CLEAR SALES ERROR]', err);
+        res.status(500).json({ success: false, message: 'Could not clear sales data.' });
     }
 });
 
