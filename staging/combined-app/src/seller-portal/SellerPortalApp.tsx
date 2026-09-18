@@ -10,6 +10,8 @@ export const PARTNERS: PartnerOption[] = [
   { id: 'littlane', name: 'Littlane Entertainment' },
   { id: 'nitro', name: 'Nitro Events' },
   { id: '7th-heaven', name: '7th Heaven' },
+  { id: 'partner-slot-1', name: 'Partner Login' },
+  { id: 'partner-slot-2', name: 'Partner Login' },
 ]
 
 interface PartnerSessionData {
@@ -44,14 +46,54 @@ export default function SellerPortalApp() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
-  const [ticketType, setTicketType] = useState('GA Single')
+  const [ticketType, setTicketType] = useState('')
   const [quantity, setQuantity] = useState('1')
-  const [amount, setAmount] = useState('399')
+  const [passes, setPasses] = useState<Array<{ id: string; name: string; price: number }>>([])
+  const [pricingLoading, setPricingLoading] = useState(false)
+  const [commissionChoice, setCommissionChoice] = useState('0')
+  const [customCommission, setCustomCommission] = useState('')
 
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [activationNotice, setActivationNotice] = useState(false)
+  const [successTicket, setSuccessTicket] = useState<{ id: string; attendee: string; price: string } | null>(null)
 
   const currentPartner = PARTNERS.find((p) => p.id === selectedPartnerId) || PARTNERS[0]
+  const selectedPass = passes.find((pass) => pass.name === ticketType)
+  const ticketQuantity = Math.max(1, Math.min(20, Number.parseInt(quantity, 10) || 1))
+  const customCommissionValue = Number(customCommission)
+  const commissionPercentage = commissionChoice === 'custom'
+    ? (customCommission.trim() === '' ? 0 : customCommissionValue)
+    : Number(commissionChoice)
+  const commissionInvalid = !Number.isFinite(commissionPercentage) || commissionPercentage < 0 || commissionPercentage > 20
+  const customerTotal = (selectedPass?.price || 0) * ticketQuantity
+  const commissionAmount = commissionInvalid ? 0 : Math.round(customerTotal * commissionPercentage) / 100
+  const rateAfterCommission = customerTotal - commissionAmount
+  const formatCurrency = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value)
+
+  useEffect(() => {
+    if (!authenticatedPartner) return
+    const loadPricing = async () => {
+      setPricingLoading(true)
+      try {
+        const activeToken = localStorage.getItem('littx_seller_token') || token || ''
+        const response = await fetch(`/api/seller/pricing?event=${encodeURIComponent(event)}`, { headers: { 'x-seller-token': activeToken } })
+        const data = await response.json()
+        if (response.ok && data.success) {
+          setEvent(data.event)
+          setPasses(data.passes)
+          setTicketType(current => data.passes.some((pass: any) => pass.name === current) ? current : data.passes[0]?.name || '')
+        } else {
+          setFeedback({ type: 'error', msg: data.message || 'Current pricing is unavailable.' })
+        }
+      } catch {
+        setFeedback({ type: 'error', msg: 'Unable to load current pricing.' })
+      } finally {
+        setPricingLoading(false)
+      }
+    }
+    loadPricing()
+  }, [authenticatedPartner, token])
 
   // Silent session re-validation on app load / refresh
   // RULE: Log out if session is invalid (401), but keep cached session on network errors.
@@ -106,6 +148,7 @@ export default function SellerPortalApp() {
       const step1Data = await step1Res.json()
 
       if (!step1Res.ok || !step1Data.success) {
+        if (step1Res.status === 403 && selectedPartnerId.startsWith('partner-slot-')) setActivationNotice(true)
         setLoginError(step1Data.message || 'Password authentication failed.')
         setLoginLoading(false)
         return
@@ -166,18 +209,8 @@ export default function SellerPortalApp() {
     }
   }
 
-  const PASS_PRICES: Record<string, number> = {
-    'GA Single': 399,
-    'GA Group of 5': 1699,
-    'GA Group of 10': 2999,
-    'VIP Single': 599,
-    'VIP Group of 5': 2799,
-    'VIP Group of 10': 4999,
-  }
-
   const handleTicketTypeChange = (newType: string) => {
     setTicketType(newType)
-    setAmount(String(PASS_PRICES[newType] || 399))
   }
 
   const handleEventChange = (newEvent: string) => {
@@ -188,6 +221,10 @@ export default function SellerPortalApp() {
     e.preventDefault()
     if (!name || !email) {
       setFeedback({ type: 'error', msg: 'Name and Email are required.' })
+      return
+    }
+    if (commissionInvalid) {
+      setFeedback({ type: 'error', msg: 'Maximum commission allowed is 20%.' })
       return
     }
 
@@ -209,7 +246,7 @@ export default function SellerPortalApp() {
           gender: ticketType,
           ticketType,
           quantity: parseInt(quantity, 10) || 1,
-          amount: parseFloat(amount) || 0,
+          commissionPercentage,
           event,
           generatedBy: authenticatedPartner?.name,
           partnerId: authenticatedPartner?.id
@@ -218,10 +255,7 @@ export default function SellerPortalApp() {
 
       const data = await res.json()
       if (res.ok && data.success) {
-        setFeedback({
-          type: 'success',
-          msg: `🎉 Ticket successfully generated for ${name}! Sent to ${email}.`
-        })
+        setSuccessTicket({ id: data.ticket.id, attendee: name, price: data.ticket.price })
         // Reset form
         setName('')
         setEmail('')
@@ -240,6 +274,15 @@ export default function SellerPortalApp() {
   if (!authenticatedPartner) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4">
+        {activationNotice && (
+          <div role="dialog" aria-modal="true" aria-labelledby="partner-activation-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div className="w-full max-w-sm rounded-2xl border border-violet-400/30 bg-slate-900 p-6 text-center shadow-2xl">
+              <h2 id="partner-activation-title" className="text-lg font-bold">Partner account required</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">This login slot must be created and activated by the Master Admin before it can be used.</p>
+              <button type="button" onClick={() => setActivationNotice(false)} className="mt-5 w-full rounded-xl bg-violet-600 py-3 text-sm font-bold text-white">Done</button>
+            </div>
+          </div>
+        )}
         <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl">
           <div className="flex items-center justify-center gap-3 mb-6">
             <img src="/logo.png" alt="LITTX Logo" className="h-8 w-auto brightness-200" />
@@ -426,36 +469,56 @@ export default function SellerPortalApp() {
             <div>
               <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Pass Type</label>
               <div className="grid grid-cols-2 gap-2">
-                {(['GA Single', 'GA Group of 5', 'GA Group of 10', 'VIP Single', 'VIP Group of 5', 'VIP Group of 10'] as string[]).map((t) => (
+                {passes.map((pass) => (
                   <button
-                    key={t}
+                    key={pass.id}
                     type="button"
-                    onClick={() => handleTicketTypeChange(t)}
+                    onClick={() => handleTicketTypeChange(pass.name)}
                     className={`px-3 py-2.5 rounded-xl border text-xs font-bold transition-all ${
-                      ticketType === t
+                      ticketType === pass.name
                         ? 'border-violet-500 bg-violet-500/15 text-violet-300'
                         : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-600'
                     }`}
                   >
-                    {t}
+                    {pass.name}
                     <div className={`text-[10px] mt-0.5 ${
-                      ticketType === t ? 'text-violet-400' : 'text-slate-600'
+                      ticketType === pass.name ? 'text-violet-400' : 'text-slate-600'
                     }`}>
-                      ₹{({'GA Single':399,'GA Group of 5':1699,'GA Group of 10':2999,'VIP Single':599,'VIP Group of 5':2799,'VIP Group of 10':4999} as Record<string,number>)[t]}
+                      ₹{pass.price}
                     </div>
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
-              <span className="text-xs text-slate-400 font-medium">Total Payable Amount</span>
-              <span className="text-lg font-black text-emerald-400">₹{amount}</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Quantity</label>
+                <input type="number" min="1" max="20" value={quantity} onChange={(event) => setQuantity(event.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Commission</label>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {['0', '5', '10', '15', '20'].map(value => <button key={value} type="button" onClick={() => setCommissionChoice(value)} className={`rounded-lg border py-2 text-[11px] font-bold ${commissionChoice === value ? 'border-violet-500 bg-violet-500/15 text-violet-300' : 'border-slate-800 bg-slate-950 text-slate-400'}`}>{value}%</button>)}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <button type="button" onClick={() => setCommissionChoice('custom')} className={`text-xs font-bold ${commissionChoice === 'custom' ? 'text-violet-300' : 'text-slate-400 hover:text-slate-200'}`}>Custom Commission</button>
+              {commissionChoice === 'custom' && <div className="mt-2"><input type="number" min="0" max="20" step="0.01" value={customCommission} onChange={(event) => setCustomCommission(event.target.value)} placeholder="Enter a percentage" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500" />{commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Maximum commission allowed is 20%.</p>}</div>}
+            </div>
+
+            <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2 text-sm">
+              <div className="flex items-center justify-between text-slate-400"><span>Official Ticket Rate</span><span>{pricingLoading ? 'Loading...' : formatCurrency(customerTotal)}</span></div>
+              <div className="flex items-center justify-between text-slate-400"><span>Commission</span><span>{commissionInvalid ? 'Invalid' : `${commissionPercentage}%`}</span></div>
+              <div className="flex items-center justify-between text-slate-400"><span>Commission Amount</span><span className="text-amber-300">-{formatCurrency(commissionAmount)}</span></div>
+              <div className="flex items-center justify-between border-t border-slate-800 pt-2 font-bold text-white"><span>Rate After Commission</span><span className="text-lg text-emerald-400">{formatCurrency(rateAfterCommission)}</span></div>
             </div>
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || pricingLoading || !ticketType || commissionInvalid}
               className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold py-3.5 px-4 rounded-xl text-sm transition-all shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2"
             >
               {submitting ? (
@@ -469,6 +532,16 @@ export default function SellerPortalApp() {
           </form>
         </div>
       </main>
+      {successTicket && (
+        <div role="dialog" aria-modal="true" aria-labelledby="ticket-success-title" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm animate-[fadeInUp_.28s_ease-out] rounded-3xl border border-emerald-400/25 bg-slate-900 p-7 text-center shadow-2xl">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400 text-3xl font-black text-slate-950 shadow-lg shadow-emerald-500/20">✓</div>
+            <h2 id="ticket-success-title" className="mt-5 text-xl font-black text-white">Ticket Sent Successfully</h2>
+            <p className="mt-2 text-sm text-slate-400">Ticket <span className="font-mono font-bold text-violet-300">#{successTicket.id}</span> has been issued for {successTicket.attendee}.</p>
+            <button type="button" autoFocus onClick={() => setSuccessTicket(null)} className="mt-6 w-full rounded-xl bg-white py-3 text-sm font-extrabold text-slate-950">Done</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

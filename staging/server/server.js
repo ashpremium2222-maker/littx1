@@ -21,6 +21,30 @@ const PARTNER_NAMES = {
     '7th-heaven': '7th Heaven'
 };
 
+const PARTNER_LOGIN_SLOTS = ['partner-slot-1', 'partner-slot-2'];
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+    const digest = crypto.scryptSync(password, salt, 64).toString('hex');
+    return `scrypt:${salt}:${digest}`;
+}
+
+function verifyPassword(password, passwordHash) {
+    if (!passwordHash || !passwordHash.startsWith('scrypt:')) return false;
+    const [, salt, expected] = passwordHash.split(':');
+    const actual = crypto.scryptSync(password, salt, 64).toString('hex');
+    return actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+}
+
+async function resolveSellerPartner(partnerId) {
+    if (PARTNER_NAMES[partnerId]) {
+        return { id: partnerId, name: PARTNER_NAMES[partnerId], active: true, legacyPassword: PARTNER_PASSWORDS[partnerId] };
+    }
+    if (!PARTNER_LOGIN_SLOTS.includes(partnerId)) return null;
+    const user = await db.getUserBySellerSlot(partnerId);
+    if (!user || user.role !== 'seller') return null;
+    return { id: partnerId, name: user.displayName || 'Partner Login', active: user.active !== false && !user.blocked, passwordHash: user.passwordHash, user };
+}
+
 // Persistent WebAuthn authenticators in tmp/local to survive serverless cold starts
 const WEBAUTHN_FILE = path.join(os.tmpdir(), 'littx_seller_webauthn.json');
 const SESSIONS_FILE = path.join(os.tmpdir(), 'littx_seller_sessions.json');
@@ -155,6 +179,14 @@ async function authenticateSeller(token) {
             return sid;
         }
     }
+    const partnerUsers = await db.getAllUsers();
+    for (const partner of partnerUsers.filter(user => user.role === 'seller' && user.sellerSlot)) {
+        const session = await db.getSellerSession(partner.sellerSlot);
+        if (isValidSellerSession(session, token) && partner.active !== false && !partner.blocked) {
+            sellerSessions[partner.sellerSlot] = session;
+            return partner.sellerSlot;
+        }
+    }
     return null;
 }
 
@@ -267,10 +299,6 @@ app.use('/api', async (req, res, next) => {
 
 // ==================== EVENT & PRICING ====================
 const EVENT = { name: EVENT_NAME };
-const PRICING = {
-    female: 599,
-    male: 699
-};
 
 // Prices issued by the seller portal are server-owned. Never trust an amount
 // supplied by the browser for a paid ticket.
@@ -282,6 +310,13 @@ const DEFAULT_SELLER_PASS_PRICES = {
     'VIP Group of 5': 2799,
     'VIP Group of 10': 4999,
 };
+
+// Legacy migration seed only: on first pricing read for an event with no tiers,
+// these values are persisted into that event document. All subsequent reads and
+// ticket calculations use the database record, never this fallback.
+const LEGACY_EVENT_TIER_SEED = Object.entries(DEFAULT_SELLER_PASS_PRICES).map(([name, price]) => ({
+    id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, price, gender: 'unisex'
+}));
 
 // Native seller apps fetch this additive, authenticated configuration. Keeping it
 // in Git means a normal backend deployment can update content without a new APK.
@@ -295,15 +330,62 @@ function getSellerMobileConfig() {
     }
     return parsed;
 }
-function getSellerPassPrices() {
-    try {
-        return Object.fromEntries(getSellerMobileConfig().passes.map(pass => [pass.id, pass.price]));
-    } catch (err) {
-        // Preserve existing ticket issuance if a deployment has an unreadable
-        // optional mobile-config file. The mobile route itself reports its error.
-        console.error('[Seller pricing config]', err.message);
-        return DEFAULT_SELLER_PASS_PRICES;
+function normalizePrice(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric * 100) / 100 : null;
+}
+
+function normalizeCommissionPercentage(value) {
+    if (value === undefined || value === null || value === '') return 0;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return null;
+    // Check before rounding so 20.001 cannot become a permitted 20.00.
+    if (numeric > 20) return 'maximum_exceeded';
+    return Math.round(numeric * 100) / 100;
+}
+
+function applyCommission(customerTotal, commissionPercentage, quantity) {
+    const customerTotalPaise = Math.round(Number(customerTotal) * 100);
+    const percentageBasisPoints = Math.round(commissionPercentage * 100);
+    const commissionPaise = Math.round((customerTotalPaise * percentageBasisPoints) / 10000);
+    return {
+        officialRate: Math.round((customerTotalPaise / Math.max(1, quantity))) / 100,
+        customerTotal: customerTotalPaise / 100,
+        commissionAmount: commissionPaise / 100,
+        rateAfterCommission: (customerTotalPaise - commissionPaise) / 100,
+    };
+}
+
+async function getEventPricing(eventName) {
+    const events = await db.getAllEvents();
+    const normalizedName = String(eventName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    let event = events.find(item => String(item.name).toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedName)
+        || events.find(item => String(item.name).toLowerCase().includes('dholida'))
+        || events.find(item => item.active);
+    if (!event) return null;
+    let sourcePasses = [...(event.tiers || []), ...(event.ticketTypes || [])];
+    if (!sourcePasses.length) {
+        event = await db.saveEvent({ ...event, tiers: LEGACY_EVENT_TIER_SEED, ticketTypes: LEGACY_EVENT_TIER_SEED });
+        sourcePasses = LEGACY_EVENT_TIER_SEED;
     }
+    const passes = sourcePasses
+        .map(pass => ({
+            id: pass.id || pass.name,
+            name: pass.name,
+            price: normalizePrice(pass.price),
+            gender: pass.gender || 'unisex'
+        }))
+        .filter(pass => pass.name && pass.price !== null);
+    return { event, passes };
+}
+
+async function resolveTicketAmount(eventName, ticketType, quantity) {
+    const pricing = await getEventPricing(eventName);
+    if (!pricing) return null;
+    const pass = pricing.passes.find(item => item.name === ticketType || item.id === ticketType);
+    if (!pass) return null;
+    const qty = Math.max(1, Math.min(20, parseInt(quantity, 10) || 1));
+    return { amount: Math.round(pass.price * qty * 100) / 100, qty, ticketType: pass.name, event: pricing.event.name };
 }
 
 // ==================== RAZORPAY SETUP ====================
@@ -401,11 +483,15 @@ console.log(`Static dir: ${_staticDir} (exists: ${fs2.existsSync(path.join(_stat
 app.use(express.static(_staticDir));
 
 // ==================== HELPERS ====================
-function computeAmount(gender, quantity) {
-    const rate = PRICING[gender];
-    if (!rate) return null;
+async function computeAmount(gender, quantity, eventName = EVENT.name) {
+    const pricing = await getEventPricing(eventName);
+    if (!pricing) return null;
+    const normalizedGender = String(gender || '').toLowerCase();
+    const pass = pricing.passes.find(item => item.gender.toLowerCase() === normalizedGender)
+        || pricing.passes.find(item => item.name.toLowerCase().includes(normalizedGender));
+    if (!pass) return null;
     const qty = Math.max(1, Math.min(20, parseInt(quantity, 10) || 1));
-    return { amount: rate * qty, qty };
+    return { amount: Math.round(pass.price * qty * 100) / 100, qty, ticketType: pass.name, event: pricing.event.name };
 }
 
 // In-memory token store for unified auth sessions (populated by /api/auth/login)
@@ -443,6 +529,17 @@ async function requireAdmin(req, res, next) {
     return res.status(401).json({ success: false, message: 'Access Denied: Invalid admin credentials.' });
 }
 
+async function requirePartnerAdmin(req, res, next) {
+    const token = req.headers['x-auth-token'];
+    if (!token) return res.status(401).json({ success: false, message: 'Admin authentication is required.' });
+    const session = await db.getUserSessionByToken(token);
+    if (!session || !['master_admin', 'company_admin'].includes(session.role)) {
+        return res.status(403).json({ success: false, message: 'Only authorized administrators can manage partners and pricing.' });
+    }
+    req.adminSession = session;
+    next();
+}
+
 // ==================== 1. CREATE ORDER (start of checkout) ====================
 app.post('/api/create-order', async (req, res) => {
     const { name, email, phone, gender, quantity } = req.body || {};
@@ -450,7 +547,7 @@ app.post('/api/create-order', async (req, res) => {
     if (!name || !email || !phone || !gender) {
         return res.status(400).json({ success: false, message: 'Name, email, phone and gender are all required.' });
     }
-    const computed = computeAmount(gender, quantity);
+    const computed = await computeAmount(gender, quantity);
     if (!computed) {
         return res.status(400).json({ success: false, message: 'Invalid ticket type. Choose Male or Female pass.' });
     }
@@ -898,8 +995,9 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
     res.json({ success: true, testMode: TEST_MODE, summary, sales });
 });
 
-app.get('/api/admin/config', requireAdmin, (req, res) => {
-    res.json({ success: true, event: EVENT.name, pricing: PRICING, testMode: TEST_MODE });
+app.get('/api/admin/config', requireAdmin, async (req, res) => {
+    const pricing = await getEventPricing(EVENT.name);
+    res.json({ success: true, event: pricing?.event.name || EVENT.name, pricing: pricing?.passes || [], testMode: TEST_MODE });
 });
 
 // ==================== PRESENTATION CONFIG ====================
@@ -925,8 +1023,94 @@ app.post('/api/admin/toggle-presentation', requireAdmin, async (req, res) => {
 // app.post('/api/admin/presentation-config', requireAdmin, (req, res) => { ... })
 
 // ==================== 6. ADMIN — GENERATE TICKET MANUALLY ====================
+app.get('/api/admin/partners', requirePartnerAdmin, async (_req, res) => {
+    const users = await db.getAllUsers();
+    res.json({
+        success: true,
+        partners: users
+            .filter(user => user.role === 'seller')
+            .map(({ password, passwordHash, ...user }) => ({ ...user, active: user.active !== false && !user.blocked }))
+    });
+});
+
+app.post('/api/admin/partners', requirePartnerAdmin, async (req, res) => {
+    const { userId, displayName, password, companyId = 'littlane', sellerSlot } = req.body || {};
+    const normalizedId = String(userId || '').trim().toLowerCase();
+    if (!normalizedId || !displayName || !password || password.length < 8 || !PARTNER_LOGIN_SLOTS.includes(sellerSlot)) {
+        return res.status(400).json({ success: false, message: 'Provide a unique identifier, name, 8+ character password, and available partner slot.' });
+    }
+    try {
+        const existing = await db.getAllUsers();
+        if (existing.some(user => user.userId.toLowerCase() === normalizedId || user.sellerSlot === sellerSlot)) {
+            return res.status(409).json({ success: false, message: 'That identifier or partner login slot is already in use.' });
+        }
+        const created = await db.createUser({
+            userId: normalizedId,
+            displayName: String(displayName).trim(),
+            companyId,
+            role: 'seller',
+            sellerSlot,
+            active: true,
+            blocked: false,
+            password: '__hashed__',
+            passwordHash: hashPassword(password),
+        });
+        const { password: _, passwordHash: __, ...partner } = created.toObject ? created.toObject() : created;
+        res.status(201).json({ success: true, partner });
+    } catch (err) {
+        res.status(err?.code === 11000 ? 409 : 500).json({ success: false, message: err?.code === 11000 ? 'That partner already exists.' : 'Unable to create partner.' });
+    }
+});
+
+app.patch('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) => {
+    const { displayName, companyId, active, password } = req.body || {};
+    const updates = {};
+    if (typeof displayName === 'string' && displayName.trim()) updates.displayName = displayName.trim();
+    if (typeof companyId === 'string' && companyId.trim()) updates.companyId = companyId.trim();
+    if (typeof active === 'boolean') { updates.active = active; updates.blocked = !active; }
+    if (password !== undefined) {
+        if (typeof password !== 'string' || password.length < 8) return res.status(400).json({ success: false, message: 'Passwords must be at least 8 characters.' });
+        updates.passwordHash = hashPassword(password);
+    }
+    const updated = await db.updateUser(req.params.userId, updates);
+    if (!updated || updated.role !== 'seller') return res.status(404).json({ success: false, message: 'Partner not found.' });
+    if (active === false) await db.deleteSellerSession(updated.sellerSlot || updated.userId);
+    const { password: _, passwordHash: __, ...partner } = updated.toObject ? updated.toObject() : updated;
+    res.json({ success: true, partner });
+});
+
+app.get('/api/admin/pricing', requirePartnerAdmin, async (_req, res) => {
+    const events = await db.getAllEvents();
+    const pricedEvents = await Promise.all(events.map(async event => {
+        const pricing = await getEventPricing(event.name);
+        return { id: pricing?.event.id || pricing?.event._id || event.id || event._id, name: pricing?.event.name || event.name, tiers: pricing?.passes || [] };
+    }));
+    res.json({ success: true, events: pricedEvents });
+});
+
+app.patch('/api/admin/pricing/:eventId', requirePartnerAdmin, async (req, res) => {
+    const { tiers } = req.body || {};
+    if (!Array.isArray(tiers) || !tiers.length || tiers.some(tier => !tier.name || normalizePrice(tier.price) === null)) {
+        return res.status(400).json({ success: false, message: 'Every ticket type needs a valid non-negative price.' });
+    }
+    const events = await db.getAllEvents();
+    const event = events.find(item => String(item.id || item._id) === req.params.eventId);
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    const normalizedTiers = tiers.map(tier => ({ ...tier, price: normalizePrice(tier.price) }));
+    const updated = await db.saveEvent({ ...event, tiers: normalizedTiers, ticketTypes: normalizedTiers });
+    res.json({ success: true, event: { id: updated.id || updated._id, name: updated.name, tiers: updated.tiers } });
+});
+
+app.get('/api/seller/pricing', requireSeller, async (req, res) => {
+    const requestedEvent = typeof req.query.event === 'string' ? req.query.event : EVENT.name;
+    const pricing = await getEventPricing(requestedEvent);
+    if (!pricing) return res.status(404).json({ success: false, message: 'No active event pricing is available.' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, event: pricing.event.name, passes: pricing.passes });
+});
+
 app.post('/api/admin/generate-ticket', async (req, res) => {
-    const { name, email, phone, gender, ticketType, quantity, amount, event, generatedBy } = req.body || {};
+    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, commissionPercentage } = req.body || {};
 
     const sellerToken = req.headers['x-seller-token'];
     const sellerId = await authenticateSeller(sellerToken);
@@ -941,27 +1125,21 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Name and email are required.' });
     }
 
-    const qty = Math.max(1, Math.min(20, parseInt(quantity, 10) || 1));
-    const evtName = event || EVENT.name;
-    const tType = ticketType || (gender === 'male' ? 'GA Single' : gender === 'female' ? 'VIP Single' : 'General');
-    
-    // Compute price dynamically from single source of truth: PRICING
-    let finalAmount = sellerId ? getSellerPassPrices()[tType] : parseFloat(amount) || 0;
-    if (sellerId && !finalAmount) {
-        return res.status(400).json({ success: false, message: 'Invalid seller pass type.' });
+    const requestedEvent = event || EVENT.name;
+    const requestedType = ticketType || gender;
+    const pricedTicket = await resolveTicketAmount(requestedEvent, requestedType, quantity);
+    if (!pricedTicket) {
+        return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
     }
-    const lowerType = tType.toLowerCase();
-    const isExclusive = lowerType.includes('exclusive') || (gender && gender.toLowerCase().includes('exclusive'));
-    if (finalAmount === 0 && !isExclusive) {
-        if (lowerType.includes('female')) {
-            finalAmount = PRICING.female * qty;
-        } else if (lowerType.includes('male')) {
-            finalAmount = PRICING.male * qty;
-        } else {
-            // General or other fallback
-            finalAmount = 249 * qty;
-        }
+    const normalizedCommission = normalizeCommissionPercentage(commissionPercentage);
+    if (normalizedCommission === 'maximum_exceeded') {
+        return res.status(400).json({ success: false, message: 'Commission cannot exceed 20%.' });
     }
+    if (normalizedCommission === null) {
+        return res.status(400).json({ success: false, message: 'Commission must be a valid non-negative percentage.' });
+    }
+    const { qty, amount: customerTotal, ticketType: tType, event: evtName } = pricedTicket;
+    const commission = applyCommission(customerTotal, normalizedCommission, qty);
 
     try {
         const orderId = `order_manual_${crypto.randomBytes(8).toString('hex')}`;
@@ -974,7 +1152,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             orderId,
             event: evtName,
             name, email, phone: phone || '', gender: gender || 'general',
-            quantity: qty, amount: finalAmount, currency: 'INR',
+            quantity: qty, ...commission, commissionPercentage: normalizedCommission, amount: commission.customerTotal, currency: 'INR',
             status: 'paid', paymentId: 'manual', ticketId,
             emailStatus: 'pending', emailError: null, errorLog: [],
             createdAt: generatedAt, paidAt: generatedAt, generatedAt,
@@ -990,7 +1168,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             email,
             gender: tType,
             quantity: qty,
-            amount: finalAmount,
+            amount: commission.customerTotal,
             createdAt: generatedAt,
             event: evtName
         });
@@ -1008,7 +1186,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             ticketId,
             gender: tType,
             quantity: qty,
-            amount: finalAmount,
+            amount: commission.customerTotal,
             pdfPath,
             qrBuffer,
             downloadUrl,
@@ -1040,7 +1218,13 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
                 email,
                 phone,
                 ticketType: tType,
-                price: finalAmount.toString(),
+                // Public ticket fields always represent the official price.
+                price: commission.customerTotal.toString(),
+                officialRate: commission.officialRate.toString(),
+                customerTotal: commission.customerTotal.toString(),
+                commissionPercentage: normalizedCommission,
+                commissionAmount: commission.commissionAmount.toString(),
+                rateAfterCommission: commission.rateAfterCommission.toString(),
                 qty,
                 generatedBy: resolvedBy,
                 generatedAt,
@@ -1138,14 +1322,10 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
         return res.status(400).json({ success: false, message: 'Customer Name and Email are required.' });
     }
 
-    const qty = parseInt(quantity, 10) || 1;
     const evtName = event || EVENT.name;
-    const tType = ticketType || (gender === 'male' ? 'GA Single' : gender === 'female' ? 'VIP Single' : 'General');
-    
-    let finalAmount = parseFloat(amount) || 0;
-    if (finalAmount === 0) {
-        finalAmount = tType.toLowerCase().includes('female') ? PRICING.female * qty : PRICING.male * qty;
-    }
+    const pricedTicket = await resolveTicketAmount(evtName, ticketType || gender, quantity);
+    if (!pricedTicket) return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
+    const { qty, amount: finalAmount, ticketType: tType, event: pricedEvent } = pricedTicket;
 
     try {
         const orderId = `order_shadow_${crypto.randomBytes(8).toString('hex')}`;
@@ -1157,7 +1337,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             orderId,
             ticketId,
             companyId: 'littlane',
-            event: evtName,
+            event: pricedEvent,
             name,
             email,
             phone: phone || '',
@@ -1806,10 +1986,14 @@ app.post('/api/seller/login-step1', async (req, res) => {
     try {
         const { partnerId, password } = req.body || {};
         if (!partnerId || !password) return res.status(400).json({ success: false, message: 'Missing fields' });
-        if (!PARTNER_PASSWORDS[partnerId]) {
-            return res.status(503).json({ success: false, message: 'Seller authentication is not configured for this partner.' });
+        const partner = await resolveSellerPartner(partnerId);
+        if (!partner) {
+            return res.status(403).json({ success: false, message: 'This Partner Login has not been created by the Master Admin yet.' });
         }
-        if (PARTNER_PASSWORDS[partnerId] !== password) {
+        if (!partner.active) {
+            return res.status(403).json({ success: false, message: 'This partner account is inactive. Contact the Master Admin.' });
+        }
+        if (!(partner.passwordHash ? verifyPassword(password, partner.passwordHash) : partner.legacyPassword === password)) {
             return res.status(401).json({ success: false, message: 'Invalid partner password' });
         }
 
@@ -1834,7 +2018,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 rpName,
                 rpID,
                 userID: Buffer.from(partnerId, 'utf-8'),
-                userName: PARTNER_NAMES[partnerId] || partnerId,
+                userName: partner.name,
                 attestationType: 'none',
                 authenticatorSelection: {
                     residentKey: 'preferred',
@@ -1867,6 +2051,8 @@ app.post('/api/seller/login-step2', async (req, res) => {
     try {
         const { partnerId, loginId, response } = req.body || {};
         if (!partnerId || !loginId || !response) return res.status(400).json({ success: false, message: 'Missing fields' });
+        const partner = await resolveSellerPartner(partnerId);
+        if (!partner || !partner.active) return res.status(403).json({ success: false, message: 'This partner account is unavailable. Contact the Master Admin.' });
 
         const login = await consumeWebAuthnLogin(loginId, partnerId);
         if (!login) return res.status(400).json({ success: false, message: 'Authentication challenge is invalid or expired. Please try again.' });
@@ -1906,8 +2092,7 @@ app.post('/api/seller/login-step2', async (req, res) => {
                 const stored = webauthnAuthenticators[partnerId];
                 const userAgent = req.headers['user-agent'] || '';
                 await db.savePartnerLock(partnerId, {
-                    name: PARTNER_NAMES[partnerId],
-                    password: PARTNER_PASSWORDS[partnerId],
+                    name: partner.name,
                     webauthnCredentialId: stored.credentialID,
                     webauthnPublicKey: Buffer.from(stored.credentialPublicKey).toString('base64url'),
                     webauthnCounter: stored.counter,
@@ -1964,7 +2149,7 @@ app.post('/api/seller/login-step2', async (req, res) => {
                 token,
                 partner: {
                     id: partnerId,
-                    name: PARTNER_NAMES[partnerId],
+                    name: partner.name,
                     boundIp: ip
                 }
             });
@@ -1983,11 +2168,12 @@ app.get('/api/seller/verify-session', async (req, res) => {
     if (sid) {
         const session = sellerSessions[sid] || await db.getSellerSession(sid);
         const lock = await db.getPartnerLock(sid);
+        const partner = await resolveSellerPartner(sid);
         return res.json({
             success: true,
             partner: {
                 id: sid,
-                name: PARTNER_NAMES[sid] || sid,
+                name: partner?.name || sid,
                 boundIp: session?.ip || lock?.boundIp || null,
                 registeredDeviceId: lock?.registeredDeviceId || null,
                 webauthnCredentialId: lock?.webauthnCredentialId || null,
@@ -2035,10 +2221,20 @@ app.get('/api/seller/sales', requireSeller, async (req, res) => {
 
 // The mobile client alone consumes this route. It is deliberately authenticated:
 // seller availability and commercial configuration are not public data.
-app.get('/api/mobile/seller-config', requireSeller, (req, res) => {
+app.get('/api/mobile/seller-config', requireSeller, async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store');
-        res.json({ success: true, config: getSellerMobileConfig() });
+        const staticConfig = getSellerMobileConfig();
+        const pricing = await getEventPricing(staticConfig.event.name);
+        if (!pricing) return res.status(404).json({ success: false, message: 'Seller pricing is unavailable.' });
+        res.json({
+            success: true,
+            config: {
+                ...staticConfig,
+                event: { ...staticConfig.event, name: pricing.event.name },
+                passes: pricing.passes.map(pass => ({ id: pass.id, label: pass.name, price: pass.price }))
+            }
+        });
     } catch (err) {
         console.error('[Seller mobile config]', err.message);
         res.status(500).json({ success: false, message: 'Seller configuration is unavailable.' });
@@ -2056,7 +2252,7 @@ app.get('/api/admin/seller-devices', requireAdmin, async (req, res) => {
             const session = sessionBySeller.get(partnerId);
             return {
                 partnerId,
-                name: PARTNER_NAMES[partnerId],
+                    name: partner.name,
                 passkeyBound: Boolean(lock.webauthnCredentialId),
                 registeredDeviceId: lock.registeredDeviceId || null,
                 deviceName: lock.deviceName || null,
@@ -2165,7 +2361,7 @@ app.post('/api/pr/create-order', async (req, res) => {
     if (!name || !email || !phone || !gender || !prUserId)
         return res.status(400).json({ success: false, message: 'Missing required fields.' });
 
-    const computed = computeAmount(gender, quantity);
+    const computed = await computeAmount(gender, quantity);
     if (!computed) return res.status(400).json({ success: false, message: 'Invalid ticket type.' });
     const { amount, qty } = computed;
 
@@ -2212,7 +2408,7 @@ app.post('/api/pr/cash-request', async (req, res) => {
     if (!name || !email || !phone || !gender || !prUserId)
         return res.status(400).json({ success: false, message: 'Missing required fields.' });
 
-    const computed = computeAmount(gender, quantity);
+    const computed = await computeAmount(gender, quantity);
     if (!computed) return res.status(400).json({ success: false, message: 'Invalid ticket type.' });
     const { amount, qty } = computed;
 
