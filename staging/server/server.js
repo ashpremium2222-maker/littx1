@@ -284,7 +284,13 @@ app.get('/api/seller/webauthn-public-config', (req, res) => {
 app.get('/api/seller/partners', async (_req, res) => {
     try {
         const users = await db.getAllUsers();
-        const partners = PARTNER_LOGIN_SLOTS.map((id, index) => {
+        const systemPartners = Object.entries(PARTNER_NAMES).map(([id, name]) => ({
+            id,
+            name,
+            active: true,
+            configured: true,
+        }));
+        const configuredSlots = PARTNER_LOGIN_SLOTS.map((id, index) => {
             const user = users.find(item => item.sellerSlot === id && item.role === 'seller');
             return {
                 id,
@@ -294,7 +300,7 @@ app.get('/api/seller/partners', async (_req, res) => {
             };
         });
         res.set('Cache-Control', 'no-store');
-        res.json({ success: true, partners });
+        res.json({ success: true, partners: [...systemPartners, ...configuredSlots] });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Unable to load seller partners.' });
     }
@@ -1065,11 +1071,20 @@ app.post('/api/admin/toggle-presentation', requireAdmin, async (req, res) => {
 // ==================== 6. ADMIN — GENERATE TICKET MANUALLY ====================
 app.get('/api/admin/partners', requirePartnerAdmin, async (_req, res) => {
     const users = await db.getAllUsers();
+    const systemPartners = Object.entries(PARTNER_NAMES).map(([userId, displayName]) => ({
+        userId,
+        displayName,
+        companyId: 'littlane',
+        sellerSlot: null,
+        active: true,
+        managed: false,
+    }));
+    const managedPartners = users
+        .filter(user => user.role === 'seller' && PARTNER_LOGIN_SLOTS.includes(user.sellerSlot))
+        .map(({ password, passwordHash, ...user }) => ({ ...user, active: user.active !== false && !user.blocked, managed: true }));
     res.json({
         success: true,
-        partners: users
-            .filter(user => user.role === 'seller' && PARTNER_LOGIN_SLOTS.includes(user.sellerSlot))
-            .map(({ password, passwordHash, ...user }) => ({ ...user, active: user.active !== false && !user.blocked }))
+        partners: [...systemPartners, ...managedPartners]
     });
 });
 
