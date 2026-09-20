@@ -74,6 +74,7 @@ async function sendViaRichAutomate({ to, ticketId, variables, pdfUrl }) {
             port: 443,
             path: '/api/v1/send-template',
             method: 'POST',
+            agent: false,
             headers: {
                 Authorization: `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
@@ -156,6 +157,7 @@ async function sendViaMetaCloudApi({ to, ticketId, variables, pdfUrl }) {
             port: 443,
             path: `/v21.0/${phoneNumberId}/messages`,
             method: 'POST',
+            agent: false,
             headers: {
                 Authorization: `Bearer ${accessToken}`,
                 'Content-Type': 'application/json',
@@ -232,6 +234,7 @@ async function getWhatsAppConfigurationStatus() {
             port: 443,
             path: `/v21.0/${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,code_verification_status`,
             method: 'GET',
+            agent: false,
             headers: { Authorization: `Bearer ${accessToken}` },
             timeout: 12000
         }, (res) => {
