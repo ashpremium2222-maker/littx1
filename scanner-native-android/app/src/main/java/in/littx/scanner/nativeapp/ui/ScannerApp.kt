@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,10 +58,15 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
 
 @Composable fun ScannerApp(activity: ComponentActivity) {
     val model = remember { ScannerViewModel(activity.applicationContext) }
+    var authenticated by rememberSaveable { mutableStateOf(false) }
     var screen by remember { mutableStateOf(Screen.HOME) }
     var selected by remember { mutableStateOf<ScanEntry?>(null) }
     val latest = model.state.latest
     MaterialTheme(colorScheme = lightColorScheme(primary = blue, background = Color.White, surface = Color.White)) {
+        if (!authenticated) {
+            ScannerLogin { authenticated = true }
+            return@MaterialTheme
+        }
         model.state.update?.let { update -> AlertDialog(onDismissRequest = model::dismissUpdate, title = { Text("Scanner update available") }, text = { Text("Version ${update.version} is ready from the official LITTX release.") }, confirmButton = { TextButton(onClick = { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl))); model.dismissUpdate() }) { Text("Download") } }, dismissButton = { TextButton(onClick = model::dismissUpdate) { Text("Later") } }) }
         when {
             latest != null -> ResultScreen(latest, model.state.error, onNext = { model.clearLatest(); screen = Screen.SCAN }, onDetails = { selected = latest; model.clearLatest(); screen = Screen.DETAIL })
@@ -70,6 +76,22 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
             screen == Screen.HISTORY -> HistoryScreen(model.state.history, onBack = { screen = Screen.HOME }) { selected = it; screen = Screen.DETAIL }
             screen == Screen.DETAIL && selected != null -> DetailScreen(selected!!, onBack = { screen = Screen.HISTORY })
             else -> HomeScreen(model.state, onScan = { screen = Screen.SCAN }, onHistory = { screen = Screen.HISTORY })
+        }
+    }
+}
+
+@Composable private fun ScannerLogin(onAuthenticated: () -> Unit) {
+    var password by rememberSaveable { mutableStateOf("") }
+    var error by rememberSaveable { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF07100D), Color(0xFF13241E)))), contentAlignment = Alignment.Center) {
+        Column(Modifier.fillMaxWidth().padding(28.dp).clip(RoundedCornerShape(28.dp)).background(Color.White.copy(alpha = .96f)).padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(58.dp).background(ink, CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.QrCodeScanner, null, tint = Color.White, modifier = Modifier.size(31.dp)) }
+            Text("LITTX", color = ink, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp, modifier = Modifier.padding(top = 18.dp))
+            Text("SCANNER ACCESS", color = muted, fontSize = 11.sp, letterSpacing = 1.sp, modifier = Modifier.padding(top = 5.dp))
+            Text("Enter the scanner password to continue.", color = muted, modifier = Modifier.padding(top = 27.dp, bottom = 13.dp))
+            OutlinedTextField(value = password, onValueChange = { password = it; error = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Scanner password") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), isError = error, shape = RoundedCornerShape(16.dp))
+            if (error) Text("Invalid scanner password", color = red, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+            Button(onClick = { if (password == "dgr") onAuthenticated() else error = true }, modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 8.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = ink)) { Text("Launch Scanner", fontWeight = FontWeight.Bold) }
         }
     }
 }
