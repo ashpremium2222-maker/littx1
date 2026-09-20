@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -85,10 +86,8 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
     var error by rememberSaveable { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF07100D), Color(0xFF13241E)))), contentAlignment = Alignment.Center) {
         Column(Modifier.fillMaxWidth().padding(28.dp).clip(RoundedCornerShape(28.dp)).background(Color.White.copy(alpha = .96f)).padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(58.dp).background(ink, CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.QrCodeScanner, null, tint = Color.White, modifier = Modifier.size(31.dp)) }
-            Text("LITTX", color = ink, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp, modifier = Modifier.padding(top = 18.dp))
-            Text("SCANNER ACCESS", color = muted, fontSize = 11.sp, letterSpacing = 1.sp, modifier = Modifier.padding(top = 5.dp))
-            Text("Enter the scanner password to continue.", color = muted, modifier = Modifier.padding(top = 27.dp, bottom = 13.dp))
+            androidx.compose.foundation.Image(painter = painterResource(com.littx.scanner.nativeapp.R.drawable.scanner_logo), contentDescription = "LITTX Scanner", modifier = Modifier.size(172.dp).clip(RoundedCornerShape(20.dp)))
+            Text("Enter the scanner password to continue.", color = muted, modifier = Modifier.padding(top = 20.dp, bottom = 13.dp))
             OutlinedTextField(value = password, onValueChange = { password = it; error = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Scanner password") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), isError = error, shape = RoundedCornerShape(16.dp))
             if (error) Text("Invalid scanner password", color = red, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
             Button(onClick = { if (password == "dgr") onAuthenticated() else error = true }, modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 8.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = ink)) { Text("Launch Scanner", fontWeight = FontWeight.Bold) }
