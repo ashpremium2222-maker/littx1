@@ -16,14 +16,22 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
     setTimeout(() => setToast(null), 3500)
   }
 
-  // Filter sales for PR Cash transactions
+  const authHeaders = { 'Content-Type': 'application/json', 'x-admin-key': adminKey, 'x-auth-token': adminKey }
+
+  // Filter sales for PR cash transactions and seller tickets awaiting approval.
   const pending = useMemo(() => {
-    return sales.filter((s: any) => s.paymentMethod === 'cash' && s.status === 'pr_cash_pending')
+    return sales.filter((s: any) =>
+      (s.paymentMethod === 'cash' && s.status === 'pr_cash_pending') ||
+      (s.approvalStatus === 'PENDING' && s.deliveryStatus === 'PENDING_APPROVAL')
+    )
   }, [sales])
 
   const history = useMemo(() => {
     return sales
-      .filter((s: any) => s.paymentMethod === 'cash' && s.status !== 'pr_cash_pending' && s.status !== 'created')
+      .filter((s: any) =>
+        (s.paymentMethod === 'cash' && s.status !== 'pr_cash_pending' && s.status !== 'created') ||
+        ['APPROVED', 'REJECTED'].includes(s.approvalStatus)
+      )
       .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
   }, [sales])
 
@@ -31,9 +39,11 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
     if (isPresentation) return
     setActionId(orderId)
     try {
-      const res = await fetch('/api/admin/pr-approve', {
+      const sale = sales.find((s: any) => s.orderId === orderId)
+      const sellerApproval = sale?.approvalStatus === 'PENDING'
+      const res = await fetch(sellerApproval ? `/api/admin/ticket-approvals/${encodeURIComponent(orderId)}/approve` : '/api/admin/pr-approve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        headers: authHeaders,
         body: JSON.stringify({ orderId }),
       })
       const data = await res.json()
@@ -51,12 +61,14 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
 
   async function handleReject(orderId: string) {
     if (isPresentation) return
-    if (!window.confirm('Reject this cash sale?')) return
+    if (!window.confirm('Reject this approval request?')) return
     setActionId(orderId)
     try {
-      const res = await fetch('/api/admin/pr-reject', {
+      const sale = sales.find((s: any) => s.orderId === orderId)
+      const sellerApproval = sale?.approvalStatus === 'PENDING'
+      const res = await fetch(sellerApproval ? `/api/admin/ticket-approvals/${encodeURIComponent(orderId)}/reject` : '/api/admin/pr-reject', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        headers: authHeaders,
         body: JSON.stringify({ orderId }),
       })
       const data = await res.json()
@@ -93,7 +105,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
         <div className="tile tile-orange">
           <div className="tile-label">PENDING APPROVALS</div>
           <div className="tile-value">{pending.length}</div>
-          <div className="tile-sub">Partner cash sales awaiting approval</div>
+          <div className="tile-sub">Seller tickets and partner cash sales awaiting approval</div>
           <div className="tile-delta">
             <span>{pending.length > 0 ? '⚠️' : '✓'}</span>{' '}
             {pending.length > 0 ? 'Needs your action' : 'All clear'}
@@ -101,7 +113,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
         </div>
         <div className="tile tile-teal">
           <div className="tile-label">APPROVED TICKETS</div>
-          <div className="tile-value">{history.filter(h => h.status !== 'pr_cash_rejected').length}</div>
+          <div className="tile-value">{history.filter(h => h.status !== 'pr_cash_rejected' && h.approvalStatus !== 'REJECTED').length}</div>
           <div className="tile-sub">Cash received and tickets sent</div>
           <div className="tile-delta">
             <span>✓</span> Historical data
@@ -162,8 +174,13 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
                   pending.map(s => (
                     <tr key={s.orderId}>
                       <td>
-                        <div style={{ fontWeight: 700 }}>{s.prName || s.prUserId}</div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.5 }}>{s.prUserId}</div>
+                        <div style={{ fontWeight: 700 }}>{s.sellerId || s.generatedBy || s.prName || s.prUserId}</div>
+                        <div style={{ fontSize: '0.72rem', opacity: 0.5 }}>{s.ticketId || s.prUserId}</div>
+                        {s.approvalStatus === 'PENDING' && (
+                          <div style={{ marginTop: 4, fontSize: '10px', fontWeight: 800, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Pending approval
+                          </div>
+                        )}
                       </td>
                       <td>
                         <div className="cell-main">
@@ -174,7 +191,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
                           </div>
                         </div>
                       </td>
-                      <td style={{ textTransform: 'capitalize' }}>{s.gender} Pass</td>
+                      <td style={{ textTransform: 'capitalize' }}>{s.ticketType || `${s.gender} Pass`}</td>
                       <td style={{ fontWeight: 800, color: 'var(--accent)' }}>₹{s.amount?.toLocaleString()}</td>
                       <td style={{ fontSize: '0.78rem', opacity: 0.6 }}>
                         {new Date(s.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -227,8 +244,8 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
                   history.map(s => (
                     <tr key={s.orderId}>
                       <td>
-                        <div style={{ fontWeight: 700 }}>{s.prName || s.prUserId}</div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.5 }}>{s.prUserId}</div>
+                        <div style={{ fontWeight: 700 }}>{s.sellerId || s.generatedBy || s.prName || s.prUserId}</div>
+                        <div style={{ fontSize: '0.72rem', opacity: 0.5 }}>{s.ticketId || s.prUserId}</div>
                       </td>
                       <td>
                         <div className="cell-main">
@@ -239,19 +256,19 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
                           </div>
                         </div>
                       </td>
-                      <td style={{ textTransform: 'capitalize' }}>{s.gender} Pass</td>
+                      <td style={{ textTransform: 'capitalize' }}>{s.ticketType || `${s.gender} Pass`}</td>
                       <td style={{ fontWeight: 800, color: 'var(--ink)' }}>₹{s.amount?.toLocaleString()}</td>
                       <td style={{ fontSize: '0.78rem', opacity: 0.6 }}>
                         {new Date(s.updatedAt || s.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                       </td>
                       <td>
-                        {s.status === 'pr_cash_rejected' ? (
+                        {s.status === 'pr_cash_rejected' || s.approvalStatus === 'REJECTED' ? (
                           <span style={{ fontSize: '10px', fontWeight: 800, padding: '4px 8px', borderRadius: '4px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             Rejected
                           </span>
                         ) : (
                           <span style={{ fontSize: '10px', fontWeight: 800, padding: '4px 8px', borderRadius: '4px', background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            Approved
+                            {s.deliveryStatus === 'DELIVERED' || s.status === 'emailed' ? 'Delivered' : 'Approved'}
                           </span>
                         )}
                       </td>

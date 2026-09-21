@@ -142,6 +142,7 @@ const SaleSchema = new mongoose.Schema({
     email: { type: String },
     phone: { type: String },
     gender: { type: String },
+    ticketType: { type: String },
     quantity: { type: Number },
     // Immutable transaction snapshot: customer-facing totals retain the
     // official event rate; commission is seller-internal settlement data.
@@ -160,6 +161,16 @@ const SaleSchema = new mongoose.Schema({
     whatsappStatus: { type: String },
     whatsappError: { type: String },
     whatsappMessageId: { type: String },
+    approvalStatus: { type: String, enum: ['NOT_REQUIRED', 'PENDING', 'APPROVED', 'REJECTED'], default: 'NOT_REQUIRED' },
+    approvalRequired: { type: Boolean, default: false },
+    approvalRequestedAt: { type: String },
+    approvalDecidedAt: { type: String },
+    approvedBy: { type: String },
+    rejectedBy: { type: String },
+    deliveryStatus: { type: String, enum: ['NOT_STARTED', 'PENDING_APPROVAL', 'IN_PROGRESS', 'DELIVERED', 'FAILED', 'BLOCKED'], default: 'NOT_STARTED' },
+    deliveredAt: { type: String },
+    deliveryStartedAt: { type: String },
+    deliveryAttemptCount: { type: Number, default: 0 },
     errorLog: { type: Array, default: [] },
     createdAt: { type: String },
     updatedAt: { type: String },
@@ -168,6 +179,8 @@ const SaleSchema = new mongoose.Schema({
     scannedBy: { type: String },
     scannedAt: { type: String },
     showInPres: { type: Boolean, default: false },
+    sellerId: { type: String },
+    generatedBy: { type: String },
     prUserId: { type: String },
     prName: { type: String },
     paymentMethod: { type: String },
@@ -495,6 +508,40 @@ async function getByTicketId(ticketId) {
 
 async function getAll() {
     return await Sale.find({}).sort({ createdAt: -1 }).lean();
+}
+
+async function atomicApprovePendingSale(orderId, approvedBy, approvedAt) {
+    return await Sale.findOneAndUpdate(
+        { orderId, approvalStatus: 'PENDING', deliveryStatus: 'PENDING_APPROVAL' },
+        {
+            $set: {
+                approvalStatus: 'APPROVED',
+                approvedBy,
+                approvalDecidedAt: approvedAt,
+                deliveryStatus: 'IN_PROGRESS',
+                deliveryStartedAt: approvedAt,
+                updatedAt: approvedAt
+            },
+            $inc: { deliveryAttemptCount: 1 }
+        },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicRejectPendingSale(orderId, rejectedBy, rejectedAt) {
+    return await Sale.findOneAndUpdate(
+        { orderId, approvalStatus: 'PENDING', deliveryStatus: 'PENDING_APPROVAL' },
+        {
+            $set: {
+                approvalStatus: 'REJECTED',
+                rejectedBy,
+                approvalDecidedAt: rejectedAt,
+                deliveryStatus: 'BLOCKED',
+                updatedAt: rejectedAt
+            }
+        },
+        { returnDocument: 'after', lean: true }
+    );
 }
 
 async function clearAllSales() {
@@ -1027,6 +1074,42 @@ module.exports = {
             return null;
         }
         return await updateSaleRecord(orderId, updates);
+    },
+    atomicApprovePendingSale: async (orderId, approvedBy, approvedAt) => {
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.approvalStatus === 'PENDING' && s.deliveryStatus === 'PENDING_APPROVAL');
+            if (idx === -1) return null;
+            mockDb.sales[idx] = {
+                ...mockDb.sales[idx],
+                approvalStatus: 'APPROVED',
+                approvedBy,
+                approvalDecidedAt: approvedAt,
+                deliveryStatus: 'IN_PROGRESS',
+                deliveryStartedAt: approvedAt,
+                deliveryAttemptCount: (mockDb.sales[idx].deliveryAttemptCount || 0) + 1,
+                updatedAt: approvedAt
+            };
+            _saveMockSales(mockDb.sales);
+            return mockDb.sales[idx];
+        }
+        return await atomicApprovePendingSale(orderId, approvedBy, approvedAt);
+    },
+    atomicRejectPendingSale: async (orderId, rejectedBy, rejectedAt) => {
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.approvalStatus === 'PENDING' && s.deliveryStatus === 'PENDING_APPROVAL');
+            if (idx === -1) return null;
+            mockDb.sales[idx] = {
+                ...mockDb.sales[idx],
+                approvalStatus: 'REJECTED',
+                rejectedBy,
+                approvalDecidedAt: rejectedAt,
+                deliveryStatus: 'BLOCKED',
+                updatedAt: rejectedAt
+            };
+            _saveMockSales(mockDb.sales);
+            return mockDb.sales[idx];
+        }
+        return await atomicRejectPendingSale(orderId, rejectedBy, rejectedAt);
     },
     getByOrderId: async (orderId) => {
         if (useMock()) {

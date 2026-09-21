@@ -457,6 +457,24 @@ if (!TEST_MODE) {
 
 const ADMIN_KEY = process.env.ADMIN_KEY || 'change-me-admin-key';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+const PRIVILEGED_DIRECT_DELIVERY_SELLER_IDS = new Set(['LITTLANE', 'NITRO']);
+
+function normalizeSellerId(value) {
+    return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+function isDirectDeliverySeller(sellerId) {
+    return PRIVILEGED_DIRECT_DELIVERY_SELLER_IDS.has(normalizeSellerId(sellerId));
+}
+
+function canDeliverSale(sale) {
+    if (!sale) return false;
+    if (isDirectDeliverySeller(sale.sellerId || sale.generatedBy || sale.prUserId)) return true;
+    if (sale.approvalStatus === 'APPROVED' || sale.approvalStatus === 'NOT_REQUIRED') return true;
+    if (sale.approvalStatus === 'PENDING' || sale.approvalStatus === 'REJECTED') return false;
+    if (sale.approvalRequired || sale.status === 'pending_approval' || sale.deliveryStatus === 'PENDING_APPROVAL') return false;
+    return true;
+}
 
 // ==================== LITTX SELLER ACCOUNTS (max 3 devices) ====================
 // 3 hardcoded seller IDs + passwords. Each seller can only have 1 active session at a time.
@@ -581,6 +599,19 @@ async function requireAdmin(req, res, next) {
     }
 
     return res.status(401).json({ success: false, message: 'Access Denied: Invalid admin credentials.' });
+}
+
+async function resolveAdminPrincipal(req) {
+    const key = req.headers['x-admin-key'] || req.query.key;
+    if (key && key === ADMIN_KEY) return 'Legacy Admin';
+    const token = req.headers['x-auth-token'];
+    if (!token) return 'Admin';
+    try {
+        const session = await db.getUserSessionByToken(token);
+        return session?.userId || session?.displayName || 'Admin';
+    } catch (_) {
+        return 'Admin';
+    }
 }
 
 async function requirePartnerAdmin(req, res, next) {
@@ -917,6 +948,9 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
     if (!ticketId) return res.status(400).json({ success: false, message: 'Ticket ID required' });
     const sale = await db.getByTicketId(ticketId);
     if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found. Please check the link or contact support.' });
+    if (!canDeliverSale(sale)) {
+        return res.status(403).json({ success: false, message: 'This ticket is awaiting dashboard approval.' });
+    }
 
     // Build event details (mirrors ticket.js)
     const isAura = sale.event && sale.event.toUpperCase().includes('AURA');
@@ -951,6 +985,7 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
 app.get('/api/ticket/:ticketId/download', async (req, res) => {
     const sale = await db.getByTicketId(req.params.ticketId);
     if (!sale) return res.status(404).send('Ticket not found.');
+    if (!canDeliverSale(sale)) return res.status(403).send('Ticket is awaiting dashboard approval.');
     
     const filePath = path.join(TICKETS_DIR, `${sale.ticketId}.pdf`);
     
@@ -983,6 +1018,9 @@ app.get('/api/ticket/:ticketId/download', async (req, res) => {
 app.post('/api/ticket/:ticketId/resend', async (req, res) => {
     const sale = await db.getByTicketId(req.params.ticketId);
     if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+    if (!canDeliverSale(sale)) {
+        return res.status(403).json({ success: false, message: 'Ticket delivery is blocked until dashboard approval.' });
+    }
 
     const pdfPath = path.join(TICKETS_DIR, `${sale.ticketId}.pdf`);
     
@@ -1025,6 +1063,76 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
         message: result.success ? 'Ticket re-sent!' : `Failed: ${result.error}`,
         whatsappSent: whatsappResult.success
     });
+});
+
+app.post('/api/admin/ticket-approvals/:orderId/approve', requireAdmin, async (req, res) => {
+    const approvedBy = await resolveAdminPrincipal(req);
+    const approvedAt = new Date().toISOString();
+    const claimed = await db.atomicApprovePendingSale(req.params.orderId, approvedBy, approvedAt);
+
+    if (!claimed) {
+        const current = await db.getByOrderId(req.params.orderId);
+        if (!current) return res.status(404).json({ success: false, message: 'Sale not found.' });
+        if (current.deliveryStatus === 'DELIVERED' || current.status === 'emailed') {
+            return res.json({ success: true, message: 'Ticket was already approved and delivered.', sale: current, alreadyDelivered: true });
+        }
+        return res.status(409).json({ success: false, message: `Ticket is not pending approval. Current status: ${current.approvalStatus || current.status}.`, sale: current });
+    }
+
+    try {
+        const filePath = path.join(TICKETS_DIR, `${claimed.ticketId}.pdf`);
+        if (!fs2.existsSync(filePath)) {
+            await buildTicketPdf({
+                ticketId: claimed.ticketId,
+                name: claimed.name,
+                email: claimed.email,
+                gender: claimed.ticketType || claimed.gender || 'General',
+                quantity: claimed.quantity || 1,
+                amount: claimed.amount || 0,
+                createdAt: claimed.generatedAt || claimed.createdAt || approvedAt,
+                event: claimed.event || EVENT.name
+            });
+        }
+        const delivery = await deliverManualTicketSale(claimed, { pdfPath: filePath });
+        const sale = await db.getByOrderId(req.params.orderId);
+        res.json({
+            success: true,
+            message: delivery.success ? 'Approved and ticket delivered.' : 'Approved, but delivery failed.',
+            sale,
+            whatsappSent: Boolean(delivery.whatsappResult?.success)
+        });
+    } catch (err) {
+        await db.updateSaleRecord(req.params.orderId, {
+            status: 'email_failed',
+            deliveryStatus: 'FAILED',
+            errorLog: [...(claimed.errorLog || []), { at: new Date().toISOString(), stage: 'approved_delivery', error: err.message }]
+        });
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/admin/ticket-approvals/:orderId/reject', requireAdmin, async (req, res) => {
+    const rejectedBy = await resolveAdminPrincipal(req);
+    const rejectedAt = new Date().toISOString();
+    const rejected = await db.atomicRejectPendingSale(req.params.orderId, rejectedBy, rejectedAt);
+    if (!rejected) {
+        const current = await db.getByOrderId(req.params.orderId);
+        if (!current) return res.status(404).json({ success: false, message: 'Sale not found.' });
+        return res.status(409).json({ success: false, message: `Ticket is not pending approval. Current status: ${current.approvalStatus || current.status}.`, sale: current });
+    }
+
+    await db.createAuditLog({
+        adminUser: rejectedBy,
+        companyId: rejected.companyId || 'littlane',
+        category: 'TICKET_APPROVAL',
+        fieldChanged: 'approvalStatus',
+        previousValue: 'PENDING',
+        newValue: 'REJECTED',
+        reason: req.body?.reason || `Rejected ticket ${rejected.ticketId}`,
+        timestamp: rejectedAt
+    }).catch(err => console.error('[ticket rejection audit]', err.message));
+
+    res.json({ success: true, message: 'Ticket rejected.', sale: rejected });
 });
 
 // ==================== 5. ADMIN — MONITOR EVERY SALE ====================
@@ -1213,14 +1321,89 @@ app.get('/api/seller/pricing', requireSeller, async (req, res) => {
     res.json({ success: true, event: pricing.event.name, passes: pricing.passes });
 });
 
+async function deliverManualTicketSale(sale, { pdfPath = null, qrBuffer = null, qrDataUrl = null } = {}) {
+    if (!canDeliverSale(sale)) {
+        await db.updateSaleRecord(sale.orderId, {
+            deliveryStatus: 'BLOCKED',
+            errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'delivery_gate', error: 'Ticket delivery blocked until approval.' }]
+        });
+        return { success: false, blocked: true, message: 'Ticket is pending approval or rejected and cannot be delivered.' };
+    }
+
+    const ticketType = sale.ticketType || sale.gender || 'General';
+    const downloadUrl = `${BASE_URL}/api/ticket/${sale.ticketId}/download`;
+    const existingPdfPath = pdfPath || path.join(TICKETS_DIR, `${sale.ticketId}.pdf`);
+
+    await db.updateSaleRecord(sale.orderId, {
+        status: 'ticket_generated',
+        deliveryStatus: 'IN_PROGRESS',
+        deliveryStartedAt: new Date().toISOString()
+    });
+
+    const emailResult = await sendTicketEmail({
+        to: sale.email,
+        name: sale.name,
+        ticketId: sale.ticketId,
+        gender: ticketType,
+        quantity: sale.quantity || 1,
+        amount: sale.amount || sale.customerTotal || 0,
+        pdfPath: existingPdfPath,
+        qrBuffer,
+        downloadUrl,
+        event: sale.event || EVENT.name
+    });
+
+    const deliveredAt = new Date().toISOString();
+    if (emailResult.success) {
+        await db.updateSaleRecord(sale.orderId, {
+            status: 'emailed',
+            emailStatus: 'sent',
+            emailError: null,
+            emailPreviewUrl: emailResult.previewUrl || null,
+            deliveryStatus: 'DELIVERED',
+            deliveredAt
+        });
+    } else {
+        await db.updateSaleRecord(sale.orderId, {
+            status: 'email_failed',
+            emailStatus: 'failed',
+            emailError: emailResult.error,
+            deliveryStatus: 'FAILED',
+            errorLog: [...(sale.errorLog || []), { at: deliveredAt, stage: 'email', error: emailResult.error }]
+        });
+    }
+
+    const whatsappResult = await sendAndRecordTicketWhatsApp({
+        orderId: sale.orderId,
+        phone: sale.phone,
+        name: sale.name,
+        ticketId: sale.ticketId,
+        event: sale.event || EVENT.name,
+        ticketType,
+        downloadUrl
+    });
+
+    return {
+        success: emailResult.success,
+        emailResult,
+        whatsappResult,
+        downloadUrl,
+        qrDataUrl
+    };
+}
+
 app.post('/api/admin/generate-ticket', async (req, res) => {
-    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, commissionPercentage, commissionAmount: requestedCommissionAmount } = req.body || {};
+    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, partnerId, commissionPercentage, commissionAmount: requestedCommissionAmount } = req.body || {};
 
     const sellerToken = req.headers['x-seller-token'];
     const sellerId = await authenticateSeller(sellerToken);
     const adminKeyHdr = req.headers['x-admin-key'] || req.query.key;
     const adminToken = req.headers['x-auth-token'];
-    const isAdmin = adminKeyHdr === ADMIN_KEY || (adminToken && platformAuthTokens.has(adminToken));
+    let isAdmin = adminKeyHdr === ADMIN_KEY || (adminToken && platformAuthTokens.has(adminToken));
+    if (!isAdmin && adminToken) {
+        const session = await db.getUserSessionByToken(adminToken);
+        isAdmin = Boolean(session && ['master_admin', 'company_admin'].includes(session.role));
+    }
     if (!sellerId && !isAdmin) {
         return res.status(401).json({ success: false, message: 'Authentication is required to issue tickets.' });
     }
@@ -1268,18 +1451,31 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         const ticketId = generateTicketId();
         const generatedAt = new Date().toISOString();
 
-        const resolvedBy = sellerId || generatedBy || 'Admin';
+        const resolvedSellerId = sellerId || partnerId || generatedBy || 'Admin';
+        const normalizedResolvedSellerId = normalizeSellerId(resolvedSellerId);
+        const directDelivery = isDirectDeliverySeller(resolvedSellerId);
+        const approvalStatus = directDelivery ? 'NOT_REQUIRED' : 'PENDING';
+        const deliveryStatus = directDelivery ? 'NOT_STARTED' : 'PENDING_APPROVAL';
+        const publicStatus = directDelivery ? 'pending' : 'pending_approval';
 
         await db.createSaleRecord({
             orderId,
             event: evtName,
-            name, email, phone: phone || '', gender: gender || 'general',
+            name, email, phone: phone || '', gender: gender || 'general', ticketType: tType,
             quantity: qty, ...commission, commissionPercentage: normalizedCommission, amount: commission.customerTotal, currency: 'INR',
             status: 'paid', paymentId: 'manual', ticketId,
-            emailStatus: 'pending', emailError: null, errorLog: [],
+            emailStatus: 'pending', emailError: null,
+            whatsappStatus: directDelivery ? 'pending' : 'blocked_pending_approval',
+            whatsappError: null,
+            errorLog: [],
             createdAt: generatedAt, paidAt: generatedAt, generatedAt,
-            generatedBy: resolvedBy,
-            prUserId: resolvedBy,
+            generatedBy: resolvedSellerId,
+            sellerId: normalizedResolvedSellerId,
+            prUserId: resolvedSellerId,
+            approvalRequired: !directDelivery,
+            approvalStatus,
+            approvalRequestedAt: directDelivery ? null : generatedAt,
+            deliveryStatus,
             scannedBy: null, scannedAt: null
         });
 
@@ -1297,41 +1493,20 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         const qrBuffer = await buildQrBuffer(ticketId);
         const qrDataUrl = await buildQrDataUrl(ticketId);
 
-        await db.updateSaleRecord(orderId, { status: 'ticket_generated' });
+        await db.updateSaleRecord(orderId, { status: directDelivery ? 'ticket_generated' : 'pending_approval' });
 
-        const downloadUrl = `${BASE_URL}/api/ticket/${ticketId}/download`;
+        const saleForDelivery = await db.getByOrderId(orderId);
+        const deliveryResult = directDelivery
+            ? await deliverManualTicketSale(saleForDelivery, { pdfPath, qrBuffer, qrDataUrl })
+            : { success: false, whatsappResult: { success: false }, downloadUrl: null, qrDataUrl };
 
-        // Send Email
-        const emailResult = await sendTicketEmail({
-            to: email,
-            name,
-            ticketId,
-            gender: tType,
-            quantity: qty,
-            amount: commission.customerTotal,
-            pdfPath,
-            qrBuffer,
-            downloadUrl,
-            event: evtName
-        });
-
-        if (emailResult.success) {
-            await db.updateSaleRecord(orderId, { status: 'emailed', emailStatus: 'sent', emailError: null, emailPreviewUrl: emailResult.previewUrl || null });
-        } else {
-            await db.updateSaleRecord(orderId, {
-                status: 'email_failed',
-                emailStatus: 'failed',
-                emailError: emailResult.error,
-                errorLog: [{ at: new Date().toISOString(), stage: 'email', error: emailResult.error }]
-            });
-        }
-
-        const whatsappResult = await sendAndRecordTicketWhatsApp({
-            orderId, phone, name, ticketId, event: evtName, ticketType: tType, downloadUrl
-        });
+        const finalSale = await db.getByOrderId(orderId);
 
         res.json({
             success: true,
+            approvalRequired: !directDelivery,
+            approvalStatus,
+            message: directDelivery ? 'Ticket delivered.' : 'Ticket punched and pending dashboard approval.',
             ticket: {
                 id: ticketId,
                 orderId,
@@ -1339,7 +1514,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
                 attendee: name,
                 email,
                 phone,
-                whatsappSent: whatsappResult.success,
+                whatsappSent: Boolean(deliveryResult.whatsappResult?.success),
                 ticketType: tType,
                 // Public ticket fields always represent the official price.
                 price: commission.customerTotal.toString(),
@@ -1349,10 +1524,13 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
                 commissionAmount: commission.commissionAmount.toString(),
                 rateAfterCommission: commission.rateAfterCommission.toString(),
                 qty,
-                generatedBy: resolvedBy,
+                generatedBy: resolvedSellerId,
+                sellerId: normalizedResolvedSellerId,
                 generatedAt,
-                status: 'pending',
-                downloadUrl,
+                status: finalSale?.status || publicStatus,
+                approvalStatus,
+                deliveryStatus: finalSale?.deliveryStatus || deliveryStatus,
+                downloadUrl: deliveryResult.downloadUrl,
                 qrDataUrl
             }
         });
