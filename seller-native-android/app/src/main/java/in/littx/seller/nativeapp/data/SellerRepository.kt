@@ -41,6 +41,7 @@ class SellerRepository(private val store: SecureSessionStore) {
     suspend fun createTicket(request: TicketRequest): ApiResponse = authenticatedRequest { api.generateTicket(requireToken(), request) }
     suspend fun sales(): SalesResponse = authenticatedRequest { api.sales(requireToken()) }
     suspend fun config(): SellerConfigResponse = authenticatedRequest { api.mobileConfig(requireToken()) }
+    suspend fun pricing(event: String): SellerPricingResponse = authenticatedRequest { api.pricing(requireToken(), event) }
     suspend fun logout() { val token = store.token(); if (token != null) runCatching { api.logout(token) }; store.clear() }
     fun cachedPartner() = store.partner()
     private fun requireToken() = store.token() ?: throw SecurityException("Your secure session has expired. Please sign in again.")

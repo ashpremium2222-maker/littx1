@@ -11,4 +11,5 @@ interface SellerApi {
     @POST("api/admin/generate-ticket") suspend fun generateTicket(@Header("x-seller-token") token: String, @Body body: TicketRequest): ApiResponse
     @GET("api/seller/sales") suspend fun sales(@Header("x-seller-token") token: String): SalesResponse
     @GET("api/mobile/seller-config") suspend fun mobileConfig(@Header("x-seller-token") token: String): SellerConfigResponse
+    @GET("api/seller/pricing") suspend fun pricing(@Header("x-seller-token") token: String, @Query("event") event: String): SellerPricingResponse
 }

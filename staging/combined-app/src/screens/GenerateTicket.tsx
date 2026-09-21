@@ -65,6 +65,7 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
   const [event, setEvent] = useState('')
   const [attendee, setAttendee] = useState('')
   const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [datetime, setDatetime] = useState('')
   const [ticketType, setTicketType] = useState<TicketType>('GA Single')
   const [error, setError] = useState('')
@@ -104,8 +105,8 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
   }
 
   async function handleGenerate() {
-    if (!attendee.trim() || !email.trim()) {
-      setError('Attendee name and email are required')
+    if (!attendee.trim() || !email.trim() || !phone.trim()) {
+      setError('Attendee name, email, and WhatsApp number are required')
       return
     }
     if (!event.trim()) {
@@ -133,6 +134,7 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
         body: JSON.stringify({
           name: attendee.trim(),
           email: email.trim(),
+          phone: phone.trim(),
           event: resolvedEvent,
           ticketType,
           quantity: 1,
@@ -146,7 +148,14 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
 
       await refreshTickets()
       setStatus('success')
-      window.setTimeout(() => onGenerated(data.ticket.id), 550)
+      window.setTimeout(() => {
+        onGenerated(data.ticket.id)
+        // Reset so consecutive tickets can be generated without refreshing
+        setStatus('idle')
+        setAttendee('')
+        setEmail('')
+        setPhone('')
+      }, 550)
     } catch (err: any) {
       setError(err.message || 'Failed to generate ticket')
       setStatus('idle')
@@ -190,6 +199,7 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
         <Field label="Event Name" placeholder="Event name" dark={dark} value={event} onChange={setEvent} delay={0.08} />
         <Field label="Attendee Name" placeholder="Full name" dark={dark} value={attendee} onChange={setAttendee} delay={0.13} />
         <Field label="Attendee Email" placeholder="email@example.com" dark={dark} value={email} onChange={setEmail} type="email" delay={0.18} />
+        <Field label="WhatsApp Number" placeholder="10-digit mobile number" dark={dark} value={phone} onChange={setPhone} type="tel" delay={0.21} />
 
         <motion.div
           className="flex flex-col gap-1.5"
@@ -341,3 +351,4 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
     </div>
   )
 }
+

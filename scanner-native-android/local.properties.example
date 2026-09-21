@@ -1,0 +1,6 @@
+# Do not commit local.properties. This URL is not a secret, but production builds should
+# receive it from CI or a protected Gradle property rather than a developer workstation.
+SCANNER_API_BASE_URL=https://scanner-api.example.com/
+SCANNER_UPDATE_REPOSITORY=YOUR_GITHUB_ORGANIZATION/YOUR_REPOSITORY
+SCANNER_VERSION_CODE=2
+SCANNER_VERSION_NAME=1.0.1

@@ -199,7 +199,7 @@ const db = require('./db');
 const { atomicClaimOrder } = db;
 const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
 const { sendTicketEmail } = require('./mailer');
-const { sendTicketWhatsApp } = require('./whatsapp-service');
+const { sendTicketWhatsApp, getWhatsAppConfigurationStatus } = require('./whatsapp-service');
 
 // Keep WhatsApp delivery inside the request lifecycle. Vercel may freeze a
 // serverless invocation as soon as the response is sent, so fire-and-forget
@@ -242,6 +242,19 @@ async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, eve
         }
         return { success: false, error: error.message };
     }
+}
+
+// Meta error responses contain a useful message/code but no credential. Return
+// just that actionable part to the ticket screen rather than incorrectly
+// claiming a message was delivered.
+function publicWhatsAppError(result) {
+    if (!result || result.success) return null;
+    if (typeof result.error === 'string') return result.error;
+    const metaError = result.error?.error || result.error;
+    if (metaError?.message) {
+        return metaError.code ? `Meta error ${metaError.code}: ${metaError.message}` : metaError.message;
+    }
+    return result.reason || 'Meta did not accept the WhatsApp message.';
 }
 
 const app = express();
@@ -775,7 +788,7 @@ app.post('/api/verify-payment', async (req, res) => {
 
         console.log(`[Ticket Issued] ${ticketId} for ${sale.email} | email ${emailResult.success ? 'sent ✅' : 'FAILED ❌ (' + emailResult.error + ')'}`);
 
-        await sendAndRecordTicketWhatsApp({
+        const whatsappResult = await sendAndRecordTicketWhatsApp({
             orderId, phone: sale.phone, name: sale.name, ticketId,
             event: sale.event || EVENT.name, ticketType: sale.gender, downloadUrl
         });
@@ -787,6 +800,7 @@ app.post('/api/verify-payment', async (req, res) => {
             qrDataUrl,
             emailSent: emailResult.success,
             emailError: emailResult.success ? null : emailResult.error,
+            whatsappSent: whatsappResult.success,
             event: EVENT.name,
             name: sale.name,
             email: sale.email,
@@ -1312,7 +1326,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             });
         }
 
-        await sendAndRecordTicketWhatsApp({
+        const whatsappResult = await sendAndRecordTicketWhatsApp({
             orderId, phone, name, ticketId, event: evtName, ticketType: tType, downloadUrl
         });
 
@@ -1325,6 +1339,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
                 attendee: name,
                 email,
                 phone,
+                whatsappSent: whatsappResult.success,
                 ticketType: tType,
                 // Public ticket fields always represent the official price.
                 price: commission.customerTotal.toString(),
@@ -1420,6 +1435,11 @@ app.post('/api/shadow-private/login', async (req, res) => {
         displayName: 'Private Shadow Panel',
     });
     res.json({ success: true, shadowToken });
+});
+
+app.get('/api/shadow-private/whatsapp-status', requirePrivateShadowAuth, async (_req, res) => {
+    const status = await getWhatsAppConfigurationStatus();
+    res.status(status.success ? 200 : 502).json(status);
 });
 
 // POST /api/shadow/generate-ticket — Creates genuine ticket tagged as source="shadow"
@@ -1530,7 +1550,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             }).catch(() => {});
         }
 
-        await sendAndRecordTicketWhatsApp({
+        const whatsappResult = await sendAndRecordTicketWhatsApp({
             orderId, phone, name, ticketId, event: evtName, ticketType: tType, downloadUrl
         });
 
@@ -1538,6 +1558,8 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             success: true,
             orderId,
             ticketId,
+            whatsappSent: whatsappResult.success,
+            whatsappError: publicWhatsAppError(whatsappResult),
             message: 'Shadow ticket created and delivery has been queued.'
         });
     } catch (err) {

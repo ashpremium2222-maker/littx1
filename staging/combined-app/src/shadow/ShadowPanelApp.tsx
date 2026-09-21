@@ -224,8 +224,10 @@ export default function ShadowPanelApp({
 
       if (res.ok && data.success) {
         setFeedback({
-          type: 'success',
-          msg: `🎉 Ticket created & sent! Order: ${data.orderId} | Ticket: ${data.ticketId}`
+          type: data.whatsappSent === false ? 'error' : 'success',
+          msg: data.whatsappSent === false
+            ? `Ticket created, but WhatsApp was not sent: ${data.whatsappError || 'Meta did not accept the message.'} Order: ${data.orderId} | Ticket: ${data.ticketId}`
+            : `🎉 Ticket created & WhatsApp sent! Order: ${data.orderId} | Ticket: ${data.ticketId}`
         })
         setName('')
         setEmail('')

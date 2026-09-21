@@ -31,8 +31,8 @@ android {
         applicationId = "com.littx.seller.nativeapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = configured("SELLER_VERSION_CODE").toIntOrNull() ?: 1
-        versionName = configured("SELLER_VERSION_NAME").ifBlank { "1.0.0" }
+        versionCode = configured("SELLER_VERSION_CODE").toIntOrNull() ?: 2
+        versionName = configured("SELLER_VERSION_NAME").ifBlank { "1.1.0" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SELLER_API_BASE_URL", "\"${configured("SELLER_API_BASE_URL").trimEnd('/')}\"")
         buildConfigField("String", "SELLER_UPDATE_REPOSITORY", "\"${configured("SELLER_UPDATE_REPOSITORY").trim()}\"")
