@@ -100,10 +100,12 @@ async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount,
     const bannerFile = isAura ? AURA_BANNER_PATH : BANNER_PATH;
 
     const W = 380;
-    const BANNER_H = 380;
+    const BANNER_ASPECT_RATIO = 1350 / 1080;
+    const BANNER_H = W * BANNER_ASPECT_RATIO;
+    const PAGE_H = 1000;
 
     return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({ size: [W, 900], margin: 0 });
+        const doc = new PDFDocument({ size: [W, PAGE_H], margin: 0 });
         const stream = fs.createWriteStream(filePath);
         doc.pipe(stream);
 
@@ -127,7 +129,7 @@ async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount,
 
         // ---- White details panel ----
         let y = BANNER_H + 22;
-        doc.rect(0, BANNER_H, W, 900 - BANNER_H).fill('#ffffff');
+        doc.rect(0, BANNER_H, W, PAGE_H - BANNER_H).fill('#ffffff');
 
         doc.font('Helvetica-Bold').fontSize(20).fillColor('#0d0d0f').text(brandName, 24, y);
         y += 28;
