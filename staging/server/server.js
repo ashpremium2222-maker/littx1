@@ -343,6 +343,40 @@ app.use('/api', async (req, res, next) => {
     }
 });
 
+app.post('/api/master/seller-access/:partnerId', requireMasterAdmin, async (req, res) => {
+    try {
+        const { partnerId } = req.params;
+        const partner = await resolveSellerPartner(partnerId);
+        if (!partner || partner.active === false) {
+            return res.status(404).json({ success: false, message: 'Seller partner is not available.' });
+        }
+
+        const token = generateToken();
+        const session = {
+            token,
+            loginAt: new Date().toISOString(),
+            ip: clientIp(req),
+            issuedBy: req.adminSession?.userId || req.adminSession?.displayName || 'Master Admin',
+            masterIssued: true
+        };
+        sellerSessions[partnerId] = session;
+        savePersisted(SESSIONS_FILE, sellerSessions);
+        await db.setSellerSession(partnerId, session);
+
+        res.json({
+            success: true,
+            token,
+            partner: {
+                id: partnerId,
+                name: partner.name || partnerId,
+                masterIssued: true
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message || 'Unable to open seller panel.' });
+    }
+});
+
 // ==================== EVENT & PRICING ====================
 const EVENT = { name: EVENT_NAME };
 const CANONICAL_EVENT_NAME = 'Dholida Garba Royale 2026';
@@ -679,6 +713,33 @@ async function requireAdmin(req, res, next) {
     }
 
     return res.status(401).json({ success: false, message: 'Access Denied: Invalid admin credentials.' });
+}
+
+async function requireMasterAdmin(req, res, next) {
+    const key = req.headers['x-admin-key'] || req.query.key;
+    if (key && key === ADMIN_KEY) {
+        req.adminSession = {
+            userId: 'Legacy Admin',
+            displayName: 'Legacy Admin',
+            role: 'master_admin',
+            companyId: 'littx'
+        };
+        return next();
+    }
+
+    const token = req.headers['x-auth-token'];
+    if (!token) return res.status(401).json({ success: false, message: 'Master admin authentication is required.' });
+
+    try {
+        const session = await db.getUserSessionByToken(token);
+        if (!session || session.role !== 'master_admin') {
+            return res.status(403).json({ success: false, message: 'Only master admin can access seller company panels.' });
+        }
+        req.adminSession = session;
+        return next();
+    } catch (err) {
+        return next(err);
+    }
 }
 
 async function resolveAdminPrincipal(req) {
