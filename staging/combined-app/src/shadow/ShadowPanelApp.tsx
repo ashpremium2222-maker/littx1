@@ -75,10 +75,14 @@ export default function ShadowPanelApp({
   const [resendingTicketId, setResendingTicketId] = useState<string | null>(null)
   const [feedback, setFeedback]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
-  // Fetch dynamic events from API
+  // Fetch the authenticated rate catalogue. Both Shadow panels use this same
+  // source, so an admin pricing change is reflected without a redeploy.
   const fetchDynamicEvents = async () => {
     try {
-      const res  = await fetch('/api/events')
+      const res  = await fetch(`${apiPrefix}/pricing`, {
+        headers: { 'x-shadow-token': shadowToken || '' },
+        cache: 'no-store'
+      })
       const data = await res.json()
       if (res.ok && data.success && Array.isArray(data.events) && data.events.length > 0) {
         setEventsList(data.events)

@@ -1793,6 +1793,32 @@ app.post('/api/shadow-private/login', async (req, res) => {
     res.json({ success: true, shadowToken });
 });
 
+// The Shadow panels must read the same editable catalogue as Seller. Keep this
+// authenticated so the complete ticket-rate list is not exposed as a public API.
+async function getShadowPricing(req, res) {
+    try {
+        const allEvents = visibleDashboardEvents(await db.getAllEvents());
+        const events = (await Promise.all(allEvents.map(async (event) => {
+            const pricing = await getEventPricing(event.name);
+            return {
+                id: event.id || event._id,
+                name: event.name,
+                gradient: event.gradient || CANONICAL_EVENT_GRADIENT,
+                icon: event.icon || '🎟️',
+                tagline: event.tagline || 'Pethkar Ground, Kothrud, Pune · 17th October',
+                tiers: pricing?.passes || []
+            };
+        }))).filter(event => event.tiers.length > 0);
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, events });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+}
+
+app.get('/api/shadow/pricing', requireShadowAuth, getShadowPricing);
+app.get('/api/shadow-private/pricing', requirePrivateShadowAuth, getShadowPricing);
+
 app.get('/api/shadow-private/whatsapp-status', requirePrivateShadowAuth, async (_req, res) => {
     const status = await getWhatsAppConfigurationStatus();
     res.status(status.success ? 200 : 502).json(status);
