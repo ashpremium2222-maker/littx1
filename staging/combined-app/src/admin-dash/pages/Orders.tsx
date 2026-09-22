@@ -573,7 +573,7 @@ export default function Orders({
                             }}
                             title="Toggle presentation visibility"
                           >
-                            {presVal ? '👁️' : '🙈'}
+                            {presVal ? 'Visible' : 'Hidden'}
                           </button>
                         </td>
                       )}

@@ -213,7 +213,7 @@ export default function CustomerLogin({ onLoginSuccess, onGoToRegister }: Custom
                     padding: 0,
                   }}
                 >
-                  {showPassword ? '🙈' : '👁️'}
+                  {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>

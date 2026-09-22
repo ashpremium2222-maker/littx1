@@ -209,7 +209,7 @@ export default function CustomerRegister({ onRegisterSuccess, onGoToLogin }: Cus
                   onClick={() => setShowPassword(!showPassword)}
                   style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#5C5A6A', fontSize: 15, padding: 0 }}
                 >
-                  {showPassword ? '🙈' : '👁️'}
+                  {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
               {/* Password strength */}
