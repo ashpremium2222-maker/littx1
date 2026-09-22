@@ -400,6 +400,20 @@
     border-top:1px solid var(--line-soft); font-size:12px; color:var(--muted); flex-wrap:wrap; gap:12px;
   }
 
+  /* ---------- Dholida Garba Royale launch modal ---------- */
+  .event-modal{position:fixed; inset:0; z-index:2000; display:grid; place-items:center; padding:20px; background:rgba(7,4,8,.82); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); opacity:0; visibility:hidden; transition:opacity .28s ease, visibility .28s ease;}
+  .event-modal.is-open{opacity:1; visibility:visible;}
+  .event-modal-dialog{width:min(860px,100%); max-height:calc(100dvh - 40px); overflow:auto; position:relative; background:linear-gradient(125deg,#210807,#120a12 55%,#301009); border:1px solid rgba(255,184,58,.55); box-shadow:0 28px 80px rgba(0,0,0,.65), 0 0 45px rgba(224,113,19,.2);}
+  .event-modal-close{position:absolute; z-index:2; right:12px; top:12px; width:38px; height:38px; border:1px solid rgba(245,242,234,.35); color:var(--paper); background:rgba(10,9,18,.7); font-size:25px; line-height:1; cursor:pointer;}
+  .event-modal-art{min-height:250px; background:linear-gradient(90deg,rgba(29,5,3,.08),rgba(29,5,3,.74)),url('dholida-garba-royale.png') center 38% / cover;}
+  .event-modal-copy{padding:28px 32px 32px;}
+  .event-modal-kicker{font-family:'JetBrains Mono',monospace; color:#ffb33d; font-size:11px; font-weight:700; letter-spacing:.13em; text-transform:uppercase;}
+  .event-modal h2{font-size:clamp(25px,4vw,42px); margin:8px 0 10px;}
+  .event-modal p{color:var(--muted); margin:0 0 20px; line-height:1.6;}
+  .dholida-art{background:#2a0805;}
+  .dholida-art img{width:100%; height:100%; object-fit:cover; object-position:center 30%; transition:transform .5s var(--ease);}
+  .card:hover .dholida-art img{transform:scale(1.06);}
+
   .reveal{opacity:0; transform:translateY(22px); transition:opacity .7s var(--ease), transform .7s var(--ease);}
   .reveal.in{opacity:1; transform:translateY(0);}
 
@@ -416,6 +430,9 @@
     .hero-mark{width:320px;}
     .cursor-glow{display:none;}
     .organizer{padding:28px 20px;}
+    .event-modal{padding:12px;}
+    .event-modal-art{min-height:215px; background-position:center top;}
+    .event-modal-copy{padding:22px 20px 24px;}
   }
 </style>
 </head>
@@ -423,6 +440,20 @@
 
 <div class="grain"></div>
 <div class="cursor-glow" id="cursorGlow"></div>
+
+<!-- Dholida Garba Royale opens on arrival -->
+<div class="event-modal" id="dholidaModal" role="dialog" aria-modal="true" aria-labelledby="dholidaModalTitle" aria-hidden="true">
+  <div class="event-modal-dialog">
+    <button class="event-modal-close" type="button" aria-label="Close Dholida Garba Royale offer" data-close-dholida>&times;</button>
+    <div class="event-modal-art" role="img" aria-label="Dholida Garba Royale featuring Aneesh Poojari, Akanksha Choudhary and Ashish Bhatia"></div>
+    <div class="event-modal-copy">
+      <div class="event-modal-kicker">Littlane Entertainment presents</div>
+      <h2 id="dholidaModalTitle">Dholida Garba Royale 2026</h2>
+      <p>17 October 2026 · Pethkar Ground, Kothrud, Pune<br>Featuring Aneesh Poojari, celebrity host Akanksha Choudhary and Ashish Bhatia.</p>
+      <a class="btn-volt" href="https://wa.me/message/UN4TBCP7PH6NL1" target="_blank" rel="noopener">Get Your Pass Now <i class="bi bi-arrow-up-right"></i></a>
+    </div>
+  </div>
+</div>
 
 <!-- Mobile Offcanvas Menu (ROOT LEVEL TO PREVENT STACKING CONTEXT CLIPPING) -->
 <div class="offcanvas offcanvas-end offcanvas-dark" tabindex="-1" id="mobileNav" aria-labelledby="mobileNavLabel">
@@ -495,12 +526,12 @@
 
 <div class="ticker">
   <div class="ticker-track" id="tickerTrack">
-    <span>STATIC &amp; SIRENS · SAT 22 AUG · 68% SOLD</span>
+    <span>DHOLIDA GARBA ROYALE · 17 OCT · PUNE · GET YOUR TICKETS NOW</span>
     <span>SUNDOWNER VOL.4 · SUN 23 AUG · MUMBAI</span>
     <span>COASTAL BASS · FRI 28 AUG · GOA</span>
     <span>NEON FRIDAYS · FRI 28 AUG · SELLING FAST</span>
     <span>THE BASEMENT SESSIONS · FRI 21 AUG · BENGALURU</span>
-    <span>STATIC &amp; SIRENS · SAT 22 AUG · 68% SOLD</span>
+    <span>DHOLIDA GARBA ROYALE · 17 OCT · PUNE · GET YOUR TICKETS NOW</span>
     <span>SUNDOWNER VOL.4 · SUN 23 AUG · MUMBAI</span>
     <span>COASTAL BASS · FRI 28 AUG · GOA</span>
     <span>NEON FRIDAYS · FRI 28 AUG · SELLING FAST</span>
@@ -633,6 +664,24 @@
       </div>
 
       <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        <div class="col">
+          <div class="card reveal" data-accent="magenta">
+            <div class="card-art dholida-art">
+              <div class="card-hot"><i></i>Get your tickets now</div>
+              <img src="dholida-garba-royale.png" alt="Dholida Garba Royale lineup">
+            </div>
+            <div class="card-body">
+              <div class="card-cat">Garba festival</div>
+              <div class="card-title">Dholida Garba Royale 2026</div>
+              <div class="card-venue">Pethkar Ground, Kothrud, Pune</div>
+            </div>
+            <div class="card-perf"><i class="l"></i><i class="r"></i></div>
+            <div class="card-foot">
+              <div class="card-date">SAT, 17 OCT<span>4 PM onwards</span></div>
+              <a class="card-go" href="https://wa.me/message/UN4TBCP7PH6NL1" target="_blank" rel="noopener">Get Pass</a>
+            </div>
+          </div>
+        </div>
         
         <div class="col">
           <div class="card reveal" data-accent="volt">
@@ -887,6 +936,21 @@
     document.querySelectorAll('.hero .reveal').forEach((el,i)=>{
       setTimeout(()=>el.classList.add('in'), 110*i);
     });
+
+    const dholidaModal = document.getElementById('dholidaModal');
+    const closeDholidaModal = ()=>{
+      dholidaModal.classList.remove('is-open');
+      dholidaModal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    };
+    if(dholidaModal){
+      dholidaModal.classList.add('is-open');
+      dholidaModal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      dholidaModal.querySelector('[data-close-dholida]').addEventListener('click', closeDholidaModal);
+      dholidaModal.addEventListener('click', (event)=>{ if(event.target === dholidaModal) closeDholidaModal(); });
+      document.addEventListener('keydown', (event)=>{ if(event.key === 'Escape' && dholidaModal.classList.contains('is-open')) closeDholidaModal(); });
+    }
   });
 
   document.getElementById('searchBtn').addEventListener('click', (e)=>{
