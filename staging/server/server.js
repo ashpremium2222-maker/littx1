@@ -345,6 +345,38 @@ app.use('/api', async (req, res, next) => {
 
 // ==================== EVENT & PRICING ====================
 const EVENT = { name: EVENT_NAME };
+const CANONICAL_EVENT_NAME = 'Dholida Garba Royale 2026';
+const CANONICAL_EVENT_GRADIENT = 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)';
+
+function normalizeEventKey(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const CANONICAL_EVENT_KEY = normalizeEventKey(CANONICAL_EVENT_NAME);
+
+function isDholidaEventName(value) {
+    const key = normalizeEventKey(value);
+    return key.includes('dholidagarbaroyale') || key.includes('dholidagarba');
+}
+
+function isCanonicalDashboardEvent(event) {
+    return normalizeEventKey(event?.name) === CANONICAL_EVENT_KEY;
+}
+
+function visibleDashboardEvents(events) {
+    return (events || []).filter(isCanonicalDashboardEvent);
+}
+
+function pickCanonicalEvent(events, requestedEventName = CANONICAL_EVENT_NAME) {
+    const list = events || [];
+    const requestedKey = normalizeEventKey(requestedEventName);
+    const exact = list.find(item => normalizeEventKey(item.name) === requestedKey);
+    const canonical = list.find(isCanonicalDashboardEvent);
+    if (canonical && (!exact || isDholidaEventName(requestedEventName) || isDholidaEventName(exact.name))) {
+        return canonical;
+    }
+    return exact || canonical || list.find(item => isDholidaEventName(item.name)) || list.find(item => item.active);
+}
 
 // Prices issued by the seller portal are server-owned. Never trust an amount
 // supplied by the browser for a paid ticket.
@@ -426,10 +458,7 @@ function applyCommission(customerTotal, commissionPercentage, quantity, commissi
 
 async function getEventPricing(eventName) {
     const events = await db.getAllEvents();
-    const normalizedName = String(eventName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    let event = events.find(item => String(item.name).toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedName)
-        || events.find(item => String(item.name).toLowerCase().includes('dholida'))
-        || events.find(item => item.active);
+    let event = pickCanonicalEvent(events, eventName);
     if (!event) return null;
     let sourcePasses = [...(event.tiers || []), ...(event.ticketTypes || [])];
     const passNames = new Set(sourcePasses.map(pass => String(pass.name || '').toLowerCase()));
@@ -1345,7 +1374,8 @@ app.delete('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) 
 });
 
 app.get('/api/admin/pricing', requirePartnerAdmin, async (_req, res) => {
-    const events = await db.getAllEvents();
+    const allEvents = await db.getAllEvents();
+    const events = visibleDashboardEvents(allEvents);
     const pricedEvents = await Promise.all(events.map(async event => {
         const pricing = await getEventPricing(event.name);
         return { id: pricing?.event.id || pricing?.event._id || event.id || event._id, name: pricing?.event.name || event.name, tiers: pricing?.passes || [] };
@@ -1384,6 +1414,7 @@ app.patch('/api/admin/pricing/:eventId', requirePartnerAdmin, async (req, res) =
     const events = await db.getAllEvents();
     const event = events.find(item => String(item.id || item._id) === req.params.eventId);
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    if (!isCanonicalDashboardEvent(event)) return res.status(404).json({ success: false, message: 'Event not found.' });
     const updated = await db.saveEvent({ ...event, tiers: tiersWithUniqueIds, ticketTypes: tiersWithUniqueIds });
     res.json({ success: true, event: { id: updated.id || updated._id, name: updated.name, tiers: updated.tiers } });
 });
@@ -2161,11 +2192,23 @@ app.get('/api/health', (req, res) => res.json({ success: true, event: EVENT.name
 
 // ==================== EVENTS LIST ====================
 // GET /api/events — returns the active event list for the dashboard event breakdown UI
-app.get('/api/events', (req, res) => {
-    res.json({
-        success: true,
-        events: [{ name: EVENT.name, gradient: 'linear-gradient(135deg,#7C5CFA 0%,#38D9C4 100%)' }]
-    });
+app.get('/api/events', async (req, res) => {
+    try {
+        const allEvents = await db.getAllEvents();
+        const events = visibleDashboardEvents(allEvents);
+        res.json({
+            success: true,
+            events: events.map(event => ({
+                id: event.id || event._id,
+                name: event.name,
+                gradient: event.gradient || CANONICAL_EVENT_GRADIENT,
+                icon: event.icon || '🎟️',
+                tagline: event.tagline || 'Pethkar Ground, Kothrud, Pune · 17th October'
+            }))
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
 });
 
 // GET /api/admin/sellers — dynamic seller list derived from sales records
@@ -2275,7 +2318,7 @@ app.get('/api/master/companies/:id/control-center', async (req, res) => {
 
         const effectiveConfig = await db.getEffectiveConfig(id).catch(() => ({ effective: company }));
         const allEvents = await db.getAllEvents();
-        const events = allEvents.filter(e => e.companyId === id);
+        const events = allEvents.filter(e => e.companyId === id && isCanonicalDashboardEvent(e));
         const auditLogs = await db.getAuditLogs(id);
 
         res.json({

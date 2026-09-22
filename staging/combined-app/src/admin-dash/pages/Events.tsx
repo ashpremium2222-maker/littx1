@@ -21,16 +21,19 @@ interface Props {
   onNavigateToTickets?: () => void
 }
 
+const CANONICAL_EVENT_NAME = 'Dholida Garba Royale 2026'
+const CANONICAL_EVENT_KEY = eventKey(CANONICAL_EVENT_NAME)
+
 const EVENT_META: Record<string, { gradient: string; icon: string; tagline: string; isVip?: boolean }> = {
-  'DHOLIDA GARBA ROYALE': {
+  [CANONICAL_EVENT_NAME]: {
     gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
-    icon: '🎉',
+    icon: '🎟️',
     tagline: 'Pethkar Ground, Kothrud, Pune · 17th October',
   }
 }
 
 const LINEUPS: Record<string, { time: string; name: string; stage: string; status: string; badge: string }[]> = {
-  'DHOLIDA GARBA ROYALE': [
+  [CANONICAL_EVENT_NAME]: [
     { time: '4:00 PM', name: 'Gates Open', stage: 'Main Entrance', status: 'Confirmed', badge: 'green' },
     { time: '4:00 PM onwards', name: 'Garba & Performances', stage: 'Main Stage', status: 'Confirmed', badge: 'green' },
     { time: 'VIP', name: 'VIP Zone Access', stage: 'VIP Section', status: 'VIP Pass', badge: 'amber' },
@@ -39,8 +42,18 @@ const LINEUPS: Record<string, { time: string; name: string; stage: string; statu
 
 const PAID_STATUSES = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned']
 
+function eventKey(value: string) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function isDholidaName(value: string) {
+  const key = eventKey(value)
+  return key.includes('dholidagarbaroyale') || key.includes('dholidagarba')
+}
+
 function eventNameForSale(sale: Sale) {
-  return String(sale.event || 'DHOLIDA GARBA ROYALE').trim() || 'DHOLIDA GARBA ROYALE'
+  const raw = String(sale.event || CANONICAL_EVENT_NAME).trim() || CANONICAL_EVENT_NAME
+  return isDholidaName(raw) ? CANONICAL_EVENT_NAME : raw
 }
 
 function amountForSale(sale: Sale) {
@@ -49,7 +62,7 @@ function amountForSale(sale: Sale) {
 }
 
 function metaForEvent(name: string) {
-  const fallback = EVENT_META['DHOLIDA GARBA ROYALE']
+  const fallback = EVENT_META[CANONICAL_EVENT_NAME]
   return EVENT_META[name] || {
     ...fallback,
     icon: '🎟',
@@ -72,8 +85,11 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
     name: string; totalRevenue: number; ticketsSold: number; scanned: number; firstSale: string; lastSale: string
   }>()
 
-  const eventNames = new Set<string>(Object.keys(EVENT_META))
-  sales.forEach((sale) => eventNames.add(eventNameForSale(sale)))
+  const eventNames = new Set<string>([CANONICAL_EVENT_NAME])
+  sales.forEach((sale) => {
+    const name = eventNameForSale(sale)
+    if (eventKey(name) === CANONICAL_EVENT_KEY) eventNames.add(name)
+  })
 
   eventNames.forEach(name => {
     eventMap.set(name, { name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' })
@@ -81,6 +97,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
 
   sales.forEach((s) => {
     const name = eventNameForSale(s)
+    if (eventKey(name) !== CANONICAL_EVENT_KEY) return
     const isPaid = PAID_STATUSES.includes(s.status)
 
     const entry = eventMap.get(name) || { name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' }

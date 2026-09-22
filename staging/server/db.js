@@ -397,77 +397,45 @@ async function seedDefaultEvents() {
         const count = await Event.countDocuments();
         if (count > 0) return;
 
-        console.log('🌱 Seeding multi-tenant events across companies...');
+        console.log('🌱 Seeding Dholida Garba Royale 2026 event...');
         const now = new Date().toISOString();
         const defaultEvents = [
             {
                 name: 'Dholida Garba Royale 2026',
                 companyId: 'littlane',
-                date: '2026-09-15',
-                time: '07:00 PM',
-                venue: 'The Orchid, Pune',
+                date: '2026-10-17',
+                time: '04:00 PM',
+                venue: 'Pethkar Ground, Kothrud, Pune',
                 stage: 'Main Arena',
-                description: 'The biggest freshers party of the year!',
+                description: 'Dholida Garba Royale main event.',
                 archived: false,
                 ticketTypes: [
-                    { name: 'Male Pass', price: 699, gender: 'male' },
-                    { name: 'Female Pass', price: 599, gender: 'female' }
+                    { id: 'ga-single', name: 'GA Single', price: 399, gender: 'unisex' },
+                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 1699, gender: 'unisex' },
+                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 2999, gender: 'unisex' },
+                    { id: 'vip-single', name: 'VIP Single', price: 599, gender: 'unisex' },
+                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 2799, gender: 'unisex' },
+                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 4999, gender: 'unisex' }
+                ],
+                tiers: [
+                    { id: 'ga-single', name: 'GA Single', price: 399, gender: 'unisex' },
+                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 1699, gender: 'unisex' },
+                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 2999, gender: 'unisex' },
+                    { id: 'vip-single', name: 'VIP Single', price: 599, gender: 'unisex' },
+                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 2799, gender: 'unisex' },
+                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 4999, gender: 'unisex' }
                 ],
                 overrides: { razorpayEnabled: null, manualPaymentEnabled: null, prSalesEnabled: null },
-                createdAt: now
-            },
-            {
-                name: 'Aura Genesis Fest',
-                companyId: 'littlane',
-                date: '2026-10-20',
-                time: '06:30 PM',
-                venue: 'JW Marriott Ground',
-                stage: 'EDM Stage',
-                description: 'Annual cultural extravaganza',
-                archived: false,
-                ticketTypes: [
-                    { name: 'General Entry', price: 499, gender: 'unisex' },
-                    { name: 'VIP Pass', price: 999, gender: 'unisex' }
-                ],
-                overrides: { razorpayEnabled: null, manualPaymentEnabled: null, prSalesEnabled: null },
-                createdAt: now
-            },
-            {
-                name: 'Nexora Summer Rave',
-                companyId: 'nexora',
-                date: '2026-08-30',
-                time: '08:00 PM',
-                venue: 'Sunburn Arena',
-                stage: 'Open Air',
-                description: 'Electronic music festival by Nexora Events',
-                archived: false,
-                ticketTypes: [
-                    { name: 'Early Bird', price: 899, gender: 'unisex' },
-                    { name: 'VIP Access', price: 1500, gender: 'unisex' }
-                ],
-                overrides: { razorpayEnabled: true, manualPaymentEnabled: false, prSalesEnabled: true },
-                createdAt: now
-            },
-            {
-                name: 'Urban Night Bash',
-                companyId: 'urban-nights',
-                date: '2026-09-05',
-                time: '09:00 PM',
-                venue: 'High Spirits Club',
-                stage: 'Club Indoor',
-                description: 'Exclusive club night by Urban Nights',
-                archived: false,
-                ticketTypes: [
-                    { name: 'Couple Pass', price: 1200, gender: 'unisex' },
-                    { name: 'Stag Male', price: 800, gender: 'male' }
-                ],
-                overrides: { razorpayEnabled: false, manualPaymentEnabled: true, prSalesEnabled: false },
+                gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
+                icon: '🎟️',
+                tagline: 'Pethkar Ground, Kothrud, Pune · 17th October',
+                active: true,
                 createdAt: now
             }
         ];
 
         await Event.insertMany(defaultEvents);
-        console.log('✅ Multi-tenant events seeded successfully.');
+        console.log('✅ Dholida Garba Royale 2026 seeded successfully.');
     } catch (err) {
         console.error('❌ Failed to seed default events:', err.message);
     }
@@ -1669,37 +1637,27 @@ module.exports = {
 
 // ==================== IN-MEMORY MOCK EVENTS (fallback) ====================
 const _mockEvents = new Map([
-    ['DHOLIDA GARBA ROYALE', {
-        id: 'event_freshers', name: 'DHOLIDA GARBA ROYALE', companyId: 'littlane',
-        date: '2026-09-15', time: '07:00 PM', venue: 'The Orchid, Pune',
-        tagline: 'Pune College Fest · Main Event',
-        gradient: 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',
-        icon: '🎉', active: true,
+    ['Dholida Garba Royale 2026', {
+        id: 'event_dholida_2026', name: 'Dholida Garba Royale 2026', companyId: 'littlane',
+        date: '2026-10-17', time: '04:00 PM', venue: 'Pethkar Ground, Kothrud, Pune',
+        tagline: 'Pethkar Ground, Kothrud, Pune · 17th October',
+        gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
+        icon: '🎟️', active: true,
         tiers: [
-            { id: 't_female', name: 'Female Pass', price: 599, gender: 'female' },
-            { id: 't_male',   name: 'Male Pass',   price: 699, gender: 'male'   },
-            { id: 't_vip',    name: 'VIP Entry',   price: 1299, gender: 'unisex' }
-        ]
-    }],
-    ['AURA GENESIS', {
-        id: 'event_aura', name: 'AURA GENESIS', companyId: 'littlane',
-        date: '2026-10-20', time: '06:30 PM', venue: 'JW Marriott Ground',
-        tagline: 'Skyline Electronic Showcase',
-        gradient: 'linear-gradient(135deg, #38D9C4 0%, #3B82F6 100%)',
-        icon: '✨', active: true,
-        tiers: [
-            { id: 't_general',  name: 'General Entry', price: 350, gender: 'unisex' },
-            { id: 't_vip_aura', name: 'VIP Entry',      price: 799, gender: 'unisex' }
-        ]
-    }],
-    ['FT LINEUP INVITE', {
-        id: 'event_vip', name: 'FT LINEUP INVITE', companyId: 'littlane',
-        date: '2026-09-15', time: '08:00 PM', venue: 'Main Arena VIP Lounge',
-        tagline: 'Exclusive VIP Access · Invite Only',
-        gradient: 'linear-gradient(135deg, #F5C542 0%, #F5854D 100%)',
-        icon: '⭐', active: true, isVip: true,
-        tiers: [
-            { id: 't_vip_invite', name: 'VIP Access Pass', price: 0, gender: 'unisex' }
+            { id: 'ga-single', name: 'GA Single', price: 399, gender: 'unisex' },
+            { id: 'ga-group-of-5', name: 'GA Group of 5', price: 1699, gender: 'unisex' },
+            { id: 'ga-group-of-10', name: 'GA Group of 10', price: 2999, gender: 'unisex' },
+            { id: 'vip-single', name: 'VIP Single', price: 599, gender: 'unisex' },
+            { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 2799, gender: 'unisex' },
+            { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 4999, gender: 'unisex' }
+        ],
+        ticketTypes: [
+            { id: 'ga-single', name: 'GA Single', price: 399, gender: 'unisex' },
+            { id: 'ga-group-of-5', name: 'GA Group of 5', price: 1699, gender: 'unisex' },
+            { id: 'ga-group-of-10', name: 'GA Group of 10', price: 2999, gender: 'unisex' },
+            { id: 'vip-single', name: 'VIP Single', price: 599, gender: 'unisex' },
+            { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 2799, gender: 'unisex' },
+            { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 4999, gender: 'unisex' }
         ]
     }]
 ]);
