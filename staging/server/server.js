@@ -2232,25 +2232,27 @@ app.get('/api/admin/sellers', async (req, res) => {
 // GET /api/master/companies — returns all companies with aggregated stats
 app.get('/api/master/companies', async (req, res) => {
     try {
-        const [list, users] = await Promise.all([db.getAllCompanies(), db.getAllUsers()]);
+        const [list, users, allEvents] = await Promise.all([db.getAllCompanies(), db.getAllUsers(), db.getAllEvents()]);
         const allSales = (await db.getAll()).filter(s => !isShadowSale(s));
         const paidSales = allSales.filter(isCountableTicketSale);
         const companyById = new Map(list.map(company => [company.companyId, company]));
+        const visibleEventCompanyIds = new Set(visibleDashboardEvents(allEvents).map(event => event.companyId).filter(Boolean));
         const slotCompanyMap = new Map(
             users
                 .filter(user => user.role === 'seller' && user.sellerSlot && user.companyId)
                 .map(user => [user.sellerSlot, user.companyId])
         );
-        const sellerPortalCompanies = Object.entries(SELLER_COMPANY_NAMES)
-            .filter(([companyId]) => !PARTNER_LOGIN_SLOTS.includes(companyId))
-            .map(([companyId, name]) => ({
-                ...(companyById.get(companyId) || {}),
-                companyId,
-                name: companyById.get(companyId)?.name || name,
-                status: companyById.get(companyId)?.status || 'ACTIVE'
+        const saleCompanyIds = new Set(paidSales.map(sale => resolveSaleCompanyId(sale, slotCompanyMap)).filter(Boolean));
+        const activeCompanyIds = new Set([...visibleEventCompanyIds, ...saleCompanyIds]);
+        const configuredCompanies = list
+            .filter(company => activeCompanyIds.has(company.companyId))
+            .map(company => ({
+                ...company,
+                status: company.status || 'ACTIVE'
             }));
         const dynamicSlotCompanies = users
             .filter(user => user.role === 'seller' && user.sellerSlot && user.active !== false && !user.blocked)
+            .filter(user => activeCompanyIds.has(user.companyId || user.sellerSlot))
             .map(user => {
                 const companyId = user.companyId || user.sellerSlot;
                 return {
@@ -2260,13 +2262,8 @@ app.get('/api/master/companies', async (req, res) => {
                     status: companyById.get(companyId)?.status || 'ACTIVE'
                 };
             });
-        const sellerCompanyIds = new Set([...sellerPortalCompanies, ...dynamicSlotCompanies].map(company => company.companyId));
-        const legacyCompaniesWithSales = list.filter(company =>
-            !sellerCompanyIds.has(company.companyId) &&
-            paidSales.some(sale => resolveSaleCompanyId(sale, slotCompanyMap) === company.companyId)
-        );
         const listById = new Map(
-            [...sellerPortalCompanies, ...dynamicSlotCompanies, ...legacyCompaniesWithSales]
+            [...configuredCompanies, ...dynamicSlotCompanies]
                 .map(company => [company.companyId, company])
         );
 
