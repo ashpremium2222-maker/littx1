@@ -2288,15 +2288,20 @@ app.get('/api/events', async (req, res) => {
     try {
         const allEvents = await db.getAllEvents();
         const events = visibleDashboardEvents(allEvents);
-        res.json({
-            success: true,
-            events: events.map(event => ({
-                id: event.id || event._id,
-                name: event.name,
+        const eventsWithPricing = await Promise.all(events.map(async event => {
+            const pricing = await getEventPricing(event.name);
+            return {
+                id: pricing?.event.id || pricing?.event._id || event.id || event._id,
+                name: pricing?.event.name || event.name,
                 gradient: event.gradient || CANONICAL_EVENT_GRADIENT,
                 icon: event.icon || '🎟️',
-                tagline: event.tagline || 'Pethkar Ground, Kothrud, Pune · 17th October'
-            }))
+                tagline: event.tagline || 'Pethkar Ground, Kothrud, Pune · 17th October',
+                tiers: pricing?.passes || []
+            };
+        }));
+        res.json({
+            success: true,
+            events: eventsWithPricing
         });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
