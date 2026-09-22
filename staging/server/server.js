@@ -16,7 +16,7 @@ const PARTNER_PASSWORDS = {
 };
 
 const PARTNER_NAMES = {
-    'littlane': 'Littlane Entertainment',
+    'littlane': 'Littlane Ent',
     'nitro': 'Nitro Events',
     '7th-heaven': '7th Heaven'
 };
@@ -26,6 +26,11 @@ const SELLER_COMPANY_NAMES = {
     'partner-slot-1': 'Partner Login 1',
     'partner-slot-2': 'Partner Login 2'
 };
+
+function displayCompanyName(companyId, currentName) {
+    if (companyId === 'littlane') return 'Littlane Ent';
+    return currentName;
+}
 
 const PARTNER_LOGIN_SLOTS = ['partner-slot-1', 'partner-slot-2'];
 
@@ -2309,6 +2314,7 @@ app.get('/api/master/companies', async (req, res) => {
             .filter(company => activeCompanyIds.has(company.companyId))
             .map(company => ({
                 ...company,
+                name: displayCompanyName(company.companyId, company.name),
                 status: company.status || 'ACTIVE'
             }));
         const dynamicSlotCompanies = users
@@ -2319,7 +2325,7 @@ app.get('/api/master/companies', async (req, res) => {
                 return {
                     ...(companyById.get(companyId) || {}),
                     companyId,
-                    name: companyById.get(companyId)?.name || user.displayName || SELLER_COMPANY_NAMES[user.sellerSlot] || 'Partner Login',
+                    name: displayCompanyName(companyId, companyById.get(companyId)?.name || user.displayName || SELLER_COMPANY_NAMES[user.sellerSlot] || 'Partner Login'),
                     status: companyById.get(companyId)?.status || 'ACTIVE'
                 };
             });
@@ -2364,7 +2370,7 @@ app.get('/api/master/companies/:id/control-center', async (req, res) => {
         const fallbackCompanyName = PARTNER_NAMES[id] || sellerSlotUser?.displayName || SELLER_COMPANY_NAMES[id];
         const company = await db.getCompanyById(id) || (fallbackCompanyName ? {
             companyId: id,
-            name: fallbackCompanyName,
+            name: displayCompanyName(id, fallbackCompanyName),
             status: 'ACTIVE',
             commercials: { feeType: 'PERCENTAGE', percentageFee: 0, fixedFeePerTicket: 0 },
             razorpayConfig: { enabled: false, keyId: '', keySecret: '', mode: 'TEST', lockedByMaster: false },
@@ -2373,6 +2379,7 @@ app.get('/api/master/companies/:id/control-center', async (req, res) => {
             prSettings: { commissionType: 'PERCENTAGE', commissionValue: 0 }
         } : null);
         if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+        company.name = displayCompanyName(company.companyId || id, company.name);
 
         const effectiveConfig = await db.getEffectiveConfig(id).catch(() => ({ effective: company }));
         const allEvents = await db.getAllEvents();
