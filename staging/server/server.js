@@ -21,6 +21,12 @@ const PARTNER_NAMES = {
     '7th-heaven': '7th Heaven'
 };
 
+const SELLER_COMPANY_NAMES = {
+    ...PARTNER_NAMES,
+    'partner-slot-1': 'Partner Login 1',
+    'partner-slot-2': 'Partner Login 2'
+};
+
 const PARTNER_LOGIN_SLOTS = ['partner-slot-1', 'partner-slot-2'];
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
@@ -479,6 +485,33 @@ function normalizeSellerId(value) {
 
 function isDirectDeliverySeller(sellerId) {
     return PRIVILEGED_DIRECT_DELIVERY_SELLER_IDS.has(normalizeSellerId(sellerId));
+}
+
+function sellerCompanyIdFromValue(value) {
+    const normalized = normalizeSellerId(value);
+    if (!normalized) return '';
+    if (normalized === 'LITTLANE' || normalized === 'SELLER-A') return 'littlane';
+    if (normalized === 'NITRO' || normalized === 'SELLER-B') return 'nitro';
+    if (normalized === '7TH-HEAVEN' || normalized === 'SELLER-C') return '7th-heaven';
+    if (normalized === 'PARTNER-SLOT-1') return 'partner-slot-1';
+    if (normalized === 'PARTNER-SLOT-2') return 'partner-slot-2';
+    return normalized.toLowerCase();
+}
+
+function resolveSaleCompanyId(sale, slotCompanyMap = new Map()) {
+    if (sale?.companyId) return sale.companyId;
+    const baseCompanyId = sellerCompanyIdFromValue(sale?.sellerId || sale?.generatedBy || sale?.prUserId || '');
+    return slotCompanyMap.get(baseCompanyId) || baseCompanyId || 'littlane';
+}
+
+function saleGrossAmount(sale) {
+    const amount = Number(sale?.customerTotal ?? sale?.amount ?? 0);
+    return Number.isFinite(amount) ? amount : 0;
+}
+
+function saleRevenueAfterCommission(sale) {
+    const amount = Number(sale?.rateAfterCommission ?? sale?.amount ?? 0);
+    return Number.isFinite(amount) ? amount : 0;
 }
 
 function canDeliverSale(sale) {
@@ -1504,6 +1537,11 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
 
         const resolvedSellerId = sellerId || partnerId || generatedBy || 'Admin';
         const normalizedResolvedSellerId = normalizeSellerId(resolvedSellerId);
+        let resolvedCompanyId = sellerCompanyIdFromValue(normalizedResolvedSellerId || resolvedSellerId) || 'littlane';
+        if (PARTNER_LOGIN_SLOTS.includes(resolvedCompanyId)) {
+            const slotUser = await db.getUserBySellerSlot(resolvedCompanyId);
+            if (slotUser?.companyId) resolvedCompanyId = slotUser.companyId;
+        }
         const directDelivery = isDirectDeliverySeller(resolvedSellerId);
         const approvalStatus = directDelivery ? 'NOT_REQUIRED' : 'PENDING';
         const deliveryStatus = directDelivery ? 'NOT_STARTED' : 'PENDING_APPROVAL';
@@ -1523,6 +1561,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             generatedBy: resolvedSellerId,
             sellerId: normalizedResolvedSellerId,
             prUserId: resolvedSellerId,
+            companyId: resolvedCompanyId,
             approvalRequired: !directDelivery,
             approvalStatus,
             approvalRequestedAt: directDelivery ? null : generatedAt,
@@ -2160,22 +2199,61 @@ app.get('/api/admin/sellers', async (req, res) => {
 // GET /api/master/companies — returns all companies with aggregated stats
 app.get('/api/master/companies', async (req, res) => {
     try {
-        const list = await db.getAllCompanies();
+        const [list, users] = await Promise.all([db.getAllCompanies(), db.getAllUsers()]);
         const allSales = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
         const paidSales = allSales.filter(isCountableTicketSale);
+        const companyById = new Map(list.map(company => [company.companyId, company]));
+        const slotCompanyMap = new Map(
+            users
+                .filter(user => user.role === 'seller' && user.sellerSlot && user.companyId)
+                .map(user => [user.sellerSlot, user.companyId])
+        );
+        const sellerPortalCompanies = Object.entries(SELLER_COMPANY_NAMES)
+            .filter(([companyId]) => !PARTNER_LOGIN_SLOTS.includes(companyId))
+            .map(([companyId, name]) => ({
+                ...(companyById.get(companyId) || {}),
+                companyId,
+                name: companyById.get(companyId)?.name || name,
+                status: companyById.get(companyId)?.status || 'ACTIVE'
+            }));
+        const dynamicSlotCompanies = users
+            .filter(user => user.role === 'seller' && user.sellerSlot && user.active !== false && !user.blocked)
+            .map(user => {
+                const companyId = user.companyId || user.sellerSlot;
+                return {
+                    ...(companyById.get(companyId) || {}),
+                    companyId,
+                    name: companyById.get(companyId)?.name || user.displayName || SELLER_COMPANY_NAMES[user.sellerSlot] || 'Partner Login',
+                    status: companyById.get(companyId)?.status || 'ACTIVE'
+                };
+            });
+        const sellerCompanyIds = new Set([...sellerPortalCompanies, ...dynamicSlotCompanies].map(company => company.companyId));
+        const legacyCompaniesWithSales = list.filter(company =>
+            !sellerCompanyIds.has(company.companyId) &&
+            paidSales.some(sale => resolveSaleCompanyId(sale, slotCompanyMap) === company.companyId)
+        );
+        const listById = new Map(
+            [...sellerPortalCompanies, ...dynamicSlotCompanies, ...legacyCompaniesWithSales]
+                .map(company => [company.companyId, company])
+        );
 
-        const companiesWithStats = list.map(c => {
-            const companySales = paidSales.filter(s => s.companyId === c.companyId);
+        const companiesWithStats = Array.from(listById.values()).map(c => {
+            const companySales = paidSales.filter(s => resolveSaleCompanyId(s, slotCompanyMap) === c.companyId);
             const totalOrders = companySales.length;
             const ticketCount = companySales.reduce((acc, s) => acc + (s.quantity || 1), 0);
-            const grossRevenue = companySales.reduce((acc, s) => acc + (s.amount || 0), 0);
+            const grossRevenue = companySales.reduce((acc, s) => acc + saleGrossAmount(s), 0);
+            const revenueAfterCommission = companySales.reduce((acc, s) => acc + saleRevenueAfterCommission(s), 0);
+            const sellerCommission = companySales.reduce((acc, s) => acc + (Number(s.commissionAmount) || 0), 0);
 
             return {
                 ...c,
                 stats: {
                     totalOrders,
                     ticketCount,
-                    grossRevenue
+                    grossRevenue,
+                    platformFee: revenueAfterCommission,
+                    revenueAfterCommission,
+                    netCompanyRevenue: sellerCommission
                 }
             };
         });
@@ -2190,10 +2268,22 @@ app.get('/api/master/companies', async (req, res) => {
 app.get('/api/master/companies/:id/control-center', async (req, res) => {
     const { id } = req.params;
     try {
-        const company = await db.getCompanyById(id);
+        const users = await db.getAllUsers();
+        const sellerSlotUser = users.find(user => user.role === 'seller' && (user.companyId === id || user.sellerSlot === id));
+        const fallbackCompanyName = PARTNER_NAMES[id] || sellerSlotUser?.displayName || SELLER_COMPANY_NAMES[id];
+        const company = await db.getCompanyById(id) || (fallbackCompanyName ? {
+            companyId: id,
+            name: fallbackCompanyName,
+            status: 'ACTIVE',
+            commercials: { feeType: 'PERCENTAGE', percentageFee: 0, fixedFeePerTicket: 0 },
+            razorpayConfig: { enabled: false, keyId: '', keySecret: '', mode: 'TEST', lockedByMaster: false },
+            manualPaymentConfig: { enabled: true, allowedMethods: ['cash'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
+            features: {},
+            prSettings: { commissionType: 'PERCENTAGE', commissionValue: 0 }
+        } : null);
         if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
 
-        const effectiveConfig = await db.getEffectiveConfig(id);
+        const effectiveConfig = await db.getEffectiveConfig(id).catch(() => ({ effective: company }));
         const allEvents = await db.getAllEvents();
         const events = allEvents.filter(e => e.companyId === id);
         const auditLogs = await db.getAuditLogs(id);

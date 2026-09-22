@@ -24,6 +24,21 @@ function isApprovalOnlySale(sale: any) {
   )
 }
 
+function normalizeSellerId(value: any) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+function saleCompanyId(sale: any) {
+  if (sale?.companyId) return sale.companyId
+  const seller = normalizeSellerId(sale?.sellerId || sale?.generatedBy || sale?.prUserId)
+  if (seller === 'LITTLANE' || seller === 'SELLER-A') return 'littlane'
+  if (seller === 'NITRO' || seller === 'SELLER-B') return 'nitro'
+  if (seller === '7TH-HEAVEN' || seller === 'SELLER-C') return '7th-heaven'
+  if (seller === 'PARTNER-SLOT-1') return 'partner-slot-1'
+  if (seller === 'PARTNER-SLOT-2') return 'partner-slot-2'
+  return seller ? seller.toLowerCase() : 'littlane'
+}
+
 export default function CompanyPortal({ companyId = 'littlane', companyName = 'Littlane Events' }: CompanyPortalProps) {
   const [activeTab, setActiveTab] = useState<CompanyTab>('overview')
   const [selectedEventName, setSelectedEventName] = useState<string>('all')
@@ -48,7 +63,7 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
 
       if (salesData.success) {
         // Filter sales by companyId
-        const companySales = (salesData.sales || []).filter((s: any) => (s.companyId || 'littlane') === companyId)
+        const companySales = (salesData.sales || []).filter((s: any) => saleCompanyId(s) === companyId)
         setSales(companySales)
       }
     } catch (err) {
@@ -70,7 +85,7 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
   const ticketedAllSales = sales.filter(s => !isApprovalOnlySale(s))
 
   const paidSales = ticketedSales.filter(s => ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status))
-  const totalRevenue = paidSales.reduce((acc, s) => acc + (s.amount || 0), 0)
+  const totalRevenue = paidSales.reduce((acc, s) => acc + (Number(s.customerTotal ?? s.amount ?? 0) || 0), 0)
 
   const summary = {
     totalOrders: paidSales.length,

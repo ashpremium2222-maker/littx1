@@ -9,6 +9,7 @@ interface CompanySummary {
     ticketCount: number
     grossRevenue: number
     platformFee: number
+    revenueAfterCommission?: number
     netCompanyRevenue: number
   }
 }
@@ -45,7 +46,7 @@ export default function MasterOverview() {
   const suspendedCompanies = companies.filter(c => c.status === 'SUSPENDED').length
 
   const totalGrossRevenue = companies.reduce((sum, c) => sum + (c.stats?.grossRevenue || 0), 0)
-  const totalPlatformFees = companies.reduce((sum, c) => sum + (c.stats?.platformFee || 0), 0)
+  const totalRevenueAfterCommission = companies.reduce((sum, c) => sum + (c.stats?.revenueAfterCommission ?? c.stats?.platformFee ?? 0), 0)
   const totalTicketsSold = companies.reduce((sum, c) => sum + (c.stats?.ticketCount || 0), 0)
 
   if (loading) {
@@ -75,11 +76,11 @@ export default function MasterOverview() {
         </div>
 
         <div className="tile tile-orange">
-          <div className="tile-label">LITTX FEE REVENUE</div>
-          <div className="tile-value">₹{totalPlatformFees.toLocaleString()}</div>
-          <div className="tile-sub">Platform commission earned</div>
+          <div className="tile-label">REVENUE AFTER COMMISSION</div>
+          <div className="tile-value">₹{totalRevenueAfterCommission.toLocaleString()}</div>
+          <div className="tile-sub">Ticket revenue after seller commission</div>
           <div className="tile-delta">
-            <span>💰</span> Net Platform Earnings
+            <span>💰</span> Net After Commission
           </div>
         </div>
 
@@ -109,8 +110,8 @@ export default function MasterOverview() {
                 <th>Orders</th>
                 <th>Tickets Sold</th>
                 <th>Gross Revenue</th>
-                <th>LITTX Platform Fee</th>
-                <th>Net Company Payout</th>
+                <th>Revenue After Commission</th>
+                <th>Seller Commission</th>
               </tr>
             </thead>
             <tbody>
@@ -139,7 +140,7 @@ export default function MasterOverview() {
                   <td>{c.stats?.totalOrders || 0}</td>
                   <td style={{ fontWeight: 700 }}>{c.stats?.ticketCount || 0}</td>
                   <td style={{ fontWeight: 800, color: 'var(--ink)' }}>₹{(c.stats?.grossRevenue || 0).toLocaleString()}</td>
-                  <td style={{ fontWeight: 800, color: 'var(--volt)' }}>₹{(c.stats?.platformFee || 0).toLocaleString()}</td>
+                  <td style={{ fontWeight: 800, color: 'var(--volt)' }}>₹{(c.stats?.revenueAfterCommission ?? c.stats?.platformFee ?? 0).toLocaleString()}</td>
                   <td style={{ fontWeight: 700, color: 'var(--green)' }}>₹{(c.stats?.netCompanyRevenue || 0).toLocaleString()}</td>
                 </tr>
               ))}
