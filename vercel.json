@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "cd staging/combined-app && npm install && npm run build && mv dist/index.html dist/app.html && cp ../../index.html dist/index.html && cp ../../logo.png dist/logo.png",
+  "buildCommand": "cd staging/combined-app && npm install && npm run build && mv dist/index.html dist/app.html && cp ../../index.html dist/index.html && cp ../../logo.png dist/logo.png && cp ../../dholida-garba-royale.png dist/dholida-garba-royale.png",
   "outputDirectory": "staging/combined-app/dist",
   "rewrites": [
     {
