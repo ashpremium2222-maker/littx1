@@ -22,6 +22,37 @@ interface PartnerSessionData {
   sessionVersion?: number
 }
 
+interface SellerTicketRecord {
+  orderId: string
+  ticketId?: string
+  name?: string
+  email?: string
+  phone?: string
+  ticketType?: string
+  gender?: string
+  amount?: number
+  quantity?: number
+  status?: string
+  approvalStatus?: string
+  deliveryStatus?: string
+  createdAt?: string
+  generatedAt?: string
+  deliveredAt?: string
+}
+
+function sellerTicketState(ticket: SellerTicketRecord) {
+  if (ticket.approvalStatus === 'REJECTED' || ticket.deliveryStatus === 'BLOCKED') {
+    return { label: 'Rejected', key: 'rejected', className: 'border-red-500/30 bg-red-500/10 text-red-300' }
+  }
+  if (ticket.approvalStatus === 'PENDING' || ticket.status === 'pending_approval' || ticket.deliveryStatus === 'PENDING_APPROVAL') {
+    return { label: 'Pending approval', key: 'pending', className: 'border-amber-500/30 bg-amber-500/10 text-amber-300' }
+  }
+  if (ticket.approvalStatus === 'APPROVED' || ticket.approvalStatus === 'NOT_REQUIRED' || ticket.deliveryStatus === 'DELIVERED' || ticket.status === 'emailed') {
+    return { label: ticket.approvalStatus === 'APPROVED' ? 'Approved & sent' : 'Sent', key: 'approved', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' }
+  }
+  return { label: 'Processing', key: 'pending', className: 'border-slate-700 bg-slate-800/60 text-slate-300' }
+}
+
 export default function SellerPortalApp() {
   const [partners, setPartners] = useState<PartnerOption[]>(DEFAULT_PARTNERS)
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>('partner-slot-1')
@@ -57,6 +88,9 @@ export default function SellerPortalApp() {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const [activationNotice, setActivationNotice] = useState(false)
   const [successTicket, setSuccessTicket] = useState<{ id: string; attendee: string; price: string; approvalRequired?: boolean } | null>(null)
+  const [sellerTickets, setSellerTickets] = useState<SellerTicketRecord[]>([])
+  const [ticketsLoading, setTicketsLoading] = useState(false)
+  const [ticketsError, setTicketsError] = useState<string | null>(null)
 
   const currentPartner = partners.find((p) => p.id === selectedPartnerId) || partners[0]
   const selectedPass = passes.find((pass) => pass.name === ticketType)
@@ -79,6 +113,40 @@ export default function SellerPortalApp() {
     ? commissionPercentage.toFixed(2).replace(/\.00$/, '')
     : '0'
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value)
+  const ticketStats = sellerTickets.reduce(
+    (acc, ticket) => {
+      const state = sellerTicketState(ticket).key
+      acc.total += 1
+      if (state === 'approved') acc.approved += 1
+      else if (state === 'rejected') acc.rejected += 1
+      else acc.pending += 1
+      return acc
+    },
+    { total: 0, approved: 0, pending: 0, rejected: 0 }
+  )
+
+  const loadSellerTickets = async () => {
+    const activeToken = localStorage.getItem('littx_seller_token') || token || ''
+    if (!activeToken) return
+    setTicketsLoading(true)
+    setTicketsError(null)
+    try {
+      const response = await fetch('/api/seller/sales', {
+        headers: { 'x-seller-token': activeToken },
+        cache: 'no-store'
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        setTicketsError(data.message || 'Unable to load punched tickets.')
+        return
+      }
+      setSellerTickets(Array.isArray(data.sales) ? data.sales : [])
+    } catch {
+      setTicketsError('Unable to load punched tickets.')
+    } finally {
+      setTicketsLoading(false)
+    }
+  }
 
   useEffect(() => {
     const loadPartners = async () => {
@@ -119,6 +187,13 @@ export default function SellerPortalApp() {
       }
     }
     loadPricing()
+  }, [authenticatedPartner, token])
+
+  useEffect(() => {
+    if (!authenticatedPartner) return
+    loadSellerTickets()
+    const interval = window.setInterval(loadSellerTickets, 12000)
+    return () => window.clearInterval(interval)
   }, [authenticatedPartner, token])
 
   // Silent session re-validation on app load / refresh
@@ -283,6 +358,7 @@ export default function SellerPortalApp() {
       const data = await res.json()
       if (res.ok && data.success) {
         setSuccessTicket({ id: data.ticket.id, attendee: name, price: data.ticket.price, approvalRequired: Boolean(data.approvalRequired) })
+        loadSellerTickets()
         // Reset form
         setName('')
         setEmail('')
@@ -424,8 +500,8 @@ export default function SellerPortalApp() {
         </div>
       </header>
 
-      {/* Main Content — Ticket Generator Only */}
-      <main className="flex-1 max-w-xl w-full mx-auto p-4 sm:p-6 flex flex-col justify-center">
+      {/* Main Content */}
+      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-5 items-start">
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
           <div>
             <div className="inline-block bg-indigo-500/10 text-indigo-400 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md mb-2">
@@ -587,6 +663,95 @@ export default function SellerPortalApp() {
             </button>
           </form>
         </div>
+
+        <section className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="inline-block bg-violet-500/10 text-violet-300 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md mb-2">
+                My tickets
+              </div>
+              <h2 className="text-lg font-black text-white">Punched Ticket Status</h2>
+              <p className="text-xs text-slate-400">Approval and delivery status for tickets punched by {authenticatedPartner.name}.</p>
+            </div>
+            <button
+              type="button"
+              onClick={loadSellerTickets}
+              disabled={ticketsLoading}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-violet-500 hover:text-violet-300 disabled:opacity-50"
+            >
+              {ticketsLoading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Total punched</div>
+              <div className="mt-1 text-2xl font-black text-white">{ticketStats.total}</div>
+            </div>
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-300/80">Approved / sent</div>
+              <div className="mt-1 text-2xl font-black text-emerald-300">{ticketStats.approved}</div>
+            </div>
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-amber-300/80">Pending</div>
+              <div className="mt-1 text-2xl font-black text-amber-300">{ticketStats.pending}</div>
+            </div>
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-red-300/80">Rejected</div>
+              <div className="mt-1 text-2xl font-black text-red-300">{ticketStats.rejected}</div>
+            </div>
+          </div>
+
+          {ticketsError && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs font-semibold text-red-300">
+              {ticketsError}
+            </div>
+          )}
+
+          <div className="max-h-[430px] space-y-2 overflow-y-auto pr-1">
+            {sellerTickets.length === 0 && !ticketsLoading ? (
+              <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/50 p-5 text-center text-sm text-slate-500">
+                No tickets punched yet.
+              </div>
+            ) : (
+              sellerTickets.map((ticket) => {
+                const state = sellerTicketState(ticket)
+                const timestamp = ticket.generatedAt || ticket.createdAt
+                return (
+                  <div key={ticket.orderId} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-extrabold text-white">{ticket.name || 'Guest'}</div>
+                        <div className="truncate text-xs text-slate-500">{ticket.email || ticket.phone || 'No contact'}</div>
+                      </div>
+                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${state.className}`}>
+                        {state.label}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Ticket ID</div>
+                        <div className="mt-0.5 font-mono text-slate-300">{ticket.ticketId || 'Pending'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Pass</div>
+                        <div className="mt-0.5 text-slate-300">{ticket.ticketType || ticket.gender || 'Pass'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Amount</div>
+                        <div className="mt-0.5 text-slate-300">{formatCurrency(Number(ticket.amount || 0))}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">Punched</div>
+                        <div className="mt-0.5 text-slate-300">{timestamp ? new Date(timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </section>
       </main>
       {successTicket && (
         <div role="dialog" aria-modal="true" aria-labelledby="ticket-success-title" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
