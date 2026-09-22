@@ -373,7 +373,7 @@ export default function App({ isPresentation = false }: AppProps) {
       })
       const data = await res.json()
       if (data.success) {
-        setManualSuccessMsg(data.approvalRequired ? 'Pending Approval' : 'Ticket Sent!')
+        setManualSuccessMsg(data.approvalRequired ? 'Sent to Dashboard for Approval' : 'Ticket Sent!')
         setManualName('')
         setManualEmail('')
         setManualPhone('')
@@ -827,6 +827,13 @@ export default function App({ isPresentation = false }: AppProps) {
                 >
                   {isManualSubmitting ? 'Generating...' : manualSuccessMsg || 'Generate & Send →'}
                 </button>
+                {manualSuccessMsg && (
+                  <div style={{ marginTop: '10px', fontSize: '11.5px', fontWeight: 700, color: 'var(--ink-soft)', textAlign: 'center' }}>
+                    {manualSuccessMsg === 'Sent to Dashboard for Approval'
+                      ? 'Ticket sent to dashboard for approval. It will be delivered after approval.'
+                      : 'Ticket sent successfully.'}
+                  </div>
+                )}
               </div>
             </form>
           </div>

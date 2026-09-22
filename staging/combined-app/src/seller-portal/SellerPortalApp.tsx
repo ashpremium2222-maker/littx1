@@ -593,10 +593,10 @@ export default function SellerPortalApp() {
           <div className="w-full max-w-sm animate-[fadeInUp_.28s_ease-out] rounded-3xl border border-emerald-400/25 bg-slate-900 p-7 text-center shadow-2xl">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400 text-3xl font-black text-slate-950 shadow-lg shadow-emerald-500/20">✓</div>
             <h2 id="ticket-success-title" className="mt-5 text-xl font-black text-white">
-              {successTicket.approvalRequired ? 'Ticket Pending Approval' : 'Ticket Sent Successfully'}
+              {successTicket.approvalRequired ? 'Ticket Sent to Dashboard for Approval' : 'Ticket Sent Successfully'}
             </h2>
             <p className="mt-2 text-sm text-slate-400">
-              Ticket <span className="font-mono font-bold text-violet-300">#{successTicket.id}</span> has been {successTicket.approvalRequired ? 'queued for dashboard approval' : 'issued'} for {successTicket.attendee}.
+              Ticket <span className="font-mono font-bold text-violet-300">#{successTicket.id}</span> has been {successTicket.approvalRequired ? 'sent to the dashboard for approval and will be delivered after approval' : 'issued'} for {successTicket.attendee}.
             </p>
             <button type="button" autoFocus onClick={() => setSuccessTicket(null)} className="mt-6 w-full rounded-xl bg-white py-3 text-sm font-extrabold text-slate-950">Done</button>
           </div>

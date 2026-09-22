@@ -451,7 +451,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       })
       const data = await res.json()
       if (data.success) {
-        setManualSuccessMsg(data.approvalRequired ? 'Pending Approval' : 'Ticket Sent!')
+        setManualSuccessMsg(data.approvalRequired ? 'Sent to Dashboard for Approval' : 'Ticket Sent!')
         setManualName('')
         setManualEmail('')
         setManualPhone('')
@@ -900,7 +900,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                   textAlign: 'center',
                   marginTop: '4px',
                 }}>
-                  ✓ {manualSuccessMsg === 'Pending Approval' ? 'Ticket queued for approval.' : 'Ticket sent successfully! Ready for next ticket.'}
+                  ✓ {manualSuccessMsg === 'Sent to Dashboard for Approval' ? 'Ticket sent to dashboard for approval.' : 'Ticket sent successfully! Ready for next ticket.'}
                 </div>
               )}
 

@@ -1511,7 +1511,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             success: true,
             approvalRequired: !directDelivery,
             approvalStatus,
-            message: directDelivery ? 'Ticket delivered.' : 'Ticket punched and pending dashboard approval.',
+            message: directDelivery ? 'Ticket delivered.' : 'Ticket sent to dashboard for approval.',
             ticket: {
                 id: ticketId,
                 orderId,
