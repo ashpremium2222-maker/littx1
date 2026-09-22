@@ -355,7 +355,7 @@ async function seedDefaultUsers() {
 
 async function seedDefaultPartnerLocks() {
     const defaultPartners = [
-        { partnerId: 'littlane', name: 'Littlane Entertainment', password: 'littlane2026' },
+        { partnerId: 'littlane', name: 'Littlane Ent', password: 'littlane2026' },
         { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro2026' },
         { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026' }
     ];
@@ -635,7 +635,7 @@ async function seedDefaultCompanies() {
         const defaultCompanies = [
             {
                 companyId: 'littlane',
-                name: 'Littlane Events',
+                name: 'Littlane Ent',
                 status: 'ACTIVE',
                 commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
                 razorpayConfig: { enabled: true, keyId: 'rzp_live_littlane123', keySecret: 'littlane_secret', mode: 'LIVE', lockedByMaster: false },
@@ -808,7 +808,7 @@ async function getEffectiveConfig(companyId = 'littlane', eventNameOrId = null) 
 
     return {
         companyId: company.companyId || companyId,
-        companyName: company.name || 'Littlane Events',
+        companyName: company.name || 'Littlane Ent',
         companyStatus: company.status,
         effective
     };
@@ -849,7 +849,7 @@ const mockDb = {
     companies: [
         {
             companyId: 'littlane',
-            name: 'Littlane Events',
+            name: 'Littlane Ent',
             status: 'ACTIVE',
             commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
             razorpayConfig: { enabled: true, keyId: 'rzp_live_littlane123', keySecret: 'littlane_secret', mode: 'LIVE', lockedByMaster: false },
@@ -932,7 +932,7 @@ const _mockSessions = new Map();
 const _mockUserSessions = new Map();
 const _mockScanLogs = [];
 const _mockPartnerLocks = new Map([
-    ['littlane', { partnerId: 'littlane', name: 'Littlane Entertainment', password: 'littlane2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['littlane', { partnerId: 'littlane', name: 'Littlane Ent', password: 'littlane2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['nitro', { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
 ]);

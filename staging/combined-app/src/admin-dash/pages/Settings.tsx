@@ -459,7 +459,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                 <tbody>
                   {partnerLocks.length === 0 ? (
                     [
-                      { partnerId: 'littlane', name: 'Littlane Entertainment' },
+                      { partnerId: 'littlane', name: 'Littlane Ent' },
                       { partnerId: 'nitro', name: 'Nitro Events' },
                       { partnerId: '7th-heaven', name: '7th Heaven' }
                     ].map((p) => (

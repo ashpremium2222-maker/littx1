@@ -178,7 +178,7 @@ interface AppProps {
 export default function App({ isPresentation = false, isManager = false }: AppProps) {
   const [page, setPage] = useState<Page>(isManager ? 'dashboard' : 'master-overview')
   const [selectedCompanyId, setSelectedCompanyId] = useState('littlane')
-  const [selectedCompanyName, setSelectedCompanyName] = useState('Littlane Events')
+  const [selectedCompanyName, setSelectedCompanyName] = useState('Littlane Ent')
   const [dark, setDark] = useState(true)
   const [search, setSearch] = useState('')
   const [adminKey, setAdminKey] = useState(
@@ -349,7 +349,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     }
 
     const partnerNameMap: Record<string, string> = {
-      'littlane': 'Littlane Entertainment',
+      'littlane': 'Littlane Ent',
       'nitro': 'Nitro Events',
       '7th-heaven': '7th Heaven'
     }
@@ -678,7 +678,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                   value={manualPartner}
                   onChange={(e) => setManualPartner(e.target.value)}
                 >
-                  <option value="littlane">Littlane Entertainment</option>
+                  <option value="littlane">Littlane Ent</option>
                   <option value="nitro">Nitro Events</option>
                   <option value="7th-heaven">7th Heaven</option>
                 </select>

@@ -39,7 +39,7 @@ function saleCompanyId(sale: any) {
   return seller ? seller.toLowerCase() : 'littlane'
 }
 
-export default function CompanyPortal({ companyId = 'littlane', companyName = 'Littlane Events' }: CompanyPortalProps) {
+export default function CompanyPortal({ companyId = 'littlane', companyName = 'Littlane Ent' }: CompanyPortalProps) {
   const [activeTab, setActiveTab] = useState<CompanyTab>('overview')
   const [selectedEventName, setSelectedEventName] = useState<string>('all')
   const [events, setEvents] = useState<any[]>([])

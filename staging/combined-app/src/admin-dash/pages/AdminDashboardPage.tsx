@@ -401,10 +401,10 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                   </div>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)' }}>
-                      {seller.sellerId === 'littlane' ? 'Littlane Entertainment'
+                      {seller.sellerId === 'littlane' ? 'Littlane Ent'
                         : seller.sellerId === 'nitro' ? 'Nitro Events'
                         : seller.sellerId === '7th-heaven' ? '7th Heaven'
-                        : seller.sellerId === 'SELLER-A' ? 'Littlane Entertainment'
+                        : seller.sellerId === 'SELLER-A' ? 'Littlane Ent'
                         : seller.sellerId === 'SELLER-B' ? 'Nitro Events'
                         : seller.sellerId === 'SELLER-C' ? '7th Heaven'
                         : seller.sellerId}
