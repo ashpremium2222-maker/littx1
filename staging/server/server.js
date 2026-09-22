@@ -204,11 +204,21 @@ async function authenticateSeller(token) {
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const { whatsappWebhook } = require('./whatsapp-webhook');
 
 const db = require('./db');
 const { atomicClaimOrder } = db;
 const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
+async function generateUniqueTicketId() {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const ticketId = generateTicketId();
+        if (!(await db.getByTicketId(ticketId))) return ticketId;
+    }
+    throw new Error('Could not allocate a unique ticket ID');
+}
 const { sendTicketEmail } = require('./mailer');
 const { sendTicketWhatsApp, getWhatsAppConfigurationStatus } = require('./whatsapp-service');
 
@@ -269,8 +279,14 @@ function publicWhatsAppError(result) {
 }
 
 const app = express();
+app.set('trust proxy', 1);
+app.use(helmet());
+app.use(compression());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb', verify: (req, res, buffer) => {
+    if (req.originalUrl.split('?')[0] === '/api/webhook/razorpay') req.rawBody = Buffer.from(buffer);
+} }));
+const scanLimiter = rateLimit({ windowMs: 60 * 1000, limit: 3000, standardHeaders: true, legacyHeaders: false });
 
 // A malformed Meta payload should still be acknowledged promptly. This handler
 // is deliberately limited to the WhatsApp endpoint so existing API error
@@ -686,10 +702,9 @@ async function computeAmount(gender, quantity, eventName = EVENT.name) {
 }
 
 // In-memory token store for unified auth sessions (populated by /api/auth/login)
-const platformAuthTokens = new Set();
 
 async function requireAdmin(req, res, next) {
-    const key = req.headers['x-admin-key'] || req.query.key;
+    const key = req.headers['x-admin-key'];
     const token = req.headers['x-auth-token'];
     const isPres = req.headers['x-presentation'] === 'true' || req.query.pres === 'true';
 
@@ -704,8 +719,6 @@ async function requireAdmin(req, res, next) {
     if (key && key === ADMIN_KEY) return next();
 
     // Accept unified auth tokens issued by /api/auth/login (master_admin or company_admin)
-    if (token && platformAuthTokens.has(token)) return next();
-
     // Persist platform sessions because Vercel requests do not share the
     // process-local Set above.
     if (token) {
@@ -916,7 +929,7 @@ app.post('/api/verify-payment', async (req, res) => {
         }
 
         // If we successfully claimed it, WE generate the ticket
-        const ticketId = generateTicketId();
+        const ticketId = await generateUniqueTicketId();
         const generatedAt = new Date().toISOString();
         let pdfPath, qrBuffer, qrDataUrl;
         try {
@@ -1019,17 +1032,20 @@ app.post('/api/webhook/razorpay', async (req, res) => {
 
         const expectedSignature = crypto
             .createHmac('sha256', RZP_WEBHOOK_SECRET)
-            .update(JSON.stringify(req.body))
+            .update(req.rawBody || Buffer.from(''))
             .digest('hex');
 
-        if (expectedSignature !== signature) {
+        const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+        const suppliedBuffer = Buffer.from(String(signature), 'hex');
+        if (expectedBuffer.length !== suppliedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)) {
             console.error('[webhook] Invalid signature');
             return res.status(400).send('Invalid signature');
         }
 
-        const event = req.body.event;
+        const body = req.body;
+        const event = body.event;
         if (event === 'order.paid' || event === 'payment.captured') {
-            const paymentEntity = req.body.payload.payment.entity;
+            const paymentEntity = body.payload.payment.entity;
             const orderId = paymentEntity.order_id;
             const paymentId = paymentEntity.id;
 
@@ -1045,7 +1061,7 @@ app.post('/api/webhook/razorpay', async (req, res) => {
                 return res.status(200).send('Already processed');
             }
             
-            const ticketId = generateTicketId();
+            const ticketId = await generateUniqueTicketId();
             const generatedAt = new Date().toISOString();
             let pdfPath, qrBuffer, qrDataUrl;
             
@@ -1569,9 +1585,9 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
 
     const sellerToken = req.headers['x-seller-token'];
     const sellerId = await authenticateSeller(sellerToken);
-    const adminKeyHdr = req.headers['x-admin-key'] || req.query.key;
+    const adminKeyHdr = req.headers['x-admin-key'];
     const adminToken = req.headers['x-auth-token'];
-    let isAdmin = adminKeyHdr === ADMIN_KEY || (adminToken && platformAuthTokens.has(adminToken));
+    let isAdmin = adminKeyHdr === ADMIN_KEY;
     if (!isAdmin && adminToken) {
         const session = await db.getUserSessionByToken(adminToken);
         isAdmin = Boolean(session && ['master_admin', 'company_admin'].includes(session.role));
@@ -1620,7 +1636,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
 
     try {
         const orderId = `order_manual_${crypto.randomBytes(8).toString('hex')}`;
-        const ticketId = generateTicketId();
+        const ticketId = await generateUniqueTicketId();
         const generatedAt = new Date().toISOString();
 
         const resolvedSellerId = sellerId || partnerId || generatedBy || 'Admin';
@@ -1839,7 +1855,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
 
     try {
         const orderId = `order_shadow_${crypto.randomBytes(8).toString('hex')}`;
-        const ticketId = generateTicketId();
+        const ticketId = await generateUniqueTicketId();
         const generatedAt = new Date().toISOString();
 
         // 1. Save Shadow Record immediately — this is the source of truth
@@ -1996,60 +2012,35 @@ app.get('/api/shadow-private/sales', requirePrivateShadowAuth, async (req, res) 
 });
 
 // GET /api/debug/db-status — Shows DB connection mode and record count (for debugging)
-app.get('/api/debug/db-status', async (req, res) => {
+app.get('/api/debug/db-status', requireAdmin, async (req, res) => {
     try {
         const mongoose = require('mongoose');
         const isConnected = mongoose.connection.readyState === 1;
         
-        // Obfuscate URI for display
-        const rawUri = process.env.MONGODB_URI || 'not-set (falling back to localhost)';
-        let displayUri = rawUri;
-        if (rawUri.includes('@')) {
-            displayUri = rawUri.replace(/\/\/.*@/, '//****:****@');
-        }
-
-        const all = (await db.getAll()).filter(s => !isShadowSale(s));
         res.json({
             success: true,
             dbMode: isConnected ? 'MongoDB' : 'Mock (in-memory/file)',
             mongoState: mongoose.connection.readyState,
-            uriInUse: displayUri,
-            totalRecords: all.length,
-            sampleRecords: all.slice(0, 5).map(s => ({
-                orderId: s.orderId,
-                name: s.name,
-                status: s.status,
-                source: s.source,
-                isShadow: s.isShadow,
-                createdAt: s.createdAt
-            }))
+            mongoConfigured: Boolean(process.env.MONGODB_URI)
         });
     } catch (err) {
         const mongoose = require('mongoose');
-        const rawUri = process.env.MONGODB_URI || 'not-set (falling back to localhost)';
-        let displayUri = rawUri;
-        if (rawUri.includes('@')) {
-            displayUri = rawUri.replace(/\/\/.*@/, '//****:****@');
-        }
         res.status(500).json({ 
             success: false, 
             message: err.message,
             mongoState: mongoose.connection.readyState,
-            uriInUse: displayUri
+            mongoConfigured: Boolean(process.env.MONGODB_URI)
         });
     }
 });
 
 // ==================== 6B. SECURE DATA WIPE (ADMIN ONLY) ====================
-app.post('/api/admin/danger-wipe-test-data', async (req, res) => {
-    const clientKey = req.query.key || req.headers['x-admin-key'];
-    if (!clientKey || clientKey !== ADMIN_KEY) {
-        return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
+app.post('/api/admin/danger-wipe-test-data', requireAdmin, async (req, res) => {
+    if (req.body?.confirmation !== 'DELETE ALL SALES') return res.status(400).json({ success: false, message: 'Type DELETE ALL SALES to confirm this action.' });
     try {
         const mongoose = require('mongoose');
         const result = await mongoose.connection.db.collection('sales').deleteMany({});
-        res.json({ success: true, message: `Successfully wiped ${result.deletedCount} test tickets and reset all revenue/ticket stats.` });
+        res.json({ success: true, message: `Successfully deleted ${result.deletedCount} sales and reset all revenue/ticket stats.` });
     } catch (err) {
         console.error('[WIPE ERROR]', err);
         res.status(500).json({ success: false, message: err.message });
@@ -2078,11 +2069,7 @@ app.post('/api/admin/clear-sales', requireAdmin, async (req, res) => {
 });
 
 // ==================== 6C. CANCEL DELIVERED TICKET (ADMIN ONLY) ====================
-app.post('/api/admin/cancel-ticket', async (req, res) => {
-    const clientKey = req.query.key || req.headers['x-admin-key'];
-    if (!clientKey || clientKey !== ADMIN_KEY) {
-        return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
+app.post('/api/admin/cancel-ticket', requireAdmin, async (req, res) => {
     const { ticketId } = req.body || {};
     if (!ticketId) {
         return res.status(400).json({ success: false, message: 'Ticket ID is required' });
@@ -2110,12 +2097,10 @@ app.post('/api/admin/cancel-ticket', async (req, res) => {
 // invalid scans survive a refresh, logout, or a different scanner device.
 app.get('/api/scan-stats', async (req, res) => {
     try {
-        const [allSales, scanStats] = await Promise.all([
-            db.getAll(),
+        const [accepted, scanStats] = await Promise.all([
+            db.countScannedSales(),
             db.getScanStats(null, new Date(0))
         ]);
-        const sales = allSales.filter(s => !isShadowSale(s));
-        const accepted = sales.filter(s => s.status === 'scanned').length;
         res.json({
             success: true,
             accepted,
@@ -2128,130 +2113,38 @@ app.get('/api/scan-stats', async (req, res) => {
     }
 });
 
-app.post('/api/scan-ticket', async (req, res) => {
+app.post('/api/scan-ticket', scanLimiter, async (req, res) => {
     const { ticketId, scannedBy } = req.body || {};
-    if (!ticketId) {
-        return res.status(400).json({ success: false, message: 'Ticket ID is required' });
-    }
-
+    const staff = scannedBy || 'Gate Staff';
+    if (!ticketId) return res.status(400).json({ result: 'not_found', message: 'Ticket ID is required' });
     try {
         const sale = await db.getByTicketId(ticketId);
         if (!sale) {
-            await db.createScanLog({
-                ticketId,
-                result: 'invalid',
-                scannedBy: scannedBy || 'Gate Staff',
-                ip: req.ip || req.socket?.remoteAddress || 'unknown'
-            });
+            await db.createScanLog({ ticketId, result: 'invalid', scannedBy: staff, ip: req.ip || req.socket?.remoteAddress || 'unknown' });
             return res.json({ result: 'not_found' });
         }
-
         if (sale.status === 'cancelled') {
-            await db.createScanLog({
-                ticketId: sale.ticketId,
-                result: 'cancelled',
-                scannedBy: scannedBy || 'Gate Staff',
-                ip: req.ip || req.socket?.remoteAddress || 'unknown',
-                companyId: sale.companyId || 'littlane',
-                event: sale.event
-            });
-            return res.json({
-                result: 'rejected',
-                ticket: {
-                    id: sale.ticketId,
-                    event: sale.event,
-                    attendee: sale.name,
-                    email: sale.email,
-                    phone: sale.phone,
-                    ticketType: sale.gender,
-                    quantity: sale.quantity,
-                    amount: sale.amount,
-                    generatedAt: sale.generatedAt,
-                    status: 'cancelled',
-                    scannedBy: 'Admin',
-                    scannedAt: 'Cancelled by Admin'
-                }
-            });
+            await db.createScanLog({ ticketId, result: 'cancelled', scannedBy: staff, ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: sale.companyId || 'littlane', event: sale.event });
+            return res.json({ result: 'rejected', ticket: { id: sale.ticketId, event: sale.event, attendee: sale.name, email: sale.email, phone: sale.phone, ticketType: sale.gender, quantity: sale.quantity, amount: sale.amount, generatedAt: sale.generatedAt, status: 'cancelled', scannedBy: 'Admin', scannedAt: 'Cancelled by Admin' } });
         }
-
-        if (sale.status === 'scanned' || sale.scannedAt) {
-            await db.createScanLog({
-                ticketId: sale.ticketId,
-                result: 'duplicate',
-                scannedBy: scannedBy || 'Gate Staff',
-                ip: req.ip || req.socket?.remoteAddress || 'unknown',
-                companyId: sale.companyId || 'littlane',
-                event: sale.event
-            });
-            return res.json({
-                result: 'rejected',
-                ticket: {
-                    id: sale.ticketId,
-                    event: sale.event,
-                    attendee: sale.name,
-                    email: sale.email,
-                    phone: sale.phone,
-                    ticketType: sale.gender,
-                    quantity: sale.quantity,
-                    amount: sale.amount,
-                    generatedAt: sale.generatedAt,
-                    status: 'scanned',
-                    scannedBy: sale.scannedBy,
-                    scannedAt: sale.scannedAt
-                }
-            });
-        }
-
-        // IST = UTC + 5:30
         const utcNow = new Date();
         const ist = new Date(utcNow.getTime() + 5.5 * 60 * 60 * 1000);
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const rawHour = ist.getUTCHours();
-        const ampm = rawHour >= 12 ? 'PM' : 'AM';
-        const hour12 = rawHour % 12 === 0 ? 12 : rawHour % 12;
-        const mm = ist.getUTCMinutes().toString().padStart(2, '0');
-        const scannedAtStr = `${months[ist.getUTCMonth()]} ${ist.getUTCDate()}, ${hour12}:${mm} ${ampm}`;
-
-        await db.updateSaleRecord(sale.orderId, {
-            status: 'scanned',
-            scannedBy: scannedBy || 'Gate Staff',
-            scannedAt: scannedAtStr
-        });
-
-        await db.createScanLog({
-            ticketId: sale.ticketId,
-            result: 'accepted',
-            scannedBy: scannedBy || 'Gate Staff',
-            ip: req.ip || req.socket?.remoteAddress || 'unknown',
-            companyId: sale.companyId || 'littlane',
-            event: sale.event
-        });
-
-        const updatedSale = await db.getByOrderId(sale.orderId);
-
-        res.json({
-            result: 'success',
-            ticket: {
-                id: updatedSale.ticketId,
-                event: updatedSale.event,
-                attendee: updatedSale.name,
-                email: updatedSale.email,
-                phone: updatedSale.phone,
-                ticketType: updatedSale.gender,
-                quantity: updatedSale.quantity,
-                amount: updatedSale.amount,
-                generatedAt: updatedSale.generatedAt,
-                status: 'scanned',
-                scannedBy: updatedSale.scannedBy,
-                scannedAt: updatedSale.scannedAt
-            }
-        });
+        const scannedAtStr = `${months[ist.getUTCMonth()]} ${ist.getUTCDate()}, ${rawHour % 12 || 12}:${ist.getUTCMinutes().toString().padStart(2, '0')} ${rawHour >= 12 ? 'PM' : 'AM'}`;
+        const updatedSale = await db.atomicScanTicket(ticketId, staff, scannedAtStr);
+        if (!updatedSale) {
+            const latest = await db.getByTicketId(ticketId);
+            await db.createScanLog({ ticketId, result: 'duplicate', scannedBy: staff, ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: sale.companyId || 'littlane', event: sale.event });
+            return res.json({ result: 'rejected', ticket: { id: sale.ticketId, event: sale.event, attendee: sale.name, email: sale.email, phone: sale.phone, ticketType: sale.gender, quantity: sale.quantity, scannedCount: latest?.scannedCount || 0, amount: sale.amount, generatedAt: sale.generatedAt, status: latest?.status || sale.status, scannedBy: latest?.scannedBy, scannedAt: latest?.scannedAt } });
+        }
+        await db.createScanLog({ ticketId: sale.ticketId, result: 'accepted', scannedBy: staff, ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: sale.companyId || 'littlane', event: sale.event });
+        res.json({ result: 'success', ticket: { id: updatedSale.ticketId, event: updatedSale.event, attendee: updatedSale.name, email: updatedSale.email, phone: updatedSale.phone, ticketType: updatedSale.gender, quantity: updatedSale.quantity, scannedCount: updatedSale.scannedCount, amount: updatedSale.amount, generatedAt: updatedSale.generatedAt, status: updatedSale.status, scannedBy: updatedSale.scannedBy, scannedAt: updatedSale.scannedAt } });
     } catch (err) {
         console.error('[scan-ticket] Error:', err);
         res.status(500).json({ success: false, message: err.message });
     }
 });
-
 // ==================== DEBUG: TEST EMAIL ====================
 app.get('/api/test-email', async (req, res) => {
     const { to } = req.query;
@@ -2517,8 +2410,6 @@ app.post('/api/auth/login', async (req, res) => {
     );
     if (platformUser) {
         const token = generateToken();
-        // Register this token so requireAdmin accepts x-auth-token from the frontend
-        platformAuthTokens.add(token);
         await db.setUserSession(platformUser.userId, {
             token,
             ip: clientIp(req),
@@ -2976,7 +2867,7 @@ app.post('/api/pr/create-order', async (req, res) => {
             orderId = order.id;
         }
 
-        const ticketId = generateTicketId();
+        const ticketId = await generateUniqueTicketId();
         await db.createSaleRecord({
             orderId,
             event: EVENT.name,
@@ -3012,7 +2903,7 @@ app.post('/api/pr/cash-request', async (req, res) => {
 
     try {
         const orderId = `order_cash_${crypto.randomBytes(8).toString('hex')}`;
-        const ticketId = generateTicketId();
+        const ticketId = await generateUniqueTicketId();
 
         await db.createSaleRecord({
             orderId,

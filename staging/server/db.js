@@ -7,6 +7,9 @@ const os = require('os');
 // promise on the Node global so every request waits for the same MongoDB
 // connection instead of issuing a buffered query while Mongoose is connecting.
 const HAS_CONFIGURED_MONGODB = Boolean(process.env.MONGODB_URI);
+if (process.env.NODE_ENV === 'production' && !HAS_CONFIGURED_MONGODB) {
+    throw new Error('MONGODB_URI is required in production; refusing to start with the mock database.');
+}
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/littx';
 const MONGO_PROMISE_KEY = '__littxMongoConnectionPromise';
 
@@ -15,9 +18,11 @@ async function connectDb() {
 
     if (!global[MONGO_PROMISE_KEY]) {
         global[MONGO_PROMISE_KEY] = mongoose.connect(MONGODB_URI, {
-            maxPoolSize: 10,
+            maxPoolSize: 50,
+            minPoolSize: 5,
             serverSelectionTimeoutMS: 8000,
             connectTimeoutMS: 8000,
+            socketTimeoutMS: 20000,
         }).then(async connection => {
             console.log('✅ Connected to MongoDB');
             await seedDefaultUsers();
@@ -155,7 +160,7 @@ const SaleSchema = new mongoose.Schema({
     currency: { type: String },
     status: { type: String },
     paymentId: { type: String },
-    ticketId: { type: String },
+    ticketId: { type: String, index: true, unique: true, sparse: true },
     emailStatus: { type: String },
     emailError: { type: String },
     whatsappStatus: { type: String },
@@ -193,6 +198,12 @@ const SaleSchema = new mongoose.Schema({
     }],
     scannedCount: { type: Number, default: 0 }
 });
+
+SaleSchema.index({ companyId: 1, event: 1, status: 1 });
+SaleSchema.index({ status: 1, scannedAt: -1 });
+SaleSchema.index({ createdAt: -1 });
+SaleSchema.index({ sellerId: 1, createdAt: -1 });
+SaleSchema.index({ prUserId: 1, createdAt: -1 });
 
 const CompanySchema = new mongoose.Schema({
     companyId: { type: String, required: true, unique: true },
@@ -453,14 +464,12 @@ async function createSaleRecord(record) {
 }
 
 async function updateSaleRecord(orderId, updates) {
+    const { errorLog, ...fields } = updates;
+    const update = { $set: { ...fields, updatedAt: new Date().toISOString() } };
+    if (Array.isArray(errorLog) && errorLog.length) update.$push = { errorLog: errorLog[errorLog.length - 1] };
     const updated = await Sale.findOneAndUpdate(
         { orderId },
-        { 
-            $set: { 
-                ...updates,
-                updatedAt: new Date().toISOString()
-            } 
-        },
+        update,
         { returnDocument: 'after', lean: true }
     );
     return updated;
@@ -716,6 +725,12 @@ mongoose.connection.once('open', async () => {
     await seedDefaultCompanies();
     await seedDefaultEvents();
     await seedDefaultUsers();
+    const demoSecrets = new Set(['demo_secret_key_12345', 'whsec_demo_12345', 'littlane_secret', 'nexora_secret']);
+    const seeded = await Company.find({ $or: [
+        { 'razorpayConfig.keySecret': { $in: [...demoSecrets] } },
+        { 'razorpayConfig.webhookSecret': { $in: [...demoSecrets] } }
+    ] }).select('companyId name').lean();
+    if (seeded.length) console.error('[SECURITY] Company records still use known demo Razorpay secrets:', seeded.map(c => c.companyId).join(', '));
 });
 
 async function getAllCompanies() {
@@ -1035,7 +1050,11 @@ module.exports = {
         if (useMock()) {
             const idx = mockDb.sales.findIndex(s => s.orderId === orderId);
             if (idx !== -1) {
-                mockDb.sales[idx] = { ...mockDb.sales[idx], ...updates, updatedAt: new Date().toISOString() };
+                const { errorLog, ...fields } = updates;
+                mockDb.sales[idx] = { ...mockDb.sales[idx], ...fields, updatedAt: new Date().toISOString() };
+                if (Array.isArray(errorLog) && errorLog.length) {
+                    mockDb.sales[idx].errorLog = [...(mockDb.sales[idx].errorLog || []), errorLog[errorLog.length - 1]];
+                }
                 _saveMockSales(mockDb.sales);
                 return mockDb.sales[idx];
             }
@@ -1096,6 +1115,10 @@ module.exports = {
             return [...mockDb.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         }
         return await getAll();
+    },
+    countScannedSales: async () => {
+        if (useMock()) return mockDb.sales.filter(s => s.status === 'scanned' && !s.isShadow && !String(s.source || '').startsWith('shadow')).length;
+        return Sale.countDocuments({ status: 'scanned', isShadow: { $ne: true }, source: { $not: /^shadow/ } });
     },
     clearAllSales: async () => {
         if (useMock()) {
@@ -1207,10 +1230,6 @@ module.exports = {
     },
 
     // Event Helpers
-    getAllEvents: async () => {
-        if (useMock()) return mockDb.events;
-        return await getAllEvents();
-    },
     getEventById: async (id) => {
         if (useMock()) {
             return mockDb.events.find(e => e._id === id) || null;
@@ -1241,16 +1260,6 @@ module.exports = {
             return null;
         }
         return await updateEvent(id, updates);
-    },
-    deleteEvent: async (id) => {
-        if (useMock()) {
-            const idx = mockDb.events.findIndex(e => e._id === id);
-            if (idx !== -1) {
-                return mockDb.events.splice(idx, 1)[0];
-            }
-            return null;
-        }
-        return await deleteEvent(id);
     },
 
     // Company & Audit Helpers
@@ -1380,30 +1389,23 @@ module.exports = {
     // Returns updated sale or null if precondition failed (already scanned — race condition guard).
     atomicScanTicket: async (ticketId, scannedBy, scannedAtStr) => {
         if (useMock()) {
-            const idx = mockDb.sales.findIndex(s =>
-                s.ticketId === ticketId &&
-                ['paid', 'ticket_generated', 'emailed', 'email_failed'].includes(s.status)
-            );
-            if (idx === -1) return null;
-            mockDb.sales[idx].status = 'scanned';
-            mockDb.sales[idx].scannedBy = scannedBy;
-            mockDb.sales[idx].scannedAt = scannedAtStr;
-            mockDb.sales[idx].updatedAt = new Date().toISOString();
-            return mockDb.sales[idx];
+            const sale = mockDb.sales.find(s => s.ticketId === ticketId);
+            if (!sale || sale.status === 'cancelled' || sale.status === 'scanned') return null;
+            const quantity = Math.max(1, Number(sale.quantity) || 1);
+            const scannedCount = Number(sale.scannedCount) || 0;
+            if (!['paid', 'ticket_generated', 'emailed', 'email_failed', 'partially_scanned'].includes(sale.status) || scannedCount >= quantity) return null;
+            sale.slots = Array.isArray(sale.slots) ? sale.slots : [];
+            sale.slots.push({ checkedIn: true, checkedInBy: scannedBy, checkedInAt: scannedAtStr });
+            sale.scannedCount = scannedCount + 1;
+            sale.status = sale.scannedCount >= quantity ? 'scanned' : 'partially_scanned';
+            sale.scannedBy = scannedBy;
+            sale.scannedAt = scannedAtStr;
+            sale.updatedAt = new Date().toISOString();
+            return sale;
         }
         return Sale.findOneAndUpdate(
-            {
-                ticketId,
-                status: { $in: ['paid', 'ticket_generated', 'emailed', 'email_failed'] }
-            },
-            {
-                $set: {
-                    status: 'scanned',
-                    scannedBy,
-                    scannedAt: scannedAtStr,
-                    updatedAt: new Date().toISOString()
-                }
-            },
+            { ticketId, status: { $in: ['paid', 'ticket_generated', 'emailed', 'email_failed', 'partially_scanned'] }, $expr: { $lt: [{ $ifNull: ['$scannedCount', 0] }, { $max: [1, { $ifNull: ['$quantity', 1] }] }] } },
+            [{ $set: { slots: { $concatArrays: [{ $ifNull: ['$slots', []] }, [{ checkedIn: true, checkedInBy: scannedBy, checkedInAt: scannedAtStr }]] }, scannedCount: { $add: [{ $ifNull: ['$scannedCount', 0] }, 1] }, scannedBy, scannedAt: scannedAtStr, updatedAt: new Date().toISOString(), status: { $cond: [{ $gte: [{ $add: [{ $ifNull: ['$scannedCount', 0] }, 1] }, { $max: [1, { $ifNull: ['$quantity', 1] }] }] }, 'scanned', 'partially_scanned'] } } }],
             { returnDocument: 'after', lean: true }
         );
     },

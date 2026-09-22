@@ -57,6 +57,7 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
   const scanTimerRef = useRef<number | null>(null)
   const scanningRef = useRef(false)
   const phaseTimerRef = useRef<number | null>(null)
+  const lastScanRef = useRef<{ code: string; at: number } | null>(null)
 
   const [activeTab, setActiveTab] = useState<Tab>('scanner')
   const [cameraActive, setCameraActive] = useState(false)
@@ -107,6 +108,11 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
         const imageData = ctx.getImageData(0, 0, w, h)
         const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' })
         if (code?.data) {
+          if (lastScanRef.current?.code === code.data && Date.now() - lastScanRef.current.at < 3000) {
+            scanTimerRef.current = window.setTimeout(scanFrame, 440)
+            return
+          }
+          lastScanRef.current = { code: code.data, at: Date.now() }
           scanningRef.current = false
           setPhase('detected')
           phaseTimerRef.current = window.setTimeout(() => {
@@ -119,7 +125,7 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
         }
       }
     }
-    if (scanningRef.current) scanTimerRef.current = window.setTimeout(scanFrame, 280)
+    if (scanningRef.current) scanTimerRef.current = window.setTimeout(scanFrame, (navigator.hardwareConcurrency || 8) <= 4 ? 440 : 280)
   }, [finishScan])
 
   const openCamera = useCallback(async () => {

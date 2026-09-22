@@ -35,6 +35,7 @@ export interface Ticket {
   ticketType: TicketType
   price: string
   qty: number
+  scannedCount?: number
   generatedBy: string
   generatedAt: string
   status: TicketStatus
@@ -183,39 +184,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     scanTicket: async (idOrRaw, scannedBy) => {
       const cleanId = idOrRaw.trim()
 
-      // Optimistic cache-first verification for instant millisecond response times
-      const localTicket = tickets.find(t => t.id === cleanId)
-      if (localTicket) {
-        if (localTicket.status === 'scanned') {
-          // Trigger background sync to log attempt on server, but do not await
-          fetch('/api/scan-ticket', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ticketId: cleanId, scannedBy })
-          }).catch(console.error)
-
-          return { result: 'rejected', ticket: localTicket }
-        } else {
-          // Optimistically mark as scanned in React state to prevent double scans
-          const updatedTicket: Ticket = {
-            ...localTicket,
-            status: 'scanned',
-            scannedBy: scannedBy || 'Gate Staff',
-            scannedAt: new Date().toLocaleDateString()
-          }
-          setTickets(prev => prev.map(t => t.id === cleanId ? updatedTicket : t))
-
-          // Commit to server in the background
-          fetch('/api/scan-ticket', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ticketId: cleanId, scannedBy })
-          }).catch(console.error)
-
-          return { result: 'success', ticket: updatedTicket }
-        }
-      }
-
       try {
         const res = await fetch('/api/scan-ticket', {
           method: 'POST',
@@ -248,6 +216,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ticketType: (t.ticketType as TicketType) || 'GA Single',
             price: `₹${t.amount || '—'}`,
             qty: t.quantity || 1,
+            scannedCount: t.scannedCount || 0,
             generatedBy: t.generatedBy || 'LITTX',
             generatedAt: fmtIST(t.generatedAt),
             status: 'scanned',
@@ -270,6 +239,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ticketType: (t.ticketType as TicketType) || 'GA Single',
             price: `₹${t.amount || '—'}`,
             qty: t.quantity || 1,
+            scannedCount: t.scannedCount || 0,
             generatedBy: t.generatedBy || 'LITTX',
             generatedAt: fmtIST(t.generatedAt),
             status: (t.status === 'cancelled' ? 'scanned' : 'scanned') as any,
