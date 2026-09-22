@@ -31,6 +31,17 @@ interface Ticket {
   orderId: string
 }
 
+function isCountableTicketSale(sale: any) {
+  return (
+    sale?.ticketId &&
+    sale?.approvalStatus !== 'PENDING' &&
+    sale?.approvalStatus !== 'REJECTED' &&
+    sale?.status !== 'pending_approval' &&
+    sale?.deliveryStatus !== 'PENDING_APPROVAL' &&
+    sale?.deliveryStatus !== 'BLOCKED'
+  )
+}
+
 export default function Tickets({
   sales = [],
   allSales = [],
@@ -53,7 +64,7 @@ export default function Tickets({
   const effectiveSearch = searchQ || globalSearch
 
   const baseTicketSales = sales.filter((s) => {
-    if (!s.ticketId) return false
+    if (!isCountableTicketSale(s)) return false
 
     const category = 'dholida garba royale'
 
@@ -64,7 +75,9 @@ export default function Tickets({
   })
 
   // When searching, search against ALL sales (even hidden ones), otherwise just the visible ones
-  const salesToSearch = effectiveSearch && isPresentation && allSales.length > 0 ? allSales : baseTicketSales
+  const salesToSearch = effectiveSearch && isPresentation && allSales.length > 0
+    ? allSales.filter(isCountableTicketSale)
+    : baseTicketSales
 
   const ticketSales = salesToSearch.filter((s) => {
     if (effectiveSearch) {

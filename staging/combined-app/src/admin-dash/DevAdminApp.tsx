@@ -233,6 +233,16 @@ const navItems: NavItemDef[] = [
   },
 ]
 
+function isApprovalOnlySale(sale: any) {
+  return (
+    sale?.approvalStatus === 'PENDING' ||
+    sale?.approvalStatus === 'REJECTED' ||
+    sale?.status === 'pending_approval' ||
+    sale?.deliveryStatus === 'PENDING_APPROVAL' ||
+    sale?.deliveryStatus === 'BLOCKED'
+  )
+}
+
 interface AppProps {
   isPresentation?: boolean
   isManager?: boolean
@@ -306,9 +316,10 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
       let activeSummary = data.summary
       if (isPresentation) {
-        const totalOrders = filteredSales.length
-        const paidOrders = filteredSales.filter((s: any) => s.status === 'paid').length
-        const totalRevenue = filteredSales
+        const countableSales = filteredSales.filter((s: any) => !isApprovalOnlySale(s))
+        const totalOrders = countableSales.length
+        const paidOrders = countableSales.filter((s: any) => s.status === 'paid').length
+        const totalRevenue = countableSales
           .filter((s: any) => s.status === 'paid')
           .reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0)
 
@@ -479,6 +490,8 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
 
   function renderPage(page: Page) {
+    const ticketedSales = sales.filter((s: any) => !isApprovalOnlySale(s))
+    const ticketedAllSales = allSales.filter((s: any) => !isApprovalOnlySale(s))
     switch (page) {
       case 'master-overview':
         return <MasterOverview />
@@ -497,7 +510,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       case 'dashboard':
         return (
           <Dashboard
-            sales={sales}
+            sales={ticketedSales}
             summary={summary}
             testMode={testMode}
             onManualGenerate={() => setShowManualModal(true)}
@@ -506,7 +519,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       case 'orders':
         return (
           <Orders
-            sales={sales}
+            sales={ticketedSales}
             onResend={handleResend}
             globalSearch={search}
             isPresentation={isPresentation}
@@ -517,8 +530,8 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       case 'tickets':
         return (
           <Tickets
-            sales={sales}
-            allSales={allSales}
+            sales={ticketedSales}
+            allSales={ticketedAllSales}
             onResend={handleResend}
             adminKey={adminKey}
             onReload={() => fetchSales()}
@@ -530,19 +543,19 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
           />
         )
       case 'customers':
-        return <Customers sales={sales} adminKey={adminKey} globalSearch={search} />
+        return <Customers sales={ticketedSales} adminKey={adminKey} globalSearch={search} />
       case 'events':
-        return <Events sales={sales} adminKey={adminKey} onNavigateToTickets={() => setPage('tickets')} />
+        return <Events sales={ticketedSales} adminKey={adminKey} onNavigateToTickets={() => setPage('tickets')} />
       case 'email':
-        return <EmailDelivery sales={sales} onResend={handleResend} />
+        return <EmailDelivery sales={ticketedSales} onResend={handleResend} />
       case 'payments':
       case 'refunds':
-        return <Refunds sales={sales} />
+        return <Refunds sales={ticketedSales} />
       case 'qr':
-        return <QRScans sales={sales} isPresentation={isPresentation} scanStats={scanStats} />
+        return <QRScans sales={ticketedSales} isPresentation={isPresentation} scanStats={scanStats} />
       case 'analytics':
       case 'reports':
-        return <Analytics sales={sales} />
+        return <Analytics sales={ticketedSales} />
       case 'settings':
       case 'admins':
         return <Settings sales={sales} adminKey={adminKey} testMode={testMode} />
@@ -553,7 +566,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       default:
         return (
           <Dashboard
-            sales={sales}
+            sales={ticketedSales}
             summary={summary}
             testMode={testMode}
             onManualGenerate={() => setShowManualModal(true)}

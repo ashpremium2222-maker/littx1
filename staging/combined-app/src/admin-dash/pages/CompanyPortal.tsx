@@ -14,6 +14,16 @@ interface CompanyPortalProps {
 
 type CompanyTab = 'overview' | 'events' | 'tickets' | 'orders' | 'prs' | 'scans'
 
+function isApprovalOnlySale(sale: any) {
+  return (
+    sale?.approvalStatus === 'PENDING' ||
+    sale?.approvalStatus === 'REJECTED' ||
+    sale?.status === 'pending_approval' ||
+    sale?.deliveryStatus === 'PENDING_APPROVAL' ||
+    sale?.deliveryStatus === 'BLOCKED'
+  )
+}
+
 export default function CompanyPortal({ companyId = 'littlane', companyName = 'Littlane Events' }: CompanyPortalProps) {
   const [activeTab, setActiveTab] = useState<CompanyTab>('overview')
   const [selectedEventName, setSelectedEventName] = useState<string>('all')
@@ -56,12 +66,14 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
   const filteredSales = selectedEventName === 'all'
     ? sales
     : sales.filter(s => (s.event || '').toLowerCase() === selectedEventName.toLowerCase())
+  const ticketedSales = filteredSales.filter(s => !isApprovalOnlySale(s))
+  const ticketedAllSales = sales.filter(s => !isApprovalOnlySale(s))
 
-  const paidSales = filteredSales.filter(s => ['paid', 'ticket_generated', 'emailed', 'scanned'].includes(s.status))
+  const paidSales = ticketedSales.filter(s => ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status))
   const totalRevenue = paidSales.reduce((acc, s) => acc + (s.amount || 0), 0)
 
   const summary = {
-    totalOrders: filteredSales.length,
+    totalOrders: paidSales.length,
     paidOrders: paidSales.length,
     totalRevenue,
     emailFailures: sales.filter(s => s.emailStatus === 'failed').length,
@@ -173,17 +185,17 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
 
       {/* TAB CONTENT */}
       {activeTab === 'overview' && (
-        <Dashboard sales={filteredSales} summary={summary} testMode={false} onManualGenerate={() => {}} />
+        <Dashboard sales={ticketedSales} summary={summary} testMode={false} onManualGenerate={() => {}} />
       )}
 
       {activeTab === 'events' && (
-        <Events sales={filteredSales} adminKey="littx-admin" onNavigateToTickets={() => setActiveTab('tickets')} />
+        <Events sales={ticketedSales} adminKey="littx-admin" onNavigateToTickets={() => setActiveTab('tickets')} />
       )}
 
       {activeTab === 'tickets' && (
         <Tickets
-          sales={filteredSales}
-          allSales={sales}
+          sales={ticketedSales}
+          allSales={ticketedAllSales}
           onResend={async () => {}}
           adminKey="littx-admin"
           onReload={fetchCompanyData}
@@ -195,7 +207,7 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
       )}
 
       {activeTab === 'orders' && (
-        <Orders sales={filteredSales} onResend={async () => {}} globalSearch="" isPresentation={false} adminKey="littx-admin" onReload={fetchCompanyData} />
+        <Orders sales={ticketedSales} onResend={async () => {}} globalSearch="" isPresentation={false} adminKey="littx-admin" onReload={fetchCompanyData} />
       )}
 
       {activeTab === 'prs' && (
@@ -203,7 +215,7 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
       )}
 
       {activeTab === 'scans' && (
-        <QRScans sales={filteredSales} isPresentation={false} />
+        <QRScans sales={ticketedSales} isPresentation={false} />
       )}
     </div>
   )

@@ -476,6 +476,10 @@ function canDeliverSale(sale) {
     return true;
 }
 
+function isCountableTicketSale(sale) {
+    return canDeliverSale(sale) && ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(sale.status);
+}
+
 // ==================== LITTX SELLER ACCOUNTS (max 3 devices) ====================
 // 3 hardcoded seller IDs + passwords. Each seller can only have 1 active session at a time.
 // Adjust passwords here or move to env vars for production.
@@ -1153,10 +1157,11 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
         sales = allSales.filter(s => s.source !== 'shadow' && !s.isShadow);
     }
 
+    const countableSales = sales.filter(isCountableTicketSale);
     const summary = {
-        totalOrders: sales.length,
-        paidOrders: sales.filter(s => ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)).length,
-        totalRevenue: sales.filter(s => ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)).reduce((sum, s) => sum + (s.amount || 0), 0),
+        totalOrders: countableSales.length,
+        paidOrders: countableSales.length,
+        totalRevenue: countableSales.reduce((sum, s) => sum + (s.amount || 0), 0),
         emailFailures: sales.filter(s => s.emailStatus === 'failed').length,
         ticketFailures: sales.filter(s => s.status === 'ticket_generation_failed').length
     };
@@ -2111,7 +2116,7 @@ app.get('/api/master/companies', async (req, res) => {
     try {
         const list = await db.getAllCompanies();
         const allSales = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
-        const paidSales = allSales.filter(s => ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status));
+        const paidSales = allSales.filter(isCountableTicketSale);
 
         const companiesWithStats = list.map(c => {
             const companySales = paidSales.filter(s => s.companyId === c.companyId);
@@ -2621,9 +2626,7 @@ app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireAdmin, asy
 app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
     try {
         const all = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
-        const paid = all.filter(s =>
-            ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
-        );
+        const paid = all.filter(isCountableTicketSale);
         const summary = {};
         // initialise all sellers
         for (const sid of Object.keys(SELLER_ACCOUNTS)) {
