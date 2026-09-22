@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -62,6 +62,29 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   }, [])
 
   const grandTotal = Math.max(1, totalTickets)
+  const ticketTypeBreakdown = useMemo(() => {
+    const map = new Map<string, number>()
+    paidSales.forEach((sale) => {
+      const label = sale.ticketType || sale.gender || 'Pass'
+      map.set(label, (map.get(label) || 0) + (Number(sale.quantity) || 1))
+    })
+    const fallback = [
+      { name: 'GA Single', color: 'var(--grad-violet)' },
+      { name: 'VIP Single', color: 'var(--grad-teal)' },
+      { name: 'Group Passes', color: 'var(--grad-gold)' },
+      { name: 'Invites', color: 'var(--grad-orange)' },
+    ]
+    const colors = ['var(--grad-violet)', 'var(--grad-teal)', 'var(--grad-gold)', 'var(--grad-orange)']
+    const rows = Array.from(map.entries()).map(([name, count], index) => ({
+      name,
+      count,
+      pct: Math.round((count / grandTotal) * 100),
+      color: colors[index % colors.length],
+    }))
+    return rows.length
+      ? rows.slice(0, 4)
+      : fallback.map(item => ({ ...item, count: 0, pct: 0 }))
+  }, [paidSales, grandTotal])
 
   // ==================== SELLER BREAKDOWN ====================
   const KNOWN_SELLERS = ['SELLER-A', 'SELLER-B', 'SELLER-C', 'Admin']
@@ -442,57 +465,20 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>Male Pass (₹699)</span>
-                    <span className="muted">{maleCount} ({malePct}%)</span>
+                {ticketTypeBreakdown.map((item) => (
+                  <div className="tier-row" key={item.name}>
+                    <div className="h">
+                      <span style={{ color: 'var(--ink)' }}>{item.name}</span>
+                      <span className="muted">{item.count} ({item.pct}%)</span>
+                    </div>
+                    <div className="bar">
+                      <div
+                        className="fill"
+                        style={{ width: `${item.pct}%`, background: item.color }}
+                      />
+                    </div>
                   </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${malePct}%`, background: 'var(--grad-violet)' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>Female Pass (₹599)</span>
-                    <span className="muted">{femaleCount} ({femalePct}%)</span>
-                  </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${femalePct}%`, background: 'var(--grad-teal)' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>Aura Genesis</span>
-                    <span className="muted">{auraCount} ({auraPct}%)</span>
-                  </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${auraPct}%`, background: 'var(--grad-gold)' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="tier-row">
-                  <div className="h">
-                    <span style={{ color: 'var(--ink)' }}>FT Lineup VIP Invite</span>
-                    <span className="muted">{inviteCount} ({invitePct}%)</span>
-                  </div>
-                  <div className="bar">
-                    <div
-                      className="fill"
-                      style={{ width: `${invitePct}%`, background: 'var(--grad-orange)' }}
-                    />
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </div>

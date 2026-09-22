@@ -76,20 +76,31 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const femaleCount = useMemo(() => freshersFemale.reduce((acc, s) => acc + (s.quantity || 1), 0), [freshersFemale])
   const auraCount = useMemo(() => auraGenesis.reduce((acc, s) => acc + (s.quantity || 1), 0), [auraGenesis])
   const inviteCount = useMemo(() => ftInvite.reduce((acc, s) => acc + (s.quantity || 1), 0), [ftInvite])
+  const gaSoldCount = useMemo(() => paidSales
+    .filter(s => String(s.ticketType || s.gender || '').toLowerCase().includes('ga'))
+    .reduce((acc, s) => acc + (s.quantity || 1), 0), [paidSales])
+  const vipSoldCount = useMemo(() => paidSales
+    .filter(s => String(s.ticketType || s.gender || '').toLowerCase().includes('vip'))
+    .reduce((acc, s) => acc + (s.quantity || 1), 0), [paidSales])
 
   const grandTotal = Math.max(1, totalTickets)
 
   // Dynamic Event Breakdown based on master admin /api/events
   const eventBreakdown = useMemo(() => {
     if (dynamicEvents.length === 0) {
-      return [
-        { name: 'GA Single (₹399)', count: gaSingleCount, pct: Math.round((gaSingleCount / grandTotal) * 100), color: 'var(--grad-violet)' },
-        { name: 'GA Group of 5 (₹1,699)', count: gaGroup5Count, pct: Math.round((gaGroup5Count / grandTotal) * 100), color: 'var(--grad-teal)' },
-        { name: 'GA Group of 10 (₹2,999)', count: gaGroup10Count, pct: Math.round((gaGroup10Count / grandTotal) * 100), color: 'var(--grad-gold)' },
-        { name: 'VIP Single (₹599)', count: vipSingleCount, pct: Math.round((vipSingleCount / grandTotal) * 100), color: 'var(--grad-orange)' },
-        { name: 'VIP Group of 5 (₹2,799)', count: vipGroup5Count, pct: Math.round((vipGroup5Count / grandTotal) * 100), color: 'linear-gradient(135deg,#EC4899,#8B5CF6)' },
-        { name: 'VIP Group of 10 (₹4,999)', count: vipGroup10Count, pct: Math.round((vipGroup10Count / grandTotal) * 100), color: 'linear-gradient(135deg,#3B82F6,#0EA5E9)' },
-      ]
+      const map = new Map<string, number>()
+      paidSales.forEach((sale) => {
+        const label = sale.ticketType || sale.gender || 'Pass'
+        map.set(label, (map.get(label) || 0) + (Number(sale.quantity) || 1))
+      })
+      const colors = ['var(--grad-violet)', 'var(--grad-teal)', 'var(--grad-gold)', 'var(--grad-orange)', 'linear-gradient(135deg,#EC4899,#8B5CF6)']
+      const rows = Array.from(map.entries()).map(([name, count], idx) => ({
+        name,
+        count,
+        pct: Math.round((count / grandTotal) * 100),
+        color: colors[idx % colors.length],
+      }))
+      return rows.length ? rows : [{ name: 'No passes yet', count: 0, pct: 0, color: 'var(--grad-violet)' }]
     }
 
     const COLORS = ['var(--grad-violet)', 'var(--grad-teal)', 'var(--grad-gold)', 'var(--grad-orange)', 'linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%)']
@@ -104,7 +115,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         color: evt.gradient || COLORS[idx % COLORS.length]
       }
     })
-  }, [dynamicEvents, paidSales, grandTotal, gaSingleCount, gaGroup5Count, gaGroup10Count, vipSingleCount, vipGroup5Count, vipGroup10Count])
+  }, [dynamicEvents, paidSales, grandTotal])
 
   // ==================== SELLER BREAKDOWN ====================
   const sellerSummary = useMemo(() => {
