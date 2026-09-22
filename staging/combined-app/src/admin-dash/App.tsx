@@ -34,6 +34,17 @@ interface NavItemDef {
   svgIcon: React.ReactNode
 }
 
+type ManualPass = { id?: string; name: string; price: number; gender?: string }
+
+const DEFAULT_MANUAL_PASSES: ManualPass[] = [
+  { id: 'ga-single', name: 'GA Single', price: 399, gender: 'ga' },
+  { id: 'ga-group-of-5', name: 'GA Group of 5', price: 1699, gender: 'group' },
+  { id: 'ga-group-of-10', name: 'GA Group of 10', price: 2999, gender: 'group' },
+  { id: 'vip-single', name: 'VIP Single', price: 599, gender: 'vip' },
+  { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 2799, gender: 'vip' },
+  { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 4999, gender: 'vip' },
+]
+
 const navItems: NavItemDef[] = [
   {
     id: 'dashboard',
@@ -215,6 +226,7 @@ export default function App({ isPresentation = false }: AppProps) {
   const [manualTicketType, setManualTicketType] = useState('GA Single')
   const [manualQty, setManualQty] = useState('1')
   const [manualAmount, setManualAmount] = useState('399')
+  const [manualPasses, setManualPasses] = useState<ManualPass[]>(DEFAULT_MANUAL_PASSES)
   const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
   const [manualPartner, setManualPartner] = useState('littlane')
   const [manualPartnerPassword, setManualPartnerPassword] = useState('')
@@ -279,9 +291,43 @@ export default function App({ isPresentation = false }: AppProps) {
     }
   }
 
+  const fetchAdminConfig = async (keyToUse = adminKey) => {
+    if (!keyToUse) return
+    try {
+      const isToken = keyToUse.length > 40
+      const url = isToken ? '/api/admin/config' : `/api/admin/config?key=${encodeURIComponent(keyToUse)}`
+      const headers: Record<string, string> = { 'x-admin-key': keyToUse }
+      if (isToken) headers['x-auth-token'] = keyToUse
+      const res = await fetch(url, { headers })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.success || !Array.isArray(data.pricing)) return
+      const passes = data.pricing
+        .map((pass: any) => ({
+          id: pass.id,
+          name: String(pass.name || '').trim(),
+          price: Number(pass.price),
+          gender: pass.gender || 'unisex'
+        }))
+        .filter((pass: ManualPass) => pass.name && Number.isFinite(pass.price) && pass.price >= 0)
+      if (!passes.length) return
+      setManualPasses(passes)
+      const selected = passes.find((pass: ManualPass) => pass.name === manualTicketType || pass.id === manualTicketType)
+      if (selected) {
+        setManualTicketType(selected.name)
+        setManualAmount(String(selected.price))
+      } else {
+        setManualTicketType(passes[0].name)
+        setManualAmount(String(passes[0].price))
+      }
+    } catch (err) {
+      console.warn('Unable to load admin pricing config', err)
+    }
+  }
+
   useEffect(() => {
     if (adminKey) {
       fetchSales(adminKey)
+      fetchAdminConfig(adminKey)
       const interval = setInterval(() => fetchSales(adminKey), 10000)
       return () => clearInterval(interval)
     } else {
@@ -289,6 +335,13 @@ export default function App({ isPresentation = false }: AppProps) {
       setIsAuthenticated(false)
     }
   }, [adminKey])
+
+  useEffect(() => {
+    if (!adminKey) return
+    const refreshPricing = () => fetchAdminConfig(adminKey)
+    window.addEventListener('littx:pricing-updated', refreshPricing)
+    return () => window.removeEventListener('littx:pricing-updated', refreshPricing)
+  }, [adminKey, manualTicketType])
 
   const handleLogin = async () => {
     const trimmed = keyInput.trim()
@@ -393,13 +446,9 @@ export default function App({ isPresentation = false }: AppProps) {
   }
 
   const handleManualTicketTypeChange = (val: string) => {
-    setManualTicketType(val)
-    if (val === 'GA Single') setManualAmount('399')
-    else if (val === 'GA Group of 5') setManualAmount('1699')
-    else if (val === 'GA Group of 10') setManualAmount('2999')
-    else if (val === 'VIP Single') setManualAmount('599')
-    else if (val === 'VIP Group of 5') setManualAmount('2799')
-    else if (val === 'VIP Group of 10') setManualAmount('4999')
+    const selected = manualPasses.find(pass => pass.name === val || pass.id === val)
+    setManualTicketType(selected?.name || val)
+    if (selected) setManualAmount(String(selected.price))
   }
 
   // Auth checking screen
@@ -775,12 +824,11 @@ export default function App({ isPresentation = false }: AppProps) {
                     value={manualTicketType}
                     onChange={(e) => handleManualTicketTypeChange(e.target.value)}
                   >
-                    <option value="GA Single">GA Single</option>
-                    <option value="GA Group of 5">GA Group of 5</option>
-                    <option value="GA Group of 10">GA Group of 10</option>
-                    <option value="VIP Single">VIP Single</option>
-                    <option value="VIP Group of 5">VIP Group of 5</option>
-                    <option value="VIP Group of 10">VIP Group of 10</option>
+                    {manualPasses.map(pass => (
+                      <option key={pass.id || pass.name} value={pass.name}>
+                        {pass.name} — ₹{pass.price}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="field">

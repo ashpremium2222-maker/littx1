@@ -6,14 +6,23 @@ interface PartnerPricingProps {
 }
 
 type Partner = { userId: string; displayName: string; companyId: string; sellerSlot?: string; active: boolean; managed?: boolean }
-type EventPricing = { id: string; name: string; tiers: Array<{ id?: string; name: string; price: number; gender?: string }> }
+type PassTier = { id?: string; name: string; price: number | string; gender?: string }
+type EventPricing = { id: string; name: string; tiers: PassTier[] }
 const PARTNER_LOGIN_SLOTS = [
   { id: 'partner-slot-1', label: 'Partner Login 1' },
   { id: 'partner-slot-2', label: 'Partner Login 2' },
 ]
+const PASS_CATEGORIES = [
+  { id: 'unisex', label: 'Unisex' },
+  { id: 'ga', label: 'GA' },
+  { id: 'vip', label: 'VIP' },
+  { id: 'group', label: 'Group' },
+  { id: 'male', label: 'Male' },
+  { id: 'female', label: 'Female' },
+]
 const slotLabel = (slot?: string) => PARTNER_LOGIN_SLOTS.find(item => item.id === slot)?.label || 'Partner Login'
 
-const headers = (adminKey: string) => ({ 'Content-Type': 'application/json', 'x-auth-token': adminKey })
+const headers = (adminKey: string) => ({ 'Content-Type': 'application/json', 'x-auth-token': adminKey, 'x-admin-key': adminKey })
 
 export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) {
   const [partners, setPartners] = useState<Partner[]>([])
@@ -92,13 +101,70 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
     }
   }
 
+  const updateTier = (eventId: string, index: number, patch: Partial<PassTier>) => {
+    setEvents(currentEvents => currentEvents.map(event => event.id === eventId
+      ? { ...event, tiers: event.tiers.map((tier, currentIndex) => currentIndex === index ? { ...tier, ...patch } : tier) }
+      : event
+    ))
+  }
+
+  const addTier = (eventId: string) => {
+    setEvents(currentEvents => currentEvents.map(event => event.id === eventId
+      ? { ...event, tiers: [...event.tiers, { id: `pass-${Date.now()}`, name: 'New Pass', price: 0, gender: 'unisex' }] }
+      : event
+    ))
+  }
+
+  const removeTier = (eventId: string, index: number) => {
+    setEvents(currentEvents => currentEvents.map(event => {
+      if (event.id !== eventId || event.tiers.length <= 1) return event
+      return { ...event, tiers: event.tiers.filter((_, currentIndex) => currentIndex !== index) }
+    }))
+  }
+
+  const validatePricing = (event: EventPricing) => {
+    if (!event.tiers.length) return 'Keep at least one pass category.'
+    const names = new Set<string>()
+    for (const tier of event.tiers) {
+      const name = tier.name.trim()
+      const price = Number(tier.price)
+      if (!name) return 'Every pass category needs a name.'
+      if (!Number.isFinite(price) || price < 0) return 'Every pass category needs a valid non-negative rate.'
+      const key = name.toLowerCase()
+      if (names.has(key)) return 'Pass category names must be unique.'
+      names.add(key)
+    }
+    return ''
+  }
+
   const savePricing = async (event: EventPricing) => {
-    const response = await fetch(`/api/admin/pricing/${encodeURIComponent(event.id)}`, {
-      method: 'PATCH', headers: headers(adminKey), body: JSON.stringify({ tiers: event.tiers })
-    })
-    const data = await response.json()
-    setNotice(data.message || (data.success ? 'Pricing saved. New tickets use these values immediately.' : 'Unable to save pricing.'))
-    if (data.success) load()
+    const validationError = validatePricing(event)
+    if (validationError) {
+      setNotice(validationError)
+      return
+    }
+    try {
+      const response = await fetch(`/api/admin/pricing/${encodeURIComponent(event.id)}`, {
+        method: 'PATCH',
+        headers: headers(adminKey),
+        body: JSON.stringify({
+          tiers: event.tiers.map(tier => ({
+            ...tier,
+            name: tier.name.trim(),
+            price: Number(tier.price),
+            gender: tier.gender || 'unisex'
+          }))
+        })
+      })
+      const data = await response.json()
+      setNotice(data.message || (data.success ? 'Pass categories saved. New tickets use these names and rates immediately.' : 'Unable to save pricing.'))
+      if (data.success) {
+        window.dispatchEvent(new CustomEvent('littx:pricing-updated'))
+        load()
+      }
+    } catch {
+      setNotice('Unable to save pricing.')
+    }
   }
 
   if (loading) return <div className="card">Loading {mode}…</div>
@@ -124,8 +190,78 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
   )
 
   return <div className="card">
-    <div className="card-head"><h3>Centralized Pricing</h3><span className="muted-sm">Amounts are stored with the event and used by the server when tickets are created.</span></div>
+    <div className="card-head">
+      <h3>Pass Categories & Rates</h3>
+      <span className="muted-sm">These names and rates are stored on the event and used by every new ticket.</span>
+    </div>
     {notice && <p className="muted-sm" style={{ marginTop: 12 }}>{notice}</p>}
-    <div style={{ display: 'grid', gap: 16, marginTop: 16 }}>{events.map(event => <div key={event.id} style={{ borderTop: '1px solid var(--line)', paddingTop: 16 }}><div style={{ fontWeight: 700, marginBottom: 10 }}>{event.name}</div>{event.tiers.map((tier, index) => <div key={`${tier.id || tier.name}-${index}`} style={{ display: 'grid', gridTemplateColumns: '1fr 150px', gap: 12, marginBottom: 8 }}><input value={tier.name} onChange={e => setEvents(events.map(item => item.id === event.id ? { ...item, tiers: item.tiers.map((current, currentIndex) => currentIndex === index ? { ...current, name: e.target.value } : current) } : item))} /><input type="number" min="0" step="0.01" value={tier.price} onChange={e => setEvents(events.map(item => item.id === event.id ? { ...item, tiers: item.tiers.map((current, currentIndex) => currentIndex === index ? { ...current, price: Number(e.target.value) } : current) } : item))} /></div>)}<div style={{ display: 'flex', gap: 10 }}><button className="btn-secondary" onClick={() => setEvents(events.map(item => item.id === event.id ? { ...item, tiers: [...item.tiers, { id: `tier-${Date.now()}`, name: 'New pass', price: 0, gender: 'unisex' }] } : item))}>Add ticket type</button><button className="btn-primary" onClick={() => savePricing(event)}>Save pricing</button></div></div>)}</div>
+    <div style={{ display: 'grid', gap: 18, marginTop: 16 }}>
+      {events.map(event => (
+        <section key={event.id} style={{ borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontWeight: 800 }}>{event.name}</div>
+              <div className="muted-sm">{event.tiers.length} pass {event.tiers.length === 1 ? 'category' : 'categories'}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn-secondary" type="button" onClick={() => addTier(event.id)}>+ Add pass</button>
+              <button className="btn-primary" type="button" onClick={() => savePricing(event)}>Save changes</button>
+            </div>
+          </div>
+          <div className="table-scroll scroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Pass name</th>
+                  <th>Category</th>
+                  <th>Rate</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {event.tiers.map((tier, index) => (
+                  <tr key={`${tier.id || tier.name}-${index}`}>
+                    <td>
+                      <input
+                        value={tier.name}
+                        onChange={e => updateTier(event.id, index, { name: e.target.value })}
+                        placeholder="GA Single"
+                      />
+                    </td>
+                    <td>
+                      <select value={tier.gender || 'unisex'} onChange={e => updateTier(event.id, index, { gender: e.target.value })}>
+                        {PASS_CATEGORIES.map(category => <option key={category.id} value={category.id}>{category.label}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={tier.price}
+                        onChange={e => updateTier(event.id, index, { price: e.target.value })}
+                        placeholder="399"
+                      />
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        className="btn-secondary"
+                        type="button"
+                        disabled={event.tiers.length <= 1}
+                        onClick={() => removeTier(event.id, index)}
+                        style={{ color: 'var(--red)' }}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+      {events.length === 0 && <div className="muted-sm" style={{ textAlign: 'center', padding: 24 }}>No events found for pricing.</div>}
+    </div>
   </div>
 }
