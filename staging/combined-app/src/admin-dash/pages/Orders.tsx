@@ -262,8 +262,6 @@ export default function Orders({
   sales = [],
   onResend,
   globalSearch = '',
-  isPresentation = false,
-  adminKey = '',
 }: OrdersProps) {
   const [selected, setSelected] = useState<Order | null>(null)
   const [filter, setFilter] = useState<string>('all')
@@ -272,7 +270,6 @@ export default function Orders({
   const [searchQ, setSearchQ] = useState('')
   const [showPhoneList, setShowPhoneList] = useState(false)
   const [phoneCopied, setPhoneCopied] = useState(false)
-  const [optimisticPres, setOptimisticPres] = useState<Record<string, boolean>>({})
 
   const effectiveSearch = searchQ || globalSearch
 
@@ -357,24 +354,6 @@ export default function Orders({
     }
     return true
   })
-
-  const togglePresMode = async (orderId: string, currentVal: boolean) => {
-    if (!adminKey || isPresentation) return
-    const newVal = !currentVal
-    setOptimisticPres((prev) => ({ ...prev, [orderId]: newVal }))
-    try {
-      const res = await fetch('/api/admin/toggle-presentation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-        body: JSON.stringify({ orderId, showInPres: newVal }),
-      })
-      if (!res.ok) {
-        setOptimisticPres((prev) => ({ ...prev, [orderId]: currentVal }))
-      }
-    } catch (err) {
-      setOptimisticPres((prev) => ({ ...prev, [orderId]: currentVal }))
-    }
-  }
 
   const totalAmount = filtered.reduce((a, o) => {
     if (filter === 'all' && o.paymentStatus !== 'Paid') return a
@@ -483,22 +462,18 @@ export default function Orders({
                 <th>Amount</th>
                 <th>Status</th>
                 <th>Date</th>
-                {!isPresentation && <th>Pres</th>}
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '32px', color: 'var(--ink-faint)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '32px', color: 'var(--ink-faint)' }}>
                     No orders matching criteria.
                   </td>
                 </tr>
               ) : (
-                filtered.map((o) => {
-                  const presVal = optimisticPres[o.id] !== undefined ? optimisticPres[o.id] : o.showInPres
-
-                  return (
+                filtered.map((o) => (
                     <tr key={o.id} onClick={() => setSelected(o)} style={{ cursor: 'pointer' }}>
                       <td>
                         <div className="cell-main">
@@ -561,22 +536,6 @@ export default function Orders({
                         )}
                       </td>
                       <td>{o.time}</td>
-                      {!isPresentation && (
-                        <td onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => togglePresMode(o.id, !!presVal)}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontSize: '14px',
-                            }}
-                            title="Toggle presentation visibility"
-                          >
-                            {presVal ? 'Visible' : 'Hidden'}
-                          </button>
-                        </td>
-                      )}
                       <td onClick={(e) => e.stopPropagation()}>
                         <button
                           className="btn-secondary"
@@ -587,8 +546,7 @@ export default function Orders({
                         </button>
                       </td>
                     </tr>
-                  )
-                })
+                ))
               )}
             </tbody>
           </table>

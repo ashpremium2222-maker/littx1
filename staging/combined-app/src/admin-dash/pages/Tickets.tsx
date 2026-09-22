@@ -59,7 +59,6 @@ export default function Tickets({
 
   const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [searchQ, setSearchQ] = useState('')
-  const [optimisticPres, setOptimisticPres] = useState<Record<string, boolean>>({})
 
   const effectiveSearch = searchQ || globalSearch
 
@@ -120,24 +119,6 @@ export default function Tickets({
       alert('Error cancelling ticket')
     } finally {
       setCancellingId(null)
-    }
-  }
-
-  const togglePresMode = async (orderId: string, currentVal: boolean) => {
-    if (!adminKey || isPresentation) return
-    const newVal = !currentVal
-    setOptimisticPres((prev) => ({ ...prev, [orderId]: newVal }))
-    try {
-      const res = await fetch('/api/admin/toggle-presentation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-        body: JSON.stringify({ orderId, showInPres: newVal }),
-      })
-      if (!res.ok) {
-        setOptimisticPres((prev) => ({ ...prev, [orderId]: currentVal }))
-      }
-    } catch (err) {
-      setOptimisticPres((prev) => ({ ...prev, [orderId]: currentVal }))
     }
   }
 
@@ -259,25 +240,18 @@ export default function Tickets({
                 <th>Price</th>
                 <th>Status</th>
                 <th>Generated</th>
-                {!isPresentation && <th>Pres</th>}
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {tickets.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '32px', color: 'var(--ink-faint)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '32px', color: 'var(--ink-faint)' }}>
                     No tickets generated yet.
                   </td>
                 </tr>
               ) : (
-                tickets.map((t) => {
-                  const presVal =
-                    optimisticPres[t.orderId] !== undefined
-                      ? optimisticPres[t.orderId]
-                      : t.showInPres
-
-                  return (
+                tickets.map((t) => (
                     <tr
                       key={t.id}
                       style={{
@@ -335,22 +309,6 @@ export default function Tickets({
                         )}
                       </td>
                       <td>{t.generated}</td>
-                      {!isPresentation && (
-                        <td>
-                          <button
-                            onClick={() => togglePresMode(t.orderId, !!presVal)}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontSize: '14px',
-                            }}
-                            title="Toggle presentation visibility"
-                          >
-                            {presVal ? 'Visible' : 'Hidden'}
-                          </button>
-                        </td>
-                      )}
                       <td>
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <a
@@ -400,8 +358,7 @@ export default function Tickets({
                         </div>
                       </td>
                     </tr>
-                  )
-                })
+                ))
               )}
             </tbody>
           </table>
