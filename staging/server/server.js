@@ -1197,22 +1197,13 @@ app.post('/api/admin/ticket-approvals/:orderId/reject', requireAdmin, async (req
 });
 
 // ==================== 5. ADMIN — MONITOR EVERY SALE ====================
-// Private Shadow sales belong exclusively to the /shadow panel.  Keep this
-// predicate central so that aggregate/admin endpoints never accidentally
-// expose them as the application grows.
-const isPrivateShadowSale = (sale) => sale?.source === 'shadow_private';
+// Shadow sales are isolated. /shadowbyash sees source="shadow"; /shadow sees
+// source="shadow_private". Admin, dashboard, seller, master, and scanner stats
+// must never include either stream.
+const isShadowSale = (sale) => sale?.source === 'shadow' || sale?.source === 'shadow_private' || sale?.isShadow === true;
 
 app.get('/api/admin/sales', requireAdmin, async (req, res) => {
-    const allSales = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
-    const isShadowOnly = req.query.shadowOnly === 'true';
-    const includeShadow = req.query.includeShadow === 'true';
-    
-    let sales = allSales;
-    if (isShadowOnly) {
-        sales = allSales.filter(s => s.source === 'shadow');
-    } else if (!includeShadow) {
-        sales = allSales.filter(s => s.source !== 'shadow' && !s.isShadow);
-    }
+    const sales = (await db.getAll()).filter(s => !isShadowSale(s));
 
     const countableSales = sales.filter(isCountableTicketSale);
     const summary = {
@@ -1866,7 +1857,6 @@ async function getShadowSales(req, res) {
 
 // Shadow users can view their own sales; admins can audit the same records.
 app.get('/api/shadow/sales', requireShadowAuth, getShadowSales);
-app.get('/api/admin/shadow-sales', requireAdmin, getShadowSales);
 app.get('/api/shadow-private/sales', requirePrivateShadowAuth, async (req, res) => {
     try {
         const sales = (await db.getAll()).filter(s => s.source === 'shadow_private');
@@ -1895,7 +1885,7 @@ app.get('/api/debug/db-status', async (req, res) => {
             displayUri = rawUri.replace(/\/\/.*@/, '//****:****@');
         }
 
-        const all = await db.getAll();
+        const all = (await db.getAll()).filter(s => !isShadowSale(s));
         res.json({
             success: true,
             dbMode: isConnected ? 'MongoDB' : 'Mock (in-memory/file)',
@@ -2001,7 +1991,7 @@ app.get('/api/scan-stats', async (req, res) => {
             db.getAll(),
             db.getScanStats(null, new Date(0))
         ]);
-        const sales = allSales.filter(s => !isPrivateShadowSale(s));
+        const sales = allSales.filter(s => !isShadowSale(s));
         const accepted = sales.filter(s => s.status === 'scanned').length;
         res.json({
             success: true,
@@ -2181,7 +2171,7 @@ app.get('/api/events', (req, res) => {
 // GET /api/admin/sellers — dynamic seller list derived from sales records
 app.get('/api/admin/sellers', async (req, res) => {
     try {
-        const all = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
+        const all = (await db.getAll()).filter(s => !isShadowSale(s));
         const sellerSet = new Set();
         all.forEach(s => {
             const who = s.generatedBy || s.prUserId || null;
@@ -2200,7 +2190,7 @@ app.get('/api/admin/sellers', async (req, res) => {
 app.get('/api/master/companies', async (req, res) => {
     try {
         const [list, users] = await Promise.all([db.getAllCompanies(), db.getAllUsers()]);
-        const allSales = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
+        const allSales = (await db.getAll()).filter(s => !isShadowSale(s));
         const paidSales = allSales.filter(isCountableTicketSale);
         const companyById = new Map(list.map(company => [company.companyId, company]));
         const slotCompanyMap = new Map(
@@ -2680,7 +2670,7 @@ app.get('/api/seller/verify', async (req, res) => {
 // GET /api/seller/sales — returns sales made by THIS seller
 app.get('/api/seller/sales', requireSeller, async (req, res) => {
     try {
-        const all = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
+        const all = (await db.getAll()).filter(s => !isShadowSale(s));
         const mySales = all.filter(s =>
             s.generatedBy === req.sellerId || s.prUserId === req.sellerId
         );
@@ -2761,7 +2751,7 @@ app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireAdmin, asy
 // GET /api/admin/seller-summary — admin can see all sellers' totals
 app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
     try {
-        const all = (await db.getAll()).filter(s => !isPrivateShadowSale(s));
+        const all = (await db.getAll()).filter(s => !isShadowSale(s));
         const paid = all.filter(isCountableTicketSale);
         const summary = {};
         // initialise all sellers
