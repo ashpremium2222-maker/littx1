@@ -288,6 +288,9 @@
   .perf .holes span{width:14px; height:14px; border-radius:50%; background:var(--void); border:1px solid var(--line); margin-top:8px;}
 
   section{position:relative; padding:56px 0;}
+  /* Promote the live event ahead of the generic homepage hero. */
+  main{display:flex; flex-direction:column;}
+  #events{order:-1;}
   .sec-head{display:flex; justify-content:space-between; align-items:flex-end; gap:20px; margin-bottom:36px; flex-wrap:wrap;}
   .sec-head h2{font-size:clamp(24px,3.6vw,40px); font-weight:800;}
   .sec-head p{color:var(--muted); max-width:40ch; font-size:14.5px;}
