@@ -2770,11 +2770,16 @@ app.post('/api/pr/cash-request', async (req, res) => {
     }
 });
 
-// GET /api/admin/pr-approvals — admin sees all pending cash approvals
+// GET /api/admin/pr-approvals — admin sees all pending cash and seller-ticket approvals
 app.get('/api/admin/pr-approvals', requireAdmin, async (req, res) => {
     try {
         const all = await db.getAll();
-        const pending = all.filter(s => s.status === 'pr_cash_pending');
+        const pending = all.filter(s =>
+            s.status === 'pr_cash_pending' ||
+            s.approvalStatus === 'PENDING' ||
+            s.status === 'pending_approval' ||
+            s.deliveryStatus === 'PENDING_APPROVAL'
+        );
         res.json({ success: true, pending });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });

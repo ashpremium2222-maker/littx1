@@ -56,7 +56,7 @@ export default function SellerPortalApp() {
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const [activationNotice, setActivationNotice] = useState(false)
-  const [successTicket, setSuccessTicket] = useState<{ id: string; attendee: string; price: string } | null>(null)
+  const [successTicket, setSuccessTicket] = useState<{ id: string; attendee: string; price: string; approvalRequired?: boolean } | null>(null)
 
   const currentPartner = partners.find((p) => p.id === selectedPartnerId) || partners[0]
   const selectedPass = passes.find((pass) => pass.name === ticketType)
@@ -282,7 +282,7 @@ export default function SellerPortalApp() {
 
       const data = await res.json()
       if (res.ok && data.success) {
-        setSuccessTicket({ id: data.ticket.id, attendee: name, price: data.ticket.price })
+        setSuccessTicket({ id: data.ticket.id, attendee: name, price: data.ticket.price, approvalRequired: Boolean(data.approvalRequired) })
         // Reset form
         setName('')
         setEmail('')
@@ -592,8 +592,12 @@ export default function SellerPortalApp() {
         <div role="dialog" aria-modal="true" aria-labelledby="ticket-success-title" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm animate-[fadeInUp_.28s_ease-out] rounded-3xl border border-emerald-400/25 bg-slate-900 p-7 text-center shadow-2xl">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400 text-3xl font-black text-slate-950 shadow-lg shadow-emerald-500/20">✓</div>
-            <h2 id="ticket-success-title" className="mt-5 text-xl font-black text-white">Ticket Sent Successfully</h2>
-            <p className="mt-2 text-sm text-slate-400">Ticket <span className="font-mono font-bold text-violet-300">#{successTicket.id}</span> has been issued for {successTicket.attendee}.</p>
+            <h2 id="ticket-success-title" className="mt-5 text-xl font-black text-white">
+              {successTicket.approvalRequired ? 'Ticket Pending Approval' : 'Ticket Sent Successfully'}
+            </h2>
+            <p className="mt-2 text-sm text-slate-400">
+              Ticket <span className="font-mono font-bold text-violet-300">#{successTicket.id}</span> has been {successTicket.approvalRequired ? 'queued for dashboard approval' : 'issued'} for {successTicket.attendee}.
+            </p>
             <button type="button" autoFocus onClick={() => setSuccessTicket(null)} className="mt-6 w-full rounded-xl bg-white py-3 text-sm font-extrabold text-slate-950">Done</button>
           </div>
         </div>

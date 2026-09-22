@@ -350,6 +350,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
         headers: {
           'Content-Type': 'application/json',
           'x-admin-key': adminKey,
+          'x-auth-token': adminKey,
         },
         body: JSON.stringify({
           name: manualName,
@@ -366,7 +367,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       })
       const data = await res.json()
       if (data.success) {
-        setManualSuccessMsg('Ticket Sent!')
+        setManualSuccessMsg(data.approvalRequired ? 'Pending Approval' : 'Ticket Sent!')
         setManualName('')
         setManualEmail('')
         setManualPhone('')
@@ -813,7 +814,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                   textAlign: 'center',
                   marginTop: '4px',
                 }}>
-                  ✓ Ticket Sent successfully! Ready for next ticket.
+                  ✓ {manualSuccessMsg === 'Pending Approval' ? 'Ticket queued for approval.' : 'Ticket sent successfully! Ready for next ticket.'}
                 </div>
               )}
 
@@ -827,7 +828,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                     transition: 'all 0.2s',
                   }}
                 >
-                  {isManualSubmitting ? 'Processing...' : manualSuccessMsg ? '✓ Ticket Sent!' : 'Generate & Email'}
+                  {isManualSubmitting ? 'Processing...' : manualSuccessMsg ? `✓ ${manualSuccessMsg}` : 'Generate & Email'}
                 </button>
                 <button
                   type="button"

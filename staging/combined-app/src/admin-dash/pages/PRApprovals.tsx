@@ -22,7 +22,9 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
   const pending = useMemo(() => {
     return sales.filter((s: any) =>
       (s.paymentMethod === 'cash' && s.status === 'pr_cash_pending') ||
-      (s.approvalStatus === 'PENDING' && s.deliveryStatus === 'PENDING_APPROVAL')
+      s.approvalStatus === 'PENDING' ||
+      s.status === 'pending_approval' ||
+      s.deliveryStatus === 'PENDING_APPROVAL'
     )
   }, [sales])
 
@@ -30,7 +32,8 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
     return sales
       .filter((s: any) =>
         (s.paymentMethod === 'cash' && s.status !== 'pr_cash_pending' && s.status !== 'created') ||
-        ['APPROVED', 'REJECTED'].includes(s.approvalStatus)
+        ['APPROVED', 'REJECTED'].includes(s.approvalStatus) ||
+        (s.approvalRequired && s.approvalStatus !== 'PENDING')
       )
       .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
   }, [sales])

@@ -345,6 +345,7 @@ export default function App({ isPresentation = false }: AppProps) {
         headers: {
           'Content-Type': 'application/json',
           'x-admin-key': adminKey,
+          'x-auth-token': adminKey,
         },
         body: JSON.stringify({
           name: manualName,
@@ -361,7 +362,7 @@ export default function App({ isPresentation = false }: AppProps) {
       })
       const data = await res.json()
       if (data.success) {
-        setManualSuccessMsg('Ticket Sent!')
+        setManualSuccessMsg(data.approvalRequired ? 'Pending Approval' : 'Ticket Sent!')
         setManualName('')
         setManualEmail('')
         setManualPhone('')
