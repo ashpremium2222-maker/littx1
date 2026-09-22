@@ -2,8 +2,12 @@ import { useState } from 'react'
 
 interface Sale {
   orderId: string
+  name?: string
+  email?: string
   event: string
   amount: number
+  customerTotal?: number
+  quantity?: number
   status: string
   scannedAt?: string
   createdAt: string
@@ -33,6 +37,32 @@ const LINEUPS: Record<string, { time: string; name: string; stage: string; statu
   ]
 }
 
+const PAID_STATUSES = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned']
+
+function eventNameForSale(sale: Sale) {
+  return String(sale.event || 'DHOLIDA GARBA ROYALE').trim() || 'DHOLIDA GARBA ROYALE'
+}
+
+function amountForSale(sale: Sale) {
+  const amount = Number(sale.customerTotal ?? sale.amount ?? 0)
+  return Number.isFinite(amount) ? amount : 0
+}
+
+function metaForEvent(name: string) {
+  const fallback = EVENT_META['DHOLIDA GARBA ROYALE']
+  return EVENT_META[name] || {
+    ...fallback,
+    icon: '🎟',
+    tagline: 'Event dashboard',
+  }
+}
+
+function lineupForEvent(name: string) {
+  return LINEUPS[name] || [
+    { time: 'Live', name, stage: 'Main Event', status: 'Active', badge: 'green' },
+  ]
+}
+
 export default function Events({ sales = [], onNavigateToTickets }: Props) {
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -42,19 +72,22 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
     name: string; totalRevenue: number; ticketsSold: number; scanned: number; firstSale: string; lastSale: string
   }>()
 
-  // Pre-seed the 1 event
-  Object.keys(EVENT_META).forEach(name => {
+  const eventNames = new Set<string>(Object.keys(EVENT_META))
+  sales.forEach((sale) => eventNames.add(eventNameForSale(sale)))
+
+  eventNames.forEach(name => {
     eventMap.set(name, { name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' })
   })
 
   sales.forEach((s) => {
-    const name = 'DHOLIDA GARBA ROYALE'
-    const isPaid = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
+    const name = eventNameForSale(s)
+    const isPaid = PAID_STATUSES.includes(s.status)
 
-    const entry = eventMap.get(name)!
+    const entry = eventMap.get(name) || { name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' }
+    eventMap.set(name, entry)
     if (isPaid) {
-      entry.totalRevenue += (s.amount || 0)
-      entry.ticketsSold += 1
+      entry.totalRevenue += amountForSale(s)
+      entry.ticketsSold += Number(s.quantity) || 1
     }
     if (s.scannedAt || s.status === 'scanned') {
       entry.scanned += 1
@@ -72,9 +105,9 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
 
   // ── Detail View ─────────────────────────────────────────────────────────
   if (selectedEvent) {
-    const evtData = eventMap.get(selectedEvent)!
-    const meta = EVENT_META[selectedEvent] || EVENT_META['DHOLIDA GARBA ROYALE']
-    const lineup = LINEUPS[selectedEvent] || LINEUPS['DHOLIDA GARBA ROYALE']
+    const evtData = eventMap.get(selectedEvent) || { name: selectedEvent, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' }
+    const meta = metaForEvent(selectedEvent)
+    const lineup = lineupForEvent(selectedEvent)
     const scanPct = evtData.ticketsSold > 0 ? Math.round((evtData.scanned / evtData.ticketsSold) * 100) : 0
 
     return (
@@ -152,8 +185,8 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
               <div className="card-head">
                 <h3>👥 Ticket Buyers ({(() => {
                   const buyersList = sales.filter(s => {
-                    const category = 'DHOLIDA GARBA ROYALE'
-                    const isPaid = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
+                    const category = eventNameForSale(s)
+                    const isPaid = PAID_STATUSES.includes(s.status)
                     return isPaid && category === selectedEvent
                   })
                   return buyersList.length
@@ -163,8 +196,8 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
               <div className="scroll" style={{ maxHeight: '420px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {(() => {
                   const buyersList = sales.filter(s => {
-                    const category = 'DHOLIDA GARBA ROYALE'
-                    const isPaid = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
+                    const category = eventNameForSale(s)
+                    const isPaid = PAID_STATUSES.includes(s.status)
                     return isPaid && category === selectedEvent
                   })
 
@@ -211,7 +244,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ink)' }}>
-                          {`₹${(s.amount || 0).toLocaleString()}`}
+                          {`₹${amountForSale(s).toLocaleString()}`}
                         </div>
                         <div style={{ fontSize: '10px', color: 'var(--ink-faint)' }}>{s.ticketType || s.gender || 'pass'}</div>
                       </div>
@@ -285,14 +318,14 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
       <div className="kpi-row">
         <div className="tile tile-teal">
           <div className="tile-label">LIVE EVENTS</div>
-          <div className="tile-value">1</div>
-          <div className="tile-sub">Dholida Garba Royale</div>
+          <div className="tile-value">{events.length}</div>
+          <div className="tile-sub">{events.length === 1 ? events[0]?.name : 'Across dashboard'}</div>
           <div className="tile-delta"><span>🟢</span> All Live</div>
         </div>
         <div className="tile tile-gold">
           <div className="tile-label">TOTAL PASSES SOLD</div>
           <div className="tile-value">{totalSoldSum}</div>
-          <div className="tile-sub">Dholida Garba Royale</div>
+          <div className="tile-sub">Across all visible events</div>
           <div className="tile-delta"><span>🎟</span> Active sales</div>
         </div>
         <div className="tile tile-orange">
@@ -312,7 +345,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
       {/* Events Grid — 3 cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--gutter)' }}>
         {events.map((event) => {
-          const meta = EVENT_META[event.name] || EVENT_META['DHOLIDA GARBA ROYALE']
+          const meta = metaForEvent(event.name)
           const scanPct = event.ticketsSold > 0 ? Math.round((event.scanned / event.ticketsSold) * 100) : 0
           const isHov = hovered === event.name
 
