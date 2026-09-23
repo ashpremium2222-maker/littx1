@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import './shadow-panel.css'
 
 interface ShadowOrder {
@@ -63,6 +63,9 @@ export default function ShadowPanelApp({
   // Ticket creation form state
   const [event, setEvent]           = useState('DHOLIDA GARBA ROYALE')
   const [ticketType, setTicketType] = useState('GA Single')
+  const selectedEventNameRef = useRef('DHOLIDA GARBA ROYALE')
+  const ticketTypeRef = useRef('GA Single')
+  const quantityRef = useRef('1')
   const [name, setName]             = useState('')
   const [email, setEmail]           = useState('')
   const [phone, setPhone]           = useState('')
@@ -86,12 +89,16 @@ export default function ShadowPanelApp({
       const data = await res.json()
       if (res.ok && data.success && Array.isArray(data.events) && data.events.length > 0) {
         setEventsList(data.events)
-        const first = data.events[0]
-        setSelectedEventObj(first); setEvent(first.name)
-        if (first.tiers?.length > 0) {
-          setSelectedTierObj(first.tiers[0])
-          setTicketType(first.tiers[0].name)
-          setAmount(String(first.tiers[0].price))
+        const selectedEvent = data.events.find((item: any) => item.name === selectedEventNameRef.current) || data.events[0]
+        selectedEventNameRef.current = selectedEvent.name
+        setSelectedEventObj(selectedEvent)
+        setEvent(selectedEvent.name)
+        if (selectedEvent.tiers?.length > 0) {
+          const selectedTier = selectedEvent.tiers.find((item: any) => item.name === ticketTypeRef.current) || selectedEvent.tiers[0]
+          ticketTypeRef.current = selectedTier.name
+          setSelectedTierObj(selectedTier)
+          setTicketType(selectedTier.name)
+          setAmount(String(selectedTier.price * (parseInt(quantityRef.current, 10) || 1)))
         }
       }
     } catch (e) {}
@@ -174,23 +181,27 @@ export default function ShadowPanelApp({
   }
 
   const handleEventChange = (evtName: string) => {
+    selectedEventNameRef.current = evtName
     setEvent(evtName)
     const evt = eventsList.find((e: any) => e.name === evtName)
     if (evt) {
       setSelectedEventObj(evt)
       if (evt.tiers?.length > 0) {
         const t = evt.tiers[0]
+        ticketTypeRef.current = t.name
         setSelectedTierObj(t); setTicketType(t.name)
         setAmount(String(t.price * (parseInt(quantity, 10) || 1)))
       }
     }
   }
   const handleTierChange = (tierName: string) => {
+    ticketTypeRef.current = tierName
     setTicketType(tierName)
     const t = selectedEventObj?.tiers?.find((t: any) => t.name === tierName)
     if (t) { setSelectedTierObj(t); setAmount(String(t.price * (parseInt(quantity, 10) || 1))) }
   }
   const handleQuantityChange = (val: string) => {
+    quantityRef.current = val
     setQuantity(val)
     if (selectedTierObj) setAmount(String(selectedTierObj.price * (parseInt(val, 10) || 1)))
   }
