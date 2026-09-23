@@ -193,6 +193,10 @@ const SaleSchema = new mongoose.Schema({
     }],
     scannedCount: { type: Number, default: 0 }
 });
+// Gate lookups and the atomic claim both filter by ticketId. Keep this index
+// non-unique so existing legacy records are not rejected during index builds.
+SaleSchema.index({ ticketId: 1 });
+SaleSchema.index({ status: 1, isShadow: 1, source: 1 });
 
 const CompanySchema = new mongoose.Schema({
     companyId: { type: String, required: true, unique: true },
@@ -476,6 +480,14 @@ async function getByTicketId(ticketId) {
 
 async function getAll() {
     return await Sale.find({}).sort({ createdAt: -1 }).lean();
+}
+
+async function countScannedSales() {
+    return await Sale.countDocuments({
+        status: 'scanned',
+        isShadow: { $ne: true },
+        source: { $nin: ['shadow', 'shadow_private'] }
+    });
 }
 
 async function atomicApprovePendingSale(orderId, approvedBy, approvedAt) {
@@ -1096,6 +1108,10 @@ module.exports = {
             return [...mockDb.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         }
         return await getAll();
+    },
+    countScannedSales: async () => {
+        if (useMock()) return mockDb.sales.filter(s => s.status === 'scanned' && !s.isShadow && s.source !== 'shadow' && s.source !== 'shadow_private').length;
+        return await countScannedSales();
     },
     clearAllSales: async () => {
         if (useMock()) {

@@ -84,6 +84,12 @@ supported for existing links and passkeys during the migration.
 
 Deployments from the `main` branch are production releases.
 
+The gate scanner now authenticates with the server. Configure `SCANNER_PASSWORD`
+(a unique password of at least 12 characters) and `SCANNER_SESSION_SECRET` (an
+independent random value of at least 32 characters) in the server environment
+before deploying; the scanner login fails closed when either value is missing.
+Keep both values out of frontend and Android build configuration.
+
 No WhatsApp values belong in source control or frontend variables. In the Meta
 developer dashboard, use the endpoint above as the callback URL and subscribe
 to the WhatsApp Business Account fields needed by your integration (typically

@@ -48,6 +48,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 private val ink = Color(0xFF11151A)
 private val muted = Color(0xFF6C7888)
@@ -59,13 +62,13 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
 
 @Composable fun ScannerApp(activity: ComponentActivity) {
     val model = remember { ScannerViewModel(activity.applicationContext) }
-    var authenticated by rememberSaveable { mutableStateOf(false) }
     var screen by remember { mutableStateOf(Screen.HOME) }
     var selected by remember { mutableStateOf<ScanEntry?>(null) }
     val latest = model.state.latest
+    LaunchedEffect(screen) { if (screen == Screen.HOME) model.refreshStats() }
     MaterialTheme(colorScheme = lightColorScheme(primary = blue, background = Color.White, surface = Color.White)) {
-        if (!authenticated) {
-            ScannerLogin { authenticated = true }
+        if (!model.state.authenticated) {
+            ScannerLogin(model.state.loading, model.state.error, model::login)
             return@MaterialTheme
         }
         model.state.update?.let { update -> AlertDialog(onDismissRequest = model::dismissUpdate, title = { Text("Scanner update available") }, text = { Text("Version ${update.version} is ready from the official LITTX release.") }, confirmButton = { TextButton(onClick = { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl))); model.dismissUpdate() }) { Text("Download") } }, dismissButton = { TextButton(onClick = model::dismissUpdate) { Text("Later") } }) }
@@ -81,16 +84,15 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
     }
 }
 
-@Composable private fun ScannerLogin(onAuthenticated: () -> Unit) {
+@Composable private fun ScannerLogin(loading: Boolean, errorMessage: String?, onLogin: (String) -> Unit) {
     var password by rememberSaveable { mutableStateOf("") }
-    var error by rememberSaveable { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF07100D), Color(0xFF13241E)))), contentAlignment = Alignment.Center) {
         Column(Modifier.fillMaxWidth().padding(28.dp).clip(RoundedCornerShape(28.dp)).background(Color.White.copy(alpha = .96f)).padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             androidx.compose.foundation.Image(painter = painterResource(com.littx.scanner.nativeapp.R.drawable.scanner_logo), contentDescription = "LITTX Scanner", modifier = Modifier.size(172.dp).clip(RoundedCornerShape(20.dp)))
             Text("Enter the scanner password to continue.", color = muted, modifier = Modifier.padding(top = 20.dp, bottom = 13.dp))
-            OutlinedTextField(value = password, onValueChange = { password = it; error = false }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Scanner password") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), isError = error, shape = RoundedCornerShape(16.dp))
-            if (error) Text("Invalid scanner password", color = red, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-            Button(onClick = { if (password == "dgr") onAuthenticated() else error = true }, modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 8.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = ink)) { Text("Launch Scanner", fontWeight = FontWeight.Bold) }
+            OutlinedTextField(value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Scanner password") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), isError = errorMessage != null, shape = RoundedCornerShape(16.dp))
+            if (errorMessage != null) Text(errorMessage, color = red, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+            Button(onClick = { onLogin(password) }, enabled = password.isNotBlank() && !loading, modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 8.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = ink)) { Text(if (loading) "Signing in…" else "Launch Scanner", fontWeight = FontWeight.Bold) }
         }
     }
 }
@@ -128,19 +130,46 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
 }
 
 @Composable private fun CameraPreview(onCode: (String) -> Unit) {
-    val lifecycle = LocalLifecycleOwner.current; val context = LocalContext.current; var lastCode by remember { mutableStateOf("") }; var lastAt by remember { mutableLongStateOf(0L) }
+    val lifecycle = LocalLifecycleOwner.current
+    val context = LocalContext.current
+    val executor = remember { Executors.newSingleThreadExecutor() }
+    val scanner = remember { BarcodeScanning.getClient() }
+    val busy = remember { AtomicBoolean(false) }
+    val active = remember { AtomicBoolean(true) }
+    val lastCode = remember { AtomicReference("") }
+    val lastAt = remember { AtomicLong(0L) }
+    val latestOnCode by rememberUpdatedState(onCode)
+    var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    DisposableEffect(lifecycle, scanner, executor) {
+        onDispose {
+            active.set(false)
+            cameraProvider?.unbindAll()
+            scanner.close()
+            executor.shutdown()
+        }
+    }
     AndroidView(factory = { viewContext ->
         PreviewView(viewContext).also { preview ->
             val future = ProcessCameraProvider.getInstance(viewContext)
             future.addListener({
-                val provider = future.get(); val cameraPreview = androidx.camera.core.Preview.Builder().build().also { it.surfaceProvider = preview.surfaceProvider }
+                if (!active.get()) return@addListener
+                val provider = future.get()
+                cameraProvider = provider
+                val cameraPreview = androidx.camera.core.Preview.Builder().build().also { it.surfaceProvider = preview.surfaceProvider }
                 val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
-                val scanner = BarcodeScanning.getClient()
-                analysis.setAnalyzer(Executors.newSingleThreadExecutor()) { proxy ->
+                analysis.setAnalyzer(executor) { proxy ->
                     val image = proxy.image; if (image == null) { proxy.close(); return@setAnalyzer }
+                    if (!active.get() || !busy.compareAndSet(false, true)) { proxy.close(); return@setAnalyzer }
                     scanner.process(InputImage.fromMediaImage(image, proxy.imageInfo.rotationDegrees)).addOnSuccessListener { codes ->
-                        codes.firstOrNull { it.format == Barcode.FORMAT_QR_CODE }?.rawValue?.let { code -> if (code != lastCode || SystemClock.elapsedRealtime() - lastAt > 1800) { lastCode = code; lastAt = SystemClock.elapsedRealtime(); onCode(code) } }
-                    }.addOnCompleteListener { proxy.close() }
+                        codes.firstOrNull { it.format == Barcode.FORMAT_QR_CODE }?.rawValue?.let { code ->
+                            val now = SystemClock.elapsedRealtime()
+                            if (code != lastCode.get() || now - lastAt.get() > 1800) {
+                                lastCode.set(code)
+                                lastAt.set(now)
+                                latestOnCode(code)
+                            }
+                        }
+                    }.addOnCompleteListener { proxy.close(); busy.set(false) }
                 }
                 provider.unbindAll(); provider.bindToLifecycle(lifecycle, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis)
             }, ContextCompat.getMainExecutor(viewContext))

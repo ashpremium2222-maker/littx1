@@ -687,6 +687,16 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
     const cleaned = cleanScannedTicketId(raw)
     const outcome = await scanTicket(cleaned, sellerId)
 
+    if (outcome.result === 'error') {
+      setScannerFeedback({
+        status: 'invalid',
+        title: 'Connection Error',
+        message: 'Could not confirm this ticket with the server. Check the connection and try again.',
+        code: cleaned
+      })
+      return
+    }
+
     const timestamp = formatScanTime()
 
     const buildHistoryEntry = (
@@ -926,7 +936,10 @@ export default function App({ forceScanner }: { forceScanner?: boolean }) {
         sellerId="Gate Scanner"
         sellerToken="direct"
         forceScanner={true}
-        onLogout={() => {}}
+        onLogout={() => {
+          sessionStorage.removeItem('littx_scanner_token')
+          window.dispatchEvent(new Event('littx-scanner-auth-expired'))
+        }}
       />
     )
   }

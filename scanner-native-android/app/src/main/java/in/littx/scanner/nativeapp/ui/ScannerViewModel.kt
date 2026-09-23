@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.littx.scanner.nativeapp.data.ScannerRepository
@@ -18,6 +20,7 @@ import kotlinx.coroutines.withContext
 
 data class ScannerState(
     val loading: Boolean = false,
+    val authenticated: Boolean = false,
     val scannerName: String = "Gate Staff",
     val accepted: Int = 0,
     val failed: Int = 0,
@@ -28,13 +31,56 @@ data class ScannerState(
 )
 
 class ScannerViewModel(context: Context) : ViewModel() {
-    private val prefs = context.getSharedPreferences("scanner", Context.MODE_PRIVATE)
+    private val legacyPrefs = context.getSharedPreferences("scanner", Context.MODE_PRIVATE)
+    private val prefs = EncryptedSharedPreferences.create(
+        context.applicationContext,
+        "scanner_secure",
+        MasterKey.Builder(context.applicationContext).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+    init {
+        val migration = prefs.edit()
+        if (!prefs.contains("name")) legacyPrefs.getString("name", null)?.let { migration.putString("name", it) }
+        if (!prefs.contains("history")) legacyPrefs.getString("history", null)?.let { migration.putString("history", it) }
+        if (migration.commit() && legacyPrefs.all.isNotEmpty()) legacyPrefs.edit().clear().commit()
+    }
     private val gson = Gson()
     private val repository = ScannerRepository()
-    var state by mutableStateOf(ScannerState(scannerName = prefs.getString("name", "Gate Staff") ?: "Gate Staff", history = loadHistory()))
+    var state by mutableStateOf(ScannerState(authenticated = !prefs.getString("token", null).isNullOrBlank(), scannerName = prefs.getString("name", "Gate Staff") ?: "Gate Staff", history = loadHistory()))
         private set
 
-    init { refreshStats(); checkForUpdate() }
+    init { checkForUpdate(); verifySession() }
+
+    fun login(password: String) {
+        if (password.isBlank() || state.loading) return
+        viewModelScope.launch {
+            state = state.copy(loading = true, error = null)
+            try {
+                val response = repository.login(password)
+                val token = response.token
+                if (!response.success || token.isNullOrBlank()) throw IllegalStateException(response.message ?: "Unable to log in.")
+                prefs.edit().putString("token", token).apply()
+                val name = response.scannerName ?: "Gate Staff"
+                prefs.edit().putString("name", name).apply()
+                state = state.copy(loading = false, authenticated = true, scannerName = name, error = null)
+            } catch (e: Exception) {
+                state = state.copy(loading = false, authenticated = false, error = e.message ?: "Unable to log in.")
+            }
+        }
+    }
+
+    private fun verifySession() = viewModelScope.launch {
+        val token = prefs.getString("token", null) ?: return@launch
+        runCatching { repository.verifySession(token) }
+            .onSuccess { response ->
+                if (!response.success) prefs.edit().remove("token").apply()
+                state = state.copy(authenticated = response.success, scannerName = response.scannerName ?: state.scannerName)
+            }
+            .onFailure {
+                // Preserve the cached session while the server is unreachable; each scan still requires server confirmation.
+            }
+    }
 
     fun scan(raw: String) {
         val ticketId = cleanCode(raw)
@@ -42,7 +88,8 @@ class ScannerViewModel(context: Context) : ViewModel() {
         viewModelScope.launch {
             state = state.copy(loading = true, error = null)
             try {
-                val response = repository.scan(ticketId, state.scannerName)
+                val token = prefs.getString("token", null) ?: throw IllegalStateException("Scanner session expired. Log in again.")
+                val response = repository.scan(ticketId, state.scannerName, token)
                 val outcome = when (response.result) {
                     "success" -> ScanOutcome.APPROVED
                     "rejected" -> if (response.ticket?.status == "scanned") ScanOutcome.DUPLICATE else ScanOutcome.INVALID
@@ -52,11 +99,12 @@ class ScannerViewModel(context: Context) : ViewModel() {
                 val history = (listOf(entry) + state.history).take(250)
                 state = state.copy(loading = false, latest = entry, history = history)
                 saveHistory(history)
-                refreshStats()
             } catch (e: Exception) {
+                val expired = e is retrofit2.HttpException && e.code() == 401
+                if (expired) prefs.edit().remove("token").apply()
                 val entry = ScanEntry(ScanOutcome.ERROR, null, ticketId)
                 val history = (listOf(entry) + state.history).take(250)
-                state = state.copy(loading = false, latest = entry, history = history, error = e.message ?: "Could not validate ticket.")
+                state = state.copy(loading = false, authenticated = state.authenticated && !expired, latest = entry, history = history, error = if (expired) "Scanner session expired. Log in again." else e.message ?: "Could not validate ticket.")
                 saveHistory(history)
             }
         }
