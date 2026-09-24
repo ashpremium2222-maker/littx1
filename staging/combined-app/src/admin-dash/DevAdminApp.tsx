@@ -558,7 +558,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
         return <Analytics sales={ticketedSales} />
       case 'settings':
       case 'admins':
-        return <Settings sales={sales} adminKey={adminKey} testMode={testMode} />
+        return <Settings sales={sales} adminKey={adminKey} testMode={testMode} isMasterAdmin />
       case 'pr-approvals':
         return <PRApprovals adminKey={adminKey} isPresentation={isPresentation} sales={sales} />
       case 'company-control':
