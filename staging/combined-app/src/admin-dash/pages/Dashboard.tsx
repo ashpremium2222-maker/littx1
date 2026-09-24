@@ -8,6 +8,7 @@ interface DashboardProps {
   summary: any
   testMode: boolean
   onManualGenerate: () => void
+  adminKey?: string
 }
 
 const PASS_SECTIONS = [
@@ -30,7 +31,7 @@ function getPassSectionId(sale: any) {
   return null
 }
 
-export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate }: DashboardProps) {
+export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, adminKey = '' }: DashboardProps) {
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
   const [chartMode, setChartMode] = useState<'actual' | 'forecast'>('actual')
   const [popupEvent, setPopupEvent] = useState<{ name: string; top: number; left: number } | null>(null)
@@ -72,46 +73,21 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const activePopupSection = popupEvent ? ticketSections.find(section => section.id === popupEvent.name) : null
 
   // ==================== SELLER BREAKDOWN ====================
-  const [knownSellerIds, setKnownSellerIds] = useState<string[]>([])
+  const [sellerSummary, setSellerSummary] = useState<any[]>([])
   useEffect(() => {
-    fetch('/api/admin/sellers')
-      .then(r => r.json())
-      .then(d => { if (d.success && Array.isArray(d.sellers)) setKnownSellerIds(d.sellers) })
-      .catch(() => {})
-  }, [])
-
-  const sellerSummary = useMemo(() => {
-    const map: Record<string, {
-      sellerId: string
-      ticketCount: number
-      commissionEarned: number
-      lastSale: string | null
-      sales: any[]
-      categories: Record<string, { ticketCount: number; commissionEarned: number }>
-    }> = {}
-    for (const sid of knownSellerIds) {
-      map[sid] = { sellerId: sid, ticketCount: 0, commissionEarned: 0, lastSale: null, sales: [], categories: {} }
+    if (!adminKey) return
+    const loadCompanySales = () => {
+      fetch('/api/admin/seller-summary', { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.companySummary)) setSellerSummary(data.companySummary)
+        })
+        .catch(() => {})
     }
-    for (const s of paidSales) {
-      const who = s.generatedBy || s.prUserId || 'Admin'
-      if (!map[who]) map[who] = { sellerId: who, ticketCount: 0, commissionEarned: 0, lastSale: null, sales: [], categories: {} }
-      const quantity = Number(s.quantity) || 1
-      const commission = Number(s.commissionAmount) || 0
-      const category = String(s.ticketType || s.gender || 'Other').trim() || 'Other'
-      map[who].ticketCount += quantity
-      map[who].commissionEarned += commission
-      if (!map[who].categories[category]) map[who].categories[category] = { ticketCount: 0, commissionEarned: 0 }
-      map[who].categories[category].ticketCount += quantity
-      map[who].categories[category].commissionEarned += commission
-      if (!map[who].lastSale || (s.generatedAt && s.generatedAt > map[who].lastSale!)) {
-        map[who].lastSale = s.generatedAt
-      }
-      map[who].sales.push(s)
-    }
-    return Object.values(map)
-      .filter(s => s.ticketCount > 0 || knownSellerIds.includes(s.sellerId))
-      .sort((a, b) => b.commissionEarned - a.commissionEarned || b.ticketCount - a.ticketCount)
-  }, [paidSales, knownSellerIds])
+    loadCompanySales()
+    const timer = window.setInterval(loadCompanySales, 10000)
+    return () => window.clearInterval(timer)
+  }, [adminKey])
 
   const getChartData = () => {
     const chartData = []
@@ -316,14 +292,14 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
 
       <div className="card table-card">
         <div className="card-head" style={{ padding: '18px 18px 0' }}>
-          <h3>Seller Ticket Sales & Commission</h3>
-          <div className="muted-sm">Confirmed tickets by seller and pass category</div>
+          <h3>Event Company Ticket Sales & Commission</h3>
+          <div className="muted-sm">Confirmed tickets by event company and pass category</div>
         </div>
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
-                <th>Seller</th>
+                <th>Event Company</th>
                 <th>Tickets Sold</th>
                 <th>Commission Earned</th>
                 <th>Pass Categories</th>
@@ -334,22 +310,22 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               {sellerSummary.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-faint)', padding: '24px' }}>
-                    No seller ticket sales yet.
+                    No event company ticket sales yet.
                   </td>
                 </tr>
               ) : sellerSummary.map(seller => {
-                const expanded = expandedSeller === seller.sellerId
+                const expanded = expandedSeller === seller.companyId
                 const categories = Object.entries(seller.categories).sort((a, b) => b[1].ticketCount - a[1].ticketCount)
                 return (
-                  <Fragment key={seller.sellerId}>
+                  <Fragment key={seller.companyId}>
                     <tr>
                       <td>
                         <button
                           type="button"
-                          onClick={() => setExpandedSeller(expanded ? null : seller.sellerId)}
+                          onClick={() => setExpandedSeller(expanded ? null : seller.companyId)}
                           style={{ border: 0, padding: 0, background: 'none', color: 'var(--ink)', font: 'inherit', fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}
                         >
-                          {seller.sellerId} <span style={{ color: 'var(--ink-faint)', fontSize: '11px' }}>{expanded ? 'Hide categories' : 'View categories'}</span>
+                          {seller.name} <span style={{ color: 'var(--ink-faint)', fontSize: '11px' }}>{expanded ? 'Hide categories' : 'View categories'}</span>
                         </button>
                       </td>
                       <td>{seller.ticketCount}</td>

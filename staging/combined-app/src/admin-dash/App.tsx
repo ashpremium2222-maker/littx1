@@ -529,6 +529,7 @@ export default function App({ isPresentation = false }: AppProps) {
             summary={summary}
             testMode={testMode}
             onManualGenerate={() => setShowManualModal(true)}
+            adminKey={adminKey}
           />
         )
       case 'orders':
@@ -580,6 +581,7 @@ export default function App({ isPresentation = false }: AppProps) {
             summary={summary}
             testMode={testMode}
             onManualGenerate={() => setShowManualModal(true)}
+            adminKey={adminKey}
           />
         )
     }
