@@ -2954,10 +2954,9 @@ app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireAdmin, asy
 // GET /api/admin/seller-summary — admin can see all sellers' totals
 app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
     try {
-        const [allSales, users, companies] = await Promise.all([
+        const [allSales, users] = await Promise.all([
             db.getAll(),
-            db.getAllUsers(),
-            db.getAllCompanies()
+            db.getAllUsers()
         ]);
         const all = allSales.filter(s => !isShadowSale(s));
         const paid = all.filter(isCountableTicketSale);
@@ -2971,17 +2970,26 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
                 .filter(user => ['seller', 'pr'].includes(user.role) && user.userId && user.companyId)
                 .map(user => [normalizeSellerId(user.userId), user.companyId])
         );
-        const companyById = new Map(companies.map(company => [company.companyId, company]));
+        const sellerSlotByCompany = new Map(
+            users
+                .filter(user => user.role === 'seller' && user.sellerSlot && user.companyId)
+                .map(user => [user.companyId, user.sellerSlot])
+        );
         const summary = {};
         const companySummary = new Map();
         const knownEventCompanies = [
             { companyId: 'littlane', name: 'Littlane Ent' },
             { companyId: 'nitro', name: 'Nitro Events' },
             { companyId: '7th-heaven', name: '7th Heaven' },
-            { companyId: 'nexora', name: companyById.get('nexora')?.name || 'Nexora Events' },
-            { companyId: 'urban-nights', name: companyById.get('urban-nights')?.name || 'Urban Nights' },
+            ...PARTNER_LOGIN_SLOTS.map((companyId, index) => {
+                const user = users.find(item => item.role === 'seller' && item.sellerSlot === companyId);
+                return { companyId, name: user?.displayName || `Partner Login ${index + 1}` };
+            }),
         ];
         const knownEventCompanyIds = new Set(knownEventCompanies.map(company => company.companyId));
+        const knownEventCompanyByNormalizedId = new Map(
+            knownEventCompanies.map(company => [normalizeSellerId(company.companyId), company.companyId])
+        );
         for (const { companyId, name } of knownEventCompanies) {
             if (!companySummary.has(companyId)) {
                 companySummary.set(companyId, {
@@ -3028,21 +3036,18 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
             const rawCompanyId = String(s.companyId || '');
             const sourceId = s.sellerId || s.generatedBy || s.prUserId || '';
             const normalizedSourceId = normalizeSellerId(sourceId);
-            const sellerCompanyId = userCompanyMap.get(normalizedSourceId);
-            const companyId = sellerCompanyId
-                || slotCompanyMap.get(rawCompanyId)
-                || (knownEventCompanyIds.has(rawCompanyId) ? rawCompanyId : '')
-                || (knownEventCompanyIds.has(sellerCompanyIdFromValue(sourceId)) ? sellerCompanyIdFromValue(sourceId) : '');
+            const sellerCompanyId = userCompanyMap.get(normalizedSourceId) || slotCompanyMap.get(normalizedSourceId);
+            const companyId = knownEventCompanyByNormalizedId.get(normalizedSourceId)
+                || knownEventCompanyByNormalizedId.get(normalizeSellerId(rawCompanyId))
+                || knownEventCompanyByNormalizedId.get(normalizeSellerId(sellerCompanyId))
+                || sellerSlotByCompany.get(sellerCompanyId || rawCompanyId)
+                || (knownEventCompanyIds.has(rawCompanyId) ? rawCompanyId : '');
             if (!companyId) continue;
-            const company = companyById.get(companyId);
-            const companyName = displayCompanyName(
-                companyId,
-                company?.name || PARTNER_NAMES[companyId] || SELLER_COMPANY_NAMES[companyId] || companyId
-            );
             if (!companySummary.has(companyId)) {
+                const configuredCompany = knownEventCompanies.find(company => company.companyId === companyId);
                 companySummary.set(companyId, {
                     companyId,
-                    name: companyName,
+                    name: configuredCompany?.name || PARTNER_NAMES[companyId] || SELLER_COMPANY_NAMES[companyId] || companyId,
                     ticketCount: 0,
                     grossSales: 0,
                     commissionEarned: 0,
