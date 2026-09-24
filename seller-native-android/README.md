@@ -13,7 +13,7 @@ The app uses the existing seller endpoints:
 - `GET /api/seller/sales`
 - `GET /api/mobile/seller-config` (native-only, authenticated remote configuration)
 
-Login uses Android Credential Manager/FIDO2 passkeys natively. Its registration and assertion JSON are submitted to the existing SimpleWebAuthn server endpoints; no browser is opened. This preserves the server’s existing passkey/device enrollment authority. Existing web passkeys must be re-enrolled on Android, because WebAuthn credentials are authenticator- and relying-party-bound; use the current admin **reset passkey** action only for the intended seller.
+Login accepts one seller password; the server identifies the matching seller and returns that seller ID for the second authentication step. Login then uses Android Credential Manager/FIDO2 passkeys natively. Its registration and assertion JSON are submitted to the existing SimpleWebAuthn server endpoints; no browser is opened. This preserves the server’s existing passkey/device enrollment authority. Existing web passkeys must be re-enrolled on Android, because WebAuthn credentials are authenticator- and relying-party-bound; use the current admin **reset passkey** action only for the intended seller.
 
 Before enabling Android passkeys, host an Android Digital Asset Links document at `https://<WEBAUTHN_RP_ID>/.well-known/assetlinks.json`. It must name `com.littx.seller.nativeapp` and the SHA-256 fingerprint of the **release signing certificate**. This is a deployment prerequisite, not a client-side bypass; the existing server must continue validating its configured WebAuthn origin and relying-party ID.
 

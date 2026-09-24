@@ -32,11 +32,12 @@ class SellerViewModel(activity: ComponentActivity) : ViewModel() {
         if (state.partner != null) loadConfig()
         checkForUpdate()
     }
-    fun login(partnerId: String, password: String) = viewModelScope.launch {
+    fun login(password: String) = viewModelScope.launch {
         state = state.copy(loading = true, error = null, message = null)
         try {
-            val step = repository.beginLogin(partnerId, password)
+            val step = repository.beginLogin(password)
             require(step.success && step.options != null && step.loginId != null) { step.message ?: "Login could not be started." }
+            val partnerId = requireNotNull(step.partnerId) { "Seller account could not be identified. Contact the Master Admin." }
             val proof = passkeys.complete(step.options.toString(), step.isRegistration)
             val session = repository.finishLogin(partnerId, step.loginId, passkeys.json(proof))
             if (!session.success || session.partner == null) throw SecurityException(session.message ?: "Device verification failed.")
