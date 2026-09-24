@@ -31,6 +31,11 @@ function getPassSectionId(sale: any) {
   return null
 }
 
+function formatINR(value: number) {
+  const amount = Number(value)
+  return `₹${(Number.isFinite(amount) ? amount : 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+}
+
 export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, adminKey = '' }: DashboardProps) {
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
   const [chartMode, setChartMode] = useState<'actual' | 'forecast'>('actual')
@@ -301,7 +306,9 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               <tr>
                 <th>Event Company</th>
                 <th>Tickets Sold</th>
+                <th>Gross Sales</th>
                 <th>Commission Earned</th>
+                <th>Net After Commission</th>
                 <th>Pass Categories</th>
                 <th>Latest Sale</th>
               </tr>
@@ -309,7 +316,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             <tbody>
               {sellerSummary.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-faint)', padding: '24px' }}>
+                  <td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-faint)', padding: '24px' }}>
                     No event company ticket sales yet.
                   </td>
                 </tr>
@@ -329,7 +336,9 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                         </button>
                       </td>
                       <td>{seller.ticketCount}</td>
-                      <td style={{ color: 'var(--green)', fontWeight: 700 }}>₹{seller.commissionEarned.toLocaleString('en-IN')}</td>
+                      <td>{formatINR(seller.grossSales)}</td>
+                      <td style={{ color: 'var(--green)', fontWeight: 700 }}>{formatINR(seller.commissionEarned)}</td>
+                      <td>{formatINR(seller.netAfterCommission)}</td>
                       <td>{categories.length}</td>
                       <td style={{ color: 'var(--ink-soft)' }}>
                         {seller.lastSale ? new Date(seller.lastSale).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
@@ -337,13 +346,13 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                     </tr>
                     {expanded && (
                       <tr>
-                        <td colSpan={5} style={{ padding: '12px 20px', background: 'var(--panel-2)' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 2fr) repeat(2, minmax(110px, 1fr))', gap: '10px', color: 'var(--ink-faint)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>
-                            <span>Pass Category</span><span>Tickets Sold</span><span>Commission Earned</span>
+                        <td colSpan={7} style={{ padding: '12px 20px', background: 'var(--panel-2)' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 2fr) repeat(4, minmax(115px, 1fr))', gap: '10px', color: 'var(--ink-faint)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>
+                            <span>Pass Type</span><span>Tickets Sold</span><span>Gross Sales</span><span>Commission</span><span>Net After Commission</span>
                           </div>
                           {categories.length ? categories.map(([name, totals]) => (
-                            <div key={name} style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 2fr) repeat(2, minmax(110px, 1fr))', gap: '10px', paddingTop: '10px', color: 'var(--ink)' }}>
-                              <span>{name}</span><span>{totals.ticketCount}</span><span>₹{totals.commissionEarned.toLocaleString('en-IN')}</span>
+                            <div key={name} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 2fr) repeat(4, minmax(115px, 1fr))', gap: '10px', paddingTop: '10px', color: 'var(--ink)' }}>
+                              <span>{name}</span><span>{totals.ticketCount}</span><span>{formatINR(totals.grossSales)}</span><span>{formatINR(totals.commissionEarned)}</span><span>{formatINR(totals.netAfterCommission)}</span>
                             </div>
                           )) : <div style={{ paddingTop: '10px', color: 'var(--ink-faint)' }}>No category sales recorded.</div>}
                         </td>
