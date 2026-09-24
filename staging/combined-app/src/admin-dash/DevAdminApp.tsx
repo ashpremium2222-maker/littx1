@@ -292,7 +292,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [manualPhone, setManualPhone] = useState('')
   const [manualGender, setManualGender] = useState('GA Single')
   const [manualQty, setManualQty] = useState('1')
-  const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_male') || '399')
+  const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_ga_single_v2') || '499')
   const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
   const [manualPartner, setManualPartner] = useState('littlane')
   const [manualPartnerPassword, setManualPartnerPassword] = useState('')
@@ -461,9 +461,9 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
         if (manualEvent === 'DHOLIDA GARBA ROYALE') {
           setManualAmount(localStorage.getItem('ft_price_aura') || '350')
         } else if (manualGender === 'female') {
-          setManualAmount(localStorage.getItem('ft_price_female') || '599')
+          setManualAmount(localStorage.getItem('ft_price_vip_single_v2') || '799')
         } else {
-          setManualAmount(localStorage.getItem('ft_price_male') || '399')
+          setManualAmount(localStorage.getItem('ft_price_ga_single_v2') || '499')
         }
         fetchSales()
       } else {
@@ -479,10 +479,10 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const handleManualGenderChange = (val: string) => {
     setManualGender(val)
     if (manualEvent === 'DHOLIDA GARBA ROYALE') {
-      const saved = localStorage.getItem('ft_price_male') || '399'
+      const saved = localStorage.getItem('ft_price_ga_single_v2') || '499'
       setManualAmount(saved)
     } else {
-      const saved = localStorage.getItem('ft_price_female') || '599'
+      const saved = localStorage.getItem('ft_price_vip_single_v2') || '799'
       setManualAmount(saved)
     }
   }
@@ -780,7 +780,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                       setManualAmount(localStorage.getItem('ft_price_aura') || '350')
                     } else if (manualGender === 'aura') {
                       setManualGender('male')
-                      setManualAmount(localStorage.getItem('ft_price_male') || '399')
+                      setManualAmount(localStorage.getItem('ft_price_ga_single_v2') || '499')
                     }
                   }}
                 >
@@ -860,8 +860,8 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                       value={manualGender}
                       onChange={(e) => handleManualGenderChange(e.target.value)}
                     >
-                      <option value="male">Freshers Male Pass (₹699)</option>
-                      <option value="female">Freshers Female Pass (₹599)</option>
+                      <option value="male">General Access (₹499)</option>
+                      <option value="female">VIP (₹799)</option>
                     </select>
                   )}
                 </div>
@@ -879,8 +879,8 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                           manualEvent === 'DHOLIDA GARBA ROYALE'
                             ? 'ft_price_aura'
                             : manualGender === 'female'
-                            ? 'ft_price_female'
-                            : 'ft_price_male'
+                            ? 'ft_price_vip_single_v2'
+                            : 'ft_price_ga_single_v2'
                         localStorage.setItem(key, val)
                       }}
                     />

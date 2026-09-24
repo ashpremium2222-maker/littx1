@@ -414,20 +414,20 @@ async function seedDefaultEvents() {
                 description: 'Dholida Garba Royale main event.',
                 archived: false,
                 ticketTypes: [
-                    { id: 'ga-single', name: 'GA Single', price: 399, gender: 'unisex' },
-                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 1699, gender: 'unisex' },
-                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 2999, gender: 'unisex' },
-                    { id: 'vip-single', name: 'VIP Single', price: 599, gender: 'unisex' },
-                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 2799, gender: 'unisex' },
-                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 4999, gender: 'unisex' }
+                    { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
+                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
+                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
+                    { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
+                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
+                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
                 ],
                 tiers: [
-                    { id: 'ga-single', name: 'GA Single', price: 399, gender: 'unisex' },
-                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 1699, gender: 'unisex' },
-                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 2999, gender: 'unisex' },
-                    { id: 'vip-single', name: 'VIP Single', price: 599, gender: 'unisex' },
-                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 2799, gender: 'unisex' },
-                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 4999, gender: 'unisex' }
+                    { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
+                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
+                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
+                    { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
+                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
+                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
                 ],
                 overrides: { razorpayEnabled: null, manualPaymentEnabled: null, prSalesEnabled: null },
                 gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
@@ -1660,20 +1660,20 @@ const _mockEvents = new Map([
         gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
         icon: '🎟️', active: true,
         tiers: [
-            { id: 'ga-single', name: 'GA Single', price: 399, gender: 'unisex' },
-            { id: 'ga-group-of-5', name: 'GA Group of 5', price: 1699, gender: 'unisex' },
-            { id: 'ga-group-of-10', name: 'GA Group of 10', price: 2999, gender: 'unisex' },
-            { id: 'vip-single', name: 'VIP Single', price: 599, gender: 'unisex' },
-            { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 2799, gender: 'unisex' },
-            { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 4999, gender: 'unisex' }
+            { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
+            { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
+            { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
+            { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
+            { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
+            { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
         ],
         ticketTypes: [
-            { id: 'ga-single', name: 'GA Single', price: 399, gender: 'unisex' },
-            { id: 'ga-group-of-5', name: 'GA Group of 5', price: 1699, gender: 'unisex' },
-            { id: 'ga-group-of-10', name: 'GA Group of 10', price: 2999, gender: 'unisex' },
-            { id: 'vip-single', name: 'VIP Single', price: 599, gender: 'unisex' },
-            { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 2799, gender: 'unisex' },
-            { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 4999, gender: 'unisex' }
+            { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
+            { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
+            { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
+            { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
+            { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
+            { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
         ]
     }]
 ]);

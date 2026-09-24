@@ -448,12 +448,12 @@ function pickCanonicalEvent(events, requestedEventName = CANONICAL_EVENT_NAME) {
 // Prices issued by the seller portal are server-owned. Never trust an amount
 // supplied by the browser for a paid ticket.
 const DEFAULT_SELLER_PASS_PRICES = {
-    'GA Single': 399,
-    'GA Group of 5': 1699,
-    'GA Group of 10': 2999,
-    'VIP Single': 599,
-    'VIP Group of 5': 2799,
-    'VIP Group of 10': 4999,
+    'GA Single': 499,
+    'GA Group of 5': 2249,
+    'GA Group of 10': 3999,
+    'VIP Single': 799,
+    'VIP Group of 5': 3749,
+    'VIP Group of 10': 6999,
 };
 
 // Legacy migration seed only: on first pricing read for an event with no tiers,
@@ -536,6 +536,23 @@ async function getEventPricing(eventName) {
     if (!sourcePasses.length || isLegacyDholidaCatalog) {
         event = await db.saveEvent({ ...event, tiers: LEGACY_EVENT_TIER_SEED, ticketTypes: LEGACY_EVENT_TIER_SEED });
         sourcePasses = LEGACY_EVENT_TIER_SEED;
+    } else if (isCanonicalDashboardEvent(event)) {
+        const previousPrices = { 'GA Single': 399, 'GA Group of 5': 1699, 'GA Group of 10': 2999, 'VIP Single': 599, 'VIP Group of 5': 2799, 'VIP Group of 10': 4999 };
+        const hasLegacyPrices = sourcePasses.some(pass => previousPrices[pass.name] === Number(pass.price));
+        if (hasLegacyPrices) {
+            const migratePasses = passes => (passes || []).map(pass => ({
+                ...pass,
+                price: previousPrices[pass.name] === Number(pass.price)
+                    ? DEFAULT_SELLER_PASS_PRICES[pass.name]
+                    : pass.price
+            }));
+            event = await db.saveEvent({
+                ...event,
+                tiers: migratePasses(event.tiers),
+                ticketTypes: migratePasses(event.ticketTypes),
+            });
+            sourcePasses = [...(event.tiers || []), ...(event.ticketTypes || [])];
+        }
     }
     const passes = sourcePasses
         .map(pass => ({
@@ -706,8 +723,14 @@ async function computeAmount(gender, quantity, eventName = EVENT.name) {
     const pricing = await getEventPricing(eventName);
     if (!pricing) return null;
     const normalizedGender = String(gender || '').toLowerCase();
+    const legacyPassName = normalizedGender === 'male' || normalizedGender === 'ga'
+        ? 'ga single'
+        : normalizedGender === 'female' || normalizedGender === 'vip'
+            ? 'vip single'
+            : normalizedGender;
     const pass = pricing.passes.find(item => item.gender.toLowerCase() === normalizedGender)
-        || pricing.passes.find(item => item.name.toLowerCase().includes(normalizedGender));
+        || pricing.passes.find(item => item.name.toLowerCase().includes(normalizedGender))
+        || pricing.passes.find(item => item.name.toLowerCase() === legacyPassName);
     if (!pass) return null;
     const qty = Math.max(1, Math.min(20, parseInt(quantity, 10) || 1));
     return { amount: Math.round(pass.price * qty * 100) / 100, qty, ticketType: pass.name, event: pricing.event.name };
@@ -818,7 +841,7 @@ app.post('/api/create-order', async (req, res) => {
     }
     const computed = await computeAmount(gender, quantity);
     if (!computed) {
-        return res.status(400).json({ success: false, message: 'Invalid ticket type. Choose Male or Female pass.' });
+        return res.status(400).json({ success: false, message: 'Invalid ticket type. Choose a currently available pass.' });
     }
     const { amount, qty } = computed;
 
@@ -2106,11 +2129,7 @@ app.post('/api/admin/clear-sales', requireAdmin, async (req, res) => {
 });
 
 // ==================== 6C. CANCEL DELIVERED TICKET (ADMIN ONLY) ====================
-app.post('/api/admin/cancel-ticket', async (req, res) => {
-    const clientKey = req.query.key || req.headers['x-admin-key'];
-    if (!clientKey || clientKey !== ADMIN_KEY) {
-        return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
+app.post('/api/admin/cancel-ticket', requireAdmin, async (req, res) => {
     const { ticketId } = req.body || {};
     if (!ticketId) {
         return res.status(400).json({ success: false, message: 'Ticket ID is required' });

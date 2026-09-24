@@ -105,6 +105,7 @@ export default function Tickets({
         headers: {
           'Content-Type': 'application/json',
           'x-admin-key': adminKey,
+          'x-auth-token': adminKey,
         },
         body: JSON.stringify({ ticketId }),
       })

@@ -30,7 +30,7 @@ const PR_USERS: (PRUser & { password: string })[] = [
   { id: 'pr5', username: 'partner5', password: 'ftpr@005', displayName: 'Partner Five' },
 ]
 
-const PRICING = { female: 599, male: 699 }
+const PRICING = { female: 799, male: 499 }
 const API = ''
 
 // ==================== LOGIN PAGE ====================
@@ -141,7 +141,7 @@ function SellTicketModal({
           amount: data.amount * 100,
           currency: data.currency,
           name: 'LITTX',
-          description: `${gender === 'male' ? 'Male' : 'Female'} Pass — Dholida Garba Royale`,
+          description: `${gender === 'male' ? 'General Access' : 'VIP'} Pass — Dholida Garba Royale`,
           order_id: data.orderId,
           prefill: { name, email, contact: phone },
           theme: { color: '#7C5CFA' },
@@ -225,8 +225,8 @@ function SellTicketModal({
             <div>
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>PASS TYPE</label>
               <select value={gender} onChange={e => setGender(e.target.value as any)} style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }}>
-                <option value="male">Male Pass (₹{PRICING.male})</option>
-                <option value="female">Female Pass (₹{PRICING.female})</option>
+                <option value="male">General Access (₹{PRICING.male})</option>
+                <option value="female">VIP (₹{PRICING.female})</option>
               </select>
             </div>
             <div>

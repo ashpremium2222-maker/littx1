@@ -72,7 +72,7 @@ export default function ShadowPanelApp({
   const [gender, setGender]         = useState('GA Single')
   const [quantity, setQuantity]     = useState('1')
   const [paymentStatus, setPaymentStatus] = useState('Paid')
-  const [amount, setAmount]         = useState('399')
+  const [amount, setAmount]         = useState('499')
 
   const [submitting, setSubmitting] = useState(false)
   const [resendingTicketId, setResendingTicketId] = useState<string | null>(null)
@@ -622,12 +622,12 @@ export default function ShadowPanelApp({
                           ) : (
                             <>
                               
-    <option value="GA Single">GA Single (₹399)</option>
-    <option value="GA Group of 5">GA Group of 5 (₹1699)</option>
-    <option value="GA Group of 10">GA Group of 10 (₹2999)</option>
-    <option value="VIP Single">VIP Single (₹599)</option>
-    <option value="VIP Group of 5">VIP Group of 5 (₹2799)</option>
-    <option value="VIP Group of 10">VIP Group of 10 (₹4999)</option>
+    <option value="GA Single">GA Single (₹499)</option>
+    <option value="GA Group of 5">GA Group of 5 (₹2249)</option>
+    <option value="GA Group of 10">GA Group of 10 (₹3999)</option>
+    <option value="VIP Single">VIP Single (₹799)</option>
+    <option value="VIP Group of 5">VIP Group of 5 (₹3749)</option>
+    <option value="VIP Group of 10">VIP Group of 10 (₹6999)</option>
   
                             </>
                           )}
@@ -861,12 +861,12 @@ export default function ShadowPanelApp({
                       ) : (
                         <>
                           
-    <option value="GA Single">GA Single (₹399)</option>
-    <option value="GA Group of 5">GA Group of 5 (₹1699)</option>
-    <option value="GA Group of 10">GA Group of 10 (₹2999)</option>
-    <option value="VIP Single">VIP Single (₹599)</option>
-    <option value="VIP Group of 5">VIP Group of 5 (₹2799)</option>
-    <option value="VIP Group of 10">VIP Group of 10 (₹4999)</option>
+    <option value="GA Single">GA Single (₹499)</option>
+    <option value="GA Group of 5">GA Group of 5 (₹2249)</option>
+    <option value="GA Group of 10">GA Group of 10 (₹3999)</option>
+    <option value="VIP Single">VIP Single (₹799)</option>
+    <option value="VIP Group of 5">VIP Group of 5 (₹3749)</option>
+    <option value="VIP Group of 10">VIP Group of 10 (₹6999)</option>
   
                         </>
                       )}

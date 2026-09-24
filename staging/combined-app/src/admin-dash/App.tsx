@@ -35,12 +35,12 @@ interface NavItemDef {
 type ManualPass = { id?: string; name: string; price: number; gender?: string }
 
 const DEFAULT_MANUAL_PASSES: ManualPass[] = [
-  { id: 'ga-single', name: 'GA Single', price: 399, gender: 'ga' },
-  { id: 'ga-group-of-5', name: 'GA Group of 5', price: 1699, gender: 'group' },
-  { id: 'ga-group-of-10', name: 'GA Group of 10', price: 2999, gender: 'group' },
-  { id: 'vip-single', name: 'VIP Single', price: 599, gender: 'vip' },
-  { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 2799, gender: 'vip' },
-  { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 4999, gender: 'vip' },
+  { id: 'ga-single', name: 'GA Single', price: 499, gender: 'ga' },
+  { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'group' },
+  { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'group' },
+  { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'vip' },
+  { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'vip' },
+  { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'vip' },
 ]
 
 const navItems: NavItemDef[] = [
@@ -148,9 +148,11 @@ const navItems: NavItemDef[] = [
 ]
 
 function isApprovalOnlySale(sale: any) {
+  const approvalStatus = String(sale?.approvalStatus || '').toUpperCase()
   return (
-    sale?.approvalStatus === 'PENDING' ||
-    sale?.approvalStatus === 'REJECTED' ||
+    approvalStatus === 'PENDING' ||
+    approvalStatus === 'REJECTED' ||
+    (sale?.approvalRequired && !['APPROVED', 'NOT_REQUIRED'].includes(approvalStatus)) ||
     sale?.status === 'pending_approval' ||
     sale?.deliveryStatus === 'PENDING_APPROVAL' ||
     sale?.deliveryStatus === 'BLOCKED'
@@ -201,7 +203,7 @@ export default function App({ isPresentation = false }: AppProps) {
   const [manualPhone, setManualPhone] = useState('')
   const [manualTicketType, setManualTicketType] = useState('GA Single')
   const [manualQty, setManualQty] = useState('1')
-  const [manualAmount, setManualAmount] = useState('399')
+  const [manualAmount, setManualAmount] = useState('499')
   const [manualPasses, setManualPasses] = useState<ManualPass[]>(DEFAULT_MANUAL_PASSES)
   const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
   const [manualPartner, setManualPartner] = useState('littlane')

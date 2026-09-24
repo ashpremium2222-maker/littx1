@@ -56,7 +56,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
             dateLabel: t.dateLabel || '17th October, Sat · 4:00 PM',
             venue: t.venue || 'Pethkar Ground, Kothrud, Pune',
             ticketType: t.ticketType || (t.gender === 'female' ? 'VIP Single' : 'GA Single'),
-            price: t.amount ? `₹${t.amount}` : '₹699',
+            price: t.amount ? `₹${t.amount}` : '₹499',
             qty: t.quantity || 1,
             status: t.status || 'paid',
             scannedAt: t.scannedAt
