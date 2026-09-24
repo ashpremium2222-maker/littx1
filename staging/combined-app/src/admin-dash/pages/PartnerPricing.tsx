@@ -5,7 +5,7 @@ interface PartnerPricingProps {
   mode: 'partners' | 'pricing'
 }
 
-type Partner = { userId: string; displayName: string; companyId: string; sellerSlot?: string; active: boolean; managed?: boolean }
+type Partner = { userId: string; displayName: string; companyId: string; sellerSlot?: string; active: boolean; blocked?: boolean; managed?: boolean }
 type PassTier = { id?: string; name: string; price: number | string; gender?: string }
 type EventPricing = { id: string; name: string; tiers: PassTier[] }
 const PARTNER_LOGIN_SLOTS = [
@@ -77,11 +77,15 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
   }
 
   const togglePartner = async (partner: Partner) => {
+    const blocking = partner.active
+    if (!window.confirm(blocking
+      ? `Permanently block ${partner.displayName}? Their current seller session will end and only a Master Admin can unblock them.`
+      : `Unblock ${partner.displayName}? They will be able to sign in again.`)) return
     const response = await fetch(`/api/admin/partners/${encodeURIComponent(partner.userId)}`, {
       method: 'PATCH', headers: headers(adminKey), body: JSON.stringify({ active: !partner.active })
     })
     const data = await response.json()
-    setNotice(data.message || (data.success ? `Partner ${partner.active ? 'deactivated' : 'activated'}.` : 'Unable to update partner.'))
+    setNotice(data.message || (data.success ? `Partner ${blocking ? 'blocked' : 'unblocked'}.` : 'Unable to update partner.'))
     if (data.success) load()
   }
 
@@ -184,7 +188,7 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
       <div className="card">
         <div className="card-head"><h3>Partners</h3><button className="btn-secondary" onClick={load}>Refresh</button></div>
         {notice && <p className="muted-sm" style={{ marginTop: 12 }}>{notice}</p>}
-        <div className="table-scroll scroll" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Partner</th><th>Slot</th><th>Company</th><th>Status</th><th /></tr></thead><tbody>{partners.map(partner => <tr key={partner.userId}><td>{partner.displayName}<div className="muted-sm">{partner.userId}</div></td><td>{partner.managed === false ? 'System seller' : slotLabel(partner.sellerSlot)}</td><td>{partner.companyId}</td><td>{partner.active ? 'Active' : 'Inactive'}</td><td>{partner.managed === false ? <span className="muted-sm">Available in /seller</span> : <div style={{ display: 'flex', gap: 8 }}><button className="btn-secondary" onClick={() => togglePartner(partner)}>{partner.active ? 'Deactivate' : 'Activate'}</button><button className="btn-secondary" onClick={() => deletePartner(partner)} style={{ color: 'var(--red)' }}>Delete</button></div>}</td></tr>)}{partners.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No seller accounts are available.</td></tr>}</tbody></table></div>
+        <div className="table-scroll scroll" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Partner</th><th>Slot</th><th>Company</th><th>Status</th><th /></tr></thead><tbody>{partners.map(partner => <tr key={partner.userId}><td>{partner.displayName}<div className="muted-sm">{partner.userId}</div></td><td>{partner.managed === false ? 'System seller' : slotLabel(partner.sellerSlot)}</td><td>{partner.companyId}</td><td>{partner.blocked || !partner.active ? 'Blocked until Master Admin unblocks' : 'Active'}</td><td>{partner.managed === false ? <span className="muted-sm">Block controls are in Active Sessions</span> : <div style={{ display: 'flex', gap: 8 }}><button className="btn-secondary" onClick={() => togglePartner(partner)}>{partner.blocked || !partner.active ? 'Unblock' : 'Block permanently'}</button><button className="btn-secondary" onClick={() => deletePartner(partner)} style={{ color: 'var(--red)' }}>Delete</button></div>}</td></tr>)}{partners.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No seller accounts are available.</td></tr>}</tbody></table></div>
       </div>
     </div>
   )

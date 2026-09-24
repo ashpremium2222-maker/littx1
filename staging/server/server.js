@@ -48,7 +48,8 @@ function verifyPassword(password, passwordHash) {
 
 async function resolveSellerPartner(partnerId) {
     if (PARTNER_NAMES[partnerId]) {
-        return { id: partnerId, name: PARTNER_NAMES[partnerId], active: true, legacyPassword: PARTNER_PASSWORDS[partnerId] };
+        const lock = await db.getPartnerLock(partnerId);
+        return { id: partnerId, name: PARTNER_NAMES[partnerId], active: !lock?.blocked, blocked: Boolean(lock?.blocked), legacyPassword: PARTNER_PASSWORDS[partnerId] };
     }
     if (!PARTNER_LOGIN_SLOTS.includes(partnerId)) return null;
     const user = await db.getUserBySellerSlot(partnerId);
@@ -76,8 +77,8 @@ function savePersisted(file, data) {
 const webauthnAuthenticators = loadPersisted(WEBAUTHN_FILE); // partnerId -> { credentialID, credentialPublicKey, counter }
 const webauthnChallenges = new Map(); // loginId -> { partnerId, challenge, rpID, origin, createdAt }
 const sellerSessions = loadPersisted(SESSIONS_FILE); // sid/token -> session
-const SELLER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const WEBAUTHN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const SELLER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 function generateToken() {
     return crypto.randomBytes(32).toString('base64url');
@@ -150,15 +151,16 @@ function getWebAuthnRelyingParty(req) {
     return { rpID: host, origin: parsedOrigin.origin };
 }
 
-function isValidSellerSession(session, token) {
+function isValidSellerSession(session, token, persistent = false) {
     if (!session || typeof session.token !== 'string') {
         return false;
     }
     const expected = Buffer.from(session.token);
     const supplied = Buffer.from(token);
     if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) return false;
-    const loginAt = Date.parse(session.loginAt || '');
-    return Number.isFinite(loginAt) && Date.now() - loginAt < SELLER_SESSION_TTL_MS;
+    if (persistent) return true;
+    const loginAt = new Date(session.loginAt || 0).getTime();
+    return Number.isFinite(loginAt) && Date.now() - loginAt <= SELLER_SESSION_TTL_MS;
 }
 
 function clientIp(req) {
@@ -176,27 +178,24 @@ function deviceNameFromUserAgent(userAgent = '') {
 
 async function authenticateSeller(token) {
     if (!token || typeof token !== 'string') return null;
-    for (const [sid, session] of Object.entries(sellerSessions)) {
-        if (isValidSellerSession(session, token)) {
-            return sid;
-        }
-    }
-    // Serverless instances do not share memory. Recover the session from the
-    // persistent store whenever this instance has no cached copy.
-    for (const sid of [...Object.keys(PARTNER_NAMES), ...Object.keys(SELLER_ACCOUNTS), ...PARTNER_LOGIN_SLOTS]) {
-        const session = await db.getSellerSession(sid);
-        if (isValidSellerSession(session, token)) {
-            sellerSessions[sid] = session;
-            return sid;
-        }
-    }
-    const partnerUsers = await db.getAllUsers();
-    for (const partner of partnerUsers.filter(user => user.role === 'seller' && user.sellerSlot)) {
-        const session = await db.getSellerSession(partner.sellerSlot);
-        if (isValidSellerSession(session, token) && partner.active !== false && !partner.blocked) {
-            sellerSessions[partner.sellerSlot] = session;
-            return partner.sellerSlot;
-        }
+    const [users, storedSessions] = await Promise.all([db.getAllUsers(), db.getAllSellerSessions()]);
+    const sessionsBySeller = new Map(storedSessions.map(session => [session.sellerId, session]));
+    const sellerIds = [...new Set([
+        ...Object.keys(PARTNER_NAMES),
+        ...Object.keys(SELLER_ACCOUNTS),
+        ...PARTNER_LOGIN_SLOTS,
+        ...users.filter(user => user.role === 'seller').flatMap(user => [user.sellerSlot, user.userId]).filter(Boolean),
+    ])];
+    // Check persistent state on every request so Master Admin revocation takes
+    // effect across serverless instances without a stale local session cache.
+    for (const sid of sellerIds) {
+        const session = sessionsBySeller.get(sid);
+        if (!isValidSellerSession(session, token, true)) continue;
+        const partner = users.find(user => user.role === 'seller' && (user.sellerSlot === sid || user.userId === sid));
+        if (partner && (partner.active === false || partner.blocked)) return null;
+        if (PARTNER_NAMES[sid] && (await db.getPartnerLock(sid))?.blocked) return null;
+        sellerSessions[sid] = session;
+        return sid;
     }
     return null;
 }
@@ -342,6 +341,10 @@ app.get('/api/seller/partners', async (_req, res) => {
             active: true,
             configured: true,
         }));
+        const systemStatuses = await Promise.all(systemPartners.map(async partner => {
+            const lock = await db.getPartnerLock(partner.id);
+            return { ...partner, active: !lock?.blocked, blocked: Boolean(lock?.blocked) };
+        }));
         const configuredSlots = PARTNER_LOGIN_SLOTS.map((id, index) => {
             const user = users.find(item => item.sellerSlot === id && item.role === 'seller');
             return {
@@ -352,7 +355,7 @@ app.get('/api/seller/partners', async (_req, res) => {
             };
         });
         res.set('Cache-Control', 'no-store');
-        res.json({ success: true, partners: [...systemPartners, ...configuredSlots] });
+        res.json({ success: true, partners: [...systemStatuses, ...configuredSlots] });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Unable to load seller partners.' });
     }
@@ -448,12 +451,12 @@ function pickCanonicalEvent(events, requestedEventName = CANONICAL_EVENT_NAME) {
 // Prices issued by the seller portal are server-owned. Never trust an amount
 // supplied by the browser for a paid ticket.
 const DEFAULT_SELLER_PASS_PRICES = {
-    'GA Single': 399,
-    'GA Group of 5': 1699,
-    'GA Group of 10': 2999,
-    'VIP Single': 599,
-    'VIP Group of 5': 2799,
-    'VIP Group of 10': 4999,
+    'GA Single': 499,
+    'GA Group of 5': 2249,
+    'GA Group of 10': 3999,
+    'VIP Single': 799,
+    'VIP Group of 5': 3749,
+    'VIP Group of 10': 6999,
 };
 
 // Legacy migration seed only: on first pricing read for an event with no tiers,
@@ -536,6 +539,23 @@ async function getEventPricing(eventName) {
     if (!sourcePasses.length || isLegacyDholidaCatalog) {
         event = await db.saveEvent({ ...event, tiers: LEGACY_EVENT_TIER_SEED, ticketTypes: LEGACY_EVENT_TIER_SEED });
         sourcePasses = LEGACY_EVENT_TIER_SEED;
+    } else if (isCanonicalDashboardEvent(event)) {
+        const previousPrices = { 'GA Single': 399, 'GA Group of 5': 1699, 'GA Group of 10': 2999, 'VIP Single': 599, 'VIP Group of 5': 2799, 'VIP Group of 10': 4999 };
+        const hasLegacyPrices = sourcePasses.some(pass => previousPrices[pass.name] === Number(pass.price));
+        if (hasLegacyPrices) {
+            const migratePasses = passes => (passes || []).map(pass => ({
+                ...pass,
+                price: previousPrices[pass.name] === Number(pass.price)
+                    ? DEFAULT_SELLER_PASS_PRICES[pass.name]
+                    : pass.price
+            }));
+            event = await db.saveEvent({
+                ...event,
+                tiers: migratePasses(event.tiers),
+                ticketTypes: migratePasses(event.ticketTypes),
+            });
+            sourcePasses = [...(event.tiers || []), ...(event.ticketTypes || [])];
+        }
     }
     const passes = sourcePasses
         .map(pass => ({
@@ -706,8 +726,14 @@ async function computeAmount(gender, quantity, eventName = EVENT.name) {
     const pricing = await getEventPricing(eventName);
     if (!pricing) return null;
     const normalizedGender = String(gender || '').toLowerCase();
+    const legacyPassName = normalizedGender === 'male' || normalizedGender === 'ga'
+        ? 'ga single'
+        : normalizedGender === 'female' || normalizedGender === 'vip'
+            ? 'vip single'
+            : normalizedGender;
     const pass = pricing.passes.find(item => item.gender.toLowerCase() === normalizedGender)
-        || pricing.passes.find(item => item.name.toLowerCase().includes(normalizedGender));
+        || pricing.passes.find(item => item.name.toLowerCase().includes(normalizedGender))
+        || pricing.passes.find(item => item.name.toLowerCase() === legacyPassName);
     if (!pass) return null;
     const qty = Math.max(1, Math.min(20, parseInt(quantity, 10) || 1));
     return { amount: Math.round(pass.price * qty * 100) / 100, qty, ticketType: pass.name, event: pricing.event.name };
@@ -818,7 +844,7 @@ app.post('/api/create-order', async (req, res) => {
     }
     const computed = await computeAmount(gender, quantity);
     if (!computed) {
-        return res.status(400).json({ success: false, message: 'Invalid ticket type. Choose Male or Female pass.' });
+        return res.status(400).json({ success: false, message: 'Invalid ticket type. Choose a currently available pass.' });
     }
     const { amount, qty } = computed;
 
@@ -1369,13 +1395,9 @@ app.post('/api/admin/toggle-presentation', requireAdmin, async (req, res) => {
 // ==================== 6. ADMIN — GENERATE TICKET MANUALLY ====================
 app.get('/api/admin/partners', requirePartnerAdmin, async (_req, res) => {
     const users = await db.getAllUsers();
-    const systemPartners = Object.entries(PARTNER_NAMES).map(([userId, displayName]) => ({
-        userId,
-        displayName,
-        companyId: 'littlane',
-        sellerSlot: null,
-        active: true,
-        managed: false,
+    const systemPartners = await Promise.all(Object.entries(PARTNER_NAMES).map(async ([userId, displayName]) => {
+        const blocked = Boolean((await db.getPartnerLock(userId))?.blocked);
+        return { userId, displayName, companyId: 'littlane', sellerSlot: null, active: !blocked, blocked, managed: false };
     }));
     const managedPartners = users
         .filter(user => user.role === 'seller' && PARTNER_LOGIN_SLOTS.includes(user.sellerSlot))
@@ -1427,6 +1449,9 @@ app.post('/api/admin/partners', requirePartnerAdmin, async (req, res) => {
 
 app.patch('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) => {
     const { displayName, companyId, active, password } = req.body || {};
+    if (typeof active === 'boolean' && req.adminSession?.role !== 'master_admin') {
+        return res.status(403).json({ success: false, message: 'Only Master Admin can block or unblock seller accounts.' });
+    }
     const updates = {};
     if (typeof displayName === 'string' && displayName.trim()) updates.displayName = displayName.trim();
     if (typeof companyId === 'string' && companyId.trim()) updates.companyId = companyId.trim();
@@ -1437,7 +1462,12 @@ app.patch('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) =
     }
     const updated = await db.updateUser(req.params.userId, updates);
     if (!updated || updated.role !== 'seller') return res.status(404).json({ success: false, message: 'Partner not found.' });
-    if (active === false) await db.deleteSellerSession(updated.sellerSlot || updated.userId);
+    if (active === false) {
+        const sessionIds = [updated.sellerSlot, updated.userId].filter(Boolean);
+        for (const sessionId of sessionIds) delete sellerSessions[sessionId];
+        savePersisted(SESSIONS_FILE, sellerSessions);
+        await Promise.all(sessionIds.map(sessionId => db.deleteSellerSession(sessionId)));
+    }
     const { password: _, passwordHash: __, ...partner } = updated.toObject ? updated.toObject() : updated;
     res.json({ success: true, partner });
 });
@@ -2106,11 +2136,7 @@ app.post('/api/admin/clear-sales', requireAdmin, async (req, res) => {
 });
 
 // ==================== 6C. CANCEL DELIVERED TICKET (ADMIN ONLY) ====================
-app.post('/api/admin/cancel-ticket', async (req, res) => {
-    const clientKey = req.query.key || req.headers['x-admin-key'];
-    if (!clientKey || clientKey !== ADMIN_KEY) {
-        return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
+app.post('/api/admin/cancel-ticket', requireAdmin, async (req, res) => {
     const { ticketId } = req.body || {};
     if (!ticketId) {
         return res.status(400).json({ success: false, message: 'Ticket ID is required' });
@@ -2847,18 +2873,6 @@ app.get('/api/seller/verify-session', async (req, res) => {
     }
     return res.status(401).json({ success: false, message: 'Session invalid or expired' });
 });
-app.post('/api/seller/logout', async (req, res) => {
-    const token = req.headers['x-seller-token'] || req.body?.token;
-    const sid = await authenticateSeller(token);
-    if (sid) {
-        delete sellerSessions[sid];
-        savePersisted(SESSIONS_FILE, sellerSessions);
-        await db.deleteSellerSession(sid);
-        console.log(`[Seller Logout] ${sid} logged out`);
-    }
-    res.json({ success: true });
-});
-
 // GET /api/seller/verify — check if session is still valid
 app.get('/api/seller/verify', async (req, res) => {
     const token = req.headers['x-seller-token'];
@@ -2907,7 +2921,7 @@ app.get('/api/mobile/seller-config', requireSeller, async (req, res) => {
 
 // Admin-facing device inventory for the /seller portal. Tokens and public keys
 // are intentionally never returned to the browser.
-app.get('/api/admin/seller-devices', requireAdmin, async (req, res) => {
+app.get('/api/admin/seller-devices', requireMasterAdmin, async (req, res) => {
     try {
         const [locks, sessions] = await Promise.all([db.getAllPartnerLocks(), db.getAllSellerSessions()]);
         const sessionBySeller = new Map(sessions.map(session => [session.sellerId, session]));
@@ -2916,7 +2930,8 @@ app.get('/api/admin/seller-devices', requireAdmin, async (req, res) => {
             const session = sessionBySeller.get(partnerId);
             return {
                 partnerId,
-                    name: partner.name,
+                name: PARTNER_NAMES[partnerId],
+                blocked: Boolean(lock.blocked),
                 passkeyBound: Boolean(lock.webauthnCredentialId),
                 registeredDeviceId: lock.registeredDeviceId || null,
                 deviceName: lock.deviceName || null,
@@ -2924,7 +2939,7 @@ app.get('/api/admin/seller-devices', requireAdmin, async (req, res) => {
                 boundAt: lock.boundAt || null,
                 lastSeenAt: lock.lastSeenAt || session?.loginAt || null,
                 loginAt: session?.loginAt || null,
-                online: Boolean(session && isValidSellerSession(session, session.token)),
+                online: Boolean(session && isValidSellerSession(session, session.token, true)),
                 sessionVersion: lock.sessionVersion || 1,
             };
         });
@@ -2934,15 +2949,41 @@ app.get('/api/admin/seller-devices', requireAdmin, async (req, res) => {
     }
 });
 
-app.post('/api/admin/seller-devices/:partnerId/logout', requireAdmin, async (req, res) => {
+app.post('/api/admin/seller-devices/:partnerId/logout', requireMasterAdmin, async (req, res) => {
     const { partnerId } = req.params;
     if (!PARTNER_NAMES[partnerId]) return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
     delete sellerSessions[partnerId];
+    savePersisted(SESSIONS_FILE, sellerSessions);
     await db.deleteSellerSession(partnerId);
     res.json({ success: true, message: `${PARTNER_NAMES[partnerId]} has been logged out.` });
 });
 
-app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireAdmin, async (req, res) => {
+app.post('/api/admin/seller-devices/:partnerId/block', requireMasterAdmin, async (req, res) => {
+    const { partnerId } = req.params;
+    const blocked = req.body?.blocked;
+    if (typeof blocked !== 'boolean') return res.status(400).json({ success: false, message: 'Provide blocked as true or false.' });
+
+    if (PARTNER_NAMES[partnerId]) {
+        await db.savePartnerLock(partnerId, { blocked, blockedAt: blocked ? new Date().toISOString() : null });
+    } else if (PARTNER_LOGIN_SLOTS.includes(partnerId)) {
+        const user = await db.getUserBySellerSlot(partnerId);
+        if (!user || user.role !== 'seller') return res.status(404).json({ success: false, message: 'No seller account is assigned to this login slot.' });
+        await db.updateUser(user.userId, { blocked, active: !blocked });
+    } else {
+        return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
+    }
+
+    if (blocked) {
+        delete sellerSessions[partnerId];
+        savePersisted(SESSIONS_FILE, sellerSessions);
+        await db.deleteSellerSession(partnerId);
+        const account = PARTNER_LOGIN_SLOTS.includes(partnerId) ? await db.getUserBySellerSlot(partnerId) : null;
+        if (account?.userId !== undefined) await db.deleteSellerSession(account.userId);
+    }
+    res.json({ success: true, blocked, message: blocked ? 'Seller permanently blocked until a Master Admin unblocks them.' : 'Seller unblocked. They can sign in again.' });
+});
+
+app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireMasterAdmin, async (req, res) => {
     const { partnerId } = req.params;
     if (!PARTNER_NAMES[partnerId]) return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
     delete sellerSessions[partnerId];
@@ -2954,10 +2995,9 @@ app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireAdmin, asy
 // GET /api/admin/seller-summary — admin can see all sellers' totals
 app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
     try {
-        const [allSales, users, companies] = await Promise.all([
+        const [allSales, users] = await Promise.all([
             db.getAll(),
-            db.getAllUsers(),
-            db.getAllCompanies()
+            db.getAllUsers()
         ]);
         const all = allSales.filter(s => !isShadowSale(s));
         const paid = all.filter(isCountableTicketSale);
@@ -2971,17 +3011,26 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
                 .filter(user => ['seller', 'pr'].includes(user.role) && user.userId && user.companyId)
                 .map(user => [normalizeSellerId(user.userId), user.companyId])
         );
-        const companyById = new Map(companies.map(company => [company.companyId, company]));
+        const sellerSlotByCompany = new Map(
+            users
+                .filter(user => user.role === 'seller' && user.sellerSlot && user.companyId)
+                .map(user => [user.companyId, user.sellerSlot])
+        );
         const summary = {};
         const companySummary = new Map();
         const knownEventCompanies = [
             { companyId: 'littlane', name: 'Littlane Ent' },
             { companyId: 'nitro', name: 'Nitro Events' },
             { companyId: '7th-heaven', name: '7th Heaven' },
-            { companyId: 'nexora', name: companyById.get('nexora')?.name || 'Nexora Events' },
-            { companyId: 'urban-nights', name: companyById.get('urban-nights')?.name || 'Urban Nights' },
+            ...PARTNER_LOGIN_SLOTS.map((companyId, index) => {
+                const user = users.find(item => item.role === 'seller' && item.sellerSlot === companyId);
+                return { companyId, name: user?.displayName || `Partner Login ${index + 1}` };
+            }),
         ];
         const knownEventCompanyIds = new Set(knownEventCompanies.map(company => company.companyId));
+        const knownEventCompanyByNormalizedId = new Map(
+            knownEventCompanies.map(company => [normalizeSellerId(company.companyId), company.companyId])
+        );
         for (const { companyId, name } of knownEventCompanies) {
             if (!companySummary.has(companyId)) {
                 companySummary.set(companyId, {
@@ -3028,21 +3077,19 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
             const rawCompanyId = String(s.companyId || '');
             const sourceId = s.sellerId || s.generatedBy || s.prUserId || '';
             const normalizedSourceId = normalizeSellerId(sourceId);
-            const sellerCompanyId = userCompanyMap.get(normalizedSourceId);
-            const companyId = sellerCompanyId
-                || slotCompanyMap.get(rawCompanyId)
-                || (knownEventCompanyIds.has(rawCompanyId) ? rawCompanyId : '')
-                || (knownEventCompanyIds.has(sellerCompanyIdFromValue(sourceId)) ? sellerCompanyIdFromValue(sourceId) : '');
+            const sellerCompanyId = userCompanyMap.get(normalizedSourceId) || slotCompanyMap.get(normalizedSourceId);
+            const companyId = knownEventCompanyByNormalizedId.get(normalizedSourceId)
+                || knownEventCompanyByNormalizedId.get(normalizeSellerId(rawCompanyId))
+                || knownEventCompanyByNormalizedId.get(normalizeSellerId(sellerCompanyId))
+                || sellerSlotByCompany.get(sellerCompanyId || rawCompanyId)
+                || (knownEventCompanyIds.has(rawCompanyId) ? rawCompanyId : '');
             if (!companyId) continue;
-            const company = companyById.get(companyId);
-            const companyName = displayCompanyName(
-                companyId,
-                company?.name || PARTNER_NAMES[companyId] || SELLER_COMPANY_NAMES[companyId] || companyId
-            );
             if (!companySummary.has(companyId)) {
+                const configuredCompany = knownEventCompanies.find(company => company.companyId === companyId);
+                const sellerSlotUser = users.find(user => user.role === 'seller' && user.sellerSlot === companyId);
                 companySummary.set(companyId, {
                     companyId,
-                    name: companyName,
+                    name: configuredCompany?.name || sellerSlotUser?.displayName || PARTNER_NAMES[companyId] || SELLER_COMPANY_NAMES[companyId] || companyId,
                     ticketCount: 0,
                     grossSales: 0,
                     commissionEarned: 0,

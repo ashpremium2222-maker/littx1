@@ -5,12 +5,12 @@
     "displayName": "DHOLIDA GARBA ROYALE — 17 Oct 2026 · Pethkar Ground, Kothrud, Pune"
   },
   "passes": [
-    { "id": "GA Single", "label": "GA Single", "price": 399 },
-    { "id": "GA Group of 5", "label": "GA Group of 5", "price": 1699 },
-    { "id": "GA Group of 10", "label": "GA Group of 10", "price": 2999 },
-    { "id": "VIP Single", "label": "VIP Single", "price": 599 },
-    { "id": "VIP Group of 5", "label": "VIP Group of 5", "price": 2799 },
-    { "id": "VIP Group of 10", "label": "VIP Group of 10", "price": 4999 }
+    { "id": "GA Single", "label": "GA Single", "price": 499 },
+    { "id": "GA Group of 5", "label": "GA Group of 5", "price": 2249 },
+    { "id": "GA Group of 10", "label": "GA Group of 10", "price": 3999 },
+    { "id": "VIP Single", "label": "VIP Single", "price": 799 },
+    { "id": "VIP Group of 5", "label": "VIP Group of 5", "price": 3749 },
+    { "id": "VIP Group of 10", "label": "VIP Group of 10", "price": 6999 }
   ],
   "features": { "salesHistory": true }
 }

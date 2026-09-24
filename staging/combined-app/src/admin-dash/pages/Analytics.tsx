@@ -12,6 +12,7 @@ interface Sale {
   quantity: number
   status: string
   gender?: string
+  ticketType?: string
   ticketId?: string
   createdAt: string
   paidAt?: string
@@ -85,7 +86,7 @@ export default function Analytics({ sales = [] }: Props) {
   // Ticket type breakdown
   const typeCount: Record<string, number> = {}
   paid.forEach((s) => {
-    const type =
+    const type = s.ticketType || (
       s.gender === 'male'
         ? 'GA Single'
         : s.gender === 'female'
@@ -93,7 +94,8 @@ export default function Analytics({ sales = [] }: Props) {
         : String(s.gender || '').toLowerCase().includes('exclusive')
         ? 'VIP Invite'
         : 'General'
-    typeCount[type] = (typeCount[type] || 0) + 1
+    )
+    typeCount[type] = (typeCount[type] || 0) + (Number(s.quantity) || 1)
   })
   const total = Object.values(typeCount).reduce((a, b) => a + b, 0) || 1
   const ticketTypes = Object.entries(typeCount).map(([name, count], i) => ({
@@ -103,6 +105,7 @@ export default function Analytics({ sales = [] }: Props) {
   }))
 
   const totalRevenue = paid.reduce((a, s) => a + (s.amount || 0), 0)
+  const paidPassCount = paid.reduce((total, sale) => total + (Number(sale.quantity) || 1), 0)
   const totalOrders = sales.length
   const scanned = sales.filter((s) => s.scannedAt || s.status === 'scanned').length
   const emailDelivered = sales.filter((s) => s.emailStatus === 'sent').length
@@ -124,7 +127,7 @@ export default function Analytics({ sales = [] }: Props) {
 
         <div className="tile tile-teal">
           <div className="tile-label">PAID PASSES</div>
-          <div className="tile-value">{paid.length}</div>
+          <div className="tile-value">{paidPassCount}</div>
           <div className="tile-sub">Out of {totalOrders} total orders</div>
           <div className="tile-delta">
             <span>🎟</span> Confirmed booking

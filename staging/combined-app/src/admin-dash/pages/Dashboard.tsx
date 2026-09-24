@@ -243,7 +243,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         <div className="tile tile-orange">
           <div className="tile-label">REVENUE MTD</div>
           <div className="tile-value">₹{totalRevenue.toLocaleString()}</div>
-          <div className="tile-sub">From {paidSales.length} paid passes</div>
+          <div className="tile-sub">From {totalTickets} paid passes</div>
           <div className="tile-delta">
             <span>↑</span> Verified sales
           </div>

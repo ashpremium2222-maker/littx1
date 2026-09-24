@@ -214,14 +214,16 @@ export default function SellerPortalApp() {
           // Normal: server confirmed session
           setAuthenticatedPartner(data.partner)
           localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
-        } else {
-          // Any failure response (e.g. 401, session invalid, or kicked by admin)
-          // Clean state and force logout
-          console.warn('[Seller] Session invalid, logging out...', data.message)
+        } else if (res.status === 401 || res.status === 403) {
+          // Only an explicit authorization denial means the Master Admin
+          // revoked or blocked this seller. Transient server errors retain login.
+          console.warn('[Seller] Session revoked by server:', data.message)
           localStorage.removeItem('littx_seller_token')
           localStorage.removeItem('littx_seller_partner')
           setAuthenticatedPartner(null)
           setToken(null)
+        } else {
+          console.warn('[Seller] Session check temporarily unavailable; keeping saved login.')
         }
       } catch (err) {
         // Network/connection error: keep cached session alive, do NOT log out
