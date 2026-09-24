@@ -26,6 +26,7 @@ export default function Settings({ adminKey }: SettingsProps) {
   const [sellerSessions, setSellerSessions] = useState<any[]>([])
   const [loadingSellerSessions, setLoadingSellerSessions] = useState(false)
   const [kickingId, setKickingId] = useState<string | null>(null)
+  const [blockingId, setBlockingId] = useState<string | null>(null)
   const [deviceError, setDeviceError] = useState<string | null>(null)
 
   // Notification toggle states
@@ -108,6 +109,26 @@ export default function Settings({ adminKey }: SettingsProps) {
       alert('Error forcing logout.')
     } finally {
       setKickingId(null)
+    }
+  }
+
+  const setSellerBlocked = async (partnerId: string, name: string, blocked: boolean) => {
+    const action = blocked ? 'permanently block' : 'unblock'
+    if (!confirm(`${blocked ? 'Block' : 'Unblock'} ${name}? ${blocked ? 'They will be signed out and cannot sign in until a Master Admin unblocks them.' : 'They will be able to sign in again.'}`)) return
+    setBlockingId(partnerId)
+    try {
+      const res = await fetch(`/api/admin/seller-devices/${encodeURIComponent(partnerId)}/block`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': adminKey },
+        body: JSON.stringify({ blocked }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.message || `Unable to ${action} seller.`)
+      await loadSellerDeviceData()
+    } catch (error: any) {
+      alert(error.message || `Unable to ${action} seller.`)
+    } finally {
+      setBlockingId(null)
     }
   }
 
@@ -330,7 +351,7 @@ export default function Settings({ adminKey }: SettingsProps) {
             <div className="card-head">
               <h3>🏪 /seller — Outlet Device Sessions</h3>
               <div className="muted-sm">
-                Live status of all 3 outlet devices. Force Logout kicks the session immediately — device hardware lock stays intact.
+                Master Admin controls seller sessions and permanent access blocks. A blocked seller cannot sign in until unblocked here.
               </div>
             </div>
             <div style={{ marginTop: '16px' }}>
@@ -345,6 +366,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                 const lock = sellerSessions.find((l: any) => l.partnerId === pid)
                 const activeSession = sessions.find((s: any) => s.userId === `partner:${pid}`)
                 const isLoggedIn = !!activeSession
+                const isBlocked = Boolean(lock?.blocked)
                 const hasDevice = !!(lock?.webauthnCredentialId)
 
                 return (
@@ -366,8 +388,8 @@ export default function Settings({ adminKey }: SettingsProps) {
                           <div style={{ fontSize: '11px', color: 'var(--ink-faint)', fontFamily: 'monospace' }}>{pid}</div>
                         </div>
                       </div>
-                      <span className={`badge ${isLoggedIn ? 'badge-teal' : 'badge-dark'}`}>
-                        {isLoggedIn ? <><span className="badge-dot" />ONLINE</> : 'OFFLINE'}
+                      <span className={`badge ${isBlocked ? 'badge-red' : isLoggedIn ? 'badge-teal' : 'badge-dark'}`}>
+                        {isBlocked ? 'BLOCKED' : isLoggedIn ? <><span className="badge-dot" />ONLINE</> : 'OFFLINE'}
                       </span>
                     </div>
 
@@ -406,24 +428,24 @@ export default function Settings({ adminKey }: SettingsProps) {
                     </div>
 
                     {/* Action */}
-                    <button
-                      disabled={!isLoggedIn || kickingId === pid}
-                      onClick={() => forceLogoutSeller(pid, outlet.name)}
-                      style={{
-                        marginTop: '4px',
-                        padding: '8px 14px',
-                        borderRadius: '8px',
-                        border: isLoggedIn ? '1px solid rgba(255,107,107,0.35)' : '1px solid rgba(255,255,255,0.08)',
-                        backgroundColor: isLoggedIn ? 'rgba(255,107,107,0.12)' : 'rgba(255,255,255,0.04)',
-                        color: isLoggedIn ? 'var(--red)' : 'var(--ink-faint)',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                        cursor: isLoggedIn ? 'pointer' : 'not-allowed',
-                        width: '100%',
-                      }}
-                    >
-                      {kickingId === pid ? '⏳ Logging out...' : isLoggedIn ? '⏏ Force Logout' : 'Not Logged In'}
-                    </button>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
+                      <button
+                        disabled={!isLoggedIn || kickingId === pid || blockingId === pid}
+                        onClick={() => forceLogoutSeller(pid, outlet.name)}
+                        className="btn-secondary"
+                        style={{ color: 'var(--red)', opacity: isLoggedIn ? 1 : 0.55 }}
+                      >
+                        {kickingId === pid ? 'Logging out...' : 'Force Logout'}
+                      </button>
+                      <button
+                        disabled={blockingId === pid || kickingId === pid}
+                        onClick={() => setSellerBlocked(pid, outlet.name, !isBlocked)}
+                        className="btn-secondary"
+                        style={{ color: isBlocked ? 'var(--green)' : 'var(--red)' }}
+                      >
+                        {blockingId === pid ? 'Saving...' : isBlocked ? 'Unblock' : 'Block permanently'}
+                      </button>
+                    </div>
                   </div>
                 )
               })}

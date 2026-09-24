@@ -289,6 +289,8 @@ const PartnerLockSchema = new mongoose.Schema({
     boundAt: { type: String, default: null },
     sessionVersion: { type: Number, default: 1 },
     lastSeenAt: { type: String, default: null },
+    blocked: { type: Boolean, default: false },
+    blockedAt: { type: String, default: null },
 
     // Temporary Challenge
     currentChallenge: { type: String, default: null },
