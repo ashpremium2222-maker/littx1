@@ -12,11 +12,10 @@ const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
 interface SettingsProps {
   adminKey: string
   testMode?: boolean
-  isMasterAdmin?: boolean
 }
 
-export default function Settings({ adminKey, isMasterAdmin = false }: SettingsProps) {
-  const [tab, setTab] = useState<SettingsTab>(isMasterAdmin ? 'seller-locks' : 'profile')
+export default function Settings({ adminKey }: SettingsProps) {
+  const [tab, setTab] = useState<SettingsTab>('seller-locks')
   const [wiping, setWiping] = useState(false)
   const [sessions, setSessions] = useState<any[]>([])
   const [loadingSessions, setLoadingSessions] = useState(false)
@@ -114,10 +113,10 @@ export default function Settings({ adminKey, isMasterAdmin = false }: SettingsPr
 
   // Auto-load all data when Active Sessions tab is shown
   useEffect(() => {
-    if (isMasterAdmin && tab === 'seller-locks') {
+    if (tab === 'seller-locks') {
       loadSellerDeviceData()
     }
-  }, [tab, isMasterAdmin])
+  }, [tab])
 
   const handleResetPartnerLock = async (partnerId: string, name: string) => {
     if (!confirm(`Reset permanent device lock for ${name}? The next successful login from ANY device will set the new bound IP.`)) return
@@ -203,7 +202,7 @@ export default function Settings({ adminKey, isMasterAdmin = false }: SettingsPr
         <div className="pill-toggle">
           {(
             [
-              ...(isMasterAdmin ? [{ id: 'seller-locks' as const, label: 'Active Sessions' }] : []),
+              { id: 'seller-locks', label: 'Active Sessions' },
               { id: 'partners', label: 'Partners' },
               { id: 'pricing', label: 'Pricing' },
               { id: 'data', label: 'Data' },
@@ -247,7 +246,7 @@ export default function Settings({ adminKey, isMasterAdmin = false }: SettingsPr
         </div>
       )}
 
-      {isMasterAdmin && tab === 'seller-locks' && (
+      {tab === 'seller-locks' && (
         <>
           <div className="card">
             <div className="card-head">

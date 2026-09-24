@@ -2907,7 +2907,7 @@ app.get('/api/mobile/seller-config', requireSeller, async (req, res) => {
 
 // Admin-facing device inventory for the /seller portal. Tokens and public keys
 // are intentionally never returned to the browser.
-app.get('/api/admin/seller-devices', requireMasterAdmin, async (req, res) => {
+app.get('/api/admin/seller-devices', requireAdmin, async (req, res) => {
     try {
         const [locks, sessions] = await Promise.all([db.getAllPartnerLocks(), db.getAllSellerSessions()]);
         const sessionBySeller = new Map(sessions.map(session => [session.sellerId, session]));
@@ -2934,7 +2934,7 @@ app.get('/api/admin/seller-devices', requireMasterAdmin, async (req, res) => {
     }
 });
 
-app.post('/api/admin/seller-devices/:partnerId/logout', requireMasterAdmin, async (req, res) => {
+app.post('/api/admin/seller-devices/:partnerId/logout', requireAdmin, async (req, res) => {
     const { partnerId } = req.params;
     if (!PARTNER_NAMES[partnerId]) return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
     delete sellerSessions[partnerId];
@@ -2942,7 +2942,7 @@ app.post('/api/admin/seller-devices/:partnerId/logout', requireMasterAdmin, asyn
     res.json({ success: true, message: `${PARTNER_NAMES[partnerId]} has been logged out.` });
 });
 
-app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireMasterAdmin, async (req, res) => {
+app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireAdmin, async (req, res) => {
     const { partnerId } = req.params;
     if (!PARTNER_NAMES[partnerId]) return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
     delete sellerSessions[partnerId];
