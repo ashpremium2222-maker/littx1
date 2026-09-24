@@ -2,7 +2,7 @@ package com.littx.seller.nativeapp.data.model
 
 import com.google.gson.JsonObject
 
-data class StepOneResponse(val success: Boolean, val isRegistration: Boolean = false, val loginId: String? = null, val options: JsonObject? = null, val message: String? = null)
+data class StepOneResponse(val success: Boolean, val isRegistration: Boolean = false, val partnerId: String? = null, val loginId: String? = null, val options: JsonObject? = null, val message: String? = null)
 data class Partner(val id: String, val name: String, val registeredDeviceId: String? = null, val webauthnCredentialId: String? = null)
 data class SessionResponse(val success: Boolean, val token: String? = null, val partner: Partner? = null, val message: String? = null)
 data class TicketSummary(val id: String? = null, val price: String? = null, val qty: Int? = null)
@@ -15,6 +15,6 @@ data class SellerConfig(val version: Int, val event: SellerEvent, val passes: Li
 data class SellerConfigResponse(val success: Boolean, val config: SellerConfig? = null, val message: String? = null)
 data class SellerPricingPass(val id: String, val name: String, val price: Double)
 data class SellerPricingResponse(val success: Boolean, val event: String? = null, val passes: List<SellerPricingPass> = emptyList(), val message: String? = null)
-data class LoginStepOneRequest(val partnerId: String, val password: String)
+data class LoginStepOneRequest(val password: String)
 data class LoginStepTwoRequest(val partnerId: String, val loginId: String, val response: JsonObject)
 data class TicketRequest(val name: String, val email: String, val phone: String, val gender: String, val ticketType: String, val quantity: Int, val commissionPercentage: Double, val event: String, val generatedBy: String, val partnerId: String)

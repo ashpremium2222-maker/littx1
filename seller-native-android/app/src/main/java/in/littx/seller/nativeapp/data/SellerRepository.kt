@@ -19,7 +19,7 @@ class SellerRepository(private val store: SecureSessionStore) {
         val client = OkHttpClient.Builder().addInterceptor(logger).connectTimeout(15, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).build()
         Retrofit.Builder().baseUrl("${configured.trimEnd('/')}/").client(client).addConverterFactory(GsonConverterFactory.create()).build().create(SellerApi::class.java)
     }
-    suspend fun beginLogin(partnerId: String, password: String) = api.loginStepOne(LoginStepOneRequest(partnerId, password))
+    suspend fun beginLogin(password: String) = api.loginStepOne(LoginStepOneRequest(password))
     suspend fun finishLogin(partnerId: String, loginId: String, response: com.google.gson.JsonObject): SessionResponse {
         val result = api.loginStepTwo(LoginStepTwoRequest(partnerId, loginId, response))
         if (result.success && result.token != null && result.partner != null) store.save(result.token, result.partner)

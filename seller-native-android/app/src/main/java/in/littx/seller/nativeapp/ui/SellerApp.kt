@@ -40,14 +40,6 @@ private val midnight = Color(0xFF07070D)
 private val panel = Color(0xFF12121D)
 private val lilac = Color(0xFF9D66FF)
 private val softText = Color(0xFFB8B4C5)
-private data class PartnerVisual(val id: String, val name: String, val mark: String, val line: String)
-private val partners = listOf(
-    PartnerVisual("littlane", "Littlane Entertainment", "LE", "MUSIC  /  CULTURE  /  BEYOND"),
-    PartnerVisual("nitro", "Nitro Events", "N", "ENERGY  /  COMMUNITY  /  ALWAYS ON"),
-    PartnerVisual("7th-heaven", "7th Heaven", "7H", "PEOPLE  /  MOMENTS  /  HIGHER"),
-    PartnerVisual("partner-slot-1", "Partner Login", "+", "ADMIN-ACTIVATED PARTNER SLOT"),
-    PartnerVisual("partner-slot-2", "Partner Login", "+", "ADMIN-ACTIVATED PARTNER SLOT")
-)
 private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fontWeight = FontWeight.Medium)
 
 @Composable fun SellerApp(activity: ComponentActivity) {
@@ -61,7 +53,6 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 @Composable private fun LoadingScreen() = Box(Modifier.fillMaxSize().background(midnight), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = lilac) }
 
 @Composable private fun LoginScreen(model: SellerViewModel) {
-    var partnerId by remember { mutableStateOf(partners.first().id) }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(midnight)) {
@@ -71,24 +62,14 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
             item { Spacer(Modifier.height(0.dp)) }
             item { Row(verticalAlignment = Alignment.CenterVertically) { Surface(shape = RoundedCornerShape(50), color = Color(0xFF1E1932).copy(alpha = .8f), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF5B3A85))) { Text("S E L L E R", Modifier.padding(horizontal = 16.dp, vertical = 7.dp), color = Color(0xFFD3BEFF), fontSize = 11.sp, letterSpacing = 4.sp) }; Text("APP BY ASHTU", color = Color(0xFF9B8DB5), fontSize = 8.sp, letterSpacing = 1.sp, modifier = Modifier.padding(start = 10.dp)) } }
             item { Text("Access\nMore Than\nEvents", color = Color(0xFFF3F0F9), fontSize = 45.sp, lineHeight = 48.sp, fontWeight = FontWeight.Light); Spacer(Modifier.height(16.dp)); Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.width(26.dp).height(1.dp).background(lilac)); Spacer(Modifier.width(9.dp)); Text("NATIVE DEVICE-BOUND\nSELLER ACCESS", style = labelStyle(), color = Color(0xFFC8C2D5)) } }
-            items(partners) { partner -> PartnerCard(partner, partnerId == partner.id) { partnerId = partner.id } }
             item { Spacer(Modifier.height(10.dp)) }
-            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Partner password", color = Color(0xFFD9D5E2), fontSize = 15.sp, fontWeight = FontWeight.Medium); Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Lock, null, tint = softText, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(7.dp)); Text("Secure Access", color = softText, fontSize = 13.sp) } } }
-            item { OutlinedTextField(value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Enter partner password", color = Color(0xFF777381)) }, singleLine = true, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Show password", tint = softText) } }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = lilac, unfocusedBorderColor = Color(0xFF4A4657), focusedContainerColor = Color(0xFF12121E).copy(alpha = .9f), unfocusedContainerColor = Color(0xFF12121E).copy(alpha = .9f)), shape = RoundedCornerShape(16.dp)) }
+            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Seller password", color = Color(0xFFD9D5E2), fontSize = 15.sp, fontWeight = FontWeight.Medium); Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Lock, null, tint = softText, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(7.dp)); Text("Secure Access", color = softText, fontSize = 13.sp) } } }
+            item { OutlinedTextField(value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Enter your seller password", color = Color(0xFF777381)) }, singleLine = true, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Show password", tint = softText) } }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = lilac, unfocusedBorderColor = Color(0xFF4A4657), focusedContainerColor = Color(0xFF12121E).copy(alpha = .9f), unfocusedContainerColor = Color(0xFF12121E).copy(alpha = .9f)), shape = RoundedCornerShape(16.dp)) }
+            item { Text("Your password opens your seller account, then verifies its registered device passkey.", color = softText, fontSize = 13.sp, lineHeight = 18.sp) }
             item { model.state.error?.let { Notice(it, true, model::dismissNotice) } }
-            item { Button(onClick = { model.login(partnerId, password) }, enabled = password.isNotBlank() && !model.state.loading && BuildConfig.SELLER_API_BASE_URL.isNotBlank(), modifier = Modifier.fillMaxWidth().height(68.dp).shadow(18.dp, RoundedCornerShape(36.dp), ambientColor = lilac, spotColor = lilac), shape = RoundedCornerShape(36.dp), colors = ButtonDefaults.buttonColors(containerColor = lilac, disabledContainerColor = Color(0xFF312A43))) { if (model.state.loading) CircularProgressIndicator(Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp) else { Text("Sign in with passkey", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)); Surface(color = Color(0xFF17121F), shape = CircleShape, modifier = Modifier.size(54.dp)) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.ArrowForward, null, tint = Color.White, modifier = Modifier.size(28.dp)) } } } } }
+            item { Button(onClick = { model.login(password) }, enabled = password.isNotBlank() && !model.state.loading && BuildConfig.SELLER_API_BASE_URL.isNotBlank(), modifier = Modifier.fillMaxWidth().height(68.dp).shadow(18.dp, RoundedCornerShape(36.dp), ambientColor = lilac, spotColor = lilac), shape = RoundedCornerShape(36.dp), colors = ButtonDefaults.buttonColors(containerColor = lilac, disabledContainerColor = Color(0xFF312A43))) { if (model.state.loading) CircularProgressIndicator(Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp) else { Text("Sign in with passkey", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)); Surface(color = Color(0xFF17121F), shape = CircleShape, modifier = Modifier.size(54.dp)) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.ArrowForward, null, tint = Color.White, modifier = Modifier.size(28.dp)) } } } } }
             item { Row(Modifier.fillMaxWidth().padding(top = 20.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("A U T H O R I Z E D\nS E L L E R S  O N L Y", style = labelStyle(), color = Color(0xFF9891A6)); Text("—   L I T T X\n     S E L L E R", style = labelStyle(), color = Color(0xFF9891A6)) } }
         }
-    }
-}
-
-@Composable private fun PartnerCard(partner: PartnerVisual, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(21.dp)
-    val background = if (selected) Brush.linearGradient(listOf(Color(0xFF241745), Color(0xFF17132A), Color(0xFF27164A))) else Brush.linearGradient(listOf(panel.copy(alpha = .9f), panel.copy(alpha = .9f)))
-    Row(Modifier.fillMaxWidth().shadow(if (selected) 22.dp else 0.dp, shape, ambientColor = Color(0xFF7E43EF), spotColor = Color(0xFFAF77FF)).clip(shape).background(background).border(if (selected) 2.dp else 1.dp, if (selected) Color(0xFFB47AFF) else Color(0xFF252431), shape).clickable(onClick = onClick).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(64.dp).clip(RoundedCornerShape(15.dp)).background(Color(0xFF181724)).border(1.dp, if (selected) Color(0xFF7045B8) else Color(0xFF2A2937), RoundedCornerShape(15.dp)), contentAlignment = Alignment.Center) { Text(partner.mark, color = if (selected) lilac else Color(0xFF9B97AA), fontWeight = FontWeight.Bold, fontSize = if (partner.mark.length > 1) 23.sp else 31.sp) }
-        Column(Modifier.padding(start = 15.dp).weight(1f)) { Text(partner.name, color = Color.White, fontWeight = FontWeight.Medium, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis); Spacer(Modifier.height(7.dp)); Text(partner.line, style = labelStyle(), color = Color(0xFFAAA4B7)) }
-        Box(Modifier.size(34.dp).shadow(if (selected) 12.dp else 0.dp, CircleShape, ambientColor = lilac, spotColor = lilac).border(3.dp, if (selected) Color(0xFFC699FF) else Color(0xFF565261), CircleShape), contentAlignment = Alignment.Center) { if (selected) Box(Modifier.size(15.dp).background(Brush.radialGradient(listOf(Color(0xFFE7D0FF), lilac)), CircleShape)) }
     }
 }
 
