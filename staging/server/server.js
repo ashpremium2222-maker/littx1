@@ -1221,7 +1221,7 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
     });
 });
 
-app.post('/api/admin/ticket-approvals/:orderId/approve', requireAdmin, async (req, res) => {
+app.post('/api/admin/ticket-approvals/:orderId/approve', requireMasterAdmin, async (req, res) => {
     const approvedBy = await resolveAdminPrincipal(req);
     const approvedAt = new Date().toISOString();
     const claimed = await db.atomicApprovePendingSale(req.params.orderId, approvedBy, approvedAt);
@@ -1267,7 +1267,7 @@ app.post('/api/admin/ticket-approvals/:orderId/approve', requireAdmin, async (re
     }
 });
 
-app.post('/api/admin/ticket-approvals/:orderId/reject', requireAdmin, async (req, res) => {
+app.post('/api/admin/ticket-approvals/:orderId/reject', requireMasterAdmin, async (req, res) => {
     const rejectedBy = await resolveAdminPrincipal(req);
     const rejectedAt = new Date().toISOString();
     const rejected = await db.atomicRejectPendingSale(req.params.orderId, rejectedBy, rejectedAt);
@@ -3039,7 +3039,7 @@ app.post('/api/pr/cash-request', async (req, res) => {
 });
 
 // GET /api/admin/pr-approvals — admin sees all pending cash and seller-ticket approvals
-app.get('/api/admin/pr-approvals', requireAdmin, async (req, res) => {
+app.get('/api/admin/pr-approvals', requireMasterAdmin, async (req, res) => {
     try {
         const all = await db.getAll();
         const pending = all.filter(s =>
@@ -3055,7 +3055,7 @@ app.get('/api/admin/pr-approvals', requireAdmin, async (req, res) => {
 });
 
 // POST /api/admin/pr-approve — admin approves a cash sale → ticket generated and emailed
-app.post('/api/admin/pr-approve', requireAdmin, async (req, res) => {
+app.post('/api/admin/pr-approve', requireMasterAdmin, async (req, res) => {
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
 
@@ -3108,7 +3108,7 @@ app.post('/api/admin/pr-approve', requireAdmin, async (req, res) => {
 });
 
 // POST /api/admin/pr-reject — admin rejects a cash sale
-app.post('/api/admin/pr-reject', requireAdmin, async (req, res) => {
+app.post('/api/admin/pr-reject', requireMasterAdmin, async (req, res) => {
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
     try {
