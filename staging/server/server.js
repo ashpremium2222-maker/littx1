@@ -3045,9 +3045,10 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
             if (!companyId) continue;
             if (!companySummary.has(companyId)) {
                 const configuredCompany = knownEventCompanies.find(company => company.companyId === companyId);
+                const sellerSlotUser = users.find(user => user.role === 'seller' && user.sellerSlot === companyId);
                 companySummary.set(companyId, {
                     companyId,
-                    name: configuredCompany?.name || PARTNER_NAMES[companyId] || SELLER_COMPANY_NAMES[companyId] || companyId,
+                    name: configuredCompany?.name || sellerSlotUser?.displayName || PARTNER_NAMES[companyId] || SELLER_COMPANY_NAMES[companyId] || companyId,
                     ticketCount: 0,
                     grossSales: 0,
                     commissionEarned: 0,
