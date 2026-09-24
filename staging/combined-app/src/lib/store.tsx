@@ -57,7 +57,7 @@ interface StoreValue {
     dateLabel: string
     ticketType: TicketType
   }) => Promise<Ticket>
-  scanTicket: (idOrRaw: string, scannedBy: string) => Promise<{ result: 'success' | 'rejected' | 'not_found'; ticket?: Ticket }>
+  scanTicket: (idOrRaw: string, scannedBy: string) => Promise<{ result: 'success' | 'rejected' | 'not_found' | 'error'; ticket?: Ticket }>
   findTicket: (id: string) => Ticket | undefined
 }
 
@@ -182,45 +182,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     scanTicket: async (idOrRaw, scannedBy) => {
       const cleanId = idOrRaw.trim()
-
-      // Optimistic cache-first verification for instant millisecond response times
-      const localTicket = tickets.find(t => t.id === cleanId)
-      if (localTicket) {
-        if (localTicket.status === 'scanned') {
-          // Trigger background sync to log attempt on server, but do not await
-          fetch('/api/scan-ticket', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ticketId: cleanId, scannedBy })
-          }).catch(console.error)
-
-          return { result: 'rejected', ticket: localTicket }
-        } else {
-          // Optimistically mark as scanned in React state to prevent double scans
-          const updatedTicket: Ticket = {
-            ...localTicket,
-            status: 'scanned',
-            scannedBy: scannedBy || 'Gate Staff',
-            scannedAt: new Date().toLocaleDateString()
-          }
-          setTickets(prev => prev.map(t => t.id === cleanId ? updatedTicket : t))
-
-          // Commit to server in the background
-          fetch('/api/scan-ticket', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ticketId: cleanId, scannedBy })
-          }).catch(console.error)
-
-          return { result: 'success', ticket: updatedTicket }
-        }
-      }
-
       try {
+        const scannerToken = sessionStorage.getItem('littx_scanner_token')
         const res = await fetch('/api/scan-ticket', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...(scannerToken ? { Authorization: `Bearer ${scannerToken}` } : {})
           },
           body: JSON.stringify({
             ticketId: cleanId,
@@ -229,7 +197,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         })
 
         if (!res.ok) {
-          return { result: 'not_found' }
+          if (res.status === 401) {
+            sessionStorage.removeItem('littx_scanner_token')
+            window.dispatchEvent(new Event('littx-scanner-auth-expired'))
+          }
+          return { result: 'error' }
         }
 
         const data = await res.json()
@@ -254,7 +226,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             scannedBy: t.scannedBy || scannedBy || 'Gate Staff',
             scannedAt: t.scannedAt || fmtIST(new Date())
           }
-          await refreshTickets()
+          setTickets(prev => prev.map(ticket => ticket.id === resolvedTicket.id ? resolvedTicket : ticket))
           return { result: 'success', ticket: resolvedTicket }
         } else if (data.result === 'rejected') {
           const t = data.ticket
@@ -285,6 +257,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.error('Scan api error:', err)
+        return { result: 'error' }
       }
       return { result: 'not_found' }
     },

@@ -112,21 +112,45 @@ function MainAppShell() {
 }
 
 function DirectScannerGate() {
-  const [auth, setAuth] = useState(() => sessionStorage.getItem('direct_scanner_auth') === 'true')
+  const [auth, setAuth] = useState(() => Boolean(sessionStorage.getItem('littx_scanner_token')))
+  const [checking, setChecking] = useState(() => Boolean(sessionStorage.getItem('littx_scanner_token')))
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
 
-  function handleSubmit(e: React.FormEvent) {
+  useEffect(() => {
+    const expireSession = () => setAuth(false)
+    window.addEventListener('littx-scanner-auth-expired', expireSession)
+    return () => window.removeEventListener('littx-scanner-auth-expired', expireSession)
+  }, [])
+
+  useEffect(() => {
+    const token = sessionStorage.getItem('littx_scanner_token')
+    if (!token) return
+    fetch('/api/scanner-session', { headers: { Authorization: `Bearer ${token}` } })
+      .then(response => { if (!response.ok) throw new Error('expired') })
+      .catch(() => { sessionStorage.removeItem('littx_scanner_token'); setAuth(false) })
+      .finally(() => setChecking(false))
+  }, [])
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (password === 'dgr') {
-      sessionStorage.setItem('direct_scanner_auth', 'true')
+    setError('')
+    try {
+      const response = await fetch('/api/scanner-login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success || !data.token) throw new Error(data.message || 'Unable to log in.')
+      sessionStorage.setItem('littx_scanner_token', data.token)
       setAuth(true)
-      setError('')
-    } else {
-      setError('Invalid scanner password')
+      setPassword('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to log in.')
     }
   }
 
+  if (checking) return <div style={{ minHeight: '100vh', background: '#0D0D0D' }} />
   if (auth) {
     return <LittixApp forceScanner={true} />
   }

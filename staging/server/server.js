@@ -212,6 +212,34 @@ const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrData
 const { sendTicketEmail } = require('./mailer');
 const { sendTicketWhatsApp, getWhatsAppConfigurationStatus } = require('./whatsapp-service');
 
+const SCANNER_SESSION_TTL_SECONDS = 12 * 60 * 60;
+function scannerSessionSecret() {
+    const secret = process.env.SCANNER_SESSION_SECRET;
+    if (!secret || secret.length < 32) throw new Error('SCANNER_SESSION_SECRET must contain at least 32 characters.');
+    return secret;
+}
+function signScannerSession(payload) {
+    const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const signature = crypto.createHmac('sha256', scannerSessionSecret()).update(encoded).digest('base64url');
+    return `${encoded}.${signature}`;
+}
+function readScannerSession(req) {
+    const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const [encoded, suppliedSignature, extra] = token.split('.');
+    if (!encoded || !suppliedSignature || extra) return null;
+    let expectedSignature;
+    try { expectedSignature = crypto.createHmac('sha256', scannerSessionSecret()).update(encoded).digest(); }
+    catch (_) { return null; }
+    let actualSignature;
+    try { actualSignature = Buffer.from(suppliedSignature, 'base64url'); } catch (_) { return null; }
+    if (actualSignature.length !== expectedSignature.length || !crypto.timingSafeEqual(actualSignature, expectedSignature)) return null;
+    try {
+        const session = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+        if (session.role !== 'scanner' || typeof session.name !== 'string' || !Number.isFinite(session.exp) || session.exp <= Math.floor(Date.now() / 1000)) return null;
+        return session;
+    } catch (_) { return null; }
+}
+
 // Keep WhatsApp delivery inside the request lifecycle. Vercel may freeze a
 // serverless invocation as soon as the response is sent, so fire-and-forget
 // sends can be dropped before Meta receives them.
@@ -2105,17 +2133,41 @@ app.post('/api/admin/cancel-ticket', async (req, res) => {
 });
 
 // ==================== 7. SCAN TICKET ====================
+app.post('/api/scanner-login', (req, res) => {
+    const configuredPassword = process.env.SCANNER_PASSWORD;
+    if (!configuredPassword || configuredPassword.length < 12) {
+        return res.status(503).json({ success: false, message: 'Scanner login is not configured on the server.' });
+    }
+    const supplied = Buffer.from(String(req.body?.password || ''));
+    const expected = Buffer.from(configuredPassword);
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+        return res.status(401).json({ success: false, message: 'Invalid scanner password.' });
+    }
+    try {
+        const now = Math.floor(Date.now() / 1000);
+        const token = signScannerSession({ role: 'scanner', name: 'Gate Staff', iat: now, exp: now + SCANNER_SESSION_TTL_SECONDS });
+        return res.json({ success: true, token, scannerName: 'Gate Staff', expiresAt: (now + SCANNER_SESSION_TTL_SECONDS) * 1000 });
+    } catch (err) {
+        console.error('[scanner-login] Configuration error:', err.message);
+        return res.status(503).json({ success: false, message: 'Scanner login is not configured on the server.' });
+    }
+});
+
+app.get('/api/scanner-session', (req, res) => {
+    const session = readScannerSession(req);
+    if (!session) return res.status(401).json({ success: false, message: 'Scanner session expired. Log in again.' });
+    return res.json({ success: true, scannerName: session.name, expiresAt: session.exp * 1000 });
+});
+
 // Scanner dashboard totals. Accepted tickets are derived from the durable sale
 // state; failed attempts come from ScanLog so duplicate, cancelled, and
 // invalid scans survive a refresh, logout, or a different scanner device.
 app.get('/api/scan-stats', async (req, res) => {
     try {
-        const [allSales, scanStats] = await Promise.all([
-            db.getAll(),
+        const [accepted, scanStats] = await Promise.all([
+            db.countScannedSales(),
             db.getScanStats(null, new Date(0))
         ]);
-        const sales = allSales.filter(s => !isShadowSale(s));
-        const accepted = sales.filter(s => s.status === 'scanned').length;
         res.json({
             success: true,
             accepted,
@@ -2129,7 +2181,10 @@ app.get('/api/scan-stats', async (req, res) => {
 });
 
 app.post('/api/scan-ticket', async (req, res) => {
-    const { ticketId, scannedBy } = req.body || {};
+    const scannerSession = readScannerSession(req);
+    if (!scannerSession) return res.status(401).json({ success: false, message: 'Scanner login required.' });
+    const { ticketId } = req.body || {};
+    const scannedBy = scannerSession.name;
     if (!ticketId) {
         return res.status(400).json({ success: false, message: 'Ticket ID is required' });
     }
@@ -2137,24 +2192,24 @@ app.post('/api/scan-ticket', async (req, res) => {
     try {
         const sale = await db.getByTicketId(ticketId);
         if (!sale) {
-            await db.createScanLog({
+            db.createScanLog({
                 ticketId,
                 result: 'invalid',
                 scannedBy: scannedBy || 'Gate Staff',
                 ip: req.ip || req.socket?.remoteAddress || 'unknown'
-            });
+            }).catch(err => console.error('[ScanLog write error]', err.message));
             return res.json({ result: 'not_found' });
         }
 
         if (sale.status === 'cancelled') {
-            await db.createScanLog({
+            db.createScanLog({
                 ticketId: sale.ticketId,
                 result: 'cancelled',
                 scannedBy: scannedBy || 'Gate Staff',
                 ip: req.ip || req.socket?.remoteAddress || 'unknown',
                 companyId: sale.companyId || 'littlane',
                 event: sale.event
-            });
+            }).catch(err => console.error('[ScanLog write error]', err.message));
             return res.json({
                 result: 'rejected',
                 ticket: {
@@ -2175,14 +2230,14 @@ app.post('/api/scan-ticket', async (req, res) => {
         }
 
         if (sale.status === 'scanned' || sale.scannedAt) {
-            await db.createScanLog({
+            db.createScanLog({
                 ticketId: sale.ticketId,
                 result: 'duplicate',
                 scannedBy: scannedBy || 'Gate Staff',
                 ip: req.ip || req.socket?.remoteAddress || 'unknown',
                 companyId: sale.companyId || 'littlane',
                 event: sale.event
-            });
+            }).catch(err => console.error('[ScanLog write error]', err.message));
             return res.json({
                 result: 'rejected',
                 ticket: {
@@ -2212,22 +2267,31 @@ app.post('/api/scan-ticket', async (req, res) => {
         const mm = ist.getUTCMinutes().toString().padStart(2, '0');
         const scannedAtStr = `${months[ist.getUTCMonth()]} ${ist.getUTCDate()}, ${hour12}:${mm} ${ampm}`;
 
-        await db.updateSaleRecord(sale.orderId, {
-            status: 'scanned',
-            scannedBy: scannedBy || 'Gate Staff',
-            scannedAt: scannedAtStr
-        });
+        const updatedSale = await db.atomicScanTicket(ticketId, scannedBy || 'Gate Staff', scannedAtStr);
+        if (!updatedSale) {
+            // Another scanner may have claimed it after the initial lookup.
+            const currentSale = await db.getByTicketId(ticketId);
+            if (!currentSale || currentSale.status === 'cancelled') {
+                if (currentSale?.status === 'cancelled') {
+                    db.createScanLog({ ticketId, result: 'cancelled', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event }).catch(err => console.error('[ScanLog write error]', err.message));
+                    return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: currentSale.gender, quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: 'cancelled', scannedBy: 'Admin', scannedAt: 'Cancelled by Admin' } });
+                }
+                db.createScanLog({ ticketId, result: 'invalid', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown' }).catch(err => console.error('[ScanLog write error]', err.message));
+                return res.json({ result: 'not_found' });
+            }
+            const alreadyUsed = currentSale.status === 'scanned' || Boolean(currentSale.scannedAt);
+            db.createScanLog({ ticketId: currentSale.ticketId, result: alreadyUsed ? 'duplicate' : 'invalid', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event }).catch(err => console.error('[ScanLog write error]', err.message));
+            return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: currentSale.gender, quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: currentSale.status, scannedBy: currentSale.scannedBy, scannedAt: currentSale.scannedAt } });
+        }
 
-        await db.createScanLog({
-            ticketId: sale.ticketId,
+        db.createScanLog({
+            ticketId: updatedSale.ticketId,
             result: 'accepted',
             scannedBy: scannedBy || 'Gate Staff',
             ip: req.ip || req.socket?.remoteAddress || 'unknown',
-            companyId: sale.companyId || 'littlane',
-            event: sale.event
-        });
-
-        const updatedSale = await db.getByOrderId(sale.orderId);
+            companyId: updatedSale.companyId || 'littlane',
+            event: updatedSale.event
+        }).catch(err => console.error('[ScanLog write error]', err.message));
 
         res.json({
             result: 'success',

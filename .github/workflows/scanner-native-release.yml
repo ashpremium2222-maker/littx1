@@ -45,5 +45,6 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.version_name && format('scanner-v{0}', inputs.version_name) || github.ref_name }}
           generate_release_notes: true
           files: scanner-native-android/app/build/outputs/apk/release/app-release.apk
