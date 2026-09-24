@@ -2974,6 +2974,28 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
         const companyById = new Map(companies.map(company => [company.companyId, company]));
         const summary = {};
         const companySummary = new Map();
+        const knownEventCompanies = [
+            { companyId: 'littlane', name: 'Littlane Ent' },
+            { companyId: 'nitro', name: 'Nitro Events' },
+            { companyId: '7th-heaven', name: '7th Heaven' },
+            { companyId: 'nexora', name: companyById.get('nexora')?.name || 'Nexora Events' },
+            { companyId: 'urban-nights', name: companyById.get('urban-nights')?.name || 'Urban Nights' },
+        ];
+        const knownEventCompanyIds = new Set(knownEventCompanies.map(company => company.companyId));
+        for (const { companyId, name } of knownEventCompanies) {
+            if (!companySummary.has(companyId)) {
+                companySummary.set(companyId, {
+                    companyId,
+                    name: displayCompanyName(companyId, name),
+                    ticketCount: 0,
+                    grossSales: 0,
+                    commissionEarned: 0,
+                    netAfterCommission: 0,
+                    lastSale: null,
+                    categories: {},
+                });
+            }
+        }
         // initialise all sellers
         for (const sid of Object.keys(SELLER_ACCOUNTS)) {
             summary[sid] = { sellerId: sid, ticketCount: 0, revenue: 0, lastSale: null, sales: [] };
@@ -3006,12 +3028,12 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
             const rawCompanyId = String(s.companyId || '');
             const sourceId = s.sellerId || s.generatedBy || s.prUserId || '';
             const normalizedSourceId = normalizeSellerId(sourceId);
-            const companyId = slotCompanyMap.get(rawCompanyId)
-                || (rawCompanyId.startsWith('partner-slot-') ? '' : rawCompanyId)
-                || userCompanyMap.get(normalizedSourceId)
-                || sellerCompanyIdFromValue(sourceId)
-                || rawCompanyId
-                || 'littlane';
+            const sellerCompanyId = userCompanyMap.get(normalizedSourceId);
+            const companyId = sellerCompanyId
+                || slotCompanyMap.get(rawCompanyId)
+                || (knownEventCompanyIds.has(rawCompanyId) ? rawCompanyId : '')
+                || (knownEventCompanyIds.has(sellerCompanyIdFromValue(sourceId)) ? sellerCompanyIdFromValue(sourceId) : '');
+            if (!companyId) continue;
             const company = companyById.get(companyId);
             const companyName = displayCompanyName(
                 companyId,
@@ -3022,25 +3044,45 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
                     companyId,
                     name: companyName,
                     ticketCount: 0,
+                    grossSales: 0,
                     commissionEarned: 0,
+                    netAfterCommission: 0,
                     lastSale: null,
                     categories: {},
                 });
             }
             const companyRecord = companySummary.get(companyId);
             const quantity = Number(s.quantity) || 1;
-            const commission = Number(s.commissionAmount) || 0;
+            const grossAmount = Number(s.customerTotal ?? s.amount) || 0;
+            const commissionAmount = Number(s.commissionAmount);
+            const netAmount = Number(s.rateAfterCommission);
+            const percentageCommission = Number(s.commissionPercentage) > 0
+                ? grossAmount * Number(s.commissionPercentage) / 100
+                : 0;
+            const hasStoredCommission = s.commissionAmount !== undefined && s.commissionAmount !== null;
+            const commission = hasStoredCommission
+                ? (Number.isFinite(commissionAmount) ? commissionAmount : 0)
+                : Number.isFinite(netAmount) && grossAmount >= netAmount
+                    ? grossAmount - netAmount
+                    : percentageCommission;
+            const net = s.rateAfterCommission !== undefined && s.rateAfterCommission !== null && Number.isFinite(netAmount)
+                ? netAmount
+                : grossAmount - commission;
             const category = String(s.ticketType || s.gender || 'Other').trim() || 'Other';
             companyRecord.ticketCount += quantity;
+            companyRecord.grossSales += grossAmount;
             companyRecord.commissionEarned += commission;
+            companyRecord.netAfterCommission += net;
             if (!companyRecord.lastSale || (s.generatedAt && s.generatedAt > companyRecord.lastSale)) {
                 companyRecord.lastSale = s.generatedAt;
             }
             if (!companyRecord.categories[category]) {
-                companyRecord.categories[category] = { ticketCount: 0, commissionEarned: 0 };
+                companyRecord.categories[category] = { ticketCount: 0, grossSales: 0, commissionEarned: 0, netAfterCommission: 0 };
             }
             companyRecord.categories[category].ticketCount += quantity;
+            companyRecord.categories[category].grossSales += grossAmount;
             companyRecord.categories[category].commissionEarned += commission;
+            companyRecord.categories[category].netAfterCommission += net;
         }
         res.json({
             success: true,
