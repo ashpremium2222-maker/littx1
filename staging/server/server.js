@@ -1249,7 +1249,7 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
     });
 });
 
-app.post('/api/admin/ticket-approvals/:orderId/approve', requireAdmin, async (req, res) => {
+app.post('/api/admin/ticket-approvals/:orderId/approve', requireMasterAdmin, async (req, res) => {
     const approvedBy = await resolveAdminPrincipal(req);
     const approvedAt = new Date().toISOString();
     const claimed = await db.atomicApprovePendingSale(req.params.orderId, approvedBy, approvedAt);
@@ -1295,7 +1295,7 @@ app.post('/api/admin/ticket-approvals/:orderId/approve', requireAdmin, async (re
     }
 });
 
-app.post('/api/admin/ticket-approvals/:orderId/reject', requireAdmin, async (req, res) => {
+app.post('/api/admin/ticket-approvals/:orderId/reject', requireMasterAdmin, async (req, res) => {
     const rejectedBy = await resolveAdminPrincipal(req);
     const rejectedAt = new Date().toISOString();
     const rejected = await db.atomicRejectPendingSale(req.params.orderId, rejectedBy, rejectedAt);
@@ -2954,9 +2954,26 @@ app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireAdmin, asy
 // GET /api/admin/seller-summary — admin can see all sellers' totals
 app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
     try {
-        const all = (await db.getAll()).filter(s => !isShadowSale(s));
+        const [allSales, users, companies] = await Promise.all([
+            db.getAll(),
+            db.getAllUsers(),
+            db.getAllCompanies()
+        ]);
+        const all = allSales.filter(s => !isShadowSale(s));
         const paid = all.filter(isCountableTicketSale);
+        const slotCompanyMap = new Map(
+            users
+                .filter(user => user.role === 'seller' && user.sellerSlot && user.companyId)
+                .map(user => [user.sellerSlot, user.companyId])
+        );
+        const userCompanyMap = new Map(
+            users
+                .filter(user => ['seller', 'pr'].includes(user.role) && user.userId && user.companyId)
+                .map(user => [normalizeSellerId(user.userId), user.companyId])
+        );
+        const companyById = new Map(companies.map(company => [company.companyId, company]));
         const summary = {};
+        const companySummary = new Map();
         // initialise all sellers
         for (const sid of Object.keys(SELLER_ACCOUNTS)) {
             summary[sid] = { sellerId: sid, ticketCount: 0, revenue: 0, lastSale: null, sales: [] };
@@ -2985,8 +3002,51 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
                 generatedAt: s.generatedAt,
                 status: s.status,
             });
+
+            const rawCompanyId = String(s.companyId || '');
+            const sourceId = s.sellerId || s.generatedBy || s.prUserId || '';
+            const normalizedSourceId = normalizeSellerId(sourceId);
+            const companyId = slotCompanyMap.get(rawCompanyId)
+                || (rawCompanyId.startsWith('partner-slot-') ? '' : rawCompanyId)
+                || userCompanyMap.get(normalizedSourceId)
+                || sellerCompanyIdFromValue(sourceId)
+                || rawCompanyId
+                || 'littlane';
+            const company = companyById.get(companyId);
+            const companyName = displayCompanyName(
+                companyId,
+                company?.name || PARTNER_NAMES[companyId] || SELLER_COMPANY_NAMES[companyId] || companyId
+            );
+            if (!companySummary.has(companyId)) {
+                companySummary.set(companyId, {
+                    companyId,
+                    name: companyName,
+                    ticketCount: 0,
+                    commissionEarned: 0,
+                    lastSale: null,
+                    categories: {},
+                });
+            }
+            const companyRecord = companySummary.get(companyId);
+            const quantity = Number(s.quantity) || 1;
+            const commission = Number(s.commissionAmount) || 0;
+            const category = String(s.ticketType || s.gender || 'Other').trim() || 'Other';
+            companyRecord.ticketCount += quantity;
+            companyRecord.commissionEarned += commission;
+            if (!companyRecord.lastSale || (s.generatedAt && s.generatedAt > companyRecord.lastSale)) {
+                companyRecord.lastSale = s.generatedAt;
+            }
+            if (!companyRecord.categories[category]) {
+                companyRecord.categories[category] = { ticketCount: 0, commissionEarned: 0 };
+            }
+            companyRecord.categories[category].ticketCount += quantity;
+            companyRecord.categories[category].commissionEarned += commission;
         }
-        res.json({ success: true, summary: Object.values(summary) });
+        res.json({
+            success: true,
+            summary: Object.values(summary),
+            companySummary: Array.from(companySummary.values()).sort((a, b) => b.commissionEarned - a.commissionEarned || b.ticketCount - a.ticketCount)
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -3103,7 +3163,7 @@ app.post('/api/pr/cash-request', async (req, res) => {
 });
 
 // GET /api/admin/pr-approvals — admin sees all pending cash and seller-ticket approvals
-app.get('/api/admin/pr-approvals', requireAdmin, async (req, res) => {
+app.get('/api/admin/pr-approvals', requireMasterAdmin, async (req, res) => {
     try {
         const all = await db.getAll();
         const pending = all.filter(s =>
@@ -3119,7 +3179,7 @@ app.get('/api/admin/pr-approvals', requireAdmin, async (req, res) => {
 });
 
 // POST /api/admin/pr-approve — admin approves a cash sale → ticket generated and emailed
-app.post('/api/admin/pr-approve', requireAdmin, async (req, res) => {
+app.post('/api/admin/pr-approve', requireMasterAdmin, async (req, res) => {
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
 
@@ -3172,7 +3232,7 @@ app.post('/api/admin/pr-approve', requireAdmin, async (req, res) => {
 });
 
 // POST /api/admin/pr-reject — admin rejects a cash sale
-app.post('/api/admin/pr-reject', requireAdmin, async (req, res) => {
+app.post('/api/admin/pr-reject', requireMasterAdmin, async (req, res) => {
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
     try {
