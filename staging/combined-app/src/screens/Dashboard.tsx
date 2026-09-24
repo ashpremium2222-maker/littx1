@@ -13,10 +13,9 @@ interface Props {
   rejectedScans: RejectedScan[]
   onGenerateTicket?: () => void
   sellerId?: string
-  onLogout?: () => void
 }
 
-export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, rejectedScans, onGenerateTicket, sellerId, onLogout }: Props) {
+export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, rejectedScans, onGenerateTicket, sellerId }: Props) {
   const { tickets } = useStore()
   const [activeTab, setActiveTab] = useState<'scanned' | 'failed'>('scanned')
   const [search, setSearch] = useState('')
@@ -114,20 +113,6 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
               </svg>
             )}
           </motion.button>
-          {onLogout && (
-            <motion.button
-              onClick={onLogout}
-              whileTap={{ scale: 0.85 }}
-              title="Log out"
-              className={`w-10 h-10 flex items-center justify-center rounded-full ${dark ? 'bg-[#1A1A1A]' : 'bg-white shadow-sm'}`}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-            </motion.button>
-          )}
         </div>
       </div>
 

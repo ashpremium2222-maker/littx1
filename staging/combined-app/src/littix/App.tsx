@@ -476,8 +476,8 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
       })
       const data = await res.json()
       if (data.success) {
-        sessionStorage.setItem('littx_seller_token', data.token)
-        sessionStorage.setItem('littx_seller_id', data.sellerId)
+        localStorage.setItem('littx_seller_token', data.token)
+        localStorage.setItem('littx_seller_id', data.sellerId)
         onLogin(data.sellerId, data.token)
       } else {
         setError(data.message || 'Login failed')
@@ -637,7 +637,7 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
 }
 
 // ==================== MAIN APP SHELL ====================
-function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId: string; sellerToken: string; onLogout: () => void, forceScanner?: boolean }) {
+function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; sellerToken: string; forceScanner?: boolean }) {
   const { dark, toggleTheme, tickets, findTicket, scanTicket } = useStore()
   const [screen, setScreen] = useState<Screen>({ name: forceScanner ? 'scanner' : 'dashboard' })
   const [prevDepth, setPrevDepth] = useState(0)
@@ -841,19 +841,6 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
         rejectedScans={rejectedScans}
         onGenerateTicket={forceScanner ? undefined : () => go({ name: 'generate' })}
         sellerId={sellerId}
-        onLogout={async () => {
-          const token = sessionStorage.getItem('littx_seller_token')
-          if (token) {
-            await fetch('/api/seller/logout', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ token })
-            }).catch(() => {})
-          }
-          sessionStorage.removeItem('littx_seller_token')
-          sessionStorage.removeItem('littx_seller_id')
-          onLogout()
-        }}
       />
     )
   } else if (screen.name === 'generate') {
@@ -924,9 +911,20 @@ function AppShell({ sellerId, sellerToken, onLogout, forceScanner }: { sellerId:
 }
 
 // ==================== ROOT: handles seller auth ====================
+function getSavedSellerValue(key: string) {
+  const saved = localStorage.getItem(key)
+  if (saved) return saved
+  const legacy = sessionStorage.getItem(key)
+  if (legacy) {
+    localStorage.setItem(key, legacy)
+    sessionStorage.removeItem(key)
+  }
+  return legacy
+}
+
 export default function App({ forceScanner }: { forceScanner?: boolean }) {
-  const [sellerId, setSellerId] = useState<string | null>(() => sessionStorage.getItem('littx_seller_id'))
-  const [sellerToken, setSellerToken] = useState<string | null>(() => sessionStorage.getItem('littx_seller_token'))
+  const [sellerId, setSellerId] = useState<string | null>(() => getSavedSellerValue('littx_seller_id'))
+  const [sellerToken, setSellerToken] = useState<string | null>(() => getSavedSellerValue('littx_seller_token'))
   const [verified, setVerified] = useState(false)
   const [checking, setChecking] = useState(!forceScanner)
 
@@ -936,17 +934,13 @@ export default function App({ forceScanner }: { forceScanner?: boolean }) {
         sellerId="Gate Scanner"
         sellerToken="direct"
         forceScanner={true}
-        onLogout={() => {
-          sessionStorage.removeItem('littx_scanner_token')
-          window.dispatchEvent(new Event('littx-scanner-auth-expired'))
-        }}
       />
     )
   }
 
   // Verify token on mount
   useEffect(() => {
-    const token = sessionStorage.getItem('littx_seller_token')
+    const token = getSavedSellerValue('littx_seller_token')
     if (!token) {
       setChecking(false)
       return
@@ -954,22 +948,22 @@ export default function App({ forceScanner }: { forceScanner?: boolean }) {
     fetch('/api/seller/verify', {
       headers: { 'x-seller-token': token }
     })
-      .then(r => r.json())
-      .then(data => {
+      .then(async response => ({ status: response.status, data: await response.json() }))
+      .then(({ status, data }) => {
         if (data.success) {
           setSellerId(data.sellerId)
           setSellerToken(token)
           setVerified(true)
-        } else {
-          sessionStorage.removeItem('littx_seller_token')
-          sessionStorage.removeItem('littx_seller_id')
+        } else if (status === 401 || status === 403) {
+          localStorage.removeItem('littx_seller_token')
+          localStorage.removeItem('littx_seller_id')
           setSellerId(null)
           setSellerToken(null)
         }
       })
       .catch(() => {
         // Server might be down — allow cached session to proceed
-        const cachedId = sessionStorage.getItem('littx_seller_id')
+        const cachedId = getSavedSellerValue('littx_seller_id')
         if (cachedId && token) {
           setSellerId(cachedId)
           setSellerToken(token)
@@ -1004,14 +998,9 @@ export default function App({ forceScanner }: { forceScanner?: boolean }) {
   }
 
   return (
-    <AppShell
-      sellerId={sellerId}
-      sellerToken={sellerToken}
-      onLogout={() => {
-        setSellerId(null)
-        setSellerToken(null)
-        setVerified(false)
-      }}
-    />
+      <AppShell
+        sellerId={sellerId}
+        sellerToken={sellerToken}
+      />
   )
 }
