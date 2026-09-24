@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { Fragment, useState, useMemo, useEffect } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -81,23 +81,36 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   }, [])
 
   const sellerSummary = useMemo(() => {
-    const map: Record<string, { sellerId: string; ticketCount: number; revenue: number; lastSale: string | null; sales: any[] }> = {}
+    const map: Record<string, {
+      sellerId: string
+      ticketCount: number
+      commissionEarned: number
+      lastSale: string | null
+      sales: any[]
+      categories: Record<string, { ticketCount: number; commissionEarned: number }>
+    }> = {}
     for (const sid of knownSellerIds) {
-      map[sid] = { sellerId: sid, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
+      map[sid] = { sellerId: sid, ticketCount: 0, commissionEarned: 0, lastSale: null, sales: [], categories: {} }
     }
     for (const s of paidSales) {
       const who = s.generatedBy || s.prUserId || 'Admin'
-      if (!map[who]) map[who] = { sellerId: who, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
-      map[who].ticketCount += (s.quantity || 1)
-      if (!String(s.gender || '').toLowerCase().includes('exclusive')) {
-        map[who].revenue += (s.amount || 0)
-      }
+      if (!map[who]) map[who] = { sellerId: who, ticketCount: 0, commissionEarned: 0, lastSale: null, sales: [], categories: {} }
+      const quantity = Number(s.quantity) || 1
+      const commission = Number(s.commissionAmount) || 0
+      const category = String(s.ticketType || s.gender || 'Other').trim() || 'Other'
+      map[who].ticketCount += quantity
+      map[who].commissionEarned += commission
+      if (!map[who].categories[category]) map[who].categories[category] = { ticketCount: 0, commissionEarned: 0 }
+      map[who].categories[category].ticketCount += quantity
+      map[who].categories[category].commissionEarned += commission
       if (!map[who].lastSale || (s.generatedAt && s.generatedAt > map[who].lastSale!)) {
         map[who].lastSale = s.generatedAt
       }
       map[who].sales.push(s)
     }
-    return Object.values(map).filter(s => s.ticketCount > 0 || knownSellerIds.includes(s.sellerId)).sort((a, b) => b.revenue - a.revenue)
+    return Object.values(map)
+      .filter(s => s.ticketCount > 0 || knownSellerIds.includes(s.sellerId))
+      .sort((a, b) => b.commissionEarned - a.commissionEarned || b.ticketCount - a.ticketCount)
   }, [paidSales, knownSellerIds])
 
   const getChartData = () => {
@@ -301,7 +314,72 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         </div>
       </div>
 
-
+      <div className="card table-card">
+        <div className="card-head" style={{ padding: '18px 18px 0' }}>
+          <h3>Seller Ticket Sales & Commission</h3>
+          <div className="muted-sm">Confirmed tickets by seller and pass category</div>
+        </div>
+        <div className="table-scroll">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Seller</th>
+                <th>Tickets Sold</th>
+                <th>Commission Earned</th>
+                <th>Pass Categories</th>
+                <th>Latest Sale</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sellerSummary.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-faint)', padding: '24px' }}>
+                    No seller ticket sales yet.
+                  </td>
+                </tr>
+              ) : sellerSummary.map(seller => {
+                const expanded = expandedSeller === seller.sellerId
+                const categories = Object.entries(seller.categories).sort((a, b) => b[1].ticketCount - a[1].ticketCount)
+                return (
+                  <Fragment key={seller.sellerId}>
+                    <tr>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedSeller(expanded ? null : seller.sellerId)}
+                          style={{ border: 0, padding: 0, background: 'none', color: 'var(--ink)', font: 'inherit', fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}
+                        >
+                          {seller.sellerId} <span style={{ color: 'var(--ink-faint)', fontSize: '11px' }}>{expanded ? 'Hide categories' : 'View categories'}</span>
+                        </button>
+                      </td>
+                      <td>{seller.ticketCount}</td>
+                      <td style={{ color: 'var(--green)', fontWeight: 700 }}>₹{seller.commissionEarned.toLocaleString('en-IN')}</td>
+                      <td>{categories.length}</td>
+                      <td style={{ color: 'var(--ink-soft)' }}>
+                        {seller.lastSale ? new Date(seller.lastSale).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
+                    </tr>
+                    {expanded && (
+                      <tr>
+                        <td colSpan={5} style={{ padding: '12px 20px', background: 'var(--panel-2)' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 2fr) repeat(2, minmax(110px, 1fr))', gap: '10px', color: 'var(--ink-faint)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>
+                            <span>Pass Category</span><span>Tickets Sold</span><span>Commission Earned</span>
+                          </div>
+                          {categories.length ? categories.map(([name, totals]) => (
+                            <div key={name} style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 2fr) repeat(2, minmax(110px, 1fr))', gap: '10px', paddingTop: '10px', color: 'var(--ink)' }}>
+                              <span>{name}</span><span>{totals.ticketCount}</span><span>₹{totals.commissionEarned.toLocaleString('en-IN')}</span>
+                            </div>
+                          )) : <div style={{ paddingTop: '10px', color: 'var(--ink-faint)' }}>No category sales recorded.</div>}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Main Split Content Row */}
       <div className="main-row">
