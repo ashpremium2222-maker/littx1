@@ -13,6 +13,9 @@ interface ShadowOrder {
   shadowPaymentStatus?: string
   quantity: number
   amount: number
+  commissionPercentage?: number
+  commissionAmount?: number
+  rateAfterCommission?: number
   status: string
   createdAt: string
 }
@@ -52,6 +55,7 @@ export default function ShadowPanelApp({
   const [stats, setStats] = useState({
     totalOrders: 0,
     totalRevenue: 0,
+    totalRevenueAfterCommission: 0,
     totalTickets: 0,
     todaySales: 0,
   })
@@ -139,6 +143,7 @@ export default function ShadowPanelApp({
 
         const totalOrders = fetchedSales.length
         const totalRevenue = fetchedSales.reduce((sum, s) => sum + (s.amount || 0), 0)
+        const totalRevenueAfterCommission = fetchedSales.reduce((sum, s) => sum + (s.rateAfterCommission ?? ((s.amount || 0) - (s.commissionAmount || 0))), 0)
         const totalTickets = fetchedSales.reduce((sum, s) => sum + (s.quantity || 1), 0)
 
         // Compute today's sales
@@ -147,7 +152,7 @@ export default function ShadowPanelApp({
           .filter((s) => new Date(s.createdAt).toDateString() === todayStr)
           .reduce((sum, s) => sum + (s.amount || 0), 0)
 
-        setStats({ totalOrders, totalRevenue, totalTickets, todaySales })
+        setStats({ totalOrders, totalRevenue, totalRevenueAfterCommission, totalTickets, todaySales })
       }
     } catch (err) {
       console.error('Failed to load shadow sales data:', err)
@@ -366,6 +371,24 @@ export default function ShadowPanelApp({
     c.email.toLowerCase().includes(customerSearch.toLowerCase()) ||
     (c.phone && c.phone.includes(customerSearch))
   )
+  const passBreakdown = Array.from(shadowOrders.reduce((map, order) => {
+    const pass = order.ticketType || order.gender || 'General'
+    map.set(pass, (map.get(pass) || 0) + (order.quantity || 1))
+    return map
+  }, new Map<string, number>()).entries()).sort((a, b) => b[1] - a[1])
+
+  const exportCustomers = () => {
+    const headers = ['Customer Name', 'Email', 'Phone', 'Total Orders', 'Tickets Issued', 'Total Revenue', 'Last Purchase']
+    const rows = customerList.map(c => [c.name, c.email, c.phone || '', c.ordersCount, c.ticketsCount, c.totalSpent, c.lastDate ? new Date(c.lastDate).toLocaleString() : ''])
+    const csv = [headers, ...rows].map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n')
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `shadowbyash-customers-${new Date().toISOString().slice(0, 10)}.csv`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
 
   // PASSWORD AUTH MODAL
   if (!shadowToken) {
@@ -571,6 +594,15 @@ export default function ShadowPanelApp({
                       <div className="shadow-kpi-label">SHADOW REVENUE</div>
                       <div className="shadow-kpi-value">₹{stats.totalRevenue.toLocaleString()}</div>
                       <div className="shadow-kpi-sub">Total Revenue</div>
+                    </div>
+                  </div>
+
+                  <div className="shadow-kpi-card" onClick={() => setActiveTab('reports')} style={{ cursor: 'pointer' }}>
+                    <div className="shadow-kpi-icon-circle">🧾</div>
+                    <div className="shadow-kpi-info">
+                      <div className="shadow-kpi-label">AFTER COMMISSION</div>
+                      <div className="shadow-kpi-value">₹{stats.totalRevenueAfterCommission.toLocaleString()}</div>
+                      <div className="shadow-kpi-sub">Revenue After Commission</div>
                     </div>
                   </div>
 
@@ -1130,6 +1162,9 @@ export default function ShadowPanelApp({
                   <button className="shadow-sec-btn" onClick={fetchShadowData}>
                     Refresh Directory
                   </button>
+                  <button className="shadow-primary-btn" style={{ width: 'auto', padding: '9px 14px' }} onClick={exportCustomers}>
+                    Export Excel
+                  </button>
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px' }}>
@@ -1246,6 +1281,13 @@ export default function ShadowPanelApp({
 
                   <div className="shadow-kpi-card">
                     <div className="shadow-kpi-info">
+                      <div className="shadow-kpi-label">REVENUE AFTER COMMISSION</div>
+                      <div className="shadow-kpi-value">₹{stats.totalRevenueAfterCommission.toLocaleString()}</div>
+                    </div>
+                  </div>
+
+                  <div className="shadow-kpi-card">
+                    <div className="shadow-kpi-info">
                       <div className="shadow-kpi-label">AVG ORDER VALUE</div>
                       <div className="shadow-kpi-value">
                         ₹{stats.totalOrders > 0 ? Math.round(stats.totalRevenue / stats.totalOrders) : 0}
@@ -1265,6 +1307,20 @@ export default function ShadowPanelApp({
                       <div className="shadow-kpi-label">UNIQUE CUSTOMERS</div>
                       <div className="shadow-kpi-value">{customerMap.size}</div>
                     </div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '24px' }}>
+                  <div className="shadow-box-title" style={{ marginBottom: '14px' }}><span>🎟️</span> PASS SALES BREAKDOWN</div>
+                  <div className="shadow-table-wrap">
+                    <table className="shadow-table">
+                      <thead><tr><th>PASS TYPE</th><th>TICKETS SOLD</th><th>SHARE</th></tr></thead>
+                      <tbody>
+                        {passBreakdown.length === 0 ? <tr><td colSpan={3} style={{ textAlign: 'center', padding: '24px', color: '#71717a' }}>No pass sales yet.</td></tr> : passBreakdown.map(([pass, count]) => (
+                          <tr key={pass}><td style={{ fontWeight: 700 }}>{pass}</td><td>{count}</td><td>{stats.totalTickets ? `${((count / stats.totalTickets) * 100).toFixed(1)}%` : '0%'}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>
