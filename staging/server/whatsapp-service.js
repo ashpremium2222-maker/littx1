@@ -33,12 +33,14 @@ async function sendTicketWhatsApp({ phone, name, ticketId, event, date, venue, t
     // {{1}} name  {{2}} event  {{3}} date  {{4}} venue  {{5}} type  {{6}} ticketId  {{7}} link
     const variables = [resolvedName, resolvedEvent, resolvedDate, resolvedVenue, resolvedType, String(ticketId), resolvedViewUrl];
 
-    if (process.env.RICHAUTOMATE_API_KEY) {
-        return sendViaRichAutomate({ to, ticketId, variables, pdfUrl: resolvedPdfUrl });
-    }
-
+    // Prefer the configured Meta Cloud API when available. This avoids routing
+    // production tickets through a RichAutomate account without API access.
     if (process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN) {
         return sendViaMetaCloudApi({ to, ticketId, variables, pdfUrl: resolvedPdfUrl });
+    }
+
+    if (process.env.RICHAUTOMATE_API_KEY) {
+        return sendViaRichAutomate({ to, ticketId, variables, pdfUrl: resolvedPdfUrl });
     }
 
     console.warn('[WhatsApp] Skipped: set RICHAUTOMATE_API_KEY or WHATSAPP_PHONE_NUMBER_ID + WHATSAPP_ACCESS_TOKEN.');
