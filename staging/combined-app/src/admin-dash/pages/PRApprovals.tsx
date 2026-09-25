@@ -72,30 +72,6 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
       .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
   }, [sales])
 
-  const companyStats = useMemo(() => {
-    const map = new Map<string, { partner: string; pending: number; approved: number; rejected: number; total: number }>()
-    const rowsById = new Map<string, any>()
-    ;[...sales, ...pending].forEach((sale: any) => {
-      if (
-        !isPendingApproval(sale) &&
-        !['APPROVED', 'REJECTED'].includes(sale.approvalStatus) &&
-        !(sale.paymentMethod === 'cash' && sale.status !== 'created')
-      ) return
-      rowsById.set(sale.orderId, sale)
-    })
-    rowsById.forEach((sale) => {
-      const partner = partnerLabel(sale)
-      if (!map.has(partner)) map.set(partner, { partner, pending: 0, approved: 0, rejected: 0, total: 0 })
-      const stat = map.get(partner)!
-      const status = finalStatusKey(sale)
-      stat.total += 1
-      if (status === 'approved') stat.approved += 1
-      else if (status === 'rejected') stat.rejected += 1
-      else stat.pending += 1
-    })
-    return Array.from(map.values()).sort((a, b) => b.pending - a.pending || b.total - a.total || a.partner.localeCompare(b.partner))
-  }, [sales, pending, actionStates])
-
   const visibleRows = tab === 'pending' ? pending : history
   const groupedRows = useMemo(() => {
     const groups = new Map<string, any[]>()
@@ -222,33 +198,6 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
         </div>
       </div>
 
-      {companyStats.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-          {companyStats.map((company) => (
-            <div key={company.partner} className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Company</div>
-                <div style={{ marginTop: 4, fontSize: '16px', fontWeight: 900, color: 'var(--ink)' }}>{company.partner}</div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                <div style={{ border: '1px solid rgba(251,191,36,0.22)', background: 'rgba(251,191,36,0.08)', borderRadius: 8, padding: '8px 10px' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 900, color: '#fbbf24', textTransform: 'uppercase' }}>Pending</div>
-                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#fbbf24' }}>{company.pending}</div>
-                </div>
-                <div style={{ border: '1px solid rgba(34,197,94,0.22)', background: 'rgba(34,197,94,0.08)', borderRadius: 8, padding: '8px 10px' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 900, color: '#4ade80', textTransform: 'uppercase' }}>Accepted</div>
-                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#4ade80' }}>{company.approved}</div>
-                </div>
-                <div style={{ border: '1px solid rgba(239,68,68,0.22)', background: 'rgba(239,68,68,0.08)', borderRadius: 8, padding: '8px 10px' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 900, color: '#fca5a5', textTransform: 'uppercase' }}>Rejected</div>
-                  <div style={{ fontSize: '18px', fontWeight: 900, color: '#fca5a5' }}>{company.rejected}</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Tables */}
       <div className="card table-card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
@@ -282,8 +231,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
           <table className="table">
             <thead>
               <tr>
-                <th>Partner</th>
-                <th>Attendee</th>
+                <th>Attendee / ticket</th>
                 <th>Pass</th>
                 <th>Amount</th>
                 <th>{tab === 'pending' ? 'Submitted' : 'Processed'}</th>
@@ -293,7 +241,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
             <tbody>
               {groupedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: 32, color: 'var(--ink-faint)' }}>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: 32, color: 'var(--ink-faint)' }}>
                     {tab === 'pending' ? '✅ No pending approvals right now.' : 'No history yet.'}
                   </td>
                 </tr>
@@ -304,7 +252,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
                   const sectionRejected = rows.filter((row) => finalStatusKey(row) === 'rejected').length
                   return [
                     <tr key={`${partner}-section`}>
-                      <td colSpan={6} style={{ background: 'rgba(255,255,255,0.025)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '12px 18px' }}>
+                      <td colSpan={5} style={{ background: 'rgba(255,255,255,0.025)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '12px 18px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                           <div style={{ fontSize: '13px', fontWeight: 900, color: 'var(--ink)' }}>{partner}</div>
                           <div style={{ display: 'flex', gap: 8 }}>
@@ -321,22 +269,12 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
                       return (
                         <tr key={s.orderId} className={rowAction?.status === 'approved' ? 'approval-done' : ''} style={{ opacity: rowAction?.status === 'rejecting' ? 0.72 : 1 }}>
                           <td>
-                            <div style={{ fontWeight: 700 }}>{partner}</div>
-                            <div style={{ fontSize: '0.72rem', opacity: 0.5 }}>{s.ticketId || s.prUserId}</div>
-                            {rowAction?.status === 'approved' ? (
-                              <div style={{ marginTop: 4, fontSize: '10px', fontWeight: 800, color: '#4ade80', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sent</div>
-                            ) : rowAction?.status === 'rejected' ? (
-                              <div style={{ marginTop: 4, fontSize: '10px', fontWeight: 800, color: '#fca5a5', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rejected</div>
-                            ) : finalStatusKey(s) === 'pending' ? (
-                              <div style={{ marginTop: 4, fontSize: '10px', fontWeight: 800, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pending approval</div>
-                            ) : null}
-                          </td>
-                          <td>
                             <div className="cell-main">
                               <div className="cell-thumb" style={{ background: tab === 'pending' ? 'var(--grad-orange)' : 'var(--panel-3)' }}>{tab === 'pending' ? '₹' : (s.name || '?').charAt(0)}</div>
                               <div>
                                 <div className="cell-title">{s.name}</div>
                                 <div className="cell-sub">{s.email}</div>
+                                <div className="muted-sm" style={{ fontSize: '0.7rem', marginTop: 3 }}>{s.ticketId || s.orderId}</div>
                               </div>
                             </div>
                           </td>
