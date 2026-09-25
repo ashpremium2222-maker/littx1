@@ -25,10 +25,12 @@ const formatINR = (amount: number) => `₹${(Number(amount) || 0).toLocaleString
 export default function DashboardSaleVisibility({ adminKey }: Props) {
   const [sales, setSales] = useState<DashboardSale[]>([])
   const [loading, setLoading] = useState(true)
-  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
-  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(() => new Set())
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
+  const [selectedSaleKeys, setSelectedSaleKeys] = useState<string[]>([])
   const headers = { 'x-auth-token': adminKey, 'x-admin-key': adminKey }
+
   const companyGroups = useMemo(() => {
     const groups = new Map<string, { companyId: string; companyName: string; sales: DashboardSale[] }>()
     sales.forEach(sale => {
@@ -39,15 +41,19 @@ export default function DashboardSaleVisibility({ adminKey }: Props) {
     return [...groups.values()].sort((a, b) => a.companyName.localeCompare(b.companyName))
   }, [sales])
 
+  const activeCompany = companyGroups.find(group => group.companyId === selectedCompanyId) || null
+  const selectedSales = activeCompany?.sales.filter(sale => selectedSaleKeys.includes(sale.saleKey)) || []
+  const allSelected = Boolean(activeCompany?.sales.length && selectedSales.length === activeCompany.sales.length)
+
   const load = useCallback(async () => {
     setLoading(true)
     setNotice('')
     try {
-      const response = await fetch('/api/admin/dashboard-sale-visibility', { headers: { ...headers } })
+      const response = await fetch('/api/admin/dashboard-sale-visibility', { headers: { ...headers }, cache: 'no-store' })
       const data = await response.json()
       if (!response.ok || !data.success) throw new Error(data.message || 'Could not load ticket sales.')
       setSales(data.sales || [])
-      setExpandedCompanies(new Set())
+      setSelectedSaleKeys([])
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not load ticket sales.')
     } finally {
@@ -57,23 +63,41 @@ export default function DashboardSaleVisibility({ adminKey }: Props) {
 
   useEffect(() => { void load() }, [load])
 
-  const toggle = async (sale: DashboardSale) => {
-    setSavingKey(sale.saleKey)
+  const setAllSelected = (checked: boolean) => {
+    if (!activeCompany) return
+    setSelectedSaleKeys(checked ? activeCompany.sales.map(sale => sale.saleKey) : [])
+  }
+
+  const toggleSelected = (saleKey: string) => {
+    setSelectedSaleKeys(current => current.includes(saleKey)
+      ? current.filter(key => key !== saleKey)
+      : [...current, saleKey])
+  }
+
+  const updateSelected = async (included: boolean) => {
+    if (saving || selectedSales.length === 0) return
+    const keys = selectedSales.map(sale => sale.saleKey)
+    const previous = sales
+    setSaving(true)
     setNotice('')
+    setSales(current => current.map(sale => keys.includes(sale.saleKey) ? { ...sale, included } : sale))
+    setSelectedSaleKeys([])
     try {
-      const response = await fetch(`/api/admin/dashboard-sale-visibility/${encodeURIComponent(sale.saleKey)}`, {
+      const response = await fetch('/api/admin/dashboard-sale-visibility/bulk', {
         method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ included: !sale.included }),
+        body: JSON.stringify({ saleKeys: keys, included }),
       })
       const data = await response.json()
-      if (!response.ok || !data.success) throw new Error(data.message || 'Could not update this ticket sale.')
-      setSales(current => current.map(item => item.saleKey === sale.saleKey ? { ...item, included: data.sale.included } : item))
-      setNotice(`${sale.sellerName}: this sale is now ${data.sale.included ? 'included in' : 'excluded from'} dashboard totals.`)
+      if (!response.ok || !data.success) throw new Error(data.message || 'Could not update selected ticket sales.')
+      const updatedByKey = new Map((data.sales as DashboardSale[]).map(sale => [sale.saleKey, sale]))
+      setSales(current => current.map(sale => updatedByKey.get(sale.saleKey) || sale))
+      setNotice(`${keys.length} sale${keys.length === 1 ? '' : 's'} ${included ? 'shown on' : 'hidden from'} the dashboard.`)
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Could not update this ticket sale.')
+      setSales(previous)
+      setNotice(error instanceof Error ? error.message : 'Could not update selected ticket sales.')
     } finally {
-      setSavingKey(null)
+      setSaving(false)
     }
   }
 
@@ -82,66 +106,86 @@ export default function DashboardSaleVisibility({ adminKey }: Props) {
       <div className="card-head">
         <div>
           <h2>Dashboard Ticket Sales</h2>
-          <div className="muted-sm">Open an event company to review its sales. Excluding a sale removes only its tickets and revenue from /dashboard totals.</div>
+          <div className="muted-sm">Choose a company, then manage which sales appear in dashboard totals.</div>
         </div>
-        <button className="btn-secondary" type="button" onClick={() => void load()} disabled={loading}>Refresh</button>
+        <button className="btn-secondary" type="button" onClick={() => void load()} disabled={loading || saving}>Refresh</button>
       </div>
-      {notice && <p className="muted-sm" role="status" style={{ marginTop: 12 }}>{notice}</p>}
-      <div className="table-scroll scroll" style={{ marginTop: 16 }}>
-        <table className="table">
-          <thead><tr><th>Event company / seller</th><th>Attendee / order</th><th>Pass</th><th>Quantity</th><th>Sale amount</th><th>Dashboard</th><th>Action</th></tr></thead>
-          {companyGroups.map(group => {
-              const expanded = expandedCompanies.has(group.companyId)
-              const includedSales = group.sales.filter(sale => sale.included)
-              const includedQuantity = includedSales.reduce((total, sale) => total + sale.quantity, 0)
-              const includedRevenue = includedSales.reduce((total, sale) => total + sale.grossRevenue, 0)
-              return (
-                <tbody key={group.companyId}>
-                  <tr>
-                    <td colSpan={2}>
-                      <button
-                        type="button"
-                        aria-expanded={expanded}
-                        onClick={() => setExpandedCompanies(current => {
-                          const next = new Set(current)
-                          if (next.has(group.companyId)) next.delete(group.companyId)
-                          else next.add(group.companyId)
-                          return next
-                        })}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 10, border: 0, padding: 0, background: 'none', color: 'var(--ink)', font: 'inherit', fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}
-                      >
-                        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 140ms ease' }}><path d="m9 18 6-6-6-6" /></svg>
-                        <span>{group.companyName}<span className="muted-sm" style={{ display: 'block', fontWeight: 400 }}>{group.companyId}</span></span>
-                      </button>
-                    </td>
-                    <td>{group.sales.length} sales</td>
-                    <td>{includedQuantity} included</td>
-                    <td>{formatINR(includedRevenue)} included</td>
-                    <td>{includedSales.length} included</td>
-                    <td className="muted-sm">{expanded ? 'Collapse' : 'View sales'}</td>
+
+      {notice && <p className="muted-sm" role="status" style={{ margin: '12px 18px 0' }}>{notice}</p>}
+
+      {activeCompany ? (
+        <div style={{ padding: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button className="btn-secondary" type="button" onClick={() => { setSelectedCompanyId(null); setSelectedSaleKeys([]) }} aria-label="Back to companies">← Companies</button>
+              <div>
+                <h3 style={{ margin: 0 }}>{activeCompany.companyName}</h3>
+                <div className="muted-sm" style={{ marginTop: 3 }}>{activeCompany.sales.length} sales · {activeCompany.sales.reduce((sum, sale) => sum + sale.quantity, 0)} tickets</div>
+              </div>
+            </div>
+              <button className="btn-secondary" type="button" disabled={saving || activeCompany.sales.length === 0} onClick={() => setAllSelected(!allSelected)}>
+              {allSelected ? 'Clear selection' : 'Select all'}
+            </button>
+          </div>
+
+          {selectedSaleKeys.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', padding: '11px 12px', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 12 }}>
+            <strong style={{ marginRight: 'auto', fontSize: 13 }}>{selectedSaleKeys.length} selected</strong>
+            <button className="btn-secondary" type="button" disabled={saving || selectedSales.every(sale => !sale.included)} onClick={() => void updateSelected(false)}>
+              {saving ? 'Updating…' : '🙈 Hide from dashboard'}
+            </button>
+            <button className="btn-secondary" type="button" disabled={saving || selectedSales.every(sale => sale.included)} onClick={() => void updateSelected(true)}>
+              {saving ? 'Updating…' : '👁️ Show on dashboard'}
+            </button>
+          </div>}
+
+          <div className="table-scroll scroll">
+            <table className="table">
+              <thead><tr>
+                <th aria-label="Select sale" />
+                <th>Attendee / ticket</th>
+                <th>Pass</th>
+                <th>Quantity</th>
+                <th>Sale amount</th>
+                <th>Dashboard</th>
+              </tr></thead>
+              <tbody>
+                {activeCompany.sales.map(sale => (
+                  <tr key={sale.saleKey}>
+                    <td><input type="checkbox" aria-label={`Select sale for ${sale.attendee}`} checked={selectedSaleKeys.includes(sale.saleKey)} disabled={saving} onChange={() => toggleSelected(sale.saleKey)} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} /></td>
+                    <td><div style={{ fontWeight: 650 }}>{sale.attendee}</div><div className="muted-sm">{sale.ticketId || sale.orderId}</div></td>
+                    <td>{sale.passName}</td>
+                    <td>{sale.quantity}</td>
+                    <td>{formatINR(sale.grossRevenue)}</td>
+                    <td><span className={`badge badge-${sale.included ? 'green' : 'amber'}`}>{sale.included ? 'Shown' : 'Hidden'}</span></td>
                   </tr>
-                  {expanded && group.sales.map(sale => (
-                    <tr key={sale.saleKey}>
-                      <td>{sale.sellerName}<div className="muted-sm">ID: {sale.sellerId}</div></td>
-                      <td>{sale.attendee}<div className="muted-sm">{sale.orderId || sale.ticketId}</div></td>
-                      <td>{sale.passName}</td>
-                      <td>{sale.quantity}</td>
-                      <td>{formatINR(sale.grossRevenue)}</td>
-                      <td><span className={`badge badge-${sale.included ? 'green' : 'amber'}`}>{sale.included ? 'Included' : 'Excluded'}</span></td>
-                      <td>
-                        <button className="btn-secondary" type="button" onClick={() => void toggle(sale)} disabled={savingKey === sale.saleKey}>
-                          {savingKey === sale.saleKey ? 'Saving…' : sale.included ? '🙈 Exclude sale' : '👁️ Include sale'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              )
+                ))}
+                {activeCompany.sales.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}>No ticket sales for this company.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div style={{ padding: 18 }}>
+          {loading && sales.length === 0 ? <div className="muted-sm" style={{ padding: 22, textAlign: 'center' }}>Loading companies…</div> : companyGroups.length === 0 ? <div className="muted-sm" style={{ padding: 22, textAlign: 'center' }}>No completed ticket sales yet.</div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 10 }}>
+            {companyGroups.map(group => {
+              const shown = group.sales.filter(sale => sale.included)
+              const ticketCount = group.sales.reduce((sum, sale) => sum + sale.quantity, 0)
+              const shownTickets = shown.reduce((sum, sale) => sum + sale.quantity, 0)
+              const shownRevenue = shown.reduce((sum, sale) => sum + sale.grossRevenue, 0)
+              return <button key={group.companyId} type="button" onClick={() => setSelectedCompanyId(group.companyId)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, textAlign: 'left', padding: '15px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--panel-2)', color: 'var(--ink)', cursor: 'pointer' }}>
+                <span>
+                  <strong style={{ display: 'block', fontSize: 15 }}>{group.companyName}</strong>
+                  <span className="muted-sm" style={{ display: 'block', marginTop: 5 }}>{group.sales.length} sales · {shownTickets}/{ticketCount} tickets shown</span>
+                </span>
+                <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <strong style={{ display: 'block', fontSize: 15 }}>{formatINR(shownRevenue)}</strong>
+                  <span className="muted-sm" style={{ display: 'block', marginTop: 4 }}>Dashboard revenue</span>
+                </span>
+              </button>
             })}
-          {!loading && sales.length === 0 && <tbody><tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}>No completed ticket sales yet.</td></tr></tbody>}
-          {loading && sales.length === 0 && <tbody><tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}>Loading ticket sales…</td></tr></tbody>}
-        </table>
-      </div>
+          </div>}
+        </div>
+      )}
     </section>
   )
 }

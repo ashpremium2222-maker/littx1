@@ -3280,6 +3280,39 @@ app.get('/api/admin/dashboard-sale-visibility', requireMasterAdmin, async (req, 
     }
 });
 
+app.patch('/api/admin/dashboard-sale-visibility/bulk', requireMasterAdmin, async (req, res) => {
+    const included = req.body?.included;
+    const saleKeys = Array.isArray(req.body?.saleKeys)
+        ? [...new Set(req.body.saleKeys.filter(key => typeof key === 'string' && key.trim()).map(key => key.trim()))]
+        : [];
+    if (typeof included !== 'boolean') return res.status(400).json({ success: false, message: 'Provide included as true or false.' });
+    if (saleKeys.length === 0 || saleKeys.length > 500) {
+        return res.status(400).json({ success: false, message: 'Select between 1 and 500 ticket sales.' });
+    }
+    try {
+        const sales = (await db.getAll()).filter(sale => !isShadowSale(sale));
+        const { items } = await getDashboardSaleVisibility(sales);
+        const itemsByKey = new Map(items.map(item => [item.saleKey, item]));
+        const selected = saleKeys.map(key => itemsByKey.get(key));
+        if (selected.some(item => !item)) return res.status(404).json({ success: false, message: 'One or more selected ticket sales could not be found. Refresh and try again.' });
+        const updated = await Promise.all(selected.map(sale => db.setDashboardSaleVisibility(sale.saleKey, {
+            orderId: sale.orderId,
+            ticketId: sale.ticketId,
+            sellerId: sale.sellerId,
+            companyId: sale.companyId,
+            included,
+            updatedAt: new Date().toISOString(),
+            updatedBy: req.adminSession?.userId || req.adminSession?.displayName || 'Master Admin',
+        })));
+        const responseByKey = new Map(updated.map(item => [item.saleKey, item]));
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, sales: selected.map(sale => ({ ...sale, included: responseByKey.get(sale.saleKey)?.included ?? included })) });
+    } catch (err) {
+        console.error('[dashboard sale visibility bulk update]', err.message);
+        res.status(500).json({ success: false, message: 'Unable to update selected ticket sales.' });
+    }
+});
+
 app.patch('/api/admin/dashboard-sale-visibility/:saleKey', requireMasterAdmin, async (req, res) => {
     const included = req.body?.included;
     if (typeof included !== 'boolean') return res.status(400).json({ success: false, message: 'Provide included as true or false.' });
