@@ -17,6 +17,7 @@ import com.littx.scanner.nativeapp.update.ScannerUpdate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 data class ScannerState(
     val loading: Boolean = false,
@@ -65,7 +66,7 @@ class ScannerViewModel(context: Context) : ViewModel() {
                 prefs.edit().putString("name", name).apply()
                 state = state.copy(loading = false, authenticated = true, scannerName = name, error = null)
             } catch (e: Exception) {
-                state = state.copy(loading = false, authenticated = false, error = e.message ?: "Unable to log in.")
+                state = state.copy(loading = false, authenticated = false, error = readableError(e, "Unable to log in."))
             }
         }
     }
@@ -77,8 +78,12 @@ class ScannerViewModel(context: Context) : ViewModel() {
                 if (!response.success) prefs.edit().remove("token").apply()
                 state = state.copy(authenticated = response.success, scannerName = response.scannerName ?: state.scannerName)
             }
-            .onFailure {
-                // Preserve the cached session while the server is unreachable; each scan still requires server confirmation.
+            .onFailure { error ->
+                if (error is retrofit2.HttpException && error.code() == 401) {
+                    prefs.edit().remove("token").apply()
+                    state = state.copy(authenticated = false, error = "Scanner session expired. Log in again.")
+                }
+                // Keep a cached session during network/server errors; each scan still requires server confirmation.
             }
     }
 
@@ -114,6 +119,20 @@ class ScannerViewModel(context: Context) : ViewModel() {
         runCatching { repository.stats() }.getOrNull()?.takeIf { it.success }?.let { stats ->
             state = state.copy(accepted = stats.accepted, failed = stats.failed)
         }
+    }
+    private fun readableError(error: Exception, fallback: String): String {
+        if (error is retrofit2.HttpException) {
+            val responseMessage = runCatching {
+                JSONObject(error.response()?.errorBody()?.string().orEmpty()).optString("message")
+            }.getOrNull()
+            if (!responseMessage.isNullOrBlank()) return responseMessage
+            return when (error.code()) {
+                401 -> "Invalid scanner password. Check the password and try again."
+                503 -> "Scanner login is not configured on the server. Contact the administrator."
+                else -> "Login failed (HTTP ${error.code()}). Please try again."
+            }
+        }
+        return error.message?.takeIf { it.isNotBlank() } ?: fallback
     }
     fun setScannerName(name: String) { if (name.isNotBlank()) { prefs.edit().putString("name", name.trim()).apply(); state = state.copy(scannerName = name.trim()) } }
     fun clearLatest() { state = state.copy(latest = null, error = null) }
