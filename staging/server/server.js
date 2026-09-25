@@ -2506,37 +2506,43 @@ app.get('/api/master/companies', async (req, res) => {
         const allSales = (await db.getAll()).filter(s => !isShadowSale(s));
         const paidSales = allSales.filter(isCountableTicketSale);
         const companyById = new Map(list.map(company => [company.companyId, company]));
-        const visibleEventCompanyIds = new Set(visibleDashboardEvents(allEvents).map(event => event.companyId).filter(Boolean));
         const slotCompanyMap = new Map(
             users
                 .filter(user => user.role === 'seller' && user.sellerSlot && user.companyId)
                 .map(user => [user.sellerSlot, user.companyId])
         );
         const saleCompanyIds = new Set(paidSales.map(sale => resolveSaleCompanyId(sale, slotCompanyMap)).filter(Boolean));
-        const activeCompanyIds = new Set([...visibleEventCompanyIds, ...saleCompanyIds]);
-        const configuredCompanies = list
-            .filter(company => activeCompanyIds.has(company.companyId))
-            .map(company => ({
-                ...company,
-                name: displayCompanyName(company.companyId, company.name),
-                status: company.status || 'ACTIVE'
-            }));
-        const dynamicSlotCompanies = users
-            .filter(user => user.role === 'seller' && user.sellerSlot && user.active !== false && !user.blocked)
-            .filter(user => activeCompanyIds.has(user.companyId || user.sellerSlot))
-            .map(user => {
-                const companyId = user.companyId || user.sellerSlot;
-                return {
-                    ...(companyById.get(companyId) || {}),
-                    companyId,
-                    name: displayCompanyName(companyId, companyById.get(companyId)?.name || user.displayName || SELLER_COMPANY_NAMES[user.sellerSlot] || 'Partner Login'),
-                    status: companyById.get(companyId)?.status || 'ACTIVE'
-                };
+        const listById = new Map();
+        const addCompany = (companyId, name, status = 'ACTIVE', record = {}) => {
+            if (!companyId || PARTNER_LOGIN_SLOTS.includes(companyId)) return;
+            const existing = listById.get(companyId);
+            listById.set(companyId, {
+                ...(existing || {}),
+                ...record,
+                companyId,
+                name: displayCompanyName(companyId, existing?.name || name || companyId),
+                status: record.status || existing?.status || status || 'ACTIVE'
             });
-        const listById = new Map(
-            [...configuredCompanies, ...dynamicSlotCompanies]
-                .map(company => [company.companyId, company])
-        );
+        };
+
+        list.forEach(company => addCompany(company.companyId, company.name, company.status, company));
+        Object.entries(PARTNER_NAMES).forEach(([companyId, name]) => {
+            addCompany(companyId, name, companyById.get(companyId)?.status || 'ACTIVE', companyById.get(companyId) || {});
+        });
+        users.filter(user => user.role === 'seller' && user.companyId && !PARTNER_LOGIN_SLOTS.includes(user.companyId)).forEach(user => {
+            addCompany(
+                user.companyId,
+                companyById.get(user.companyId)?.name || user.displayName,
+                user.blocked || user.active === false ? 'SUSPENDED' : 'ACTIVE',
+                companyById.get(user.companyId) || {}
+            );
+        });
+        visibleDashboardEvents(allEvents).forEach(event => {
+            if (event.companyId) addCompany(event.companyId, companyById.get(event.companyId)?.name || SELLER_COMPANY_NAMES[event.companyId] || event.companyId);
+        });
+        saleCompanyIds.forEach(companyId => {
+            addCompany(companyId, companyById.get(companyId)?.name || SELLER_COMPANY_NAMES[companyId] || companyId);
+        });
 
         const companiesWithStats = Array.from(listById.values()).map(c => {
             const companySales = paidSales.filter(s => resolveSaleCompanyId(s, slotCompanyMap) === c.companyId);
