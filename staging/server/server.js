@@ -17,7 +17,7 @@ const PARTNER_PASSWORDS = {
 
 const PARTNER_NAMES = {
     'littlane': 'Littlane Ent',
-    'nitro': 'Nitro Events',
+    'nitro': 'DGR',
     '7th-heaven': '7th Heaven'
 };
 
@@ -3138,7 +3138,7 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
         const companySummary = new Map();
         const knownEventCompanies = [
             { companyId: 'littlane', name: 'Littlane Ent' },
-            { companyId: 'nitro', name: 'Nitro Events' },
+            { companyId: 'nitro', name: 'DGR' },
             { companyId: '7th-heaven', name: '7th Heaven' },
         ];
         const companyNames = new Map(knownEventCompanies.map(company => [company.companyId, company.name]));

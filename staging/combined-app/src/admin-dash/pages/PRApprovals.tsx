@@ -35,7 +35,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
     const id = companyId(sale)
     const names: Record<string, string> = {
       littlane: 'Littlane Ent',
-      nitro: 'Nitro Events',
+      nitro: 'DGR',
       '7th-heaven': '7th Heaven',
       wolfera: 'Wolfera',
       'astex-testing': 'ASTEX Testing',
@@ -71,11 +71,11 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
 
   const approvalSales = useMemo(() => {
     const rowsById = new Map<string, any>()
-    sales.filter((sale: any) =>
+    sales.filter((sale: any) => !['littlane', 'nitro'].includes(companyId(sale)) && (
       isPendingApproval(sale) ||
       ['APPROVED', 'REJECTED'].includes(String(sale.approvalStatus || '').toUpperCase()) ||
       (sale.paymentMethod === 'cash' && sale.status !== 'created')
-    ).forEach((sale: any) => rowsById.set(sale.orderId || sale.ticketId, sale))
+    )).forEach((sale: any) => rowsById.set(sale.orderId || sale.ticketId, sale))
     Object.values(actionStates).forEach(state => {
       if (['approved', 'rejected'].includes(state.status)) rowsById.set(state.sale.orderId || state.sale.ticketId, state.sale)
     })
@@ -85,8 +85,6 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
   const companyCards = useMemo(() => {
     const groups = new Map<string, { id: string; name: string; pending: number; approved: number; rejected: number }>()
     ;[
-      { id: 'littlane', name: 'Littlane Ent' },
-      { id: 'nitro', name: 'Nitro Events' },
       { id: '7th-heaven', name: '7th Heaven' },
       { id: 'wolfera', name: 'Wolfera' },
       { id: 'astex-testing', name: 'ASTEX Testing' },

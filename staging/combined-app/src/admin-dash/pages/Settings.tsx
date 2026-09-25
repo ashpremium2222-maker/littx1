@@ -5,7 +5,7 @@ type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller
 
 const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
   littlane:    { name: 'LITTLANE',    emoji: '🏟️' },
-  nitro:       { name: 'NITRO',       emoji: '⚡' },
+  nitro:       { name: 'DGR',          emoji: '⚡' },
   '7th-heaven':{ name: '7TH HEAVEN', emoji: '🌟' },
 }
 
@@ -482,7 +482,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                   {partnerLocks.length === 0 ? (
                     [
                       { partnerId: 'littlane', name: 'Littlane Ent' },
-                      { partnerId: 'nitro', name: 'Nitro Events' },
+                      { partnerId: 'nitro', name: 'DGR' },
                       { partnerId: '7th-heaven', name: '7th Heaven' }
                     ].map((p) => (
                       <tr key={p.partnerId}>

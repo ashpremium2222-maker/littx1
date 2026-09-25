@@ -350,7 +350,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
     const partnerNameMap: Record<string, string> = {
       'littlane': 'Littlane Ent',
-      'nitro': 'Nitro Events',
+      'nitro': 'DGR',
       '7th-heaven': '7th Heaven'
     }
 
@@ -679,7 +679,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                   onChange={(e) => setManualPartner(e.target.value)}
                 >
                   <option value="littlane">Littlane Ent</option>
-                  <option value="nitro">Nitro Events</option>
+                  <option value="nitro">DGR</option>
                   <option value="7th-heaven">7th Heaven</option>
                 </select>
               </div>
