@@ -23,8 +23,8 @@ const PARTNER_NAMES = {
 
 const SELLER_COMPANY_NAMES = {
     ...PARTNER_NAMES,
-    'partner-slot-1': 'Partner Login 1',
-    'partner-slot-2': 'Partner Login 2'
+    'partner-slot-1': 'ASTEX Testing',
+    'partner-slot-2': 'Wolfera'
 };
 
 function displayCompanyName(companyId, currentName) {
@@ -3084,14 +3084,27 @@ app.get('/api/mobile/seller-config', requireSeller, async (req, res) => {
 // are intentionally never returned to the browser.
 app.get('/api/admin/seller-devices', requireMasterAdmin, async (req, res) => {
     try {
-        const [locks, sessions] = await Promise.all([db.getAllPartnerLocks(), db.getAllSellerSessions()]);
+        const [locks, sessions, users, companies] = await Promise.all([
+            db.getAllPartnerLocks(),
+            db.getAllSellerSessions(),
+            db.getAllUsers(),
+            db.getAllCompanies(),
+        ]);
         const sessionBySeller = new Map(sessions.map(session => [session.sellerId, session]));
-        const devices = Object.keys(PARTNER_NAMES).map(partnerId => {
+        const companyNames = new Map(companies.map(company => [company.companyId, company.name]));
+        const allSellerIds = [...new Set([...Object.keys(PARTNER_NAMES), ...PARTNER_LOGIN_SLOTS])];
+        const devices = await Promise.all(allSellerIds.map(async partnerId => {
             const lock = locks.find(item => item.partnerId === partnerId) || {};
             const session = sessionBySeller.get(partnerId);
+            const partner = await resolveSellerPartner(partnerId);
+            const assignedCompanyId = partner?.user?.companyId || null;
             return {
                 partnerId,
-                name: PARTNER_NAMES[partnerId],
+                companyId: assignedCompanyId,
+                name: companyNames.get(assignedCompanyId)
+                    || (PARTNER_LOGIN_SLOTS.includes(partnerId) ? SELLER_COMPANY_NAMES[partnerId] : partner?.name)
+                    || SELLER_COMPANY_NAMES[partnerId]
+                    || partnerId,
                 blocked: Boolean(lock.blocked),
                 passkeyBound: Boolean(lock.webauthnCredentialId),
                 registeredDeviceId: lock.registeredDeviceId || null,
@@ -3103,7 +3116,7 @@ app.get('/api/admin/seller-devices', requireMasterAdmin, async (req, res) => {
                 online: Boolean(session && isValidSellerSession(session, session.token, true)),
                 sessionVersion: lock.sessionVersion || 1,
             };
-        });
+        }));
         res.json({ success: true, devices });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -3112,11 +3125,12 @@ app.get('/api/admin/seller-devices', requireMasterAdmin, async (req, res) => {
 
 app.post('/api/admin/seller-devices/:partnerId/logout', requireMasterAdmin, async (req, res) => {
     const { partnerId } = req.params;
-    if (!PARTNER_NAMES[partnerId]) return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
+    if (!(await resolveSellerPartner(partnerId))) return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
     delete sellerSessions[partnerId];
     savePersisted(SESSIONS_FILE, sellerSessions);
     await db.deleteSellerSession(partnerId);
-    res.json({ success: true, message: `${PARTNER_NAMES[partnerId]} has been logged out.` });
+    const partner = await resolveSellerPartner(partnerId);
+    res.json({ success: true, message: `${partner?.name || partnerId} has been logged out.` });
 });
 
 app.post('/api/admin/seller-devices/:partnerId/block', requireMasterAdmin, async (req, res) => {
@@ -3146,11 +3160,12 @@ app.post('/api/admin/seller-devices/:partnerId/block', requireMasterAdmin, async
 
 app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireMasterAdmin, async (req, res) => {
     const { partnerId } = req.params;
-    if (!PARTNER_NAMES[partnerId]) return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
+    const partner = await resolveSellerPartner(partnerId);
+    if (!partner) return res.status(404).json({ success: false, message: 'Unknown seller partner.' });
     delete sellerSessions[partnerId];
     delete webauthnAuthenticators[partnerId];
     await Promise.all([db.deleteSellerSession(partnerId), db.resetPartnerLock(partnerId)]);
-    res.json({ success: true, message: `${PARTNER_NAMES[partnerId]}'s passkey was reset. The next login can bind a new device.` });
+    res.json({ success: true, message: `${partner.name}'s passkey was reset. The next login can bind a new device.` });
 });
 
 // GET /api/admin/seller-summary — admin can see all sellers' totals
@@ -3566,7 +3581,12 @@ app.post('/api/admin/pr-reject', requireMasterAdmin, async (req, res) => {
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
     try {
-        await db.updateSaleRecord(orderId, { status: 'pr_cash_rejected' });
+        await db.updateSaleRecord(orderId, {
+            status: 'pr_cash_rejected',
+            approvalStatus: 'REJECTED',
+            deliveryStatus: 'BLOCKED',
+            approvalDecidedAt: new Date().toISOString(),
+        });
         res.json({ success: true, message: 'Sale rejected.' });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });

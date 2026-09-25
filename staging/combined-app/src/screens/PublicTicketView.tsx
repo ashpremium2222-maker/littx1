@@ -136,9 +136,9 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
         btnBg: 'bg-purple-600 hover:bg-purple-700',
         badgeBg: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
         bannerUrl: '/images/freshers-takeover-banner.png',
-        host: 'Team LITTX',
-        desc: 'The ultimate welcome party for Pune\'s elite student community. Featuring top DJs, massive soundscapes, custom student pricing, and memories that will last a lifetime.',
-        tags: ['Freshers', 'College Fest', 'Student Night', 'DJs'],
+        host: 'Littlane Entertainment',
+        desc: 'Get ready for an unforgettable evening of music, dance, culture, and celebration at Dholida Garba Royale! Experience the vibrant spirit of Garba with live music, live singers, live dhol, celebrity hosts, group competitions, exciting games, food counters, and a grand award ceremony.',
+        tags: ['Live Music', 'Live Dhol', 'Celebrity Hosts', 'Garba Competitions', 'Games & Food', 'Grand Awards'],
         gallery: [
           'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=300&q=80',
           'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=300&q=80',
