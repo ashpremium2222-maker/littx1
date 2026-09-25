@@ -7,6 +7,10 @@ staging/combined-app/node_modules/
 # Vercel build configured in vercel.json.
 extracted_littx/
 seller-native-android/
+**/build/
+**/.gradle/
+**/.idea/
+**/local.properties
 stitch_blue_liquid_glass_event_ui/
 scui.zip
 scratch_app.tsx

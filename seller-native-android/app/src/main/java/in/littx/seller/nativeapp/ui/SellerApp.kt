@@ -77,6 +77,15 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 
 @Composable private fun SellerHome(model: SellerViewModel) {
     var tab by rememberSaveable { mutableStateOf(0) }
+    model.state.successTicketId?.let { ticketId ->
+        AlertDialog(
+            onDismissRequest = model::dismissNotice,
+            title = { Text("Ticket sent successfully", color = Color(0xFF6FF0AE), fontWeight = FontWeight.Bold) },
+            text = { Text("Ticket #$ticketId was issued. The ticket form has been cleared for the next guest.", color = softText) },
+            confirmButton = { TextButton(onClick = model::dismissNotice) { Text("Done", color = Color(0xFF6FF0AE), fontWeight = FontWeight.Bold) } },
+            icon = { Surface(shape = CircleShape, color = Color(0xFF6FF0AE), modifier = Modifier.size(48.dp)) { Box(contentAlignment = Alignment.Center) { Text("✓", color = midnight, fontSize = 28.sp, fontWeight = FontWeight.Black) } } }
+        )
+    }
     Scaffold(
         containerColor = midnight,
         bottomBar = { SellerBottomTabs(tab, { tab = 0 }, { tab = 1; model.loadSales() }) }
@@ -166,6 +175,17 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
     var customCommissionInput by rememberSaveable { mutableStateOf("") }
     val livePasses = pricing?.passes?.map { SellerPass(it.id, it.name, it.price) }?.takeIf { it.isNotEmpty() } ?: config.passes
     var passId by rememberSaveable(config.version) { mutableStateOf(livePasses.first().id) }
+    LaunchedEffect(model.state.formResetNonce) {
+        if (model.state.formResetNonce > 0) {
+            name = ""
+            email = ""
+            phone = ""
+            quantityInput = "1"
+            commissionChoice = "0"
+            customCommissionInput = ""
+            passId = livePasses.firstOrNull()?.id ?: passId
+        }
+    }
     val pass = livePasses.firstOrNull { it.id == passId } ?: livePasses.first()
     val quantity = quantityInput.toIntOrNull()?.coerceIn(1, 20) ?: 1
     val commissionPercentage = if (commissionChoice == "custom") customCommissionInput.toDoubleOrNull() ?: 0.0 else commissionChoice.toDouble()

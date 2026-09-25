@@ -15,7 +15,8 @@ import kotlinx.coroutines.withContext
 
 data class SellerUiState(
     val loading: Boolean = true, val partner: Partner? = null, val error: String? = null,
-    val message: String? = null, val sales: List<Sale> = emptyList(), val config: SellerConfig? = null,
+    val message: String? = null, val successTicketId: String? = null, val formResetNonce: Int = 0,
+    val sales: List<Sale> = emptyList(), val config: SellerConfig? = null,
     val pricing: SellerPricingResponse? = null, val update: AppUpdate? = null
 )
 
@@ -53,7 +54,7 @@ class SellerViewModel(activity: ComponentActivity) : ViewModel() {
         try {
             val response = repository.createTicket(TicketRequest(name, email, phone, ticketType, ticketType, quantity, commissionPercentage, event, partner.name, partner.id))
             val confirmation = response.ticket?.id?.let { "Ticket #$it issued successfully." }
-            state = state.copy(loading = false, message = confirmation ?: response.message ?: if (response.success) "Ticket generated and submitted to the server." else "Ticket generation failed.", error = if (response.success) null else response.message)
+            state = state.copy(loading = false, message = confirmation ?: response.message ?: if (response.success) "Ticket generated and submitted to the server." else "Ticket generation failed.", successTicketId = if (response.success) response.ticket?.id else null, formResetNonce = if (response.success) state.formResetNonce + 1 else state.formResetNonce, error = if (response.success) null else response.message)
         } catch (e: Exception) { handleRequestError(e, "Network error.") }
     }
     fun loadSales() = viewModelScope.launch {
@@ -79,7 +80,7 @@ class SellerViewModel(activity: ComponentActivity) : ViewModel() {
     }
     fun dismissUpdate() { state = state.copy(update = null) }
     fun logout() = viewModelScope.launch { repository.logout(); state = SellerUiState(loading = false) }
-    fun dismissNotice() { state = state.copy(error = null, message = null) }
+    fun dismissNotice() { state = state.copy(error = null, message = null, successTicketId = null) }
     private fun handleRequestError(error: Exception, fallback: String) {
         state = if (error is SellerSessionExpiredException) {
             SellerUiState(loading = false, error = error.message)
