@@ -54,7 +54,13 @@ async function resolveSellerPartner(partnerId) {
     if (!PARTNER_LOGIN_SLOTS.includes(partnerId)) return null;
     const user = await db.getUserBySellerSlot(partnerId);
     if (!user || user.role !== 'seller') return null;
-    return { id: partnerId, name: user.displayName || 'Partner Login', active: user.active !== false && !user.blocked, passwordHash: user.passwordHash, user };
+    return {
+        id: partnerId,
+        name: SELLER_COMPANY_NAMES[user.companyId] || SELLER_COMPANY_NAMES[partnerId] || user.displayName || 'Managed Seller',
+        active: user.active !== false && !user.blocked,
+        passwordHash: user.passwordHash,
+        user
+    };
 }
 
 async function findSellerPartnerByPassword(password) {
@@ -614,14 +620,12 @@ if (!TEST_MODE) {
 
 const ADMIN_KEY = process.env.ADMIN_KEY || 'change-me-admin-key';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-const PRIVILEGED_DIRECT_DELIVERY_SELLER_IDS = new Set(['LITTLANE', 'NITRO']);
+// Littlane Ent and DGR are the only sellers that can send immediately. Every
+// other event company must appear in Master Admin's approval queue first.
+const DIRECT_DELIVERY_COMPANY_IDS = new Set(['littlane', 'nitro']);
 
 function normalizeSellerId(value) {
     return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-}
-
-function isDirectDeliverySeller(sellerId) {
-    return PRIVILEGED_DIRECT_DELIVERY_SELLER_IDS.has(normalizeSellerId(sellerId));
 }
 
 function sellerCompanyIdFromValue(value) {
@@ -633,6 +637,14 @@ function sellerCompanyIdFromValue(value) {
     if (normalized === 'PARTNER-SLOT-1') return 'partner-slot-1';
     if (normalized === 'PARTNER-SLOT-2') return 'partner-slot-2';
     return normalized.toLowerCase();
+}
+
+function isDirectDeliveryCompany(companyId) {
+    return DIRECT_DELIVERY_COMPANY_IDS.has(String(companyId || '').trim().toLowerCase());
+}
+
+function isDirectDeliverySeller(sellerId) {
+    return isDirectDeliveryCompany(sellerCompanyIdFromValue(sellerId));
 }
 
 function resolveSaleCompanyId(sale, slotCompanyMap = new Map()) {
@@ -653,7 +665,7 @@ function saleRevenueAfterCommission(sale) {
 
 function canDeliverSale(sale) {
     if (!sale) return false;
-    if (isDirectDeliverySeller(sale.sellerId || sale.generatedBy || sale.prUserId)) return true;
+    if (isDirectDeliveryCompany(sale.companyId) || isDirectDeliverySeller(sale.sellerId || sale.generatedBy || sale.prUserId)) return true;
     if (sale.approvalStatus === 'APPROVED' || sale.approvalStatus === 'NOT_REQUIRED') return true;
     if (sale.approvalStatus === 'PENDING' || sale.approvalStatus === 'REJECTED') return false;
     if (sale.approvalRequired || sale.status === 'pending_approval' || sale.deliveryStatus === 'PENDING_APPROVAL') return false;
@@ -1783,7 +1795,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             const slotUser = await db.getUserBySellerSlot(resolvedCompanyId);
             if (slotUser?.companyId) resolvedCompanyId = slotUser.companyId;
         }
-        const directDelivery = isDirectDeliverySeller(resolvedSellerId);
+        const directDelivery = isDirectDeliveryCompany(resolvedCompanyId);
         const approvalStatus = directDelivery ? 'NOT_REQUIRED' : 'PENDING';
         const deliveryStatus = directDelivery ? 'NOT_STARTED' : 'PENDING_APPROVAL';
         const publicStatus = directDelivery ? 'pending' : 'pending_approval';
@@ -3511,12 +3523,12 @@ app.post('/api/pr/cash-request', async (req, res) => {
 app.get('/api/admin/pr-approvals', requireMasterAdmin, async (req, res) => {
     try {
         const all = await db.getAll();
-        const pending = all.filter(s =>
+        const pending = all.filter(s => !isDirectDeliveryCompany(s.companyId || sellerCompanyIdFromValue(s.sellerId || s.generatedBy || s.prUserId)) && (
             s.status === 'pr_cash_pending' ||
             s.approvalStatus === 'PENDING' ||
             s.status === 'pending_approval' ||
             s.deliveryStatus === 'PENDING_APPROVAL'
-        );
+        ));
         res.json({ success: true, pending });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });

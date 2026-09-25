@@ -372,7 +372,9 @@ async function seedDefaultPartnerLocks() {
     const defaultPartners = [
         { partnerId: 'littlane', name: 'Littlane Ent', password: 'littlane2026' },
         { partnerId: 'nitro', name: 'DGR', password: 'nitro2026' },
-        { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026' }
+        { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026' },
+        { partnerId: 'partner-slot-1', name: 'ASTEX Testing', password: '' },
+        { partnerId: 'partner-slot-2', name: 'Wolfera', password: '' }
     ];
 
     for (const p of defaultPartners) {
@@ -909,7 +911,9 @@ const _mockScanLogs = [];
 const _mockPartnerLocks = new Map([
     ['littlane', { partnerId: 'littlane', name: 'Littlane Ent', password: 'littlane2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['nitro', { partnerId: 'nitro', name: 'DGR', password: 'nitro2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
+    ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['partner-slot-1', { partnerId: 'partner-slot-1', name: 'ASTEX Testing', password: '', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['partner-slot-2', { partnerId: 'partner-slot-2', name: 'Wolfera', password: '', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
 ]);
 const _mockDashboardSaleVisibility = new Map();
 
@@ -1474,8 +1478,7 @@ module.exports = {
     },
     resetPartnerLock: async (partnerId) => {
         if (useMock()) {
-            const current = _mockPartnerLocks.get(partnerId);
-            if (!current) return null;
+            const current = _mockPartnerLocks.get(partnerId) || { partnerId, loginAttemptLog: [] };
             const updated = {
                 ...current,
                 boundIp: null,
