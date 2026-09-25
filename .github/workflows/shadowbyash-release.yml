@@ -42,7 +42,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: shadowbyash-${{ github.ref_name }}
-          path: shadowbyash-native-android/app/build/outputs/apk/release/app-release.apk
+          path: shadowbyash-native-android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
       - name: Publish GitHub Release
@@ -51,4 +51,4 @@ jobs:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.version }}
           name: Shadow by Ash ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.version }}
           generate_release_notes: true
-          files: shadowbyash-native-android/app/build/outputs/apk/release/app-release.apk
+          files: shadowbyash-native-android/app/build/outputs/apk/release/*.apk
