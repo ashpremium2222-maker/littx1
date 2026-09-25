@@ -15,6 +15,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bulkAction, setBulkAction] = useState<'approving' | 'rejecting' | null>(null)
   const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null)
+  const [queuedSales, setQueuedSales] = useState<any[]>([])
   const selectAllRef = useRef<HTMLInputElement>(null)
 
   const showToast = (msg: string, type: 'success' | 'error') => {
@@ -62,9 +63,31 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
     s.status === 'pending_approval' ||
     s.deliveryStatus === 'PENDING_APPROVAL'
 
+  useEffect(() => {
+    if (isPresentation || !adminKey) return
+    let current = true
+    const loadQueue = async () => {
+      try {
+        const response = await fetch('/api/admin/pr-approvals', {
+          headers: { 'x-admin-key': adminKey, 'x-auth-token': adminKey },
+        })
+        const data = await response.json().catch(() => ({}))
+        if (current && response.ok && data.success) setQueuedSales(data.pending || [])
+      } catch {
+        // The general sales feed remains available if this lightweight queue refresh fails.
+      }
+    }
+    loadQueue()
+    const interval = window.setInterval(loadQueue, 4000)
+    return () => {
+      current = false
+      window.clearInterval(interval)
+    }
+  }, [adminKey, isPresentation])
+
   const approvalSales = useMemo(() => {
     const rowsById = new Map<string, any>()
-    sales.filter((sale: any) => !['littlane', 'nitro'].includes(companyId(sale)) && (
+    ;[...sales, ...queuedSales].filter((sale: any) => !['littlane', 'nitro'].includes(companyId(sale)) && (
       isPendingApproval(sale) ||
       ['APPROVED', 'REJECTED'].includes(String(sale.approvalStatus || '').toUpperCase()) ||
       (sale.paymentMethod === 'cash' && sale.status !== 'created')
@@ -73,7 +96,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
       if (['approved', 'rejected'].includes(state.status)) rowsById.set(state.sale.orderId || state.sale.ticketId, state.sale)
     })
     return [...rowsById.values()].filter(Boolean)
-  }, [sales, actionStates])
+  }, [sales, queuedSales, actionStates])
 
   const companyCards = useMemo(() => {
     const groups = new Map<string, { id: string; name: string; pending: number; approved: number; rejected: number }>()
@@ -143,7 +166,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
 
   async function handleApprove(orderId: string) {
     if (isPresentation || bulkAction) return
-    const sale = sales.find((s: any) => s.orderId === orderId) || approvalSales.find((s: any) => s.orderId === orderId)
+    const sale = [...sales, ...queuedSales].find((s: any) => s.orderId === orderId) || approvalSales.find((s: any) => s.orderId === orderId)
     if (actionStates[orderId]?.status === 'approving' || actionStates[orderId]?.status === 'rejecting') return
     setActionStates((prev) => ({ ...prev, [orderId]: { status: 'approving', sale } }))
     try {
@@ -172,7 +195,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
 
   async function handleReject(orderId: string) {
     if (isPresentation || bulkAction) return
-    const sale = sales.find((s: any) => s.orderId === orderId) || approvalSales.find((s: any) => s.orderId === orderId)
+    const sale = [...sales, ...queuedSales].find((s: any) => s.orderId === orderId) || approvalSales.find((s: any) => s.orderId === orderId)
     if (actionStates[orderId]?.status === 'approving' || actionStates[orderId]?.status === 'rejecting') return
     setActionStates((prev) => ({ ...prev, [orderId]: { status: 'rejecting', sale } }))
     try {
