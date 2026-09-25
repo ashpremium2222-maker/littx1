@@ -62,16 +62,6 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
     s.status === 'pending_approval' ||
     s.deliveryStatus === 'PENDING_APPROVAL'
 
-  const clearCompletedState = (orderId: string) => {
-    window.setTimeout(() => {
-      setActionStates((prev) => {
-        const next = { ...prev }
-        delete next[orderId]
-        return next
-      })
-    }, 3600)
-  }
-
   const approvalSales = useMemo(() => {
     const rowsById = new Map<string, any>()
     sales.filter((sale: any) => !['littlane', 'nitro'].includes(companyId(sale)) && (
@@ -170,7 +160,6 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
           [orderId]: { status: 'approved', sale: data.sale || sale, message: data.message || 'Sent' }
         }))
         showToast(data.message || 'Ticket sent.', 'success')
-        clearCompletedState(orderId)
       } else {
         setActionStates((prev) => ({ ...prev, [orderId]: { status: 'error', sale, message: data.message || 'Error approving' } }))
         showToast(data.message || 'Error approving', 'error')
@@ -200,7 +189,6 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
           [orderId]: { status: 'rejected', sale: data.sale || sale, message: 'Rejected' }
         }))
         showToast('Approval rejected.', 'success')
-        clearCompletedState(orderId)
       } else {
         setActionStates((prev) => ({ ...prev, [orderId]: { status: 'error', sale, message: data.message || 'Error rejecting' } }))
         showToast(data.message || 'Error rejecting', 'error')
@@ -257,7 +245,6 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
             ? { ...sale, approvalStatus: 'APPROVED', status: deliveryFailed ? 'email_failed' : (sale.paymentMethod === 'cash' ? 'emailed' : sale.status), deliveryStatus: deliveryFailed ? 'FAILED' : 'DELIVERED' }
             : { ...sale, approvalStatus: 'REJECTED', status: 'pr_cash_rejected' })
           setActionStates(previous => ({ ...previous, [id]: { status: action === 'approve' ? 'approved' : 'rejected', sale: updatedSale, message: data.message } }))
-          clearCompletedState(id)
         } catch (error) {
           failed++
           const message = error instanceof Error ? error.message : 'Request failed'
