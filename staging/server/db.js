@@ -503,7 +503,7 @@ async function countScannedSales() {
 
 async function atomicApprovePendingSale(orderId, approvedBy, approvedAt) {
     return await Sale.findOneAndUpdate(
-        { orderId, approvalStatus: 'PENDING', deliveryStatus: 'PENDING_APPROVAL' },
+        { orderId, approvalStatus: 'PENDING' },
         {
             $set: {
                 approvalStatus: 'APPROVED',
@@ -521,7 +521,7 @@ async function atomicApprovePendingSale(orderId, approvedBy, approvedAt) {
 
 async function atomicRejectPendingSale(orderId, rejectedBy, rejectedAt) {
     return await Sale.findOneAndUpdate(
-        { orderId, approvalStatus: 'PENDING', deliveryStatus: 'PENDING_APPROVAL' },
+        { orderId, approvalStatus: 'PENDING' },
         {
             $set: {
                 approvalStatus: 'REJECTED',
@@ -1021,7 +1021,7 @@ module.exports = {
     },
     atomicApprovePendingSale: async (orderId, approvedBy, approvedAt) => {
         if (useMock()) {
-            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.approvalStatus === 'PENDING' && s.deliveryStatus === 'PENDING_APPROVAL');
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.approvalStatus === 'PENDING');
             if (idx === -1) return null;
             mockDb.sales[idx] = {
                 ...mockDb.sales[idx],
@@ -1040,7 +1040,7 @@ module.exports = {
     },
     atomicRejectPendingSale: async (orderId, rejectedBy, rejectedAt) => {
         if (useMock()) {
-            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.approvalStatus === 'PENDING' && s.deliveryStatus === 'PENDING_APPROVAL');
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.approvalStatus === 'PENDING');
             if (idx === -1) return null;
             mockDb.sales[idx] = {
                 ...mockDb.sales[idx],

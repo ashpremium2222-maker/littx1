@@ -3578,7 +3578,12 @@ app.post('/api/admin/pr-reject', requireMasterAdmin, async (req, res) => {
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
     try {
-        await db.updateSaleRecord(orderId, { status: 'pr_cash_rejected' });
+        await db.updateSaleRecord(orderId, {
+            status: 'pr_cash_rejected',
+            approvalStatus: 'REJECTED',
+            deliveryStatus: 'BLOCKED',
+            approvalDecidedAt: new Date().toISOString(),
+        });
         res.json({ success: true, message: 'Sale rejected.' });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
