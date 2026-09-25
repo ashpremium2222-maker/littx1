@@ -7,6 +7,8 @@ const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
   littlane:    { name: 'LITTLANE',    emoji: '🏟️' },
   nitro:       { name: 'DGR',          emoji: '⚡' },
   '7th-heaven':{ name: '7TH HEAVEN', emoji: '🌟' },
+  'partner-slot-1': { name: 'Partner Login 1', emoji: '🔐' },
+  'partner-slot-2': { name: 'Partner Login 2', emoji: '🔐' },
 }
 
 interface SettingsProps {
@@ -361,9 +363,10 @@ export default function Settings({ adminKey }: SettingsProps) {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', marginTop: '20px' }}>
-              {(['littlane', 'nitro', '7th-heaven'] as const).map((pid) => {
+              {(['littlane', 'nitro', '7th-heaven', 'partner-slot-1', 'partner-slot-2'] as const).map((pid) => {
                 const outlet = OUTLET_MAP[pid]
                 const lock = sellerSessions.find((l: any) => l.partnerId === pid)
+                const outletName = lock?.name || outlet.name
                 const activeSession = sessions.find((s: any) => s.userId === `partner:${pid}`)
                 const isLoggedIn = !!activeSession
                 const isBlocked = Boolean(lock?.blocked)
@@ -384,7 +387,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span style={{ fontSize: '22px' }}>{outlet.emoji}</span>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: '14px' }}>{outlet.name}</div>
+                          <div style={{ fontWeight: 700, fontSize: '14px' }}>{outletName}</div>
                           <div style={{ fontSize: '11px', color: 'var(--ink-faint)', fontFamily: 'monospace' }}>{pid}</div>
                         </div>
                       </div>
@@ -483,7 +486,9 @@ export default function Settings({ adminKey }: SettingsProps) {
                     [
                       { partnerId: 'littlane', name: 'Littlane Ent' },
                       { partnerId: 'nitro', name: 'DGR' },
-                      { partnerId: '7th-heaven', name: '7th Heaven' }
+                      { partnerId: '7th-heaven', name: '7th Heaven' },
+                      { partnerId: 'partner-slot-1', name: 'Wolfera' },
+                      { partnerId: 'partner-slot-2', name: 'ASTEX Testing' }
                     ].map((p) => (
                       <tr key={p.partnerId}>
                         <td style={{ fontWeight: 'bold' }}>{p.name}</td>
