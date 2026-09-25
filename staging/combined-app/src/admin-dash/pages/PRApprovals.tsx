@@ -84,6 +84,13 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
 
   const companyCards = useMemo(() => {
     const groups = new Map<string, { id: string; name: string; pending: number; approved: number; rejected: number }>()
+    ;[
+      { id: 'littlane', name: 'Littlane Ent' },
+      { id: 'nitro', name: 'Nitro Events' },
+      { id: '7th-heaven', name: '7th Heaven' },
+      { id: 'wolfera', name: 'Wolfera' },
+      { id: 'astex-testing', name: 'ASTEX Testing' },
+    ].forEach(company => groups.set(company.id, { ...company, pending: 0, approved: 0, rejected: 0 }))
     approvalSales.forEach((sale: any) => {
       const id = companyId(sale)
       if (!groups.has(id)) groups.set(id, { id, name: companyName(sale), pending: 0, approved: 0, rejected: 0 })
