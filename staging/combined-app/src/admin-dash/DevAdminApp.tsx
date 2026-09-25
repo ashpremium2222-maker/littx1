@@ -585,6 +585,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             testMode={testMode}
             onManualGenerate={() => setShowManualModal(true)}
             scanStats={scanStats}
+            adminKey={adminKey}
           />
         )
     }

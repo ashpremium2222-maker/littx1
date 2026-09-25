@@ -2291,9 +2291,15 @@ app.get('/api/scan-stats', async (req, res) => {
 
 app.post('/api/scan-ticket', async (req, res) => {
     const scannerSession = readScannerSession(req);
-    if (!scannerSession) return res.status(401).json({ success: false, message: 'Scanner login required.' });
+    const sellerId = scannerSession ? null : await authenticateSeller(req.headers['x-seller-token']);
+    if (!scannerSession && !sellerId) return res.status(401).json({ success: false, message: 'Scanner or seller login required.' });
     const { ticketId } = req.body || {};
-    const scannedBy = scannerSession.name;
+    let scannedBy = scannerSession?.name;
+    if (sellerId) {
+        const users = await db.getAllUsers();
+        const seller = users.find(user => user.role === 'seller' && (user.userId === sellerId || user.sellerSlot === sellerId));
+        scannedBy = seller?.displayName || sellerId;
+    }
     if (!ticketId) {
         return res.status(400).json({ success: false, message: 'Ticket ID is required' });
     }

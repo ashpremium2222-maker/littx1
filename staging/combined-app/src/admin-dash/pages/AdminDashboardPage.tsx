@@ -8,6 +8,7 @@ interface DashboardProps {
   summary: any
   testMode: boolean
   onManualGenerate: () => void
+  adminKey?: string
   scanStats?: {
     accepted: number
     declined: number
@@ -36,11 +37,30 @@ function getPassSectionId(sale: any) {
   return null
 }
 
-export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, scanStats }: DashboardProps) {
+export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, adminKey = '', scanStats }: DashboardProps) {
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
   const [chartMode, setChartMode] = useState<'actual' | 'forecast'>('actual')
   const [popupEvent, setPopupEvent] = useState<{ name: string; top: number; left: number } | null>(null)
   const [expandedSeller, setExpandedSeller] = useState<string | null>(null)
+  const [configuredSellers, setConfiguredSellers] = useState<Array<{ userId: string; displayName: string; sellerSlot?: string; active: boolean }>>([])
+
+  useEffect(() => {
+    if (!adminKey) {
+      setConfiguredSellers([])
+      return
+    }
+    const controller = new AbortController()
+    fetch('/api/admin/partners', {
+      headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey },
+      signal: controller.signal,
+    })
+      .then(response => response.ok ? response.json() : Promise.reject(new Error('Unable to load configured sellers')))
+      .then(data => setConfiguredSellers(Array.isArray(data.partners)
+        ? data.partners.filter((partner: any) => partner.active !== false && !partner.blocked)
+        : []))
+      .catch(() => { if (!controller.signal.aborted) setConfiguredSellers([]) })
+    return () => controller.abort()
+  }, [adminKey])
 
   const paidSales = sales.filter(s =>
     ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
@@ -141,10 +161,25 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
 
   // ==================== SELLER BREAKDOWN ====================
   const sellerSummary = useMemo(() => {
-    const map: Record<string, { sellerId: string; ticketCount: number; revenue: number; lastSale: string | null; sales: any[] }> = {}
+    const map: Record<string, { sellerId: string; displayName: string; ticketCount: number; revenue: number; lastSale: string | null; sales: any[] }> = {}
+    const normalizeSellerId = (value: unknown) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+    const configuredByAlias = new Map<string, { userId: string; displayName: string }>()
+    configuredSellers.forEach(seller => {
+      const value = { userId: seller.userId, displayName: seller.displayName || seller.userId }
+      ;[seller.userId, seller.displayName, seller.sellerSlot].filter(Boolean).forEach(alias => configuredByAlias.set(normalizeSellerId(alias), value))
+    })
     for (const s of paidSales) {
-      const who = s.generatedBy || s.prUserId || 'Admin'
-      if (!map[who]) map[who] = { sellerId: who, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
+      const source = s.sellerId || s.generatedBy || s.prUserId || ''
+      const configured = configuredByAlias.get(normalizeSellerId(source))
+        || configuredByAlias.get(normalizeSellerId(s.generatedBy))
+        || configuredByAlias.get(normalizeSellerId(s.prUserId))
+        || configuredByAlias.get(normalizeSellerId(s.prName))
+      if (!configured) continue
+      const who = configured.userId
+      const savedDisplayName = String(s.sellerName || s.prName || s.displayName || '').trim()
+      const displayName = savedDisplayName || configured.displayName
+      if (!map[who]) map[who] = { sellerId: who, displayName, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
+      else if (savedDisplayName && map[who].displayName !== savedDisplayName) map[who].displayName = savedDisplayName
       map[who].ticketCount += (s.quantity || 1)
       map[who].revenue += (s.amount || 0)
       if (!map[who].lastSale || (s.generatedAt && s.generatedAt > map[who].lastSale!)) {
@@ -153,7 +188,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       map[who].sales.push(s)
     }
     return Object.values(map).filter(s => s.ticketCount > 0).sort((a, b) => b.revenue - a.revenue)
-  }, [paidSales])
+  }, [paidSales, configuredSellers])
 
   const getChartData = () => {
     const chartData = []
@@ -401,13 +436,15 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                   </div>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)' }}>
-                      {seller.sellerId === 'littlane' ? 'Littlane Ent'
-                        : seller.sellerId === 'nitro' ? 'DGR'
-                        : seller.sellerId === '7th-heaven' ? '7th Heaven'
-                        : seller.sellerId === 'SELLER-A' ? 'Littlane Ent'
-                        : seller.sellerId === 'SELLER-B' ? 'DGR'
-                        : seller.sellerId === 'SELLER-C' ? '7th Heaven'
-                        : seller.sellerId}
+                      {seller.displayName === seller.sellerId
+                        ? seller.sellerId === 'littlane' ? 'Littlane Ent'
+                          : seller.sellerId === 'nitro' ? 'DGR'
+                          : seller.sellerId === '7th-heaven' ? '7th Heaven'
+                          : seller.sellerId === 'SELLER-A' ? 'Littlane Ent'
+                          : seller.sellerId === 'SELLER-B' ? 'DGR'
+                          : seller.sellerId === 'SELLER-C' ? '7th Heaven'
+                          : seller.sellerId
+                        : seller.displayName}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--ink-soft)', marginTop: 2 }}>
                       {seller.ticketCount} ticket{seller.ticketCount !== 1 ? 's' : ''} sold

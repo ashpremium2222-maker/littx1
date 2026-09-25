@@ -441,6 +441,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             summary={summary}
             testMode={testMode}
             onManualGenerate={() => setShowManualModal(true)}
+            adminKey={adminKey}
           />
         )
       case 'orders':

@@ -184,11 +184,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const cleanId = idOrRaw.trim()
       try {
         const scannerToken = sessionStorage.getItem('littx_scanner_token')
+        const sellerToken = localStorage.getItem('littx_seller_token') || sessionStorage.getItem('littx_seller_token')
         const res = await fetch('/api/scan-ticket', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(scannerToken ? { Authorization: `Bearer ${scannerToken}` } : {})
+            ...(scannerToken ? { Authorization: `Bearer ${scannerToken}` } : {}),
+            ...(sellerToken ? { 'x-seller-token': sellerToken } : {})
           },
           body: JSON.stringify({
             ticketId: cleanId,
@@ -198,8 +200,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         if (!res.ok) {
           if (res.status === 401) {
-            sessionStorage.removeItem('littx_scanner_token')
-            window.dispatchEvent(new Event('littx-scanner-auth-expired'))
+            if (scannerToken) sessionStorage.removeItem('littx_scanner_token')
+            if (scannerToken && !sellerToken) window.dispatchEvent(new Event('littx-scanner-auth-expired'))
           }
           return { result: 'error' }
         }
