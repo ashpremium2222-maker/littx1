@@ -193,7 +193,7 @@ export default function DashboardSaleVisibility({ adminKey }: Props) {
                 <td style={{ fontWeight: 700 }}>{actualTickets}</td>
                 <td style={{ fontWeight: 750 }}>{formatINR(actualRevenue)}</td>
                 <td>{stats?.activePRs ?? '—'} Active PRs</td>
-                <td><button className="btn-secondary" type="button" onClick={() => { setSelectedSaleKeys([]); setSelectedCompanyId(group.companyId) }}>🔍 View Company System</button></td>
+                <td><button className="btn-secondary" type="button" onClick={() => { setSelectedSaleKeys([]); setSelectedCompanyId(group.companyId) }}>🔍 View Company Sales</button></td>
               </tr>
             })}</tbody>
           </table>}
