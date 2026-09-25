@@ -75,6 +75,8 @@ export default function ShadowPanelApp({
   const [quantity, setQuantity]     = useState('1')
   const [paymentStatus, setPaymentStatus] = useState('Paid')
   const paymentStatusRef = useRef('Paid')
+  const [commissionChoice, setCommissionChoice] = useState('0')
+  const [customCommission, setCustomCommission] = useState('')
   const amountForTicketForm = (unitPrice: number, count: number) =>
     isShadowByAshPanel && paymentStatusRef.current === 'Free / Chai Pani' ? '0' : String(unitPrice * count)
   const [amount, setAmount]         = useState('499')
@@ -82,6 +84,17 @@ export default function ShadowPanelApp({
   const [submitting, setSubmitting] = useState(false)
   const [resendingTicketId, setResendingTicketId] = useState<string | null>(null)
   const [feedback, setFeedback]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+
+  const officialTotal = (selectedTierObj?.price || 0) * (parseInt(quantity, 10) || 1)
+  const customCommissionValue = Number(customCommission)
+  const hasValidCustomCommission = customCommission.trim() !== '' && Number.isFinite(customCommissionValue)
+  const commissionAmount = paymentStatus === 'Free / Chai Pani' ? 0 : commissionChoice === 'custom'
+    ? (hasValidCustomCommission ? Math.round(customCommissionValue * 100) / 100 : 0)
+    : Math.round(officialTotal * Number(commissionChoice)) / 100
+  const commissionPercentage = officialTotal > 0 ? (commissionAmount / officialTotal) * 100 : 0
+  const commissionInvalid = commissionChoice === 'custom'
+    ? !hasValidCustomCommission || commissionAmount < 0 || commissionPercentage > 20
+    : commissionPercentage < 0 || commissionPercentage > 20
 
   // Fetch the authenticated rate catalogue. Both Shadow panels use this same
   // source, so an admin pricing change is reflected without a redeploy.
@@ -223,6 +236,10 @@ export default function ShadowPanelApp({
       setFeedback({ type: 'error', msg: 'Customer Name and Email are required.' })
       return
     }
+    if (isShadowByAshPanel && commissionInvalid) {
+      setFeedback({ type: 'error', msg: 'Enter a valid commission amount up to 20% of the official total.' })
+      return
+    }
 
     setSubmitting(true)
     setFeedback(null)
@@ -243,6 +260,7 @@ export default function ShadowPanelApp({
           quantity: parseInt(quantity, 10) || 1,
           amount: isShadowByAshPanel && paymentStatus === 'Free / Chai Pani' ? 0 : parseFloat(amount) || 0,
           ...(isShadowByAshPanel ? { shadowPaymentStatus: paymentStatus === 'Paid' ? 'paid' : 'free_chai_pani' } : {}),
+          ...(isShadowByAshPanel ? { commissionPercentage, ...(commissionChoice === 'custom' ? { commissionAmount } : {}) } : {}),
           event
         })
       })

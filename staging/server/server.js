@@ -1979,7 +1979,7 @@ app.get('/api/shadow-private/whatsapp-status', requirePrivateShadowAuth, async (
 
 // POST /api/shadow/generate-ticket — Creates genuine ticket tagged as source="shadow"
 async function generateShadowTicket(req, res, source, paymentMethod, generatedBy) {
-    const { name, email, phone, gender, ticketType, quantity, amount, event, shadowPaymentStatus } = req.body || {};
+    const { name, email, phone, gender, ticketType, quantity, amount, event, shadowPaymentStatus, commissionPercentage, commissionAmount: requestedCommissionAmount } = req.body || {};
 
     if (!name || !email) {
         return res.status(400).json({ success: false, message: 'Customer Name and Email are required.' });
@@ -1993,6 +1993,24 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
     // while excluding it from that panel's revenue totals.
     const isFreeShadowByAshTicket = source === 'shadow' && shadowPaymentStatus === 'free_chai_pani';
     const finalAmount = isFreeShadowByAshTicket ? 0 : pricedAmount;
+    let commission = applyCommission(finalAmount, 0, qty);
+    if (source === 'shadow' && !isFreeShadowByAshTicket) {
+        const hasCustomCommissionAmount = Object.prototype.hasOwnProperty.call(req.body || {}, 'commissionAmount');
+        if (hasCustomCommissionAmount) {
+            const commissionAmountPaise = normalizeCommissionAmount(requestedCommissionAmount);
+            if (commissionAmountPaise === null || commissionAmountPaise * 100 > Math.round(finalAmount * 100) * 20) {
+                return res.status(400).json({ success: false, message: 'Commission must be a valid amount no more than 20% of the official ticket total.' });
+            }
+            const normalized = finalAmount ? (commissionAmountPaise * 100) / Math.round(finalAmount * 100) : 0;
+            commission = applyCommission(finalAmount, normalized, qty, commissionAmountPaise);
+        } else {
+            const normalized = normalizeCommissionPercentage(commissionPercentage);
+            if (normalized === null || normalized === 'maximum_exceeded') {
+                return res.status(400).json({ success: false, message: 'Commission must be a valid percentage no more than 20%.' });
+            }
+            commission = applyCommission(finalAmount, normalized, qty);
+        }
+    }
 
     try {
         const orderId = `order_shadow_${crypto.randomBytes(8).toString('hex')}`;
@@ -2012,6 +2030,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             gender: gender || 'male',
             quantity: qty,
             amount: finalAmount,
+            ...(source === 'shadow' ? commission : {}),
             currency: 'INR',
             status: 'paid',
             paymentId: `pay_shadow_${crypto.randomBytes(6).toString('hex')}`,
