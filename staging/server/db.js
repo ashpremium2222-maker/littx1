@@ -303,6 +303,17 @@ const PartnerLockSchema = new mongoose.Schema({
     }]
 });
 
+const DashboardSaleVisibilitySchema = new mongoose.Schema({
+    saleKey: { type: String, required: true, unique: true },
+    orderId: { type: String, default: '' },
+    ticketId: { type: String, default: '' },
+    sellerId: { type: String, default: '' },
+    companyId: { type: String, default: '' },
+    included: { type: Boolean, required: true },
+    updatedAt: { type: String, required: true },
+    updatedBy: { type: String, default: '' },
+});
+
 const Event = mongoose.model('Event', EventSchema);
 const User = mongoose.model('User', UserSchema);
 const Sale = mongoose.model('Sale', SaleSchema);
@@ -313,6 +324,7 @@ const SellerSession = mongoose.model('SellerSession', SellerSessionSchema);
 const ScanLog = mongoose.model('ScanLog', ScanLogSchema);
 const UserSession = mongoose.model('UserSession', UserSessionSchema);
 const PartnerLock = mongoose.model('PartnerLock', PartnerLockSchema);
+const DashboardSaleVisibility = mongoose.model('DashboardSaleVisibility', DashboardSaleVisibilitySchema);
 
 const SellerDeviceSchema = new mongoose.Schema({
     sellerId: { type: String, required: true, unique: true },
@@ -338,16 +350,12 @@ async function seedDefaultUsers() {
             { userId: 'superadmin@littx.in', password: process.env.MASTER_PASS || 'littx-master-2026', displayName: 'LITTX Super Admin', role: 'master_admin', companyId: 'all' },
             // Company Admins
             { userId: 'admin@littlane.in', password: 'littlane-2026', displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
-            { userId: 'admin@nexora.in', password: 'nexora-2026', displayName: 'Nexora Admin', role: 'company_admin', companyId: 'nexora' },
-            { userId: 'admin@urbannights.in', password: 'urban-2026', displayName: 'Urban Nights Admin', role: 'company_admin', companyId: 'urban-nights' },
             // Sellers & PR Partners
             { userId: 'SELLER-A', companyId: 'littlane', password: process.env.SELLER_A_PASS || 'littx-a-2026', displayName: 'Seller Alpha', role: 'seller' },
             { userId: 'SELLER-B', companyId: 'littlane', password: process.env.SELLER_B_PASS || 'littx-b-2026', displayName: 'Seller Beta', role: 'seller' },
-            { userId: 'SELLER-C', companyId: 'nexora', password: process.env.SELLER_C_PASS || 'littx-c-2026', displayName: 'Seller Gamma', role: 'seller' },
+            { userId: 'SELLER-C', companyId: '7th-heaven', password: process.env.SELLER_C_PASS || 'littx-c-2026', displayName: 'Seller Gamma', role: 'seller' },
             { userId: 'partner1', companyId: 'littlane', password: process.env.PR1_PASS || 'ftpr@001', displayName: 'Partner One', role: 'pr' },
             { userId: 'partner2', companyId: 'littlane', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two', role: 'pr' },
-            { userId: 'partner3', companyId: 'nexora', password: process.env.PR3_PASS || 'ftpr@003', displayName: 'Partner Three', role: 'pr' },
-            { userId: 'partner4', companyId: 'urban-nights', password: process.env.PR4_PASS || 'ftpr@004', displayName: 'Partner Four', role: 'pr' },
             { userId: 'partner5', companyId: 'littlane', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five', role: 'pr' },
         ];
 
@@ -670,52 +678,6 @@ async function seedDefaultCompanies() {
                 createdAt: now,
                 updatedAt: now
             },
-            {
-                companyId: 'nexora',
-                name: 'Nexora Events',
-                status: 'ACTIVE',
-                commercials: { feeType: 'PERCENTAGE', percentageFee: 6, fixedFeePerTicket: 10 },
-                razorpayConfig: { enabled: true, keyId: 'rzp_live_nexora456', keySecret: 'nexora_secret', mode: 'LIVE', lockedByMaster: false },
-                manualPaymentConfig: { enabled: false, allowedMethods: ['cash'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
-                features: {
-                    onlinePayments: { enabled: true, lockedByMaster: false },
-                    manualPayments: { enabled: false, lockedByMaster: false },
-                    prPortal: { enabled: true, lockedByMaster: false },
-                    prSales: { enabled: true, lockedByMaster: false },
-                    ticketTransfers: { enabled: true, lockedByMaster: false },
-                    refunds: { enabled: true, lockedByMaster: false },
-                    couponCodes: { enabled: true, lockedByMaster: false },
-                    qrCheckIn: { enabled: true, lockedByMaster: false },
-                    offlineScan: { enabled: true, lockedByMaster: false },
-                    allowReEntry: { enabled: true, lockedByMaster: false }
-                },
-                prSettings: { commissionType: 'FIXED', commissionValue: 50 },
-                createdAt: now,
-                updatedAt: now
-            },
-            {
-                companyId: 'urban-nights',
-                name: 'Urban Nights',
-                status: 'ACTIVE',
-                commercials: { feeType: 'FIXED', percentageFee: 0, fixedFeePerTicket: 25 },
-                razorpayConfig: { enabled: false, keyId: '', keySecret: '', mode: 'TEST', lockedByMaster: false },
-                manualPaymentConfig: { enabled: true, allowedMethods: ['cash'], approvalWorkflow: 'AUTO', lockedByMaster: false },
-                features: {
-                    onlinePayments: { enabled: false, lockedByMaster: false },
-                    manualPayments: { enabled: true, lockedByMaster: false },
-                    prPortal: { enabled: true, lockedByMaster: false },
-                    prSales: { enabled: true, lockedByMaster: false },
-                    ticketTransfers: { enabled: false, lockedByMaster: false },
-                    refunds: { enabled: false, lockedByMaster: false },
-                    couponCodes: { enabled: false, lockedByMaster: false },
-                    qrCheckIn: { enabled: true, lockedByMaster: false },
-                    offlineScan: { enabled: false, lockedByMaster: false },
-                    allowReEntry: { enabled: false, lockedByMaster: false }
-                },
-                prSettings: { commissionType: 'PERCENTAGE', commissionValue: 8 },
-                createdAt: now,
-                updatedAt: now
-            }
         ];
 
         await Company.insertMany(defaultCompanies);
@@ -834,8 +796,6 @@ const mockDb = {
     users: [
         { userId: 'superadmin@littx.in', password: 'littx-master-2026', displayName: 'LITTX Super Admin', role: 'master_admin', companyId: 'all' },
         { userId: 'admin@littlane.in', password: 'littlane-2026', displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
-        { userId: 'admin@nexora.in', password: 'nexora-2026', displayName: 'Nexora Admin', role: 'company_admin', companyId: 'nexora' },
-        { userId: 'admin@urbannights.in', password: 'urban-2026', displayName: 'Urban Nights Admin', role: 'company_admin', companyId: 'urban-nights' },
         { userId: 'SELLER-A', companyId: 'littlane', password: 'littx-a-2026', displayName: 'Seller Alpha', role: 'seller' },
         { userId: 'SELLER-B', companyId: 'littlane', password: 'littx-b-2026', displayName: 'Seller Beta', role: 'seller' },
         { userId: 'partner1', companyId: 'littlane', password: 'ftpr@001', displayName: 'Partner One', role: 'pr' },
@@ -950,6 +910,7 @@ const _mockPartnerLocks = new Map([
     ['nitro', { partnerId: 'nitro', name: 'Nitro Events', password: 'nitro2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
 ]);
+const _mockDashboardSaleVisibility = new Map();
 
 const _mockDevices = new Map();
 const _mockChallenges = new Map();
@@ -1480,6 +1441,22 @@ module.exports = {
     getAllPartnerLocks: async () => {
         if (useMock()) return Array.from(_mockPartnerLocks.values());
         return PartnerLock.find({}).lean();
+    },
+    getAllDashboardSaleVisibility: async () => {
+        if (useMock()) return Array.from(_mockDashboardSaleVisibility.values());
+        return DashboardSaleVisibility.find({}).lean();
+    },
+    setDashboardSaleVisibility: async (saleKey, data) => {
+        if (useMock()) {
+            const updated = { ...data, saleKey };
+            _mockDashboardSaleVisibility.set(saleKey, updated);
+            return updated;
+        }
+        return DashboardSaleVisibility.findOneAndUpdate(
+            { saleKey },
+            { $set: { ...data, saleKey } },
+            { upsert: true, new: true, lean: true }
+        );
     },
     savePartnerLock: async (partnerId, updates) => {
         if (useMock()) {

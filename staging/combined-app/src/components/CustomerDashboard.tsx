@@ -283,7 +283,6 @@ function EventCard({ event, onBook }: { event: Event; onBook: () => void }) {
   // Event category color generator
   const getBrandColors = (companyId: string) => {
     if (companyId === 'littlane') return { glow: 'rgba(216,255,63,0.3)', line: '#D8FF3F' }
-    if (companyId === 'nexora') return { glow: 'rgba(167,139,250,0.3)', line: '#A78BFA' }
     return { glow: 'rgba(236,72,153,0.3)', line: '#EC4899' }
   }
 

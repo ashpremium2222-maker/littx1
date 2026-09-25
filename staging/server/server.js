@@ -652,6 +652,65 @@ const SELLER_ACCOUNTS = {
     'SELLER-C': process.env.SELLER_C_PASS || 'littx-c-2026',
 };
 
+function dashboardSaleKey(sale) {
+    return String(sale?.orderId || sale?.ticketId || sale?._id || '').trim();
+}
+
+function isLittlaneCompany(companyId, companyName) {
+    return [companyId, companyName].some(value => {
+        const normalized = normalizeSellerId(value);
+        return normalized === 'LITTLANE' || normalized.startsWith('LITTLANE-');
+    });
+}
+
+async function getDashboardSaleVisibility(sales) {
+    const [users, companies, storedVisibility] = await Promise.all([
+        db.getAllUsers(),
+        db.getAllCompanies(),
+        db.getAllDashboardSaleVisibility(),
+    ]);
+    const savedByKey = new Map(storedVisibility.map(item => [item.saleKey, item]));
+    const companyNames = new Map(companies.map(company => [company.companyId, company.name]));
+    Object.entries(SELLER_COMPANY_NAMES).forEach(([id, name]) => companyNames.set(id, companyNames.get(id) || name));
+    const slotCompanyMap = new Map(users.filter(user => user.sellerSlot && user.companyId).map(user => [user.sellerSlot, user.companyId]));
+
+    const items = sales.filter(isCountableTicketSale).map(sale => {
+        const key = dashboardSaleKey(sale);
+        const sources = [sale.sellerId, sale.generatedBy, sale.prUserId, sale.prName].filter(Boolean).map(String);
+        const seller = users.find(user => ['seller', 'pr'].includes(user.role) && [user.userId, user.sellerSlot, user.displayName]
+            .some(value => value && sources.some(source => normalizeSellerId(source) === normalizeSellerId(value))));
+        const sellerId = seller?.userId || sale.sellerId || sale.generatedBy || sale.prUserId || 'Admin';
+        const companyId = seller?.companyId || resolveSaleCompanyId(sale, slotCompanyMap) || 'littlane';
+        const companyName = companyNames.get(companyId) || displayCompanyName(companyId, companyId);
+        const saved = savedByKey.get(key);
+        return {
+            saleKey: key,
+            orderId: sale.orderId || '',
+            ticketId: sale.ticketId || '',
+            sellerId: String(sellerId),
+            sellerName: seller?.displayName || sale.prName || sale.generatedBy || String(sellerId),
+            companyId,
+            companyName,
+            attendee: sale.name || sale.email || 'Unknown attendee',
+            passName: sale.ticketType || sale.gender || 'Ticket',
+            quantity: Number(sale.quantity) || 1,
+            grossRevenue: saleGrossAmount(sale),
+            soldAt: sale.paidAt || sale.generatedAt || sale.createdAt || null,
+            included: typeof saved?.included === 'boolean' ? saved.included : !isLittlaneCompany(companyId, companyName),
+        };
+    }).filter(item => item.saleKey);
+    return { items, savedByKey };
+}
+
+async function filterDashboardVisibleSales(sales) {
+    const { items } = await getDashboardSaleVisibility(sales);
+    const includedByKey = new Map(items.map(item => [item.saleKey, item.included]));
+    return sales.filter(sale => {
+        if (!isCountableTicketSale(sale)) return true;
+        return includedByKey.get(dashboardSaleKey(sale)) !== false;
+    });
+}
+
 
 
 function requireSeller(req, res, next) {
@@ -1352,7 +1411,10 @@ app.post('/api/admin/ticket-approvals/:orderId/reject', requireMasterAdmin, asyn
 const isShadowSale = (sale) => sale?.source === 'shadow' || sale?.source === 'shadow_private' || sale?.isShadow === true;
 
 app.get('/api/admin/sales', requireAdmin, async (req, res) => {
-    const sales = (await db.getAll()).filter(s => !isShadowSale(s));
+    let sales = (await db.getAll()).filter(s => !isShadowSale(s));
+    if (req.query.dashboardView === 'true') {
+        sales = await filterDashboardVisibleSales(sales);
+    }
 
     const countableSales = sales.filter(isCountableTicketSale);
     const summary = {
@@ -2590,8 +2652,6 @@ const PLATFORM_USERS = [
 const PR_USERS_AUTH = [
     { username: 'partner1', password: process.env.PR1_PASS || 'ftpr@001', displayName: 'Partner One', id: 'pr1' },
     { username: 'partner2', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two', id: 'pr2' },
-    { username: 'partner3', password: process.env.PR3_PASS || 'ftpr@003', displayName: 'Partner Three', id: 'pr3' },
-    { username: 'partner4', password: process.env.PR4_PASS || 'ftpr@004', displayName: 'Partner Four', id: 'pr4' },
     { username: 'partner5', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five', id: 'pr5' },
 ];
 
@@ -2995,10 +3055,14 @@ app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireMasterAdmi
 // GET /api/admin/seller-summary — admin can see all sellers' totals
 app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
     try {
-        const [allSales, users] = await Promise.all([
+        const [rawSales, users, companies] = await Promise.all([
             db.getAll(),
-            db.getAllUsers()
+            db.getAllUsers(),
+            db.getAllCompanies()
         ]);
+        const allSales = req.query.dashboardView === 'true'
+            ? await filterDashboardVisibleSales(rawSales.filter(s => !isShadowSale(s)))
+            : rawSales;
         const all = allSales.filter(s => !isShadowSale(s));
         const paid = all.filter(isCountableTicketSale);
         const slotCompanyMap = new Map(
@@ -3027,6 +3091,20 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
                 return { companyId, name: user?.displayName || `Partner Login ${index + 1}` };
             }),
         ];
+        const companyNames = new Map(knownEventCompanies.map(company => [company.companyId, company.name]));
+        companies.forEach(company => {
+            if (company.companyId && !companyNames.has(company.companyId)) companyNames.set(company.companyId, company.name || company.companyId);
+        });
+        users.filter(user => ['seller', 'pr'].includes(user.role) && user.companyId).forEach(user => {
+            if (!companyNames.has(user.companyId)) companyNames.set(user.companyId, SELLER_COMPANY_NAMES[user.companyId] || user.companyId);
+        });
+        rawSales.forEach(sale => {
+            const companyId = String(sale.companyId || '');
+            if (companyId && !companyNames.has(companyId)) companyNames.set(companyId, SELLER_COMPANY_NAMES[companyId] || companyId);
+        });
+        for (const [companyId, name] of companyNames) {
+            if (!knownEventCompanies.some(company => company.companyId === companyId)) knownEventCompanies.push({ companyId, name });
+        }
         const knownEventCompanyIds = new Set(knownEventCompanies.map(company => company.companyId));
         const knownEventCompanyByNormalizedId = new Map(
             knownEventCompanies.map(company => [normalizeSellerId(company.companyId), company.companyId])
@@ -3141,6 +3219,41 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
     }
 });
 
+app.get('/api/admin/dashboard-sale-visibility', requireMasterAdmin, async (req, res) => {
+    try {
+        const sales = (await db.getAll()).filter(sale => !isShadowSale(sale));
+        const { items } = await getDashboardSaleVisibility(sales);
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, sales: items });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Unable to load dashboard ticket visibility.' });
+    }
+});
+
+app.patch('/api/admin/dashboard-sale-visibility/:saleKey', requireMasterAdmin, async (req, res) => {
+    const included = req.body?.included;
+    if (typeof included !== 'boolean') return res.status(400).json({ success: false, message: 'Provide included as true or false.' });
+    try {
+        const sales = (await db.getAll()).filter(sale => !isShadowSale(sale));
+        const { items } = await getDashboardSaleVisibility(sales);
+        const sale = items.find(item => item.saleKey === req.params.saleKey);
+        if (!sale) return res.status(404).json({ success: false, message: 'Ticket sale not found.' });
+        const updated = await db.setDashboardSaleVisibility(sale.saleKey, {
+            orderId: sale.orderId,
+            ticketId: sale.ticketId,
+            sellerId: sale.sellerId,
+            companyId: sale.companyId,
+            included,
+            updatedAt: new Date().toISOString(),
+            updatedBy: req.adminSession?.userId || req.adminSession?.displayName || 'Master Admin',
+        });
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, sale: { ...sale, included: updated.included } });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Unable to update ticket visibility.' });
+    }
+});
+
 
 // ==================== PR PARTNER PORTAL ROUTES ====================
 
@@ -3148,8 +3261,6 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
 const PR_USERS = [
     { id: 'pr1', username: 'partner1', password: process.env.PR1_PASS || 'ftpr@001', displayName: 'Partner One' },
     { id: 'pr2', username: 'partner2', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two' },
-    { id: 'pr3', username: 'partner3', password: process.env.PR3_PASS || 'ftpr@003', displayName: 'Partner Three' },
-    { id: 'pr4', username: 'partner4', password: process.env.PR4_PASS || 'ftpr@004', displayName: 'Partner Four' },
     { id: 'pr5', username: 'partner5', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five' },
 ];
 

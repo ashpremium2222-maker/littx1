@@ -25,8 +25,6 @@ interface Sale {
 const PR_USERS: (PRUser & { password: string })[] = [
   { id: 'pr1', username: 'partner1', password: 'ftpr@001', displayName: 'Partner One' },
   { id: 'pr2', username: 'partner2', password: 'ftpr@002', displayName: 'Partner Two' },
-  { id: 'pr3', username: 'partner3', password: 'ftpr@003', displayName: 'Partner Three' },
-  { id: 'pr4', username: 'partner4', password: 'ftpr@004', displayName: 'Partner Four' },
   { id: 'pr5', username: 'partner5', password: 'ftpr@005', displayName: 'Partner Five' },
 ]
 

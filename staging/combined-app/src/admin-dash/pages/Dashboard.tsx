@@ -82,7 +82,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   useEffect(() => {
     if (!adminKey) return
     const loadCompanySales = () => {
-      fetch('/api/admin/seller-summary', { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
+      fetch('/api/admin/seller-summary?dashboardView=true', { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
         .then(response => response.json())
         .then(data => {
           if (data.success && Array.isArray(data.companySummary)) setSellerSummary(data.companySummary)

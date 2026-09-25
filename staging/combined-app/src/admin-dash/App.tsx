@@ -218,9 +218,12 @@ export default function App({ isPresentation = false }: AppProps) {
     try {
       // Prefer sending as x-auth-token (unified auth) but fall back to ?key= for legacy ADMIN_KEY
       const isToken = keyToUse.length > 40 // tokens are 64-char hex; legacy keys are shorter
+      const query = new URLSearchParams()
+      if (isPresentation) query.set('pres', 'true')
+      else query.set('dashboardView', 'true')
       const url = isToken
-        ? `/api/admin/sales?${isPresentation ? 'pres=true' : ''}`
-        : `/api/admin/sales?key=${encodeURIComponent(keyToUse)}${isPresentation ? '&pres=true' : ''}`
+        ? `/api/admin/sales?${query.toString()}`
+        : `/api/admin/sales?key=${encodeURIComponent(keyToUse)}&${query.toString()}`
       const headers: Record<string, string> = {}
       if (isToken) headers['x-auth-token'] = keyToUse
 

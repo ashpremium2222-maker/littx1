@@ -226,12 +226,10 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
                 {loginType === 'company' ? (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button onClick={() => quickFill('admin@littlane.in', 'littlane-2026')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '4px 8px' }}>Littlane Admin</button>
-                    <button onClick={() => quickFill('admin@nexora.in', 'nexora-2026')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '4px 8px' }}>Nexora Admin</button>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button onClick={() => quickFill('partner1', 'ftpr@001')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '4px 8px' }}>Partner One</button>
-                    <button onClick={() => quickFill('partner3', 'ftpr@003')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '4px 8px' }}>Partner Three</button>
                   </div>
                 )}
               </div>
