@@ -1111,7 +1111,7 @@ app.post('/api/verify-payment', async (req, res) => {
 
         const whatsappResult = await sendAndRecordTicketWhatsApp({
             orderId, phone: sale.phone, name: sale.name, ticketId,
-            event: sale.event || EVENT.name, ticketType: sale.gender, downloadUrl
+            event: sale.event || EVENT.name, ticketType: ticketTypeForSale(sale), downloadUrl
         });
 
         res.json({
@@ -1221,7 +1221,7 @@ app.post('/api/webhook/razorpay', async (req, res) => {
 
             await sendAndRecordTicketWhatsApp({
                 orderId, phone: sale.phone, name: sale.name, ticketId,
-                event: sale.event || EVENT.name, ticketType: sale.gender, downloadUrl
+                event: sale.event || EVENT.name, ticketType: ticketTypeForSale(sale), downloadUrl
             });
         }
 
@@ -1233,6 +1233,14 @@ app.post('/api/webhook/razorpay', async (req, res) => {
 });
 
 // ==================== 3. PUBLIC TICKET VIEW (JSON for /view/:ticketId page) ====================
+function ticketTypeForSale(sale) {
+    const storedType = String(sale?.ticketType || '').trim();
+    if (storedType) return storedType;
+    const legacyGender = String(sale?.gender || '').trim();
+    const legacyLabels = { male: 'GA Single', female: 'VIP Single', aura: 'Dholida Garba Royale', exclusive: 'VIP Single' };
+    return legacyLabels[legacyGender] || legacyGender || 'General';
+}
+
 app.get('/api/ticket/:ticketId', async (req, res) => {
     const { ticketId } = req.params;
     if (!ticketId) return res.status(400).json({ success: false, message: 'Ticket ID required' });
@@ -1248,8 +1256,6 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
         ? '17 OCT 2026 · 4:00 PM'
         : '17 OCT 2026 · 4:00 PM';
     const venue = 'Pethkar Ground, Kothrud, Pune';
-    const gLabel = { female: 'VIP Single', male: 'GA Single', aura: 'Dholida Garba Royale', exclusive: 'VIP Single' };
-
     res.json({
         success: true,
         ticket: {
@@ -1261,7 +1267,7 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
             phone: sale.phone,
             dateLabel,
             venue,
-            ticketType: sale.ticketType || gLabel[sale.gender] || (sale.gender === 'female' ? 'VIP Single' : 'GA Single'),
+            ticketType: ticketTypeForSale(sale),
             amount: sale.amount,
             quantity: sale.quantity || 1,
             status: sale.scannedAt ? 'scanned' : 'paid',
@@ -1283,7 +1289,7 @@ app.get('/api/ticket/:ticketId/download', async (req, res) => {
     if (!fs2.existsSync(filePath)) {
         try {
             console.log(`[Ticket Download] File not found for ${sale.ticketId}. Rebuilding...`);
-            const tType = sale.gender === 'male' ? 'GA Single' : sale.gender === 'female' ? 'VIP Single' : 'General';
+            const tType = ticketTypeForSale(sale);
             await buildTicketPdf({
                 ticketId: sale.ticketId,
                 name: sale.name,
@@ -1291,7 +1297,8 @@ app.get('/api/ticket/:ticketId/download', async (req, res) => {
                 gender: tType,
                 quantity: sale.quantity || 1,
                 amount: sale.amount || 0,
-                createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString()
+                createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
+                event: sale.event || EVENT.name
             });
         } catch (err) {
             console.error('[Ticket Download] Failed to rebuild ticket PDF:', err.message);
@@ -1318,7 +1325,7 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
     if (!fs2.existsSync(pdfPath)) {
         try {
             console.log(`[Ticket Resend] File not found for ${sale.ticketId}. Rebuilding...`);
-            const tType = sale.gender === 'male' ? 'GA Single' : sale.gender === 'female' ? 'VIP Single' : 'General';
+            const tType = ticketTypeForSale(sale);
             await buildTicketPdf({
                 ticketId: sale.ticketId,
                 name: sale.name,
@@ -1326,7 +1333,8 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
                 gender: tType,
                 quantity: sale.quantity || 1,
                 amount: sale.amount || 0,
-                createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString()
+                createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
+                event: sale.event || EVENT.name
             });
         } catch (err) {
             console.error('[Ticket Resend] Failed to rebuild ticket PDF:', err.message);
@@ -1334,7 +1342,11 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
     }
 
     const downloadUrl = `${BASE_URL}/api/ticket/${sale.ticketId}/download`;
-    const result = await sendTicketEmail({ to: sale.email, name: sale.name, ticketId: sale.ticketId, pdfPath, downloadUrl });
+    const result = await sendTicketEmail({
+        to: sale.email, name: sale.name, ticketId: sale.ticketId,
+        gender: ticketTypeForSale(sale), quantity: sale.quantity || 1, amount: sale.amount || 0,
+        pdfPath, downloadUrl, event: sale.event || EVENT.name
+    });
 
     await db.updateSaleRecord(sale.orderId, {
         emailStatus: result.success ? 'sent' : 'failed',
@@ -1345,7 +1357,7 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
     const whatsappResult = await sendAndRecordTicketWhatsApp({
         orderId: sale.orderId, phone: sale.phone, name: sale.name,
         ticketId: sale.ticketId, event: sale.event || EVENT.name,
-        ticketType: sale.gender, downloadUrl
+        ticketType: ticketTypeForSale(sale), downloadUrl
     });
 
     res.json({
@@ -1996,6 +2008,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             name,
             email,
             phone: phone || '',
+            ticketType: tType,
             gender: gender || 'male',
             quantity: qty,
             amount: finalAmount,
@@ -2338,7 +2351,7 @@ app.post('/api/scan-ticket', async (req, res) => {
                     attendee: sale.name,
                     email: sale.email,
                     phone: sale.phone,
-                    ticketType: sale.gender,
+                    ticketType: ticketTypeForSale(sale),
                     quantity: sale.quantity,
                     amount: sale.amount,
                     generatedAt: sale.generatedAt,
@@ -2366,7 +2379,7 @@ app.post('/api/scan-ticket', async (req, res) => {
                     attendee: sale.name,
                     email: sale.email,
                     phone: sale.phone,
-                    ticketType: sale.gender,
+                    ticketType: ticketTypeForSale(sale),
                     quantity: sale.quantity,
                     amount: sale.amount,
                     generatedAt: sale.generatedAt,
@@ -2394,14 +2407,14 @@ app.post('/api/scan-ticket', async (req, res) => {
             if (!currentSale || currentSale.status === 'cancelled') {
                 if (currentSale?.status === 'cancelled') {
                     db.createScanLog({ ticketId, result: 'cancelled', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event }).catch(err => console.error('[ScanLog write error]', err.message));
-                    return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: currentSale.gender, quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: 'cancelled', scannedBy: 'Admin', scannedAt: 'Cancelled by Admin' } });
+                    return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: ticketTypeForSale(currentSale), quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: 'cancelled', scannedBy: 'Admin', scannedAt: 'Cancelled by Admin' } });
                 }
                 db.createScanLog({ ticketId, result: 'invalid', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown' }).catch(err => console.error('[ScanLog write error]', err.message));
                 return res.json({ result: 'not_found' });
             }
             const alreadyUsed = currentSale.status === 'scanned' || Boolean(currentSale.scannedAt);
             db.createScanLog({ ticketId: currentSale.ticketId, result: alreadyUsed ? 'duplicate' : 'invalid', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event }).catch(err => console.error('[ScanLog write error]', err.message));
-            return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: currentSale.gender, quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: currentSale.status, scannedBy: currentSale.scannedBy, scannedAt: currentSale.scannedAt } });
+            return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: ticketTypeForSale(currentSale), quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: currentSale.status, scannedBy: currentSale.scannedBy, scannedAt: currentSale.scannedAt } });
         }
 
         db.createScanLog({
@@ -2421,7 +2434,7 @@ app.post('/api/scan-ticket', async (req, res) => {
                 attendee: updatedSale.name,
                 email: updatedSale.email,
                 phone: updatedSale.phone,
-                ticketType: updatedSale.gender,
+                ticketType: ticketTypeForSale(updatedSale),
                 quantity: updatedSale.quantity,
                 amount: updatedSale.amount,
                 generatedAt: updatedSale.generatedAt,
@@ -3210,7 +3223,7 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
                 orderId: s.orderId,
                 name: s.name,
                 email: s.email,
-                ticketType: s.gender,
+                ticketType: ticketTypeForSale(s),
                 quantity: s.quantity || 1,
                 amount: s.amount || 0,
                 generatedAt: s.generatedAt,
@@ -3495,7 +3508,7 @@ app.post('/api/admin/pr-approve', requireMasterAdmin, async (req, res) => {
 
     // Generate ticket + send email (same flow as normal payment)
     try {
-        const tType = sale.gender === 'male' ? 'GA Single' : 'VIP Single';
+        const tType = ticketTypeForSale(sale);
         const pdfPath = await buildTicketPdf({
             ticketId: sale.ticketId,
             name: sale.name,
