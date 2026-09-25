@@ -67,7 +67,30 @@ export default function Settings({ adminKey }: SettingsProps) {
         setDeviceError(data.message || 'Your admin session has expired. Sign in again, then refresh device status.')
         return
       }
-      const devices = data.devices || []
+      const configuredDevices = data.devices || []
+      // Keep all five real seller companies visible while older backends roll
+      // forward; the backend response still supplies live lock/session data.
+      const expectedDevices = [
+        { partnerId: 'littlane', name: 'Littlane Ent' },
+        { partnerId: 'nitro', name: 'DGR' },
+        { partnerId: '7th-heaven', name: '7th Heaven' },
+        { partnerId: 'partner-slot-1', name: 'ASTEX Testing' },
+        { partnerId: 'partner-slot-2', name: 'Wolfera' },
+      ]
+      const devices = expectedDevices.map(expected => configuredDevices.find((device: any) => device.partnerId === expected.partnerId) || {
+        ...expected,
+        companyId: expected.partnerId === 'partner-slot-1' ? 'astex-testing' : expected.partnerId === 'partner-slot-2' ? 'wolfera' : expected.partnerId,
+        blocked: false,
+        passkeyBound: false,
+        registeredDeviceId: null,
+        deviceName: null,
+        boundIp: null,
+        boundAt: null,
+        lastSeenAt: null,
+        loginAt: null,
+        online: false,
+        sessionVersion: 1,
+      })
       setSellerSessions(devices)
       setPartnerLocks(devices.map((device: any) => ({
         ...device,
