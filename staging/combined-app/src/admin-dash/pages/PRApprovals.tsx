@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 
 interface PRApprovalsProps {
   adminKey: string
@@ -13,6 +13,10 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [bulkAction, setBulkAction] = useState<'approving' | 'rejecting' | null>(null)
+  const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null)
+  const selectAllRef = useRef<HTMLInputElement>(null)
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ msg, type })
@@ -115,6 +119,19 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
     .sort((a: any, b: any) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()),
   [approvalSales, statusFilter, companyFilter, search, actionStates])
 
+  const selectableRows = useMemo(() => filteredRows.filter(sale => finalStatusKey(sale) === 'pending'), [filteredRows, actionStates])
+  const selectableIds = selectableRows.map((sale: any) => String(sale.orderId || sale.ticketId || ''))
+  const selectedVisibleCount = selectableIds.filter(id => selectedIds.includes(id)).length
+  const allVisibleSelected = selectableIds.length > 0 && selectedVisibleCount === selectableIds.length
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = selectedVisibleCount > 0 && !allVisibleSelected
+  }, [selectedVisibleCount, allVisibleSelected])
+
+  useEffect(() => {
+    setSelectedIds([])
+  }, [statusFilter, companyFilter, search])
+
   const filterButton = (key: typeof statusFilter, label: string, count: number, color: string) => (
     <button
       key={key}
@@ -200,6 +217,69 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
     }
   }
 
+  async function handleBulkAction(action: 'approve' | 'reject') {
+    if (isPresentation || actionId || bulkAction) return
+    const selected = selectableRows.filter((sale: any) => selectedIds.includes(String(sale.orderId || sale.ticketId || '')))
+    if (selected.length === 0) return
+    const verb = action === 'approve' ? 'accept and send' : 'reject'
+    if (!window.confirm(`${verb[0].toUpperCase()}${verb.slice(1)} ${selected.length} selected ticket${selected.length === 1 ? '' : 's'}?`)) return
+
+    const actionStatus = action === 'approve' ? 'approving' : 'rejecting'
+    setBulkAction(actionStatus)
+    setBulkProgress({ completed: 0, total: selected.length })
+    setSelectedIds([])
+    setActionStates(previous => {
+      const next = { ...previous }
+      selected.forEach((sale: any) => {
+        const id = String(sale.orderId || sale.ticketId)
+        next[id] = { status: actionStatus, sale }
+      })
+      return next
+    })
+
+    let cursor = 0
+    let succeeded = 0
+    let failed = 0
+    let completed = 0
+    const workers = Array.from({ length: Math.min(4, selected.length) }, async () => {
+      while (cursor < selected.length) {
+        const sale = selected[cursor++]
+        const id = String(sale.orderId || sale.ticketId)
+        try {
+          const sellerApproval = sale.approvalStatus === 'PENDING'
+          const route = sellerApproval
+            ? `/api/admin/ticket-approvals/${encodeURIComponent(id)}/${action === 'approve' ? 'approve' : 'reject'}`
+            : `/api/admin/pr-${action === 'approve' ? 'approve' : 'reject'}`
+          const response = await fetch(route, {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({ orderId: id }),
+          })
+          const data = await response.json()
+          if (!response.ok || !data.success) throw new Error(data.message || `HTTP ${response.status}`)
+          succeeded++
+          const deliveryFailed = /failed/i.test(String(data.message || ''))
+          const updatedSale = data.sale || (action === 'approve'
+            ? { ...sale, approvalStatus: 'APPROVED', status: deliveryFailed ? 'email_failed' : (sale.paymentMethod === 'cash' ? 'emailed' : sale.status), deliveryStatus: deliveryFailed ? 'FAILED' : 'DELIVERED' }
+            : { ...sale, approvalStatus: 'REJECTED', status: 'pr_cash_rejected' })
+          setActionStates(previous => ({ ...previous, [id]: { status: action === 'approve' ? 'approved' : 'rejected', sale: updatedSale, message: data.message } }))
+          clearCompletedState(id)
+        } catch (error) {
+          failed++
+          const message = error instanceof Error ? error.message : 'Request failed'
+          setActionStates(previous => ({ ...previous, [id]: { status: 'error', sale, message } }))
+        } finally {
+          completed++
+          setBulkProgress({ completed, total: selected.length })
+        }
+      }
+    })
+    await Promise.all(workers)
+    setBulkAction(null)
+    setBulkProgress(null)
+    showToast(failed ? `${succeeded} completed, ${failed} failed.` : `${succeeded} ticket${succeeded === 1 ? '' : 's'} ${action === 'approve' ? 'accepted' : 'rejected'}.`, failed ? 'error' : 'success')
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gutter)' }}>
       <style>{`
@@ -272,23 +352,36 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
         <div style={{ padding: '12px 18px', color: 'var(--ink-faint)', fontSize: 12, borderBottom: '1px solid var(--border)' }}>
           {filteredRows.length} {filteredRows.length === 1 ? 'ticket' : 'tickets'}{companyFilter !== 'all' ? ` · ${companyCards.find(company => company.id === companyFilter)?.name || 'Company'}` : ''}{statusFilter !== 'all' ? ` · ${statusFilter === 'approved' ? 'Accepted' : statusFilter[0].toUpperCase() + statusFilter.slice(1)}` : ''}
         </div>
+        {!isPresentation && selectableRows.length > 0 && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '11px 18px', borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,.018)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink-faint)', fontSize: 13 }}>
+            <input ref={selectAllRef} type="checkbox" aria-label="Select all visible pending tickets" checked={allVisibleSelected} disabled={Boolean(actionId || bulkAction)} onChange={event => setSelectedIds(previous => event.target.checked ? [...new Set([...previous, ...selectableIds])] : previous.filter(id => !selectableIds.includes(id)))} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} />
+            <span>Select all visible pending ({selectableRows.length})</span>
+            <strong style={{ color: 'var(--ink)' }}>{selectedIds.length} selected</strong>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {bulkProgress && <span role="status" style={{ color: 'var(--ink-faint)', fontSize: 12 }}>{bulkAction === 'approving' ? 'Accepting' : 'Rejecting'} {bulkProgress.completed}/{bulkProgress.total}</span>}
+            <button type="button" disabled={selectedIds.length === 0 || Boolean(actionId || bulkAction)} onClick={() => handleBulkAction('reject')} style={{ border: '1px solid rgba(239,68,68,.3)', borderRadius: 7, padding: '8px 11px', background: 'rgba(239,68,68,.1)', color: '#fca5a5', fontWeight: 700, cursor: selectedIds.length ? 'pointer' : 'not-allowed', opacity: selectedIds.length ? 1 : .45 }}>Reject selected</button>
+            <button type="button" disabled={selectedIds.length === 0 || Boolean(actionId || bulkAction)} onClick={() => handleBulkAction('approve')} style={{ border: '1px solid rgba(34,197,94,.34)', borderRadius: 7, padding: '8px 11px', background: 'rgba(34,197,94,.12)', color: '#4ade80', fontWeight: 700, cursor: selectedIds.length ? 'pointer' : 'not-allowed', opacity: selectedIds.length ? 1 : .45 }}>Accept selected</button>
+          </div>
+        </div>}
         <div className="table-scroll scroll">
           <table className="table">
-            <thead><tr><th>Company / attendee</th><th>Pass</th><th>Amount</th><th>Submitted</th><th>Status / action</th></tr></thead>
+            <thead><tr>{!isPresentation && <th aria-label="Select tickets" /> }<th>Company / attendee</th><th>Pass</th><th>Amount</th><th>Submitted</th><th>Status / action</th></tr></thead>
             <tbody>
-              {filteredRows.length === 0 ? <tr><td colSpan={5} style={{ textAlign: 'center', padding: 36, color: 'var(--ink-faint)' }}>No tickets match these filters.</td></tr> : filteredRows.map(sale => {
+              {filteredRows.length === 0 ? <tr><td colSpan={isPresentation ? 5 : 6} style={{ textAlign: 'center', padding: 36, color: 'var(--ink-faint)' }}>No tickets match these filters.</td></tr> : filteredRows.map(sale => {
                 const id = sale.orderId || sale.ticketId
                 const rowAction = actionStates[id]
                 const status = finalStatusKey(sale)
                 const busy = rowAction?.status === 'approving' || rowAction?.status === 'rejecting'
                 return <tr key={id} className={rowAction?.status === 'approved' ? 'approval-done' : ''} style={{ opacity: busy ? 0.72 : 1 }}>
+                  {!isPresentation && <td><input type="checkbox" aria-label={`Select ${sale.name || sale.ticketId || 'ticket'}`} checked={selectedIds.includes(String(id))} disabled={status !== 'pending' || busy || Boolean(bulkAction || actionId)} onChange={event => setSelectedIds(previous => event.target.checked ? [...new Set([...previous, String(id)])] : previous.filter(selectedId => selectedId !== String(id)))} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} /></td>}
                   <td><div style={{ fontWeight: 700 }}>{companyName(sale)}</div><div style={{ marginTop: 4 }}>{sale.name || 'Unknown attendee'}</div><div className="cell-sub">{sale.email || 'No email'} · {sale.ticketId || sale.orderId}</div></td>
                   <td>{sale.ticketType || `${sale.gender || 'General'} Pass`}</td>
                   <td style={{ fontWeight: 750 }}>₹{Number(sale.amount || 0).toLocaleString('en-IN')}</td>
                   <td style={{ color: 'var(--ink-faint)', fontSize: 13 }}>{sale.createdAt ? new Date(sale.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                   <td>{status === 'pending' && !isPresentation ? <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => handleApprove(id)} disabled={Boolean(actionId)} style={{ background: 'rgba(34,197,94,.12)', border: '1px solid rgba(34,197,94,.34)', color: '#4ade80', borderRadius: 7, padding: '7px 10px', fontWeight: 700, cursor: actionId ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{rowAction?.status === 'approving' ? <><span className="approval-spinner" /> Sending</> : 'Approve'}</button>
-                    <button type="button" onClick={() => handleReject(id)} disabled={Boolean(actionId)} style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.28)', color: '#fca5a5', borderRadius: 7, padding: '7px 10px', fontWeight: 700, cursor: actionId ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{rowAction?.status === 'rejecting' ? <><span className="approval-spinner" /> Rejecting</> : 'Reject'}</button>
+                    <button type="button" onClick={() => handleApprove(id)} disabled={Boolean(actionId || bulkAction)} style={{ background: 'rgba(34,197,94,.12)', border: '1px solid rgba(34,197,94,.34)', color: '#4ade80', borderRadius: 7, padding: '7px 10px', fontWeight: 700, cursor: actionId || bulkAction ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{rowAction?.status === 'approving' ? <><span className="approval-spinner" /> Sending</> : 'Approve'}</button>
+                    <button type="button" onClick={() => handleReject(id)} disabled={Boolean(actionId || bulkAction)} style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.28)', color: '#fca5a5', borderRadius: 7, padding: '7px 10px', fontWeight: 700, cursor: actionId || bulkAction ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{rowAction?.status === 'rejecting' ? <><span className="approval-spinner" /> Rejecting</> : 'Reject'}</button>
                   </div> : <span style={{ color: status === 'approved' ? '#4ade80' : status === 'rejected' ? '#f87171' : 'var(--ink-faint)', fontWeight: 700 }}>{busy ? (rowAction?.status === 'approving' ? 'Sending...' : 'Rejecting...') : status === 'approved' ? (sale.deliveryStatus === 'DELIVERED' || sale.status === 'emailed' ? 'Sent' : 'Accepted') : status === 'rejected' ? 'Rejected' : 'Admin only'}</span>}</td>
                 </tr>
               })}
