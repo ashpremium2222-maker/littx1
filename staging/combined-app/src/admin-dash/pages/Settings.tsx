@@ -7,8 +7,8 @@ const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
   littlane:    { name: 'LITTLANE',    emoji: '🏟️' },
   nitro:       { name: 'DGR',          emoji: '⚡' },
   '7th-heaven':{ name: '7TH HEAVEN', emoji: '🌟' },
-  'partner-slot-1': { name: 'Partner Login 1', emoji: '🔐' },
-  'partner-slot-2': { name: 'Partner Login 2', emoji: '🔐' },
+  'partner-slot-1': { name: 'ASTEX TESTING', emoji: '🧪' },
+  'partner-slot-2': { name: 'WOLFERA', emoji: '🌐' },
 }
 
 interface SettingsProps {
@@ -487,8 +487,8 @@ export default function Settings({ adminKey }: SettingsProps) {
                       { partnerId: 'littlane', name: 'Littlane Ent' },
                       { partnerId: 'nitro', name: 'DGR' },
                       { partnerId: '7th-heaven', name: '7th Heaven' },
-                      { partnerId: 'partner-slot-1', name: 'Wolfera' },
-                      { partnerId: 'partner-slot-2', name: 'ASTEX Testing' }
+                      { partnerId: 'partner-slot-1', name: 'ASTEX Testing' },
+                      { partnerId: 'partner-slot-2', name: 'Wolfera' }
                     ].map((p) => (
                       <tr key={p.partnerId}>
                         <td style={{ fontWeight: 'bold' }}>{p.name}</td>

@@ -23,8 +23,8 @@ const PARTNER_NAMES = {
 
 const SELLER_COMPANY_NAMES = {
     ...PARTNER_NAMES,
-    'partner-slot-1': 'Partner Login 1',
-    'partner-slot-2': 'Partner Login 2'
+    'partner-slot-1': 'ASTEX Testing',
+    'partner-slot-2': 'Wolfera'
 };
 
 function displayCompanyName(companyId, currentName) {
@@ -3101,7 +3101,10 @@ app.get('/api/admin/seller-devices', requireMasterAdmin, async (req, res) => {
             return {
                 partnerId,
                 companyId: assignedCompanyId,
-                name: companyNames.get(assignedCompanyId) || partner?.name || SELLER_COMPANY_NAMES[partnerId] || partnerId,
+                name: companyNames.get(assignedCompanyId)
+                    || (PARTNER_LOGIN_SLOTS.includes(partnerId) ? SELLER_COMPANY_NAMES[partnerId] : partner?.name)
+                    || SELLER_COMPANY_NAMES[partnerId]
+                    || partnerId,
                 blocked: Boolean(lock.blocked),
                 passkeyBound: Boolean(lock.webauthnCredentialId),
                 registeredDeviceId: lock.registeredDeviceId || null,
