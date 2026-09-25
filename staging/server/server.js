@@ -3134,10 +3134,6 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
             { companyId: 'littlane', name: 'Littlane Ent' },
             { companyId: 'nitro', name: 'Nitro Events' },
             { companyId: '7th-heaven', name: '7th Heaven' },
-            ...PARTNER_LOGIN_SLOTS.map((companyId, index) => {
-                const user = users.find(item => item.role === 'seller' && item.sellerSlot === companyId);
-                return { companyId, name: user?.displayName || `Partner Login ${index + 1}` };
-            }),
         ];
         const companyNames = new Map(knownEventCompanies.map(company => [company.companyId, company.name]));
         companies.forEach(company => {
