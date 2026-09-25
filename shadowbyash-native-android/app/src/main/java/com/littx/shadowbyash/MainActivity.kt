@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -16,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,6 +42,7 @@ class MainActivity : ComponentActivity() { override fun onCreate(b: Bundle?) { s
 @Composable private fun Login(onLogin: (String) -> Unit) {
     var password by remember { mutableStateOf("") }; var error by remember { mutableStateOf("") }; var busy by remember { mutableStateOf(false) }; val scope = rememberCoroutineScope()
     Surface(color = Ink) { Box(Modifier.fillMaxSize().padding(22.dp), contentAlignment = Alignment.Center) { Card(colors = CardDefaults.cardColors(Card), shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth().widthIn(max = 440.dp)) { Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(painterResource(R.drawable.shadow_by_ash_logo), "Shadow by Ash", modifier = Modifier.fillMaxWidth().height(210.dp))
         Text("SHADOW", color = TextMain, fontSize = 38.sp, fontWeight = FontWeight.Black, letterSpacing = 7.sp); Text("BY ASH", color = Lime, fontSize = 13.sp, letterSpacing = 5.sp); Spacer(Modifier.height(8.dp)); Text("SALES COMMAND CENTER", color = TextMuted, letterSpacing = 2.sp); Spacer(Modifier.height(28.dp))
         Text("Operator access", color = TextMain, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth()); Text("Create tickets, track revenue, and manage every customer from one place.", color = TextMuted, modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 22.dp))
         OutlinedTextField(password, { password = it; error = "" }, label = { Text("Access password") }, singleLine = true, modifier = Modifier.fillMaxWidth())
