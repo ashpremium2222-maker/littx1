@@ -20,10 +20,18 @@ interface Props {
   adminKey: string
 }
 
+interface CompanyDirectoryEntry {
+  companyId: string
+  name: string
+  status: string
+  stats?: { eventCount?: number; ticketCount?: number; grossRevenue?: number; activePRs?: number }
+}
+
 const formatINR = (amount: number) => `₹${(Number(amount) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
 export default function DashboardSaleVisibility({ adminKey }: Props) {
   const [sales, setSales] = useState<DashboardSale[]>([])
+  const [directory, setDirectory] = useState<CompanyDirectoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
@@ -33,13 +41,14 @@ export default function DashboardSaleVisibility({ adminKey }: Props) {
 
   const companyGroups = useMemo(() => {
     const groups = new Map<string, { companyId: string; companyName: string; sales: DashboardSale[] }>()
+    directory.forEach(company => groups.set(company.companyId, { companyId: company.companyId, companyName: company.name, sales: [] }))
     sales.forEach(sale => {
       const group = groups.get(sale.companyId) || { companyId: sale.companyId, companyName: sale.companyName, sales: [] }
       group.sales.push(sale)
       groups.set(sale.companyId, group)
     })
     return [...groups.values()].sort((a, b) => a.companyName.localeCompare(b.companyName))
-  }, [sales])
+  }, [sales, directory])
 
   const activeCompany = companyGroups.find(group => group.companyId === selectedCompanyId) || null
   const selectedSales = activeCompany?.sales.filter(sale => selectedSaleKeys.includes(sale.saleKey)) || []
@@ -49,9 +58,13 @@ export default function DashboardSaleVisibility({ adminKey }: Props) {
     setLoading(true)
     setNotice('')
     try {
-      const response = await fetch('/api/admin/dashboard-sale-visibility', { headers: { ...headers }, cache: 'no-store' })
-      const data = await response.json()
+      const [response, companyResponse] = await Promise.all([
+        fetch('/api/admin/dashboard-sale-visibility', { headers: { ...headers }, cache: 'no-store' }),
+        fetch('/api/master/companies', { headers: { ...headers }, cache: 'no-store' }),
+      ])
+      const [data, companyData] = await Promise.all([response.json(), companyResponse.json()])
       if (!response.ok || !data.success) throw new Error(data.message || 'Could not load ticket sales.')
+      if (companyResponse.ok && companyData.success) setDirectory(companyData.companies || [])
       setSales(data.sales || [])
       setSelectedSaleKeys([])
     } catch (error) {
@@ -165,25 +178,25 @@ export default function DashboardSaleVisibility({ adminKey }: Props) {
           </div>
         </div>
       ) : (
-        <div style={{ padding: 18 }}>
-          {loading && sales.length === 0 ? <div className="muted-sm" style={{ padding: 22, textAlign: 'center' }}>Loading companies…</div> : companyGroups.length === 0 ? <div className="muted-sm" style={{ padding: 22, textAlign: 'center' }}>No completed ticket sales yet.</div> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 10 }}>
-            {companyGroups.map(group => {
-              const shown = group.sales.filter(sale => sale.included)
-              const ticketCount = group.sales.reduce((sum, sale) => sum + sale.quantity, 0)
-              const shownTickets = shown.reduce((sum, sale) => sum + sale.quantity, 0)
-              const shownRevenue = shown.reduce((sum, sale) => sum + sale.grossRevenue, 0)
-              return <button key={group.companyId} type="button" onClick={() => setSelectedCompanyId(group.companyId)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, textAlign: 'left', padding: '15px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--panel-2)', color: 'var(--ink)', cursor: 'pointer' }}>
-                <span>
-                  <strong style={{ display: 'block', fontSize: 15 }}>{group.companyName}</strong>
-                  <span className="muted-sm" style={{ display: 'block', marginTop: 5 }}>{group.sales.length} sales · {shownTickets}/{ticketCount} tickets shown</span>
-                </span>
-                <span style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <strong style={{ display: 'block', fontSize: 15 }}>{formatINR(shownRevenue)}</strong>
-                  <span className="muted-sm" style={{ display: 'block', marginTop: 4 }}>Dashboard revenue</span>
-                </span>
-              </button>
-            })}
-          </div>}
+        <div className="table-scroll scroll" style={{ marginTop: 14 }}>
+          {loading && companyGroups.length === 0 ? <div className="muted-sm" style={{ padding: 22, textAlign: 'center' }}>Loading companies…</div> : companyGroups.length === 0 ? <div className="muted-sm" style={{ padding: 22, textAlign: 'center' }}>No companies available.</div> : <table className="table">
+            <thead><tr><th>Company Name</th><th>Status</th><th>Events</th><th>Tickets Sold</th><th>Gross Revenue</th><th>PR Network</th><th>Action / Drill Down</th></tr></thead>
+            <tbody>{companyGroups.map(group => {
+              const company = directory.find(item => item.companyId === group.companyId)
+              const stats = company?.stats
+              const actualTickets = stats?.ticketCount ?? group.sales.reduce((sum, sale) => sum + sale.quantity, 0)
+              const actualRevenue = stats?.grossRevenue ?? group.sales.reduce((sum, sale) => sum + sale.grossRevenue, 0)
+              return <tr key={group.companyId}>
+                <td style={{ fontWeight: 700, color: 'var(--ink)' }}><div>{group.companyName}</div><div className="muted-sm" style={{ fontFamily: 'monospace' }}>ID: {group.companyId}</div></td>
+                <td><span className={`badge badge-${company?.status === 'ACTIVE' || !company ? 'green' : 'amber'}`}>{company?.status || 'ACTIVE'}</span></td>
+                <td>{stats?.eventCount ?? '—'}</td>
+                <td style={{ fontWeight: 700 }}>{actualTickets}</td>
+                <td style={{ fontWeight: 750 }}>{formatINR(actualRevenue)}</td>
+                <td>{stats?.activePRs ?? '—'} Active PRs</td>
+                <td><button className="btn-secondary" type="button" onClick={() => { setSelectedSaleKeys([]); setSelectedCompanyId(group.companyId) }}>🔍 View Company System</button></td>
+              </tr>
+            })}</tbody>
+          </table>}
         </div>
       )}
     </section>

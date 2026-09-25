@@ -2546,6 +2546,8 @@ app.get('/api/master/companies', async (req, res) => {
 
         const companiesWithStats = Array.from(listById.values()).map(c => {
             const companySales = paidSales.filter(s => resolveSaleCompanyId(s, slotCompanyMap) === c.companyId);
+            const companyEvents = visibleDashboardEvents(allEvents).filter(event => event.companyId === c.companyId);
+            const activePRs = users.filter(user => user.role === 'pr' && user.companyId === c.companyId && user.active !== false && !user.blocked).length;
             const totalOrders = companySales.length;
             const ticketCount = companySales.reduce((acc, s) => acc + (s.quantity || 1), 0);
             const grossRevenue = companySales.reduce((acc, s) => acc + saleGrossAmount(s), 0);
@@ -2556,8 +2558,10 @@ app.get('/api/master/companies', async (req, res) => {
                 ...c,
                 stats: {
                     totalOrders,
+                    eventCount: companyEvents.length,
                     ticketCount,
                     grossRevenue,
+                    activePRs,
                     platformFee: revenueAfterCommission,
                     revenueAfterCommission,
                     netCompanyRevenue: sellerCommission
