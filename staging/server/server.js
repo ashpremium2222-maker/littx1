@@ -1967,7 +1967,7 @@ app.get('/api/shadow-private/whatsapp-status', requirePrivateShadowAuth, async (
 
 // POST /api/shadow/generate-ticket — Creates genuine ticket tagged as source="shadow"
 async function generateShadowTicket(req, res, source, paymentMethod, generatedBy) {
-    const { name, email, phone, gender, ticketType, quantity, amount, event } = req.body || {};
+    const { name, email, phone, gender, ticketType, quantity, amount, event, shadowPaymentStatus } = req.body || {};
 
     if (!name || !email) {
         return res.status(400).json({ success: false, message: 'Customer Name and Email are required.' });
@@ -1976,7 +1976,11 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
     const evtName = event || EVENT.name;
     const pricedTicket = await resolveTicketAmount(evtName, ticketType || gender, quantity);
     if (!pricedTicket) return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
-    const { qty, amount: finalAmount, ticketType: tType, event: pricedEvent } = pricedTicket;
+    const { qty, amount: pricedAmount, ticketType: tType, event: pricedEvent } = pricedTicket;
+    // Free / Chai Pani is only available on /shadowbyash; issue the normal ticket
+    // while excluding it from that panel's revenue totals.
+    const isFreeShadowByAshTicket = source === 'shadow' && shadowPaymentStatus === 'free_chai_pani';
+    const finalAmount = isFreeShadowByAshTicket ? 0 : pricedAmount;
 
     try {
         const orderId = `order_shadow_${crypto.randomBytes(8).toString('hex')}`;
@@ -1999,6 +2003,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             status: 'paid',
             paymentId: `pay_shadow_${crypto.randomBytes(6).toString('hex')}`,
             paymentMethod,
+            ...(source === 'shadow' ? { shadowPaymentStatus: isFreeShadowByAshTicket ? 'free_chai_pani' : 'paid' } : {}),
             emailStatus: 'pending',
             emailError: null,
             errorLog: [],

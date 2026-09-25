@@ -184,6 +184,7 @@ const SaleSchema = new mongoose.Schema({
     prUserId: { type: String },
     prName: { type: String },
     paymentMethod: { type: String },
+    shadowPaymentStatus: { type: String, enum: ['paid', 'free_chai_pani'] },
     source: { type: String },
     isShadow: { type: Boolean, default: false },
     slots: [{

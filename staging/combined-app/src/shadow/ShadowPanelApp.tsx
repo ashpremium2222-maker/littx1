@@ -10,6 +10,7 @@ interface ShadowOrder {
   event: string
   gender?: string
   ticketType?: string
+  shadowPaymentStatus?: string
   quantity: number
   amount: number
   status: string
@@ -29,6 +30,7 @@ export default function ShadowPanelApp({
   panelTitle = 'SHADOW BY ASH',
   brandSubtitle = 'BY ASH'
 }: ShadowPanelProps) {
+  const isShadowByAshPanel = apiPrefix === '/api/shadow'
   const [password, setPassword] = useState('')
   const [shadowToken, setShadowToken] = useState<string | null>(() => {
     return sessionStorage.getItem(sessionKey)
@@ -72,6 +74,9 @@ export default function ShadowPanelApp({
   const [gender, setGender]         = useState('GA Single')
   const [quantity, setQuantity]     = useState('1')
   const [paymentStatus, setPaymentStatus] = useState('Paid')
+  const paymentStatusRef = useRef('Paid')
+  const amountForTicketForm = (unitPrice: number, count: number) =>
+    isShadowByAshPanel && paymentStatusRef.current === 'Free / Chai Pani' ? '0' : String(unitPrice * count)
   const [amount, setAmount]         = useState('499')
 
   const [submitting, setSubmitting] = useState(false)
@@ -98,7 +103,7 @@ export default function ShadowPanelApp({
           ticketTypeRef.current = selectedTier.name
           setSelectedTierObj(selectedTier)
           setTicketType(selectedTier.name)
-          setAmount(String(selectedTier.price * (parseInt(quantityRef.current, 10) || 1)))
+          setAmount(amountForTicketForm(selectedTier.price, parseInt(quantityRef.current, 10) || 1))
         }
       }
     } catch (e) {}
@@ -190,7 +195,7 @@ export default function ShadowPanelApp({
         const t = evt.tiers[0]
         ticketTypeRef.current = t.name
         setSelectedTierObj(t); setTicketType(t.name)
-        setAmount(String(t.price * (parseInt(quantity, 10) || 1)))
+        setAmount(amountForTicketForm(t.price, parseInt(quantity, 10) || 1))
       }
     }
   }
@@ -198,12 +203,18 @@ export default function ShadowPanelApp({
     ticketTypeRef.current = tierName
     setTicketType(tierName)
     const t = selectedEventObj?.tiers?.find((t: any) => t.name === tierName)
-    if (t) { setSelectedTierObj(t); setAmount(String(t.price * (parseInt(quantity, 10) || 1))) }
+    if (t) { setSelectedTierObj(t); setAmount(amountForTicketForm(t.price, parseInt(quantity, 10) || 1)) }
   }
   const handleQuantityChange = (val: string) => {
     quantityRef.current = val
     setQuantity(val)
-    if (selectedTierObj) setAmount(String(selectedTierObj.price * (parseInt(val, 10) || 1)))
+    if (selectedTierObj) setAmount(amountForTicketForm(selectedTierObj.price, parseInt(val, 10) || 1))
+  }
+
+  const handlePaymentStatusChange = (value: string) => {
+    paymentStatusRef.current = value
+    setPaymentStatus(value)
+    if (isShadowByAshPanel && selectedTierObj) setAmount(amountForTicketForm(selectedTierObj.price, parseInt(quantity, 10) || 1))
   }
 
   const handleGenerateTicket = async (e: React.FormEvent) => {
@@ -230,7 +241,8 @@ export default function ShadowPanelApp({
           gender,
           ticketType,
           quantity: parseInt(quantity, 10) || 1,
-          amount: parseFloat(amount) || 0,
+          amount: isShadowByAshPanel && paymentStatus === 'Free / Chai Pani' ? 0 : parseFloat(amount) || 0,
+          ...(isShadowByAshPanel ? { shadowPaymentStatus: paymentStatus === 'Paid' ? 'paid' : 'free_chai_pani' } : {}),
           event
         })
       })
@@ -689,10 +701,10 @@ export default function ShadowPanelApp({
                         <select
                           className="shadow-select"
                           value={paymentStatus}
-                          onChange={(e) => setPaymentStatus(e.target.value)}
+                          onChange={(e) => handlePaymentStatusChange(e.target.value)}
                         >
                           <option value="Paid">Paid</option>
-                          <option value="Pending">Pending</option>
+                          {isShadowByAshPanel ? <option value="Free / Chai Pani">Free / Chai Pani</option> : <option value="Pending">Pending</option>}
                         </select>
                       </div>
 
@@ -759,9 +771,15 @@ export default function ShadowPanelApp({
                                   ₹{(o.amount || 0).toLocaleString()}
                                 </td>
                                 <td>
-                                  <span className={`shadow-badge ${o.status === 'pending' ? 'shadow-badge-pending' : 'shadow-badge-paid'}`}>
-                                    {o.status === 'pending' ? 'PENDING' : 'PAID'}
-                                  </span>
+                                  {isShadowByAshPanel ? (
+                                    <span className={`shadow-badge ${o.shadowPaymentStatus === 'free_chai_pani' ? '' : 'shadow-badge-paid'}`}>
+                                      {o.shadowPaymentStatus === 'free_chai_pani' ? 'FREE / CHAI PANI' : 'PAID'}
+                                    </span>
+                                  ) : (
+                                    <span className={`shadow-badge ${o.status === 'pending' ? 'shadow-badge-pending' : 'shadow-badge-paid'}`}>
+                                      {o.status === 'pending' ? 'PENDING' : 'PAID'}
+                                    </span>
+                                  )}
                                 </td>
                                 <td style={{ fontSize: '11px', color: '#71717a' }}>
                                   {o.createdAt ? new Date(o.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}
@@ -928,10 +946,10 @@ export default function ShadowPanelApp({
                     <select
                       className="shadow-select"
                       value={paymentStatus}
-                      onChange={(e) => setPaymentStatus(e.target.value)}
+                      onChange={(e) => handlePaymentStatusChange(e.target.value)}
                     >
                       <option value="Paid">Paid</option>
-                      <option value="Pending">Pending</option>
+                      {isShadowByAshPanel ? <option value="Free / Chai Pani">Free / Chai Pani</option> : <option value="Pending">Pending</option>}
                     </select>
                   </div>
 
@@ -1045,9 +1063,15 @@ export default function ShadowPanelApp({
                               ₹{(o.amount || 0).toLocaleString()}
                             </td>
                             <td>
-                              <span className={`shadow-badge ${o.status === 'pending' ? 'shadow-badge-pending' : 'shadow-badge-paid'}`}>
-                                {o.status === 'pending' ? 'PENDING' : 'PAID'}
-                              </span>
+                              {isShadowByAshPanel ? (
+                                <span className={`shadow-badge ${o.shadowPaymentStatus === 'free_chai_pani' ? '' : 'shadow-badge-paid'}`}>
+                                  {o.shadowPaymentStatus === 'free_chai_pani' ? 'FREE / CHAI PANI' : 'PAID'}
+                                </span>
+                              ) : (
+                                <span className={`shadow-badge ${o.status === 'pending' ? 'shadow-badge-pending' : 'shadow-badge-paid'}`}>
+                                  {o.status === 'pending' ? 'PENDING' : 'PAID'}
+                                </span>
+                              )}
                             </td>
                             <td style={{ fontSize: '11px', color: '#71717a' }}>
                               {o.createdAt ? new Date(o.createdAt).toLocaleString() : 'N/A'}
