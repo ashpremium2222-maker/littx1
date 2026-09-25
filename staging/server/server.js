@@ -57,6 +57,27 @@ async function resolveSellerPartner(partnerId) {
     return { id: partnerId, name: user.displayName || 'Partner Login', active: user.active !== false && !user.blocked, passwordHash: user.passwordHash, user };
 }
 
+async function findSellerPartnerByPassword(password) {
+    if (typeof password !== 'string' || !password) return null;
+    const matches = [];
+    for (const [partnerId, expected] of Object.entries(PARTNER_PASSWORDS)) {
+        if (expected && password === expected) {
+            const partner = await resolveSellerPartner(partnerId);
+            if (partner?.active) matches.push(partner);
+        }
+    }
+    for (const partnerId of PARTNER_LOGIN_SLOTS) {
+        const partner = await resolveSellerPartner(partnerId);
+        if (!partner?.active) continue;
+        const matchesPassword = partner.passwordHash
+            ? verifyPassword(password, partner.passwordHash)
+            : typeof partner.user?.password === 'string' && password === partner.user.password;
+        if (matchesPassword) matches.push(partner);
+    }
+    // A shared password across tenants cannot identify the intended account.
+    return matches.length === 1 ? matches[0] : null;
+}
+
 // Persistent WebAuthn authenticators in tmp/local to survive serverless cold starts
 const WEBAUTHN_FILE = path.join(os.tmpdir(), 'littx_seller_webauthn.json');
 const SESSIONS_FILE = path.join(os.tmpdir(), 'littx_seller_sessions.json');
@@ -2633,20 +2654,7 @@ app.post('/api/master/companies/:id/emergency', async (req, res) => {
 // POST /api/auth/login — unified entry point for all platform roles.
 // Called by LoginPage.tsx (the portal with the credential switcher at the bottom).
 const PLATFORM_USERS = [
-    {
-        userId: 'superadmin@littx.in',
-        password: process.env.MASTER_PASS || 'littx-master-2026',
-        displayName: 'Master Admin',
-        role: 'master_admin',
-        companyId: 'littx'
-    },
-    {
-        userId: 'admin@littlane.in',
-        password: process.env.COMPANY_PASS || 'littlane-2026',
-        displayName: 'Littlane Admin',
-        role: 'company_admin',
-        companyId: 'littlane'
-    },
+    // Admin and dashboard access is scoped by /api/portal-auth/login.
 ];
 
 const PR_USERS_AUTH = [
@@ -2654,6 +2662,40 @@ const PR_USERS_AUTH = [
     { username: 'partner2', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two', id: 'pr2' },
     { username: 'partner5', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five', id: 'pr5' },
 ];
+
+app.post('/api/portal-auth/login', async (req, res) => {
+    const { portal, password } = req.body || {};
+    const isAdmin = portal === 'admin';
+    const isDashboard = portal === 'dashboard';
+    if ((!isAdmin && !isDashboard) || typeof password !== 'string' || !password) {
+        return res.status(400).json({ success: false, message: 'Enter a valid portal access key.' });
+    }
+
+    const expected = isAdmin ? process.env.PORTAL_ADMIN_KEY : process.env.PORTAL_DASHBOARD_KEY;
+    if (!expected || password !== expected) {
+        return res.status(401).json({ success: false, message: 'Invalid access key.' });
+    }
+
+    const role = isAdmin ? 'master_admin' : 'company_admin';
+    const userId = isAdmin ? 'portal-admin-key' : 'portal-dashboard-key';
+    const displayName = isAdmin ? 'Admin' : 'Dashboard';
+    const companyId = isAdmin ? 'littx' : 'littlane';
+    const token = generateToken();
+    platformAuthTokens.add(token);
+    await db.setUserSession(userId, {
+        token,
+        ip: clientIp(req),
+        loginAt: new Date().toISOString(),
+        role,
+        companyId,
+        displayName,
+    });
+    return res.json({
+        success: true,
+        token,
+        user: { userId, displayName, role, companyId, portalScope: portal },
+    });
+});
 
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body || {};
@@ -2734,18 +2776,22 @@ app.post('/api/auth/login', async (req, res) => {
 // ==================== SELLER PORTAL WEBAUTHN ROUTES ====================
 app.post('/api/seller/login-step1', async (req, res) => {
     try {
-        const { partnerId, password } = req.body || {};
-        if (!partnerId || !password) return res.status(400).json({ success: false, message: 'Missing fields' });
-        const partner = await resolveSellerPartner(partnerId);
+        const { partnerId: requestedPartnerId, password } = req.body || {};
+        if (!password) return res.status(400).json({ success: false, message: 'Enter your seller password.' });
+        const partner = requestedPartnerId
+            ? await resolveSellerPartner(requestedPartnerId)
+            : await findSellerPartnerByPassword(password);
         if (!partner) {
-            return res.status(403).json({ success: false, message: 'This Partner Login has not been created by the Master Admin yet.' });
+            return res.status(401).json({ success: false, message: 'Seller password not recognized or shared between sellers.' });
         }
         if (!partner.active) {
             return res.status(403).json({ success: false, message: 'This partner account is inactive. Contact the Master Admin.' });
         }
-        if (!(partner.passwordHash ? verifyPassword(password, partner.passwordHash) : partner.legacyPassword === password)) {
+        if (requestedPartnerId && !(partner.passwordHash ? verifyPassword(password, partner.passwordHash) : partner.legacyPassword === password)) {
             return res.status(401).json({ success: false, message: 'Invalid partner password' });
         }
+
+        const partnerId = partner.id;
 
         const { rpID, origin } = getWebAuthnRelyingParty(req);
 
@@ -2754,7 +2800,9 @@ app.post('/api/seller/login-step1', async (req, res) => {
         // from a prior serverless instance must never turn an unbound seller
         // into an authentication flow: native Android needs a registration
         // request for the first device binding.
-        const authenticator = partnerLock?.webauthnCredentialId
+        // Treat partial legacy WebAuthn records as unbound. An ID without its
+        // public key cannot be verified and must not crash native login.
+        const authenticator = partnerLock?.webauthnCredentialId && partnerLock?.webauthnPublicKey
             ? {
                 credentialID: partnerLock.webauthnCredentialId,
                 credentialPublicKey: Buffer.from(partnerLock.webauthnPublicKey, 'base64url'),
@@ -2776,7 +2824,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 },
             });
             const loginId = await createWebAuthnLogin(partnerId, options.challenge, rpID, origin);
-            return res.json({ success: true, isRegistration: true, loginId, options });
+            return res.json({ success: true, partnerId: partner.id, isRegistration: true, loginId, options });
         } else {
             // Returning: Authentication options
             const options = await generateAuthenticationOptions({
@@ -2789,7 +2837,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
                 userVerification: 'preferred',
             });
             const loginId = await createWebAuthnLogin(partnerId, options.challenge, rpID, origin);
-            return res.json({ success: true, isRegistration: false, loginId, options });
+            return res.json({ success: true, partnerId: partner.id, isRegistration: false, loginId, options });
         }
     } catch (err) {
         console.error('[WebAuthn Step1 Error]', err);
@@ -2810,7 +2858,7 @@ app.post('/api/seller/login-step2', async (req, res) => {
         const partnerLock = await db.getPartnerLock(partnerId);
         // Match step 1: only a durable database credential can select the
         // authentication verification path.
-        const authenticator = partnerLock?.webauthnCredentialId
+        const authenticator = partnerLock?.webauthnCredentialId && partnerLock?.webauthnPublicKey
             ? {
                 credentialID: partnerLock.webauthnCredentialId,
                 credentialPublicKey: Buffer.from(partnerLock.webauthnPublicKey, 'base64url'),

@@ -14,6 +14,7 @@ interface UserSession {
   displayName: string
   role: string
   companyId: string
+  portalScope?: 'admin' | 'dashboard'
 }
 
 function MainAppShell() {
@@ -68,19 +69,18 @@ function MainAppShell() {
 
   // ── MASTER ADMIN (/admin) ─────────────────────────────────────────────────
   if (path.startsWith('/admin')) {
-    if (userSession?.role === 'master_admin') {
+    if (userSession?.role === 'master_admin' && userSession.portalScope === 'admin') {
       return <DevAdminApp isPresentation={false} />
     }
-    // Not logged in (or wrong role) → show unified login with credential switcher
-    return <LoginPage onLoginSuccess={handleLoginRedirect} />
+    return <LoginPage portal="admin" onLoginSuccess={handleLoginRedirect} />
   }
 
   // ── COMPANY DASHBOARD (/dashboard) ────────────────────────────────────────
   if (path.startsWith('/dashboard')) {
-    if (userSession?.role === 'company_admin' || userSession?.role === 'master_admin') {
+    if (userSession?.role === 'company_admin' && userSession.portalScope === 'dashboard') {
       return <AdminDashboard isPresentation={false} />
     }
-    return <LoginPage onLoginSuccess={handleLoginRedirect} />
+    return <LoginPage portal="dashboard" onLoginSuccess={handleLoginRedirect} />
   }
 
   if (path.startsWith('/scanner')) {
