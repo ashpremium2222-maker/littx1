@@ -689,11 +689,10 @@ function dashboardSaleKey(sale) {
     return String(sale?.orderId || sale?.ticketId || sale?._id || '').trim();
 }
 
-function isLittlaneCompany(companyId, companyName) {
-    return [companyId, companyName].some(value => {
-        const normalized = normalizeSellerId(value);
-        return normalized === 'LITTLANE' || normalized.startsWith('LITTLANE-');
-    });
+function isAdminIssuedSale(sale) {
+    if (sale?.issuedByAdmin === true) return true;
+    const issuer = normalizeSellerId(sale?.sellerId || sale?.generatedBy || sale?.prUserId);
+    return issuer === 'ADMIN' || issuer === 'MASTER-ADMIN' || issuer === 'LITTX-ADMIN';
 }
 
 async function getDashboardSaleVisibility(sales) {
@@ -729,7 +728,7 @@ async function getDashboardSaleVisibility(sales) {
             quantity: Number(sale.quantity) || 1,
             grossRevenue: saleGrossAmount(sale),
             soldAt: sale.paidAt || sale.generatedAt || sale.createdAt || null,
-            included: typeof saved?.included === 'boolean' ? saved.included : !isLittlaneCompany(companyId, companyName),
+            included: typeof saved?.included === 'boolean' ? saved.included : !isAdminIssuedSale(sale),
         };
     }).filter(item => item.saleKey);
     return { items, savedByKey };
@@ -1812,6 +1811,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             errorLog: [],
             createdAt: generatedAt, paidAt: generatedAt, generatedAt,
             generatedBy: resolvedSellerId,
+            issuedByAdmin: isAdmin && !sellerId,
             sellerId: normalizedResolvedSellerId,
             prUserId: resolvedSellerId,
             companyId: resolvedCompanyId,
