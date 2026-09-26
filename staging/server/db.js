@@ -181,6 +181,7 @@ const SaleSchema = new mongoose.Schema({
     showInPres: { type: Boolean, default: false },
     sellerId: { type: String },
     generatedBy: { type: String },
+    issuedByAdmin: { type: Boolean, default: false },
     prUserId: { type: String },
     prName: { type: String },
     paymentMethod: { type: String },

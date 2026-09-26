@@ -57,11 +57,15 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
     .filter(s => s.createdAt && new Date(s.createdAt).toDateString() === todayStr)
     .reduce((acc, s) => acc + (s.amount || 0), 0)
 
-  const manualSales = revenueSales.filter(s => s.paymentId === 'manual')
-  const razorpaySales = revenueSales.filter(s => s.paymentId !== 'manual')
+  const revenueAfterCommission = revenueSales.reduce((total, sale) => {
+    const gross = Number(sale.customerTotal ?? sale.amount ?? 0)
+    const net = Number(sale.rateAfterCommission)
+    const commission = Number(sale.commissionAmount)
 
-  const manualRevenue = manualSales.reduce((acc, s) => acc + (s.amount || 0), 0)
-  const razorpayRevenue = razorpaySales.reduce((acc, s) => acc + (s.amount || 0), 0)
+    if (Number.isFinite(net)) return total + net
+    if (Number.isFinite(commission)) return total + gross - commission
+    return total + gross
+  }, 0)
 
   const emailFailures = sales.filter(s => s.emailStatus === 'failed').length
   const ticketFailures = sales.filter(s => s.status === 'ticket_generation_failed').length
@@ -259,19 +263,11 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         </div>
 
         <div className="tile tile-violet">
-          <div className="tile-label">COLLECTED BY METHOD</div>
-          <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, opacity: 0.85 }}>Razorpay:</span>
-              <span style={{ fontSize: '15px', fontWeight: 800 }}>₹{razorpayRevenue.toLocaleString()}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, opacity: 0.85 }}>Manual:</span>
-              <span style={{ fontSize: '15px', fontWeight: 800 }}>₹{manualRevenue.toLocaleString()}</span>
-            </div>
-          </div>
-          <div className="tile-delta" style={{ marginTop: '10px' }}>
-            <span>💳</span> RZP ({razorpaySales.length}) · MAN ({manualSales.length})
+          <div className="tile-label">REVENUE AFTER COMMISSION</div>
+          <div className="tile-value">{formatINR(revenueAfterCommission)}</div>
+          <div className="tile-sub">Gross ticket revenue less seller commission</div>
+          <div className="tile-delta">
+            <span>₹</span> Net ticket revenue
           </div>
         </div>
 
