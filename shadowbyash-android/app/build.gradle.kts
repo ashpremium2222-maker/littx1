@@ -12,8 +12,8 @@ android {
         applicationId = "com.littx.shadowbyash"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4.0"
+        versionCode = 6
+        versionName = "1.4.1"
         buildConfigField("String", "SHADOW_API_BASE_URL", "\"https://www.littx.in/\"")
     }
     buildFeatures { compose = true; buildConfig = true }
