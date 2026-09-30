@@ -21,18 +21,19 @@ android {
         val file = rootProject.file("local.properties")
         if (file.exists()) file.inputStream().use { load(it) }
     }
-    signingConfigs {
-        create("release") {
-            val storePath = signingProps.getProperty("SHADOW_SIGNING_STORE_FILE")
-            if (storePath != null) {
-                storeFile = file(storePath)
-                storePassword = signingProps.getProperty("SHADOW_SIGNING_STORE_PASSWORD")
-                keyAlias = signingProps.getProperty("SHADOW_SIGNING_KEY_ALIAS")
-                keyPassword = signingProps.getProperty("SHADOW_SIGNING_KEY_PASSWORD")
-            }
+    val storePath = signingProps.getProperty("SHADOW_SIGNING_STORE_FILE")
+    val signingPassword = signingProps.getProperty("SHADOW_SIGNING_STORE_PASSWORD")
+    val signingAlias = signingProps.getProperty("SHADOW_SIGNING_KEY_ALIAS")
+    val keyPassword = signingProps.getProperty("SHADOW_SIGNING_KEY_PASSWORD")
+    val releaseSigning = if (storePath != null && signingPassword != null && signingAlias != null && keyPassword != null) {
+        signingConfigs.create("release").apply {
+            storeFile = file(storePath)
+            storePassword = signingPassword
+            keyAlias = signingAlias
+            this.keyPassword = keyPassword
         }
-    }
-    buildTypes { release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("release") } }
+    } else null
+    buildTypes { release { isMinifyEnabled = false; if (releaseSigning != null) signingConfig = releaseSigning } }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
