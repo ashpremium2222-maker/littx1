@@ -144,16 +144,17 @@ export default function ShadowPanelApp({
         const fetchedSales: ShadowOrder[] = data.sales || []
         setShadowOrders(fetchedSales)
 
-        const activeSales = fetchedSales.filter(s => !s.disabledAt && s.status !== 'cancelled')
+        const activeSales = isShadowByAshPanel ? fetchedSales.filter(s => !s.disabledAt && s.status !== 'cancelled') : fetchedSales
         const totalOrders = activeSales.length
         const totalRevenue = activeSales.reduce((sum, s) => sum + (s.amount || 0), 0)
         const totalRevenueAfterCommission = activeSales.reduce((sum, s) => sum + (s.rateAfterCommission ?? ((s.amount || 0) - (s.commissionAmount || 0))), 0)
         const totalTickets = activeSales.reduce((sum, s) => sum + (s.quantity || 1), 0)
 
         // Compute today's sales
-        const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
         const todaySales = activeSales
-          .filter((s) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(s.generatedAt || s.createdAt)) === todayStr)
+          .filter((s) => isShadowByAshPanel
+            ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(s.generatedAt || s.createdAt)) === new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+            : new Date(s.createdAt).toDateString() === new Date().toDateString())
           .reduce((sum, s) => sum + (s.amount || 0), 0)
 
         setStats({ totalOrders, totalRevenue, totalRevenueAfterCommission, totalTickets, todaySales })
@@ -346,9 +347,12 @@ export default function ShadowPanelApp({
     }
   }
 
-  const formatShadowDate = (value: string) => value
-    ? new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
-    : 'N/A'
+  const formatShadowDate = (value: string) => {
+    if (!value) return 'N/A'
+    return isShadowByAshPanel
+      ? new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
+      : new Date(value).toLocaleString()
+  }
 
   // Filtered Orders Calculation
   const filteredOrders = shadowOrders.filter((o) => {
@@ -368,7 +372,7 @@ export default function ShadowPanelApp({
 
   // Unique Customers Aggregation
   const customerMap = new Map<string, { name: string; email: string; phone?: string; ordersCount: number; ticketsCount: number; totalSpent: number; lastDate: string }>()
-  shadowOrders.filter((o) => !o.disabledAt && o.status !== 'cancelled').forEach((o) => {
+  (isShadowByAshPanel ? shadowOrders.filter((o) => !o.disabledAt && o.status !== 'cancelled') : shadowOrders).forEach((o) => {
     const key = o.email?.toLowerCase() || o.name?.toLowerCase() || 'unknown'
     const existing = customerMap.get(key)
     if (existing) {
@@ -396,7 +400,8 @@ export default function ShadowPanelApp({
     c.email.toLowerCase().includes(customerSearch.toLowerCase()) ||
     (c.phone && c.phone.includes(customerSearch))
   )
-  const passBreakdown = Array.from(shadowOrders.filter((order) => !order.disabledAt && order.status !== 'cancelled').reduce((map, order) => {
+  const ordersForPassBreakdown = isShadowByAshPanel ? shadowOrders.filter((order) => !order.disabledAt && order.status !== 'cancelled') : shadowOrders
+  const passBreakdown = Array.from(ordersForPassBreakdown.reduce((map, order) => {
     const pass = order.ticketType || order.gender || 'General'
     map.set(pass, (map.get(pass) || 0) + (order.quantity || 1))
     return map

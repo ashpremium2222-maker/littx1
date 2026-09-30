@@ -1345,7 +1345,8 @@ app.get('/api/ticket/:ticketId/download', async (req, res) => {
                 quantity: sale.quantity || 1,
                 amount: sale.amount || 0,
                 createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
-                event: sale.event || EVENT.name
+                event: sale.event || EVENT.name,
+                timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
             });
         } catch (err) {
             console.error('[Ticket Download] Failed to rebuild ticket PDF:', err.message);
@@ -1382,7 +1383,8 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
                 quantity: sale.quantity || 1,
                 amount: sale.amount || 0,
                 createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
-                event: sale.event || EVENT.name
+                event: sale.event || EVENT.name,
+                timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
             });
         } catch (err) {
             console.error('[Ticket Resend] Failed to rebuild ticket PDF:', err.message);
@@ -2079,8 +2081,8 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             gender: gender || 'male',
             quantity: qty,
             amount: finalAmount,
-            ...commission,
-            passUnitPrice: Math.round((pricedAmount / qty) * 100) / 100,
+            ...(source === 'shadow' ? commission : {}),
+            ...(source === 'shadow' ? { passUnitPrice: Math.round((pricedAmount / qty) * 100) / 100 } : {}),
             currency: 'INR',
             status: 'paid',
             paymentId: `pay_shadow_${crypto.randomBytes(6).toString('hex')}`,
@@ -2119,7 +2121,8 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
                 quantity: qty,
                 amount: finalAmount,
                 createdAt: generatedAt,
-                event: evtName
+                event: evtName,
+                timeZone: source === 'shadow' ? 'Asia/Kolkata' : undefined
             });
             qrBuffer = await buildQrBuffer(ticketId);
         } catch (pdfErr) {
