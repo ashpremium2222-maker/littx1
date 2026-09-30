@@ -56,7 +56,11 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
             dateLabel: t.dateLabel || '17th October, Sat · 4:00 PM',
             venue: t.venue || 'Pethkar Ground, Kothrud, Pune',
             ticketType: t.ticketType || (t.gender === 'female' ? 'VIP Single' : 'GA Single'),
-            price: t.amount ? `₹${t.amount}` : '₹499',
+            // `0` is a valid Free / Chai Pani ticket amount; avoid treating it
+            // as a missing value and falling back to the old ₹499 default.
+            price: Number.isFinite(Number(t.amount))
+              ? `₹${Number(t.amount).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+              : '₹0',
             qty: t.quantity || 1,
             status: t.status || 'paid',
             scannedAt: t.scannedAt
@@ -271,7 +275,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
                         <span className="text-white text-xs font-bold">{ticket.ticketType} x {ticket.qty}</span>
                       </div>
                       <div className="flex flex-col items-end">
-                        <span className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">Paid Amount</span>
+                        <span className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">Ticket Value</span>
                         <span className="text-emerald-400 text-sm font-black">{ticket.price}</span>
                       </div>
                     </div>

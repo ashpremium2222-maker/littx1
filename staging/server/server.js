@@ -1252,11 +1252,37 @@ function ticketTypeForSale(sale) {
     return legacyLabels[legacyGender] || legacyGender || 'General';
 }
 
+async function publicTicketAmount(sale) {
+    const quantity = Math.max(1, Number.parseInt(sale?.quantity, 10) || 1);
+
+    // A public ticket always shows its official pass value, even when an
+    // outlet issued it complimentary. Free/Chai Pani changes revenue only.
+    // New records retain this immutable unit-price snapshot, so later price
+    // edits cannot alter a ticket that was already issued.
+    const storedUnitPrice = Number(sale?.passUnitPrice ?? sale?.officialRate);
+    if (Number.isFinite(storedUnitPrice) && storedUnitPrice > 0) return Math.round(storedUnitPrice * quantity * 100) / 100;
+
+    // Repair legacy records that were stored with the default single-pass
+    // amount despite carrying a group/VIP pass type. This also recovers
+    // complimentary tickets created before the snapshot fix, which saved a
+    // zero unit price.
+    const pricing = await getEventPricing(sale?.event).catch(() => null);
+    const pass = pricing?.passes?.find(item => item.name === ticketTypeForSale(sale) || item.id === ticketTypeForSale(sale));
+    if (pass && Number.isFinite(pass.price)) return Math.round(pass.price * quantity * 100) / 100;
+
+    if (Number.isFinite(storedUnitPrice) && storedUnitPrice >= 0) return Math.round(storedUnitPrice * quantity * 100) / 100;
+    const customerTotal = Number(sale?.customerTotal);
+    if (Number.isFinite(customerTotal) && customerTotal >= 0) return customerTotal;
+    const legacyAmount = Number(sale?.amount);
+    return Number.isFinite(legacyAmount) ? legacyAmount : 0;
+}
+
 app.get('/api/ticket/:ticketId', async (req, res) => {
     const { ticketId } = req.params;
     if (!ticketId) return res.status(400).json({ success: false, message: 'Ticket ID required' });
     const sale = await db.getByTicketId(ticketId);
     if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found. Please check the link or contact support.' });
+    if (sale.disabledAt) return res.status(410).json({ success: false, message: 'This ticket has been disabled. Contact the organizer.' });
     if (!canDeliverSale(sale)) {
         return res.status(403).json({ success: false, message: 'This ticket is awaiting dashboard approval.' });
     }
@@ -1267,6 +1293,15 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
         ? '17 OCT 2026 · 4:00 PM'
         : '17 OCT 2026 · 4:00 PM';
     const venue = 'Pethkar Ground, Kothrud, Pune';
+    const amount = await publicTicketAmount(sale);
+    const quantity = Math.max(1, Number.parseInt(sale.quantity, 10) || 1);
+    const passUnitPrice = Math.round((amount / quantity) * 100) / 100;
+    // Backfill every legacy record as it is opened. `amount` deliberately
+    // remains untouched: for complimentary tickets it is the collected amount
+    // (₹0), while customerTotal is the official pass value shown to attendees.
+    if (sale.passUnitPrice !== passUnitPrice || sale.officialRate !== passUnitPrice || sale.customerTotal !== amount) {
+        await db.updateSaleRecord(sale.orderId, { passUnitPrice, officialRate: passUnitPrice, customerTotal: amount }).catch(() => {});
+    }
     res.json({
         success: true,
         ticket: {
@@ -1279,7 +1314,7 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
             dateLabel,
             venue,
             ticketType: ticketTypeForSale(sale),
-            amount: sale.amount,
+            amount,
             quantity: sale.quantity || 1,
             status: sale.scannedAt ? 'scanned' : 'paid',
             scannedAt: sale.scannedAt,
@@ -1292,6 +1327,7 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
 app.get('/api/ticket/:ticketId/download', async (req, res) => {
     const sale = await db.getByTicketId(req.params.ticketId);
     if (!sale) return res.status(404).send('Ticket not found.');
+    if (sale.disabledAt) return res.status(410).send('This ticket has been disabled.');
     if (!canDeliverSale(sale)) return res.status(403).send('Ticket is awaiting dashboard approval.');
     
     const filePath = path.join(TICKETS_DIR, `${sale.ticketId}.pdf`);
@@ -1326,6 +1362,7 @@ app.get('/api/ticket/:ticketId/download', async (req, res) => {
 app.post('/api/ticket/:ticketId/resend', async (req, res) => {
     const sale = await db.getByTicketId(req.params.ticketId);
     if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+    if (sale.disabledAt) return res.status(410).json({ success: false, message: 'This ticket has been disabled.' });
     if (!canDeliverSale(sale)) {
         return res.status(403).json({ success: false, message: 'Ticket delivery is blocked until dashboard approval.' });
     }
@@ -1803,7 +1840,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             orderId,
             event: evtName,
             name, email, phone: phone || '', gender: gender || 'general', ticketType: tType,
-            quantity: qty, ...commission, commissionPercentage: normalizedCommission, amount: commission.customerTotal, currency: 'INR',
+            quantity: qty, ...commission, passUnitPrice: commission.officialRate, commissionPercentage: normalizedCommission, amount: commission.customerTotal, currency: 'INR',
             status: 'paid', paymentId: 'manual', ticketId,
             emailStatus: 'pending', emailError: null,
             whatsappStatus: directDelivery ? 'pending' : 'blocked_pending_approval',
@@ -2042,7 +2079,8 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
             gender: gender || 'male',
             quantity: qty,
             amount: finalAmount,
-            ...(source === 'shadow' ? commission : {}),
+            ...commission,
+            passUnitPrice: Math.round((pricedAmount / qty) * 100) / 100,
             currency: 'INR',
             status: 'paid',
             paymentId: `pay_shadow_${crypto.randomBytes(6).toString('hex')}`,
@@ -2145,6 +2183,40 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
 app.post('/api/shadow/generate-ticket', requireShadowAuth, (req, res) =>
     generateShadowTicket(req, res, 'shadow', 'Shadow Private Panel', 'Shadow Sale')
 );
+app.post('/api/shadow/tickets/:orderId/:action', requireShadowAuth, async (req, res) => {
+    const { orderId, action } = req.params;
+    if (!['disable', 'enable'].includes(action)) return res.status(400).json({ success: false, message: 'Unsupported ticket action.' });
+    try {
+        const sale = await db.getByOrderId(orderId);
+        if (!sale || sale.source !== 'shadow') return res.status(404).json({ success: false, message: 'Shadow by Ash ticket not found.' });
+        if (action === 'disable') {
+            if (sale.disabledAt) return res.json({ success: true, message: 'Ticket is already disabled.' });
+            await db.updateSaleRecord(orderId, { status: 'cancelled', disabledAt: new Date().toISOString(), disabledBy: 'Shadow by Ash', disabledPreviousStatus: sale.status });
+        } else {
+            if (!sale.disabledAt) return res.json({ success: true, message: 'Ticket is already active.' });
+            const restoredStatus = ['ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(sale.disabledPreviousStatus)
+                ? sale.disabledPreviousStatus : 'ticket_generated';
+            await db.updateSaleRecord(orderId, { status: restoredStatus, disabledAt: null, disabledBy: null, disabledPreviousStatus: null });
+        }
+        return res.json({ success: true, disabled: action === 'disable', message: action === 'disable' ? 'Ticket disabled.' : 'Ticket enabled.' });
+    } catch (err) {
+        console.error('[SHADOW TICKET STATUS ERROR]', err);
+        return res.status(500).json({ success: false, message: 'Could not update ticket status.' });
+    }
+});
+app.delete('/api/shadow/tickets/:orderId', requireShadowAuth, async (req, res) => {
+    try {
+        const sale = await db.getByOrderId(req.params.orderId);
+        if (!sale || sale.source !== 'shadow') return res.status(404).json({ success: false, message: 'Shadow by Ash ticket not found.' });
+        const removed = await db.deleteSaleRecord(sale.orderId);
+        if (!removed) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+        if (sale.ticketId) await fs.promises.unlink(path.join(TICKETS_DIR, `${sale.ticketId}.pdf`)).catch(err => { if (err.code !== 'ENOENT') throw err; });
+        return res.json({ success: true, message: 'Ticket permanently deleted.' });
+    } catch (err) {
+        console.error('[SHADOW TICKET DELETE ERROR]', err);
+        return res.status(500).json({ success: false, message: 'Could not delete ticket.' });
+    }
+});
 app.post('/api/shadow-private/generate-ticket', requirePrivateShadowAuth, (req, res) =>
     generateShadowTicket(req, res, 'shadow_private', 'Private Shadow Panel', 'Private Shadow Sale')
 );
@@ -2153,13 +2225,16 @@ async function getShadowSales(req, res) {
     try {
         const shadowSales = (await db.getAll()).filter(s => s.source === 'shadow');
         
-        const shadowRevenue = shadowSales.reduce((sum, s) => sum + (s.amount || 0), 0);
-        const shadowTicketsSold = shadowSales.reduce((sum, s) => sum + (s.quantity || 1), 0);
+        const activeSales = shadowSales.filter(s => !s.disabledAt && s.status !== 'cancelled');
+        const shadowRevenue = activeSales.reduce((sum, s) => sum + (s.amount || 0), 0);
+        const shadowRevenueAfterCommission = activeSales.reduce((sum, s) => sum + (s.rateAfterCommission ?? ((s.amount || 0) - (s.commissionAmount || 0))), 0);
+        const shadowTicketsSold = activeSales.reduce((sum, s) => sum + (s.quantity || 1), 0);
 
         res.json({
             success: true,
-            count: shadowSales.length,
+            count: activeSales.length,
             shadowRevenue,
+            shadowRevenueAfterCommission,
             shadowTicketsSold,
             sales: shadowSales
         });

@@ -148,6 +148,10 @@ const SaleSchema = new mongoose.Schema({
     // official event rate; commission is seller-internal settlement data.
     officialRate: { type: Number },
     customerTotal: { type: Number },
+    // Exact price of the selected pass at issuance time. This allows public
+    // ticket views to remain correct even when older records had a stale
+    // generic `amount` value.
+    passUnitPrice: { type: Number },
     commissionPercentage: { type: Number, default: 0 },
     commissionAmount: { type: Number, default: 0 },
     rateAfterCommission: { type: Number },
@@ -186,6 +190,9 @@ const SaleSchema = new mongoose.Schema({
     prName: { type: String },
     paymentMethod: { type: String },
     shadowPaymentStatus: { type: String, enum: ['paid', 'free_chai_pani'] },
+    disabledAt: { type: String },
+    disabledBy: { type: String },
+    disabledPreviousStatus: { type: String },
     source: { type: String },
     isShadow: { type: Boolean, default: false },
     slots: [{
@@ -482,6 +489,11 @@ async function updateSaleRecord(orderId, updates) {
         { returnDocument: 'after', lean: true }
     );
     return updated;
+}
+
+async function deleteSaleRecord(orderId) {
+    const result = await Sale.deleteOne({ orderId });
+    return result.deletedCount === 1;
 }
 
 async function getByOrderId(orderId) {
@@ -1023,6 +1035,16 @@ module.exports = {
             return null;
         }
         return await updateSaleRecord(orderId, updates);
+    },
+    deleteSaleRecord: async (orderId) => {
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId);
+            if (idx === -1) return false;
+            mockDb.sales.splice(idx, 1);
+            _saveMockSales(mockDb.sales);
+            return true;
+        }
+        return await deleteSaleRecord(orderId);
     },
     atomicApprovePendingSale: async (orderId, approvedBy, approvedAt) => {
         if (useMock()) {

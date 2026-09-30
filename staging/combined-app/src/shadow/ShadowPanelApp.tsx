@@ -18,6 +18,8 @@ interface ShadowOrder {
   rateAfterCommission?: number
   status: string
   createdAt: string
+  generatedAt?: string
+  disabledAt?: string | null
 }
 
 interface ShadowPanelProps {
@@ -87,6 +89,7 @@ export default function ShadowPanelApp({
 
   const [submitting, setSubmitting] = useState(false)
   const [resendingTicketId, setResendingTicketId] = useState<string | null>(null)
+  const [ticketActionOrderId, setTicketActionOrderId] = useState<string | null>(null)
   const [feedback, setFeedback]     = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
   const officialTotal = (selectedTierObj?.price || 0) * (parseInt(quantity, 10) || 1)
@@ -141,15 +144,16 @@ export default function ShadowPanelApp({
         const fetchedSales: ShadowOrder[] = data.sales || []
         setShadowOrders(fetchedSales)
 
-        const totalOrders = fetchedSales.length
-        const totalRevenue = fetchedSales.reduce((sum, s) => sum + (s.amount || 0), 0)
-        const totalRevenueAfterCommission = fetchedSales.reduce((sum, s) => sum + (s.rateAfterCommission ?? ((s.amount || 0) - (s.commissionAmount || 0))), 0)
-        const totalTickets = fetchedSales.reduce((sum, s) => sum + (s.quantity || 1), 0)
+        const activeSales = fetchedSales.filter(s => !s.disabledAt && s.status !== 'cancelled')
+        const totalOrders = activeSales.length
+        const totalRevenue = activeSales.reduce((sum, s) => sum + (s.amount || 0), 0)
+        const totalRevenueAfterCommission = activeSales.reduce((sum, s) => sum + (s.rateAfterCommission ?? ((s.amount || 0) - (s.commissionAmount || 0))), 0)
+        const totalTickets = activeSales.reduce((sum, s) => sum + (s.quantity || 1), 0)
 
         // Compute today's sales
-        const todayStr = new Date().toDateString()
-        const todaySales = fetchedSales
-          .filter((s) => new Date(s.createdAt).toDateString() === todayStr)
+        const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+        const todaySales = activeSales
+          .filter((s) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(s.generatedAt || s.createdAt)) === todayStr)
           .reduce((sum, s) => sum + (s.amount || 0), 0)
 
         setStats({ totalOrders, totalRevenue, totalRevenueAfterCommission, totalTickets, todaySales })
@@ -325,6 +329,27 @@ export default function ShadowPanelApp({
     }
   }
 
+  const handleTicketAction = async (order: ShadowOrder, action: 'disable' | 'enable' | 'delete') => {
+    if (action === 'delete' && !window.confirm(`Permanently delete ticket ${order.ticketId || order.orderId}? This cannot be undone.`)) return
+    setTicketActionOrderId(order.orderId)
+    try {
+      const response = action === 'delete'
+        ? await fetch(`${apiPrefix}/tickets/${encodeURIComponent(order.orderId)}`, { method: 'DELETE', headers: { 'x-shadow-token': shadowToken || '' } })
+        : await fetch(`${apiPrefix}/tickets/${encodeURIComponent(order.orderId)}/${action}`, { method: 'POST', headers: { 'x-shadow-token': shadowToken || '' } })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || `Could not ${action} ticket.`)
+      await fetchShadowData()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : `Could not ${action} ticket.`)
+    } finally {
+      setTicketActionOrderId(null)
+    }
+  }
+
+  const formatShadowDate = (value: string) => value
+    ? new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
+    : 'N/A'
+
   // Filtered Orders Calculation
   const filteredOrders = shadowOrders.filter((o) => {
     const matchesSearch =
@@ -343,7 +368,7 @@ export default function ShadowPanelApp({
 
   // Unique Customers Aggregation
   const customerMap = new Map<string, { name: string; email: string; phone?: string; ordersCount: number; ticketsCount: number; totalSpent: number; lastDate: string }>()
-  shadowOrders.forEach((o) => {
+  shadowOrders.filter((o) => !o.disabledAt && o.status !== 'cancelled').forEach((o) => {
     const key = o.email?.toLowerCase() || o.name?.toLowerCase() || 'unknown'
     const existing = customerMap.get(key)
     if (existing) {
@@ -371,7 +396,7 @@ export default function ShadowPanelApp({
     c.email.toLowerCase().includes(customerSearch.toLowerCase()) ||
     (c.phone && c.phone.includes(customerSearch))
   )
-  const passBreakdown = Array.from(shadowOrders.reduce((map, order) => {
+  const passBreakdown = Array.from(shadowOrders.filter((order) => !order.disabledAt && order.status !== 'cancelled').reduce((map, order) => {
     const pass = order.ticketType || order.gender || 'General'
     map.set(pass, (map.get(pass) || 0) + (order.quantity || 1))
     return map
@@ -823,7 +848,7 @@ export default function ShadowPanelApp({
                                 <td>
                                   {isShadowByAshPanel ? (
                                     <span className={`shadow-badge ${o.shadowPaymentStatus === 'free_chai_pani' ? '' : 'shadow-badge-paid'}`}>
-                                      {o.shadowPaymentStatus === 'free_chai_pani' ? 'FREE / CHAI PANI' : 'PAID'}
+                                      {o.disabledAt ? 'DISABLED' : o.shadowPaymentStatus === 'free_chai_pani' ? 'FREE / CHAI PANI' : 'PAID'}
                                     </span>
                                   ) : (
                                     <span className={`shadow-badge ${o.status === 'pending' ? 'shadow-badge-pending' : 'shadow-badge-paid'}`}>
@@ -832,7 +857,7 @@ export default function ShadowPanelApp({
                                   )}
                                 </td>
                                 <td style={{ fontSize: '11px', color: '#71717a' }}>
-                                  {o.createdAt ? new Date(o.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}
+                                  {formatShadowDate(o.generatedAt || o.createdAt)}
                                 </td>
                                 <td>
                                   <button
@@ -846,10 +871,14 @@ export default function ShadowPanelApp({
                                       border: '1px solid rgba(59, 130, 246, 0.3)'
                                     }}
                                     onClick={() => handleResendTicket(o.ticketId, o.orderId)}
-                                    disabled={resendingTicketId === o.ticketId}
+                                    disabled={resendingTicketId === o.ticketId || Boolean(o.disabledAt)}
                                   >
                                     {resendingTicketId === o.ticketId ? 'Sending...' : '📧 Resend'}
                                   </button>
+                                  {isShadowByAshPanel && <>
+                                    <button className="shadow-sec-btn" style={{ padding: '4px 8px', fontSize: '11px', width: 'auto', marginLeft: 5, color: o.disabledAt ? '#d4d4d8' : '#fbbf24' }} onClick={() => handleTicketAction(o, o.disabledAt ? 'enable' : 'disable')} disabled={ticketActionOrderId === o.orderId}>{o.disabledAt ? 'Enable' : 'Disable'}</button>
+                                    <button className="shadow-sec-btn" style={{ padding: '4px 8px', fontSize: '11px', width: 'auto', marginLeft: 5, color: '#f87171' }} onClick={() => handleTicketAction(o, 'delete')} disabled={ticketActionOrderId === o.orderId}>Delete</button>
+                                  </>}
                                 </td>
                               </tr>
                             ))
@@ -1115,7 +1144,7 @@ export default function ShadowPanelApp({
                             <td>
                               {isShadowByAshPanel ? (
                                 <span className={`shadow-badge ${o.shadowPaymentStatus === 'free_chai_pani' ? '' : 'shadow-badge-paid'}`}>
-                                  {o.shadowPaymentStatus === 'free_chai_pani' ? 'FREE / CHAI PANI' : 'PAID'}
+                                  {o.disabledAt ? 'DISABLED' : o.shadowPaymentStatus === 'free_chai_pani' ? 'FREE / CHAI PANI' : 'PAID'}
                                 </span>
                               ) : (
                                 <span className={`shadow-badge ${o.status === 'pending' ? 'shadow-badge-pending' : 'shadow-badge-paid'}`}>
@@ -1124,7 +1153,7 @@ export default function ShadowPanelApp({
                               )}
                             </td>
                             <td style={{ fontSize: '11px', color: '#71717a' }}>
-                              {o.createdAt ? new Date(o.createdAt).toLocaleString() : 'N/A'}
+                              {formatShadowDate(o.generatedAt || o.createdAt)}
                             </td>
                             <td>
                               <button
@@ -1138,10 +1167,14 @@ export default function ShadowPanelApp({
                                   border: '1px solid rgba(59, 130, 246, 0.3)'
                                 }}
                                 onClick={() => handleResendTicket(o.ticketId, o.orderId)}
-                                disabled={resendingTicketId === o.ticketId}
+                                disabled={resendingTicketId === o.ticketId || Boolean(o.disabledAt)}
                               >
                                 {resendingTicketId === o.ticketId ? 'Sending...' : '📧 Resend'}
                               </button>
+                              {isShadowByAshPanel && <>
+                                <button className="shadow-sec-btn" style={{ padding: '4px 8px', fontSize: '11px', width: 'auto', marginLeft: 5, color: o.disabledAt ? '#d4d4d8' : '#fbbf24' }} onClick={() => handleTicketAction(o, o.disabledAt ? 'enable' : 'disable')} disabled={ticketActionOrderId === o.orderId}>{o.disabledAt ? 'Enable' : 'Disable'}</button>
+                                <button className="shadow-sec-btn" style={{ padding: '4px 8px', fontSize: '11px', width: 'auto', marginLeft: 5, color: '#f87171' }} onClick={() => handleTicketAction(o, 'delete')} disabled={ticketActionOrderId === o.orderId}>Delete</button>
+                              </>}
                             </td>
                           </tr>
                         ))
