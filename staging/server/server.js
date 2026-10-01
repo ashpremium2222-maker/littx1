@@ -2395,20 +2395,28 @@ app.get('/api/scanner-session', (req, res) => {
     return res.json({ success: true, scannerName: session.name, expiresAt: session.exp * 1000 });
 });
 
-// Scanner dashboard totals. Accepted tickets are derived from the durable sale
-// state; failed attempts come from ScanLog so duplicate, cancelled, and
-// invalid scans survive a refresh, logout, or a different scanner device.
+// Scanner dashboard totals for the current India calendar day. Both approved
+// and declined totals come from scan attempts so historical ticket state and
+// old test scans cannot be mistaken for today's gate activity.
 app.get('/api/scan-stats', async (req, res) => {
     try {
-        const [accepted, scanStats] = await Promise.all([
-            db.countScannedSales(),
-            db.getScanStats(null, new Date(0))
-        ]);
+        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+        const now = new Date();
+        const istNow = new Date(now.getTime() + IST_OFFSET_MS);
+        const todayStartIst = new Date(Date.UTC(
+            istNow.getUTCFullYear(),
+            istNow.getUTCMonth(),
+            istNow.getUTCDate()
+        ) - IST_OFFSET_MS);
+        const scanStats = await db.getScanStats(null, todayStartIst);
         res.json({
             success: true,
-            accepted,
+            accepted: scanStats.accepted,
             failed: scanStats.declined,
-            failedByReason: scanStats.declinedByReason
+            failedByReason: scanStats.declinedByReason,
+            period: 'today',
+            timezone: 'Asia/Kolkata',
+            date: istNow.toISOString().slice(0, 10)
         });
     } catch (err) {
         console.error('[scan-stats] Error:', err);

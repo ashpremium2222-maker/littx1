@@ -19,6 +19,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -116,7 +118,7 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
 }
 
 @Composable private fun HomeScreen(state: ScannerState, onScan: () -> Unit, onHistory: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(canvas)) {
+    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFFF8F8FF), Color(0xFFF1F5FF), canvas)))) {
         LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -124,8 +126,8 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
                         Text("LITTX", color = ink, fontSize = 29.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                         Text("EVENT SCANNER", color = muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.8.sp)
                     }
-                    Row(Modifier.clip(CircleShape).background(Color.White).border(1.dp, Color(0xFFE5EAF3), CircleShape).padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(7.dp).background(green, CircleShape)); Text("ONLINE", color = ink, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 7.dp))
+                    Row(Modifier.clip(CircleShape).background(Color.White.copy(.8f)).border(1.dp, Color.White, CircleShape).padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(7.dp).background(green, CircleShape)); Text("GATE ACTIVE", color = ink, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp, modifier = Modifier.padding(start = 7.dp))
                     }
                 }
                 Row(Modifier.padding(top = 17.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -135,18 +137,7 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
                 }
             }
             item { ScanHero(onScan) }
-            item {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Column(Modifier.weight(1f)) { Text("Scan activity", color = ink, fontSize = 20.sp, fontWeight = FontWeight.Bold); Text("Server totals · all time", color = muted, fontSize = 12.sp) }
-                    if (state.statsLoading) CircularProgressIndicator(Modifier.size(17.dp), color = blue, strokeWidth = 2.dp)
-                }
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MetricCard("Approved", state.statsValue(state.accepted), green, Icons.Default.CheckCircle, Modifier.weight(1f))
-                    MetricCard("Declined", state.statsValue(state.failed), red, Icons.Default.ErrorOutline, Modifier.weight(1f))
-                }
-            }
+            item { ActivityPanel(state) }
             item {
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(21.dp)).background(Color.White).border(1.dp, Color(0xFFE8ECF4), RoundedCornerShape(21.dp)).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(40.dp).background(Color(0xFFFFF2DF), CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.History, null, tint = amber) }
@@ -154,16 +145,58 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
                     TextButton(onClick = onHistory) { Text("History", color = blue, fontWeight = FontWeight.Bold) }
                 }
             }
-            if (state.statsError) item {
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(Color(0xFFFFF5E9)).padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CloudOff, null, tint = Color(0xFFAD6A13), modifier = Modifier.size(18.dp)); Text("Server totals are unavailable. Your scans still validate online.", color = Color(0xFF77501C), fontSize = 12.sp, modifier = Modifier.padding(start = 9.dp))
-                }
-            }
+            if (state.statsError) item { SyncStatusHud() }
         }
     }
 }
 
 private fun ScannerState.statsValue(value: Int): String = if (statsAvailable) value.toString() else "—"
+
+@Composable private fun ActivityPanel(state: ScannerState) {
+    val total = state.accepted + state.failed
+    val approvedFraction = if (total > 0) state.accepted.toFloat() / total else 0f
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(27.dp)).background(Brush.linearGradient(listOf(Color(0xFF11172B), Color(0xFF20284A), Color(0xFF191D37)))).padding(19.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("TODAY", color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp, letterSpacing = 1.6.sp)
+                Text("All scanner activity · India time", color = Color.White.copy(.55f), fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
+            }
+            if (state.statsLoading) CircularProgressIndicator(Modifier.size(18.dp), color = cyan, strokeWidth = 2.dp)
+            else Icon(Icons.Default.Timeline, null, tint = Color.White.copy(.62f), modifier = Modifier.size(19.dp))
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 23.dp), verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f)) {
+                Text("APPROVED", color = Color(0xFF76E6C4), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                Text(state.statsValue(state.accepted), color = Color.White, fontSize = 39.sp, fontWeight = FontWeight.Bold, lineHeight = 43.sp, modifier = Modifier.padding(top = 3.dp))
+            }
+            Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp).width(1.dp).height(43.dp).background(Color.White.copy(.14f)))
+            Column(Modifier.weight(1f)) {
+                Text("DECLINED", color = Color(0xFFFF8FA0), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                Text(state.statsValue(state.failed), color = Color.White, fontSize = 39.sp, fontWeight = FontWeight.Bold, lineHeight = 43.sp, modifier = Modifier.padding(top = 3.dp))
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 14.dp).height(5.dp).clip(CircleShape).background(Color.White.copy(.12f))) {
+            if (total > 0) {
+                if (state.accepted > 0) Box(Modifier.fillMaxHeight().weight(approvedFraction.coerceAtLeast(.015f)).background(green))
+                if (state.failed > 0) Box(Modifier.fillMaxHeight().weight((1f - approvedFraction).coerceAtLeast(.015f)).background(red))
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(if (state.statsAvailable) "$total tickets processed" else "Waiting for today’s totals", color = Color.White.copy(.52f), fontSize = 10.sp)
+            Text("LIVE DATA", color = Color.White.copy(.38f), fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        }
+    }
+}
+
+@Composable private fun SyncStatusHud() {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color(0xFFFFF4E9).copy(.88f)).border(1.dp, Color(0xFFF2D6B6), RoundedCornerShape(20.dp)).padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFFFFE5C6)), contentAlignment = Alignment.Center) { Icon(Icons.Default.CloudOff, null, tint = Color(0xFFA56521), modifier = Modifier.size(19.dp)) }
+        Column(Modifier.padding(start = 11.dp)) {
+            Text("SYNC STATUS", color = Color(0xFF88531C), fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp)
+            Text("Today’s totals are unavailable", color = Color(0xFF5D472E), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 3.dp))
+        }
+    }
+}
 
 @Composable private fun ScanHero(onScan: () -> Unit) {
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(Color(0xFF153B8D), Color(0xFF315EEB), Color(0xFF6676FF)))).clickable(onClick = onScan).padding(22.dp)) {
@@ -198,19 +231,37 @@ private fun ScannerState.statsValue(value: Int): String = if (statsAvailable) va
         if (granted) CameraPreview(onCode) else Column(Modifier.align(Alignment.Center).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(Icons.Default.CameraAlt, null, tint = cyan, modifier = Modifier.size(48.dp)); Text("Camera access is needed to scan tickets.", color = Color.White, modifier = Modifier.padding(16.dp)); Button(onClick = { permission.launch(Manifest.permission.CAMERA) }, colors = ButtonDefaults.buttonColors(containerColor = blue)) { Text("Allow camera") }
         }
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Black.copy(.48f), Color.Transparent, Color.Black.copy(.58f)))) )
         IconButton(onClick = onBack, modifier = Modifier.padding(start = 18.dp, top = 18.dp).size(46.dp).background(Color.Black.copy(.42f), CircleShape)) { Icon(Icons.Default.Close, "Back", tint = Color.White) }
         Column(Modifier.align(Alignment.TopCenter).padding(top = 30.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("LITTX", color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 2.sp, fontSize = 18.sp); Text(if (loading) "VALIDATING" else "READY TO SCAN", color = cyan, fontSize = 9.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 3.dp)) }
-        Column(Modifier.align(Alignment.Center).padding(top = 355.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("Position the ticket QR inside the frame", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp); Text("Scanning automatically", color = Color.White.copy(.65f), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
-        Box(Modifier.align(Alignment.Center).size(278.dp).scale(.985f + pulse * .015f).border(2.dp, cyan.copy(if (loading) 1f else .55f + pulse * .35f), RoundedCornerShape(30.dp))) {
+        Box(Modifier.align(Alignment.Center).size(286.dp).scale(.985f + pulse * .015f)) {
             val scanLine by rememberInfiniteTransition(label = "scan line").animateFloat(0f, 1f, infiniteRepeatable(tween(1900), RepeatMode.Reverse), label = "scan line position")
-            Box(Modifier.align(Alignment.TopStart).offset(x = 0.dp, y = (scanLine * 270).dp).fillMaxWidth().height(2.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, cyan, Color.White, cyan, Color.Transparent))))
-            listOf(Alignment.TopStart, Alignment.TopEnd, Alignment.BottomStart, Alignment.BottomEnd).forEach { corner ->
-                Box(Modifier.align(corner).size(28.dp).border(3.dp, cyan, RoundedCornerShape(8.dp)))
+            Canvas(Modifier.matchParentSize()) {
+                val corner = 42.dp.toPx()
+                val stroke = 3.dp.toPx()
+                val width = size.width
+                val height = size.height
+                val tone = if (loading) Color.White else cyan
+                drawLine(tone, androidx.compose.ui.geometry.Offset(0f, corner), androidx.compose.ui.geometry.Offset(0f, 0f), stroke, cap = StrokeCap.Round)
+                drawLine(tone, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(corner, 0f), stroke, cap = StrokeCap.Round)
+                drawLine(tone, androidx.compose.ui.geometry.Offset(width - corner, 0f), androidx.compose.ui.geometry.Offset(width, 0f), stroke, cap = StrokeCap.Round)
+                drawLine(tone, androidx.compose.ui.geometry.Offset(width, 0f), androidx.compose.ui.geometry.Offset(width, corner), stroke, cap = StrokeCap.Round)
+                drawLine(tone, androidx.compose.ui.geometry.Offset(0f, height - corner), androidx.compose.ui.geometry.Offset(0f, height), stroke, cap = StrokeCap.Round)
+                drawLine(tone, androidx.compose.ui.geometry.Offset(0f, height), androidx.compose.ui.geometry.Offset(corner, height), stroke, cap = StrokeCap.Round)
+                drawLine(tone, androidx.compose.ui.geometry.Offset(width - corner, height), androidx.compose.ui.geometry.Offset(width, height), stroke, cap = StrokeCap.Round)
+                drawLine(tone, androidx.compose.ui.geometry.Offset(width, height - corner), androidx.compose.ui.geometry.Offset(width, height), stroke, cap = StrokeCap.Round)
             }
+            Box(Modifier.align(Alignment.TopStart).offset(x = 0.dp, y = (scanLine * 282).dp).fillMaxWidth().height(2.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, cyan.copy(.5f), Color.White, cyan.copy(.5f), Color.Transparent))))
+        }
+        Column(Modifier.align(Alignment.Center).padding(top = 192.dp).clip(RoundedCornerShape(18.dp)).background(Color.Black.copy(.42f)).border(1.dp, Color.White.copy(.12f), RoundedCornerShape(18.dp)).padding(horizontal = 17.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("POSITION QR CODE", color = Color.White, fontWeight = FontWeight.Black, fontSize = 9.sp, letterSpacing = 1.4.sp)
+            Text("Align the ticket inside the frame", color = Color.White.copy(.72f), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (loading) Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), color = cyan, strokeWidth = 2.dp); Text("Validating ticket…", color = Color.White, modifier = Modifier.padding(start = 10.dp)) }
-            OutlinedButton(onClick = onManual, modifier = Modifier.fillMaxWidth().padding(top = 15.dp).height(54.dp), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(.38f))) { Icon(Icons.Default.Keyboard, null); Spacer(Modifier.width(9.dp)); Text("Enter code manually", fontWeight = FontWeight.SemiBold) }
+            Row(Modifier.fillMaxWidth().padding(top = 15.dp).height(56.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(.11f)).border(1.dp, Color.White.copy(.28f), RoundedCornerShape(18.dp)).clickable(onClick = onManual).padding(horizontal = 17.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Keyboard, null, tint = Color.White); Text("Enter code manually", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 10.dp).weight(1f)); Icon(Icons.Default.ArrowForward, null, tint = Color.White.copy(.76f), modifier = Modifier.size(18.dp))
+            }
         }
     }
 }
