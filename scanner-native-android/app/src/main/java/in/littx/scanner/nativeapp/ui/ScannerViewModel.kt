@@ -25,6 +25,9 @@ data class ScannerState(
     val scannerName: String = "Gate Staff",
     val accepted: Int = 0,
     val failed: Int = 0,
+    val statsLoading: Boolean = false,
+    val statsAvailable: Boolean = false,
+    val statsError: Boolean = false,
     val history: List<ScanEntry> = emptyList(),
     val latest: ScanEntry? = null,
     val update: ScannerUpdate? = null,
@@ -116,8 +119,13 @@ class ScannerViewModel(context: Context) : ViewModel() {
     }
 
     fun refreshStats() = viewModelScope.launch {
-        runCatching { repository.stats() }.getOrNull()?.takeIf { it.success }?.let { stats ->
-            state = state.copy(accepted = stats.accepted, failed = stats.failed)
+        if (state.statsLoading) return@launch
+        state = state.copy(statsLoading = true, statsError = false)
+        runCatching { repository.stats() }.onSuccess { stats ->
+            if (stats.success) state = state.copy(accepted = stats.accepted, failed = stats.failed, statsLoading = false, statsAvailable = true, statsError = false)
+            else state = state.copy(statsLoading = false, statsError = true)
+        }.onFailure {
+            state = state.copy(statsLoading = false, statsError = true)
         }
     }
     private fun readableError(error: Exception, fallback: String): String {
