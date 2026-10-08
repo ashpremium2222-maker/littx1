@@ -39,6 +39,17 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
     return `scrypt:${salt}:${digest}`;
 }
 
+function partnerCompanyId(name) {
+    return String(name || '')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 64)
+        .replace(/-+$/g, '');
+}
+
 function verifyPassword(password, passwordHash) {
     if (!passwordHash || !passwordHash.startsWith('scrypt:')) return false;
     const [, salt, expected] = passwordHash.split(':');
@@ -1554,9 +1565,11 @@ app.get('/api/admin/partners', requirePartnerAdmin, async (_req, res) => {
 });
 
 app.post('/api/admin/partners', requirePartnerAdmin, async (req, res) => {
-    const { userId, displayName, password, companyId = 'littlane', sellerSlot } = req.body || {};
+    const { userId, displayName, password, sellerSlot } = req.body || {};
     const normalizedId = String(userId || '').trim().toLowerCase();
-    if (!normalizedId || !displayName || !password || password.length < 8 || !PARTNER_LOGIN_SLOTS.includes(sellerSlot)) {
+    const normalizedName = String(displayName || '').trim();
+    const companyId = partnerCompanyId(normalizedName);
+    if (!normalizedId || !normalizedName || !companyId || !password || password.length < 8 || !PARTNER_LOGIN_SLOTS.includes(sellerSlot)) {
         return res.status(400).json({ success: false, message: 'Provide a unique identifier, name, 8+ character password, and available partner slot.' });
     }
     try {
@@ -1569,6 +1582,7 @@ app.post('/api/admin/partners', requirePartnerAdmin, async (req, res) => {
         if (slotOwner && slotOwner.active !== false && !slotOwner.blocked) {
             return res.status(409).json({ success: false, message: 'That partner login slot is assigned to an active partner.' });
         }
+        await db.ensureCompany(companyId, normalizedName);
         if (slotOwner) {
             // An inactive partner must not permanently consume a scarce login slot.
             await db.releaseSellerSlot(slotOwner.userId);
@@ -1576,7 +1590,7 @@ app.post('/api/admin/partners', requirePartnerAdmin, async (req, res) => {
         }
         const created = await db.createUser({
             userId: normalizedId,
-            displayName: String(displayName).trim(),
+            displayName: normalizedName,
             companyId,
             role: 'seller',
             sellerSlot,

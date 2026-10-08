@@ -723,6 +723,38 @@ async function getCompanyById(companyId) {
     return company;
 }
 
+async function ensureCompany(companyId, name) {
+    const now = new Date().toISOString();
+    const defaults = {
+        companyId,
+        name,
+        status: 'ACTIVE',
+        commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
+        razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
+        manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
+        features: {
+            onlinePayments: { enabled: false, lockedByMaster: false },
+            manualPayments: { enabled: true, lockedByMaster: false },
+            prPortal: { enabled: true, lockedByMaster: false },
+            prSales: { enabled: true, lockedByMaster: false },
+            ticketTransfers: { enabled: false, lockedByMaster: false },
+            refunds: { enabled: false, lockedByMaster: false },
+            couponCodes: { enabled: true, lockedByMaster: false },
+            qrCheckIn: { enabled: true, lockedByMaster: false },
+            offlineScan: { enabled: false, lockedByMaster: false },
+            allowReEntry: { enabled: false, lockedByMaster: false }
+        },
+        prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 },
+        createdAt: now,
+        updatedAt: now
+    };
+    return await Company.findOneAndUpdate(
+        { companyId },
+        { $setOnInsert: defaults },
+        { upsert: true, returnDocument: 'after', lean: true }
+    );
+}
+
 async function updateCompanyConfig(companyId, updates) {
     return await Company.findOneAndUpdate(
         { companyId },
@@ -1270,6 +1302,25 @@ module.exports = {
             return mockDb.companies.find(c => c.companyId === companyId) || null;
         }
         return await getCompanyById(companyId);
+    },
+    ensureCompany: async (companyId, name) => {
+        if (useMock()) {
+            let company = mockDb.companies.find(item => item.companyId === companyId);
+            if (!company) {
+                const now = new Date().toISOString();
+                company = {
+                    companyId, name, status: 'ACTIVE',
+                    commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
+                    razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
+                    manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
+                    features: { onlinePayments: { enabled: false, lockedByMaster: false }, manualPayments: { enabled: true, lockedByMaster: false }, prPortal: { enabled: true, lockedByMaster: false }, prSales: { enabled: true, lockedByMaster: false }, ticketTransfers: { enabled: false, lockedByMaster: false }, refunds: { enabled: false, lockedByMaster: false }, couponCodes: { enabled: true, lockedByMaster: false }, qrCheckIn: { enabled: true, lockedByMaster: false }, offlineScan: { enabled: false, lockedByMaster: false }, allowReEntry: { enabled: false, lockedByMaster: false } },
+                    prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 }, createdAt: now, updatedAt: now
+                };
+                mockDb.companies.push(company);
+            }
+            return company;
+        }
+        return await ensureCompany(companyId, name);
     },
     updateCompanyConfig: async (companyId, updates) => {
         if (useMock()) {
