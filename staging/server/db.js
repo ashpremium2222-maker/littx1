@@ -727,7 +727,6 @@ async function ensureCompany(companyId, name) {
     const now = new Date().toISOString();
     const defaults = {
         companyId,
-        name,
         status: 'ACTIVE',
         commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
         razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
@@ -745,12 +744,11 @@ async function ensureCompany(companyId, name) {
             allowReEntry: { enabled: false, lockedByMaster: false }
         },
         prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 },
-        createdAt: now,
-        updatedAt: now
+        createdAt: now
     };
     return await Company.findOneAndUpdate(
         { companyId },
-        { $setOnInsert: defaults },
+        { $set: { name, updatedAt: now }, $setOnInsert: defaults },
         { upsert: true, returnDocument: 'after', lean: true }
     );
 }
@@ -1317,6 +1315,9 @@ module.exports = {
                     prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 }, createdAt: now, updatedAt: now
                 };
                 mockDb.companies.push(company);
+            } else {
+                company.name = name;
+                company.updatedAt = new Date().toISOString();
             }
             return company;
         }

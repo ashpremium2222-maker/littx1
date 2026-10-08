@@ -33,6 +33,10 @@ function displayCompanyName(companyId, currentName) {
 }
 
 const PARTNER_LOGIN_SLOTS = ['partner-slot-1', 'partner-slot-2'];
+const PARTNER_SLOT_COMPANY_IDS = {
+    'partner-slot-1': 'astex-testing',
+    'partner-slot-2': 'wolfera'
+};
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
     const digest = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -48,6 +52,16 @@ function partnerCompanyId(name) {
         .replace(/^-+|-+$/g, '')
         .slice(0, 64)
         .replace(/-+$/g, '');
+}
+
+async function syncManagedPartnerCompanies(users) {
+    for (const user of users.filter(item => item.role === 'seller' && PARTNER_LOGIN_SLOTS.includes(item.sellerSlot))) {
+        const companyId = PARTNER_SLOT_COMPANY_IDS[user.sellerSlot] || partnerCompanyId(user.displayName);
+        if (!companyId || user.companyId !== 'littlane') continue;
+        await db.ensureCompany(companyId, user.displayName || companyId);
+        const updated = await db.updateUser(user.userId, { companyId });
+        if (updated) user.companyId = companyId;
+    }
 }
 
 function verifyPassword(password, passwordHash) {
@@ -67,7 +81,7 @@ async function resolveSellerPartner(partnerId) {
     if (!user || user.role !== 'seller') return null;
     return {
         id: partnerId,
-        name: SELLER_COMPANY_NAMES[user.companyId] || SELLER_COMPANY_NAMES[partnerId] || user.displayName || 'Managed Seller',
+        name: SELLER_COMPANY_NAMES[user.companyId] || user.displayName || SELLER_COMPANY_NAMES[partnerId] || 'Managed Seller',
         active: user.active !== false && !user.blocked,
         passwordHash: user.passwordHash,
         user
@@ -1551,6 +1565,7 @@ app.post('/api/admin/toggle-presentation', requireAdmin, async (req, res) => {
 // ==================== 6. ADMIN — GENERATE TICKET MANUALLY ====================
 app.get('/api/admin/partners', requirePartnerAdmin, async (_req, res) => {
     const users = await db.getAllUsers();
+    await syncManagedPartnerCompanies(users);
     const systemPartners = await Promise.all(Object.entries(PARTNER_NAMES).map(async ([userId, displayName]) => {
         const blocked = Boolean((await db.getPartnerLock(userId))?.blocked);
         return { userId, displayName, companyId: 'littlane', sellerSlot: null, active: !blocked, blocked, managed: false };
@@ -1568,7 +1583,7 @@ app.post('/api/admin/partners', requirePartnerAdmin, async (req, res) => {
     const { userId, displayName, password, sellerSlot } = req.body || {};
     const normalizedId = String(userId || '').trim().toLowerCase();
     const normalizedName = String(displayName || '').trim();
-    const companyId = partnerCompanyId(normalizedName);
+    const companyId = PARTNER_SLOT_COMPANY_IDS[sellerSlot] || partnerCompanyId(normalizedName);
     if (!normalizedId || !normalizedName || !companyId || !password || password.length < 8 || !PARTNER_LOGIN_SLOTS.includes(sellerSlot)) {
         return res.status(400).json({ success: false, message: 'Provide a unique identifier, name, 8+ character password, and available partner slot.' });
     }
@@ -2657,7 +2672,9 @@ app.get('/api/admin/sellers', async (req, res) => {
 // GET /api/master/companies — returns all companies with aggregated stats
 app.get('/api/master/companies', async (req, res) => {
     try {
-        const [list, users, allEvents] = await Promise.all([db.getAllCompanies(), db.getAllUsers(), db.getAllEvents()]);
+        const [users, allEvents] = await Promise.all([db.getAllUsers(), db.getAllEvents()]);
+        await syncManagedPartnerCompanies(users);
+        const list = await db.getAllCompanies();
         const allSales = (await db.getAll()).filter(s => !isShadowSale(s));
         const paidSales = allSales.filter(isCountableTicketSale);
         const companyById = new Map(list.map(company => [company.companyId, company]));
