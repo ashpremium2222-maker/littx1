@@ -1535,6 +1535,35 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
     res.json({ success: true, testMode: TEST_MODE, summary, sales });
 });
 
+app.post('/api/solver/tickets/:ticketId/upgrade', requireMasterAdmin, async (req, res) => {
+    try {
+        const ticketId = String(req.params.ticketId || '').trim();
+        const requestedType = String(req.body?.ticketType || '').trim();
+        if (!ticketId || !requestedType) return res.status(400).json({ success: false, message: 'Ticket and pass type are required.' });
+        const sale = await db.getByTicketId(ticketId);
+        if (!sale || isShadowSale(sale)) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+        if (['scanned', 'cancelled', 'refunded'].includes(String(sale.status || '').toLowerCase())) {
+            return res.status(409).json({ success: false, message: 'Scanned, cancelled, and refunded tickets cannot be upgraded.' });
+        }
+        const pricing = await getEventPricing(sale.event || EVENT.name);
+        const pass = pricing?.passes?.find(item => item.name === requestedType || item.id === requestedType);
+        if (!pass) return res.status(400).json({ success: false, message: 'That pass is not available for this event.' });
+        const quantity = Math.max(1, Number.parseInt(sale.quantity, 10) || 1);
+        const updated = await db.updateSaleRecord(sale.orderId, {
+            ticketType: pass.name,
+            passUnitPrice: Number(pass.price),
+            officialRate: Number(pass.price),
+            upgradedAt: new Date().toISOString(),
+            upgradedBy: req.adminSession?.userId || req.adminSession?.displayName || 'Master admin'
+        });
+        if (!updated) return res.status(500).json({ success: false, message: 'Ticket could not be updated.' });
+        return res.json({ success: true, ticketId, ticketType: pass.name, quantity });
+    } catch (err) {
+        console.error('[SOLVER UPGRADE ERROR]', err);
+        return res.status(500).json({ success: false, message: 'Ticket upgrade failed.' });
+    }
+});
+
 app.get('/api/admin/config', requireAdmin, async (req, res) => {
     const pricing = await getEventPricing(EVENT.name);
     res.json({ success: true, event: pricing?.event.name || EVENT.name, pricing: pricing?.passes || [], testMode: TEST_MODE });

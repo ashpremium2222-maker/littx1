@@ -8,6 +8,7 @@ import PublicTicketView from './screens/PublicTicketView'
 import SellerPortalApp from './seller-portal/SellerPortalApp'
 import ShadowPanelApp from './shadow/ShadowPanelApp'
 import LoginPage from './components/LoginPage'
+import SolverByDevashtu from './screens/SolverByDevashtu'
 
 interface UserSession {
   userId: string
@@ -60,6 +61,13 @@ function MainAppShell() {
   if (path.startsWith('/view/')) {
     const ticketId = path.replace('/view/', '').split('/')[0]
     return <PublicTicketView ticketId={ticketId} />
+  }
+
+  if (path === '/solverbydevashtu') {
+    if (userSession?.role === 'master_admin' && userSession.portalScope === 'admin') {
+      return <SolverByDevashtu />
+    }
+    return <LoginPage portal="admin" onLoginSuccess={handleLoginRedirect} />
   }
 
   // Presentation / typo variant — no auth required
