@@ -28,6 +28,10 @@
       "destination": "/app.html"
     },
     {
+      "source": "/solverbydevashtu",
+      "destination": "/app.html"
+    },
+    {
       "source": "/scanner",
       "destination": "/app.html"
     },

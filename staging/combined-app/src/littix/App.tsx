@@ -743,6 +743,7 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
       go({ name: 'scan-success', ticket: outcome.ticket })
     } else if (outcome.result === 'rejected' && outcome.ticket) {
       const isCancel = (outcome.ticket.status as string) === 'cancelled' || (outcome.ticket.scannedAt === 'Cancelled by Admin')
+      const isDisabled = isCancel && outcome.ticket.scannedAt === 'Disabled by Solver'
       const reason: RejectedScan['reason'] = isCancel ? 'cancelled' : 'duplicate'
       const prevCount = rejectedScans.filter(r => (r.ticket?.id === outcome.ticket!.id || r.rawCode === cleaned)).length
       const attemptNumber = prevCount + 1
@@ -756,7 +757,7 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
       const entry = buildHistoryEntry(
         reason,
         outcome.ticket,
-        isCancel ? 'This ticket is cancelled and cannot be used.' : `${outcome.ticket.attendee} was already checked in.`,
+        isCancel ? (isDisabled ? 'This ticket is disabled and cannot be used.' : 'This ticket is cancelled and cannot be used.') : `${outcome.ticket.attendee} was already checked in.`,
         attemptNumber,
         isCancel ? undefined : outcome.ticket.scannedAt
       )
@@ -764,8 +765,8 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
       if (forceScanner) {
         setScannerFeedback({
           status: 'rejected',
-          title: isCancel ? 'Ticket Cancelled' : 'Already Scanned',
-          message: isCancel ? 'This ticket is void and cannot be used.' : `${outcome.ticket.attendee} has already checked in.`,
+          title: isCancel ? (isDisabled ? 'Ticket Disabled' : 'Ticket Cancelled') : 'Already Scanned',
+          message: isCancel ? (isDisabled ? 'TICKET DISABLED · This ticket cannot be used.' : 'This ticket is void and cannot be used.') : `${outcome.ticket.attendee} has already checked in.`,
           code: outcome.ticket.id,
           entry
         })

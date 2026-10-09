@@ -12,9 +12,11 @@ interface UserSession {
 interface LoginPageProps {
   portal: 'admin' | 'dashboard'
   onLoginSuccess: (session: UserSession) => void
+  brandTitle?: string
+  accessHelpText?: string
 }
 
-export default function LoginPage({ portal, onLoginSuccess }: LoginPageProps) {
+export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHelpText }: LoginPageProps) {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -57,8 +59,8 @@ export default function LoginPage({ portal, onLoginSuccess }: LoginPageProps) {
       <div className="card" style={{ width: '100%', maxWidth: '460px', padding: '36px', background: 'linear-gradient(135deg, #0F0D1A 0%, #0A0912 100%)', border: '1px solid rgba(216,255,63,0.25)', boxShadow: '0 20px 60px rgba(0,0,0,0.95)' }}>
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <img src="/logo.png" alt="LITTX" style={{ height: '36px', width: 'auto', margin: '0 auto 12px', display: 'block' }} />
-          <h2 style={{ margin: '0 0 6px', fontSize: '1.5rem', fontWeight: 800, color: 'var(--ink)' }}>LITTX {portalTitle.toUpperCase()}</h2>
-          <div style={{ fontSize: '12px', color: 'var(--ink-faint)' }}>Enter your access key to continue</div>
+          <h2 style={{ margin: '0 0 6px', fontSize: '1.5rem', fontWeight: 800, color: 'var(--ink)' }}>{brandTitle || `LITTX ${portalTitle.toUpperCase()}`}</h2>
+          <div style={{ fontSize: '12px', color: 'var(--ink-faint)' }}>{accessHelpText || 'Enter your access key to continue'}</div>
         </div>
 
         {error && <div style={{ background: 'rgba(255,107,107,0.15)', border: '1px solid rgba(255,107,107,0.3)', color: 'var(--red)', padding: '12px', borderRadius: '10px', fontSize: '12px', fontWeight: 600, marginBottom: '20px', textAlign: 'center' }}>⚠️ {error}</div>}
@@ -66,7 +68,7 @@ export default function LoginPage({ portal, onLoginSuccess }: LoginPageProps) {
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="field">
             <label style={{ color: 'var(--volt)', fontWeight: 700 }}>ACCESS KEY</label>
-            <input type="password" placeholder="Enter access key" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus autoComplete="current-password" />
+          <input type="password" name="solverbydevashtu-access-key" placeholder="Enter access key" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus autoComplete="off" />
           </div>
           <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', padding: '14px', fontSize: '14px', marginTop: '8px' }}>
             {loading ? 'Authenticating…' : 'Continue'}

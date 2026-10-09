@@ -18,6 +18,7 @@ export default function ScanRejected({ dark, ticket, notFoundId, onBack, onScanN
   const navBg = dark ? 'bg-[#0D0D0D] border-[#1E1E1E]' : 'bg-[#F9F9FB] border-[#EBEBEB]'
 
   const isNotFound = !ticket
+  const isDisabled = Boolean(ticket && ticket.status === 'cancelled' && ticket.scannedAt === 'Disabled by Solver')
 
   return (
     <div className={`${bg} flex flex-col w-full min-h-screen`} style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -81,7 +82,7 @@ export default function ScanRejected({ dark, ticket, notFoundId, onBack, onScanN
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.4 }}
         >
-          {isNotFound ? 'Ticket Not Found' : (ticket!.status === 'cancelled' ? 'Ticket Cancelled' : 'Already Scanned')}
+          {isNotFound ? 'Ticket Not Found' : (isDisabled ? 'Ticket Disabled' : ticket!.status === 'cancelled' ? 'Ticket Cancelled' : 'Already Scanned')}
         </motion.h1>
         <motion.span
           className="bg-[#EF4444]/15 text-[#EF4444] text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider"
@@ -89,7 +90,7 @@ export default function ScanRejected({ dark, ticket, notFoundId, onBack, onScanN
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.4, duration: 0.35 }}
         >
-          {isNotFound ? 'Invalid Ticket' : (ticket!.status === 'cancelled' ? 'Cancelled' : 'Duplicate Entry')}
+          {isNotFound ? 'Invalid Ticket' : (isDisabled ? 'Disabled' : ticket!.status === 'cancelled' ? 'Cancelled' : 'Duplicate Entry')}
         </motion.span>
       </div>
 
@@ -153,13 +154,13 @@ export default function ScanRejected({ dark, ticket, notFoundId, onBack, onScanN
             <>
               <p className={`text-xs ${subText}`}>
                 {ticket!.status === 'cancelled' ? (
-                  <span>Status set by <span className={`font-semibold ${text}`}>Admin</span></span>
+                  <span>Status set by <span className={`font-semibold ${text}`}>{isDisabled ? 'LITTX Solver' : 'Admin'}</span></span>
                 ) : (
                   <span>First scanned by <span className={`font-semibold ${text}`}>{ticket!.scannedBy}</span> at <span className={`font-semibold ${text}`}>{ticket!.scannedAt}</span></span>
                 )}
               </p>
               <p className={`text-xs mt-1 ${subText}`}>
-                {ticket!.status === 'cancelled' ? 'This ticket has been cancelled by an administrator and is void.' : 'This ticket has already been used for entry.'}
+                {isDisabled ? 'This ticket has been disabled by a LITTX administrator.' : ticket!.status === 'cancelled' ? 'This ticket has been cancelled by an administrator and is void.' : 'This ticket has already been used for entry.'}
               </p>
             </>
           )}
@@ -168,7 +169,7 @@ export default function ScanRejected({ dark, ticket, notFoundId, onBack, onScanN
         <div className="bg-[#EF4444]/[0.08] border-t px-5 py-3 flex items-center justify-between" style={{ borderColor: dark ? '#2A2A2A' : '#EBEBEB' }}>
           <span className={`text-xs font-medium ${subText}`}>Status</span>
           <span className="bg-[#EF4444] text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-            {isNotFound ? 'Invalid' : ticket!.status === 'cancelled' ? 'Cancelled' : 'Rejected'}
+            {isNotFound ? 'Invalid' : isDisabled ? 'Disabled' : ticket!.status === 'cancelled' ? 'Cancelled' : 'Rejected'}
           </span>
         </div>
       </motion.div>

@@ -193,6 +193,11 @@ const SaleSchema = new mongoose.Schema({
     disabledAt: { type: String },
     disabledBy: { type: String },
     disabledPreviousStatus: { type: String },
+    reactivatedAt: { type: String },
+    solverOriginalTier: { type: String },
+    solverUpgradedAt: { type: String },
+    solverUpgradedBy: { type: String },
+    solverUpgradeDifference: { type: Number },
     source: { type: String },
     isShadow: { type: Boolean, default: false },
     slots: [{
@@ -1130,6 +1135,105 @@ module.exports = {
         }
         return await getAll();
     },
+    solverListSales: async ({ filter = {}, search = '', skip = 0, limit = 50 }) => {
+        const solverSource = sale => {
+            const source = String(sale.source || '').toLowerCase();
+            if (sale.isShadow || source.includes('shadow')) return 'Shadow';
+            if (source.includes('pr') || sale.prUserId || sale.prName) return 'PR';
+            if (source.includes('offline')) return 'Offline';
+            if (source.includes('manual') || String(sale.paymentMethod || '').toLowerCase().includes('manual')) return 'Manual';
+            if (sale.sellerId || source.includes('seller')) return 'Seller';
+            return 'Admin';
+        };
+        if (useMock()) {
+            const rows = mockDb.sales.filter(sale => {
+                if (!sale.ticketId) return false;
+                const disabled = Boolean(sale.disabledAt);
+                const used = sale.status === 'scanned' || (sale.scannedAt && !sale.reactivatedAt);
+                if (filter.disabledOnly && !disabled) return false;
+                if (filter.cancelledOnly && (sale.status !== 'cancelled' || disabled)) return false;
+                if (filter.status?.length && !filter.status.includes(sale.status)) return false;
+                if (filter.statusState === 'active' && (disabled || sale.status === 'cancelled' || used)) return false;
+                if (filter.statusState === 'used' && !used) return false;
+                if (filter.event && sale.event !== filter.event) return false;
+                if (filter.ticketType && (sale.ticketType || sale.gender) !== filter.ticketType) return false;
+                if (filter.source && solverSource(sale).toLowerCase() !== String(filter.source).toLowerCase()) return false;
+                const createdAt = String(sale.createdAt || sale.generatedAt || '');
+                if (filter.from && createdAt < filter.from) return false;
+                if (filter.to && createdAt > `${filter.to}T23:59:59.999Z`) return false;
+                if (search && ![sale.ticketId, sale.name, sale.phone, sale.email, sale.generatedBy, sale.sellerId, sale.prName].some(value => String(value || '').toLowerCase().includes(search.toLowerCase()))) return false;
+                return true;
+            }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+            return { rows: rows.slice(skip, skip + limit), total: rows.length };
+        }
+        const query = { ticketId: { $exists: true, $nin: ['', null] } };
+        if (filter.disabledOnly) query.disabledAt = { $nin: [null, ''] };
+        if (filter.cancelledOnly) { query.status = 'cancelled'; query.disabledAt = { $in: [null, ''] }; }
+        else if (filter.status?.length) query.status = { $in: filter.status };
+        if (filter.statusState === 'active') {
+            query.disabledAt = { $in: [null, ''] };
+            query.status = { $nin: ['cancelled', 'scanned'] };
+            query.$and = [...(query.$and || []), { $or: [{ scannedAt: { $in: [null, ''] } }, { reactivatedAt: { $nin: [null, ''] } }] }];
+        }
+        if (filter.statusState === 'used') query.$and = [...(query.$and || []), { $or: [{ status: 'scanned' }, { scannedAt: { $nin: [null, ''] }, reactivatedAt: { $in: [null, ''] } }] }];
+        if (filter.event) query.event = filter.event;
+        if (filter.ticketType) query.$and = [...(query.$and || []), { $or: [{ ticketType: filter.ticketType }, { ticketType: { $exists: false }, gender: filter.ticketType }] }];
+        if (filter.source) {
+            const expected = filter.source;
+            const has = field => ({ [field]: { $exists: true, $nin: ['', null] } });
+            const absent = field => ({ $or: [{ [field]: { $exists: false } }, { [field]: null }, { [field]: '' }] });
+            const sourceRegex = value => ({ source: { $regex: value, $options: 'i' } });
+            let sourceCondition;
+            if (expected === 'Shadow') sourceCondition = { $or: [{ isShadow: true }, sourceRegex('shadow')] };
+            else if (expected === 'PR') sourceCondition = { $or: [sourceRegex('pr'), has('prUserId'), has('prName')] };
+            else if (expected === 'Offline') sourceCondition = sourceRegex('offline');
+            else if (expected === 'Manual') sourceCondition = { $or: [sourceRegex('manual'), { paymentMethod: { $regex: 'manual', $options: 'i' } }] };
+            else if (expected === 'Seller') sourceCondition = { $and: [{ $or: [sourceRegex('seller'), has('sellerId')] }, { isShadow: { $ne: true } }, absent('prUserId'), absent('prName') ] };
+            else sourceCondition = { $and: [{ isShadow: { $ne: true } }, absent('sellerId'), absent('prUserId'), absent('prName'), { source: { $nin: ['shadow', 'shadow_private'] } }, { paymentMethod: { $not: /manual/i } }] };
+            query.$and = [...(query.$and || []), sourceCondition];
+        }
+        if (filter.from || filter.to) query.createdAt = { ...(filter.from ? { $gte: filter.from } : {}), ...(filter.to ? { $lte: `${filter.to}T23:59:59.999Z` } : {}) };
+        if (search) {
+            const safe = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            query.$and = [...(query.$and || []), { $or: ['ticketId', 'name', 'phone', 'email', 'generatedBy', 'sellerId', 'prName'].map(field => ({ [field]: { $regex: safe, $options: 'i' } })) }];
+        }
+        const [rows, total] = await Promise.all([Sale.find(query).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(), Sale.countDocuments(query)]);
+        return { rows, total };
+    },
+    solverCountSales: async () => {
+        if (useMock()) {
+            const rows = mockDb.sales.filter(sale => sale.ticketId);
+            return { total: rows.length, active: rows.filter(s => !s.disabledAt && s.status !== 'cancelled' && s.status !== 'scanned' && (!s.scannedAt || s.reactivatedAt)).length, used: rows.filter(s => s.status === 'scanned' || (s.scannedAt && !s.reactivatedAt)).length, disabled: rows.filter(s => Boolean(s.disabledAt)).length, cancelled: rows.filter(s => s.status === 'cancelled' && !s.disabledAt).length, upgraded: rows.filter(s => Boolean(s.solverUpgradedAt)).length };
+        }
+        const base = { ticketId: { $exists: true, $nin: ['', null] } };
+        const count = extra => Sale.countDocuments({ ...base, ...extra });
+        const [total, active, used, disabled, cancelled, upgraded] = await Promise.all([
+            count({}), count({ disabledAt: { $in: [null, ''] }, status: { $nin: ['cancelled', 'scanned'] }, $or: [{ scannedAt: { $in: [null, ''] } }, { reactivatedAt: { $nin: [null, ''] } }] }),
+            count({ $or: [{ status: 'scanned' }, { scannedAt: { $nin: [null, ''] }, reactivatedAt: { $in: [null, ''] } }] }),
+            count({ disabledAt: { $nin: [null, ''] } }), count({ status: 'cancelled', disabledAt: { $in: [null, ''] } }), count({ solverUpgradedAt: { $nin: [null, ''] } })
+        ]);
+        return { total, active, used, disabled, cancelled, upgraded };
+    },
+    solverUpdateSale: async (orderId, expectedStatus, updates) => {
+        if (useMock()) {
+            const sale = mockDb.sales.find(s => s.orderId === orderId && s.status === expectedStatus);
+            if (!sale) return null;
+            Object.assign(sale, updates, { updatedAt: new Date().toISOString() }); _saveMockSales(mockDb.sales); return sale;
+        }
+        const current = await Sale.findOne({ orderId }).lean();
+        if (!current || current.status !== expectedStatus) return null;
+        return Sale.findOneAndUpdate({ orderId, status: expectedStatus, updatedAt: current.updatedAt }, { $set: { ...updates, updatedAt: new Date().toISOString() } }, { returnDocument: 'after', lean: true });
+    },
+    getTicketHistory: async (ticketId) => {
+        if (useMock()) {
+            const scans = _mockScanLogs.filter(item => item.ticketId === ticketId).map(item => ({ kind: 'scan', ...item }));
+            const audits = mockDb.auditLogs.filter(item => String(item.fieldChanged || '').includes(ticketId)).map(item => ({ kind: 'audit', ...item }));
+            return [...scans, ...audits].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        }
+        const escaped = ticketId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const [scans, audits] = await Promise.all([ScanLog.find({ ticketId }).sort({ timestamp: 1 }).lean(), AuditLog.find({ fieldChanged: { $regex: escaped, $options: 'i' } }).sort({ timestamp: 1 }).lean()]);
+        return [...scans.map(item => ({ kind: 'scan', ...item })), ...audits.map(item => ({ kind: 'audit', ...item }))].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    },
     countScannedSales: async () => {
         if (useMock()) return mockDb.sales.filter(s => s.status === 'scanned' && !s.isShadow && s.source !== 'shadow' && s.source !== 'shadow_private').length;
         return await countScannedSales();
@@ -1447,6 +1551,7 @@ module.exports = {
             mockDb.sales[idx].status = 'scanned';
             mockDb.sales[idx].scannedBy = scannedBy;
             mockDb.sales[idx].scannedAt = scannedAtStr;
+            delete mockDb.sales[idx].reactivatedAt;
             mockDb.sales[idx].updatedAt = new Date().toISOString();
             return mockDb.sales[idx];
         }
@@ -1461,7 +1566,8 @@ module.exports = {
                     scannedBy,
                     scannedAt: scannedAtStr,
                     updatedAt: new Date().toISOString()
-                }
+                },
+                $unset: { reactivatedAt: 1 }
             },
             { returnDocument: 'after', lean: true }
         );

@@ -8,6 +8,7 @@ import PublicTicketView from './screens/PublicTicketView'
 import SellerPortalApp from './seller-portal/SellerPortalApp'
 import ShadowPanelApp from './shadow/ShadowPanelApp'
 import LoginPage from './components/LoginPage'
+import SolverByDevashtu from './admin-dash/pages/SolverByDevashtu'
 
 interface UserSession {
   userId: string
@@ -46,7 +47,7 @@ function MainAppShell() {
   const handleLoginRedirect = (session: UserSession) => {
     setUserSession(session)
     if (session.role === 'master_admin') {
-      navigate('/admin')
+      navigate(window.location.pathname === '/solverbydevashtu' ? '/solverbydevashtu' : '/admin')
     } else if (session.role === 'seller') {
       navigate('/seller')
     } else if (session.role === 'pr') {
@@ -60,6 +61,11 @@ function MainAppShell() {
   if (path.startsWith('/view/')) {
     const ticketId = path.replace('/view/', '').split('/')[0]
     return <PublicTicketView ticketId={ticketId} />
+  }
+
+  if (path === '/solverbydevashtu' || path === '/solverbydevashtu/') {
+    if (userSession?.role === 'master_admin' && userSession.portalScope === 'admin') return <SolverByDevashtu />
+    return <LoginPage portal="admin" onLoginSuccess={handleLoginRedirect} brandTitle="SOLVER BY DEVASHTU" accessHelpText="Sign in with your existing master admin access key. The generator reveal password is requested inside the panel." />
   }
 
   // Presentation / typo variant — no auth required

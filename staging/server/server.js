@@ -857,6 +857,80 @@ async function computeAmount(gender, quantity, eventName = EVENT.name) {
 
 // In-memory token store for unified auth sessions (populated by /api/auth/login)
 const platformAuthTokens = new Set();
+const solverRevealAttempts = new Map();
+
+function solverActor(req) {
+    return req.adminSession?.displayName || req.adminSession?.userId || 'Master Admin';
+}
+
+function solverRevealAllowed(req, res) {
+    const secret = process.env.SOLVER_REVEAL_PASSWORD;
+    if (!secret) return false;
+    const token = String(req.headers['x-solver-reveal-token'] || '');
+    const [issued, supplied] = token.split('.');
+    const issuedMs = Number(issued);
+    if (!Number.isFinite(issuedMs) || Date.now() - issuedMs > 10 * 60 * 1000 || issuedMs > Date.now() + 30000) return false;
+    const crypto = require('crypto');
+    const expected = crypto.createHmac('sha256', secret).update(`${req.adminSession?.userId || 'Legacy Admin'}:${issued}`).digest('hex');
+    return supplied && supplied.length === expected.length && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+}
+
+function solverTierFamily(name) {
+    const value = String(name || '').toLowerCase();
+    const group = value.match(/(?:group\s*(?:of\s*)?|of\s*)(5|10)/)?.[1] || '1';
+    if (!/(vip|premium)/.test(value) && !/(general|ga\b)/.test(value)) return null;
+    return { size: Number(group), level: /(vip|premium)/.test(value) ? 2 : 1 };
+}
+
+function solverStatus(sale) {
+    if (sale.disabledAt) return 'disabled';
+    if (sale.status === 'cancelled') return 'cancelled';
+    if (sale.status === 'scanned' || (sale.scannedAt && !sale.reactivatedAt)) return 'used';
+    return ['paid', 'ticket_generated', 'emailed', 'email_failed'].includes(sale.status) ? 'active' : String(sale.status || 'unknown');
+}
+
+function solverSource(sale) {
+    const raw = String(sale.source || '').toLowerCase();
+    if (sale.isShadow || raw.includes('shadow')) return 'Shadow';
+    if (raw.includes('pr') || sale.prUserId || sale.prName) return 'PR';
+    if (raw.includes('offline')) return 'Offline';
+    if (raw.includes('manual') || sale.paymentMethod?.toLowerCase?.().includes('manual')) return 'Manual';
+    if (sale.sellerId || raw.includes('seller')) return 'Seller';
+    return 'Admin';
+}
+
+async function getSolverEventPricing(eventName) {
+    const events = await db.getAllEvents();
+    const event = pickCanonicalEvent(events, eventName);
+    if (!event) return null;
+    const passes = [...(event.tiers || []), ...(event.ticketTypes || [])]
+        .filter(pass => pass?.name && Number.isFinite(Number(pass.price)))
+        .map(pass => ({ id: pass.id || pass.name, name: pass.name, price: Number(pass.price), gender: pass.gender || 'unisex' }))
+        .filter((pass, index, all) => all.findIndex(other => other.name === pass.name) === index);
+    return { event, passes };
+}
+
+function solverTicketPayload(sale, reveal) {
+    const quantity = Math.max(1, Number(sale.quantity) || 1);
+    const storedUnitPrice = Number(sale.passUnitPrice ?? sale.officialRate);
+    const unitPrice = Number.isFinite(storedUnitPrice) && storedUnitPrice >= 0
+        ? storedUnitPrice
+        : (Number(sale.amount ?? sale.customerTotal) || 0) / quantity;
+    return {
+        ticketId: sale.ticketId, event: sale.event || EVENT.name, attendee: sale.name || '—', phone: sale.phone || '', email: sale.email || '',
+        tier: ticketTypeForSale(sale), quantity, price: unitPrice,
+        amount: Number(sale.amount) || 0, createdAt: sale.createdAt || sale.generatedAt || sale.paidAt || null,
+        status: solverStatus(sale), generatedBy: reveal ? (sale.generatedBy || sale.prName || (sale.issuedByAdmin ? 'Admin' : 'Unknown')) : null,
+        sellerId: reveal ? (sale.sellerId || sale.prUserId || '') : null,
+        company: reveal ? (sale.companyId || 'Unknown') : null,
+        source: reveal ? solverSource(sale) : null, devicePortal: reveal ? (sale.deviceName || sale.portal || sale.paymentMethod || 'Unknown') : null,
+        scannedAt: sale.scannedAt || null, scannedBy: sale.scannedBy || null, disabledAt: sale.disabledAt || null,
+        originalTier: sale.solverOriginalTier || null, upgradedAt: sale.solverUpgradedAt || null, upgradedBy: sale.solverUpgradedBy || null,
+        solverCanReactivate: sale.status === 'scanned' || Boolean(sale.disabledAt),
+        solverCanDisable: !sale.disabledAt && ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(sale.status),
+        solverCanUpgrade: !sale.disabledAt && sale.status !== 'cancelled' && sale.status !== 'scanned' && !(sale.scannedAt && !sale.reactivatedAt),
+    };
+}
 
 async function requireAdmin(req, res, next) {
     const key = req.headers['x-admin-key'] || req.query.key;
@@ -1517,6 +1591,132 @@ app.post('/api/admin/ticket-approvals/:orderId/reject', requireMasterAdmin, asyn
 // source="shadow_private". Admin, dashboard, seller, master, and scanner stats
 // must never include either stream.
 const isShadowSale = (sale) => sale?.source === 'shadow' || sale?.source === 'shadow_private' || sale?.isShadow === true;
+
+app.get('/api/solver/meta', requireMasterAdmin, async (_req, res) => {
+    try {
+        const events = await db.getAllEvents();
+        res.json({ success: true, events: events.map(event => event.name).filter(Boolean), tiers: [...new Set(events.flatMap(event => [...(event.tiers || []), ...(event.ticketTypes || [])].map(tier => tier.name).filter(Boolean)))] });
+    } catch (_) { res.status(500).json({ success: false, message: 'Could not load ticket filters.' }); }
+});
+
+app.post('/api/solver/reveal-generator', requireMasterAdmin, (req, res) => {
+    const address = req.ip || req.socket?.remoteAddress || 'unknown';
+    const now = Date.now();
+    const recent = (solverRevealAttempts.get(address) || []).filter(time => now - time < 15 * 60 * 1000);
+    if (recent.length >= 5) return res.status(429).json({ success: false, message: 'Too many attempts. Try again later.' });
+    recent.push(now); solverRevealAttempts.set(address, recent);
+    const secret = process.env.SOLVER_REVEAL_PASSWORD;
+    if (!secret) return res.status(503).json({ success: false, message: 'Generator reveal is not configured on the server.' });
+    const supplied = String(req.body?.password || '');
+    const crypto = require('crypto');
+    const expected = crypto.createHash('sha256').update(secret).digest();
+    const actual = crypto.createHash('sha256').update(supplied).digest();
+    if (!crypto.timingSafeEqual(actual, expected)) return res.status(401).json({ success: false, message: 'Invalid password.' });
+    const issued = String(now);
+    const signature = crypto.createHmac('sha256', secret).update(`${req.adminSession?.userId || 'Legacy Admin'}:${issued}`).digest('hex');
+    return res.json({ success: true, revealToken: `${issued}.${signature}`, expiresIn: 600 });
+});
+
+app.get('/api/solver/tickets', requireMasterAdmin, async (req, res) => {
+    try {
+        const page = Math.max(1, Math.min(1000000, Number.parseInt(req.query.page, 10) || 1));
+        const limit = Math.max(1, Math.min(100, Number.parseInt(req.query.limit, 10) || 50));
+        const status = String(req.query.status || '').toLowerCase();
+        const statusMap = { disabled: ['cancelled'], cancelled: ['cancelled'] };
+        const filter = {
+            status: statusMap[status], statusState: ['active', 'used'].includes(status) ? status : '', event: String(req.query.event || ''), ticketType: String(req.query.tier || ''),
+            source: String(req.query.source || ''), from: String(req.query.from || ''), to: String(req.query.to || '')
+        };
+        if (status === 'disabled') filter.disabledOnly = true;
+        if (status === 'cancelled') filter.cancelledOnly = true;
+        for (const key of Object.keys(filter)) if (!filter[key] || (Array.isArray(filter[key]) && !filter[key].length)) delete filter[key];
+        const query = String(req.query.q || '').trim().slice(0, 120);
+        const reveal = solverRevealAllowed(req, res);
+        const [result, stats] = await Promise.all([db.solverListSales({ filter, search: query, skip: (page - 1) * limit, limit }), db.solverCountSales()]);
+        res.json({ success: true, tickets: result.rows.map(sale => solverTicketPayload(sale, reveal)), total: result.total, page, limit, pages: Math.ceil(result.total / limit), stats });
+    } catch (err) {
+        console.error('[solver tickets]', err.message);
+        res.status(500).json({ success: false, message: 'Could not load tickets.' });
+    }
+});
+
+app.get('/api/solver/tickets/:ticketId', requireMasterAdmin, async (req, res) => {
+    try {
+        const sale = await db.getByTicketId(req.params.ticketId);
+        if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+        const reveal = solverRevealAllowed(req, res);
+        let upgrades = [];
+        if (solverTicketPayload(sale, false).solverCanUpgrade) {
+            const pricing = await getSolverEventPricing(sale.event || EVENT.name);
+            const currentName = ticketTypeForSale(sale);
+            const current = pricing?.passes?.find(pass => pass.name === currentName || pass.id === currentName);
+            const family = solverTierFamily(currentName);
+            if (current && family) upgrades = (pricing?.passes || []).filter(pass => {
+                const next = solverTierFamily(pass.name);
+                return next && next.size === family.size && next.level > family.level;
+            }).map(pass => ({ tier: pass.name, difference: Math.max(0, Math.round((pass.price - current.price) * Math.max(1, Number(sale.quantity) || 1) * 100) / 100), currentPrice: current.price * Math.max(1, Number(sale.quantity) || 1), newPrice: pass.price * Math.max(1, Number(sale.quantity) || 1) }));
+        }
+        const history = await db.getTicketHistory(sale.ticketId);
+        res.json({ success: true, ticket: solverTicketPayload(sale, reveal), upgrades, history });
+    } catch (err) { console.error('[solver detail]', err.message); res.status(500).json({ success: false, message: 'Could not load ticket details.' }); }
+});
+
+app.post('/api/solver/tickets/:ticketId/disable', requireMasterAdmin, async (req, res) => {
+    const reason = String(req.body?.reason || '').trim().slice(0, 500);
+    if (!reason) return res.status(400).json({ success: false, message: 'A reason is required.' });
+    try {
+        const sale = await db.getByTicketId(req.params.ticketId);
+        if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+        if (sale.disabledAt || sale.status === 'cancelled') return res.status(409).json({ success: false, message: 'Ticket is already disabled or cancelled.' });
+        const now = new Date().toISOString();
+        const updated = await db.solverUpdateSale(sale.orderId, sale.status, { status: 'cancelled', disabledAt: now, disabledBy: solverActor(req), disabledPreviousStatus: sale.status });
+        if (!updated) return res.status(409).json({ success: false, message: 'Ticket changed. Refresh and try again.' });
+        await db.createAuditLog({ adminUser: solverActor(req), companyId: sale.companyId || 'littlane', category: 'TICKET_CONTROL', fieldChanged: `solver:${sale.ticketId}:status`, previousValue: sale.status, newValue: 'disabled', reason });
+        res.json({ success: true, message: 'Ticket disabled.' });
+    } catch (err) { console.error('[solver disable]', err.message); res.status(500).json({ success: false, message: 'Could not disable ticket.' }); }
+});
+
+app.post('/api/solver/tickets/:ticketId/reactivate', requireMasterAdmin, async (req, res) => {
+    try {
+        const sale = await db.getByTicketId(req.params.ticketId);
+        if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+        if (!sale.disabledAt && sale.status !== 'scanned' && !(sale.scannedAt && !sale.reactivatedAt)) return res.status(409).json({ success: false, message: 'Ticket is already active.' });
+        const restored = sale.disabledAt ? (['paid', 'ticket_generated', 'emailed', 'email_failed'].includes(sale.disabledPreviousStatus) ? sale.disabledPreviousStatus : 'ticket_generated') : 'ticket_generated';
+        const now = new Date().toISOString();
+        const updated = await db.solverUpdateSale(sale.orderId, sale.status, { status: restored, reactivatedAt: now, disabledAt: null, disabledBy: null, disabledPreviousStatus: null });
+        if (!updated) return res.status(409).json({ success: false, message: 'Ticket changed. Refresh and try again.' });
+        await db.createAuditLog({ adminUser: solverActor(req), companyId: sale.companyId || 'littlane', category: 'TICKET_CONTROL', fieldChanged: `solver:${sale.ticketId}:status`, previousValue: solverStatus(sale), newValue: 'active', reason: 'Reactivated by Solver.' });
+        res.json({ success: true, message: 'Ticket reactivated.' });
+    } catch (err) { console.error('[solver reactivate]', err.message); res.status(500).json({ success: false, message: 'Could not reactivate ticket.' }); }
+});
+
+app.post('/api/solver/tickets/:ticketId/upgrade', requireMasterAdmin, async (req, res) => {
+    try {
+        const sale = await db.getByTicketId(req.params.ticketId);
+        if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+        if (sale.status === 'scanned' || (sale.scannedAt && !sale.reactivatedAt)) return res.status(409).json({ success: false, message: 'This ticket has already been used. Reactivate it first if you want the upgraded ticket to be usable again.' });
+        if (sale.disabledAt || sale.status === 'cancelled') return res.status(409).json({ success: false, message: 'Reactivate this ticket before upgrading.' });
+        const pricing = await getSolverEventPricing(sale.event || EVENT.name);
+        const currentName = ticketTypeForSale(sale);
+        const targetName = String(req.body?.tier || '');
+        const current = pricing?.passes?.find(pass => pass.name === currentName || pass.id === currentName);
+        const target = pricing?.passes?.find(pass => pass.name === targetName || pass.id === targetName);
+        const currentFamily = solverTierFamily(currentName), targetFamily = solverTierFamily(target?.name);
+        if (!current || !target || !currentFamily || !targetFamily || targetFamily.level <= currentFamily.level || targetFamily.size !== currentFamily.size) return res.status(400).json({ success: false, message: 'Invalid upgrade for this ticket.' });
+        const quantity = Math.max(1, Number(sale.quantity) || 1);
+        const difference = Math.max(0, Math.round((target.price - current.price) * quantity * 100) / 100);
+        const now = new Date().toISOString();
+        const updated = await db.solverUpdateSale(sale.orderId, sale.status, { ticketType: target.name, gender: target.gender || sale.gender, passUnitPrice: target.price, officialRate: target.price, solverOriginalTier: sale.solverOriginalTier || currentName, solverUpgradedAt: now, solverUpgradedBy: solverActor(req), solverUpgradeDifference: difference });
+        if (!updated) return res.status(409).json({ success: false, message: 'Ticket changed. Refresh and try again.' });
+        await db.createAuditLog({ adminUser: solverActor(req), companyId: sale.companyId || 'littlane', category: 'TICKET_CONTROL', fieldChanged: `solver:${sale.ticketId}:tier`, previousValue: currentName, newValue: target.name, reason: `Upgrade difference calculated from server pricing: ${difference}.` });
+        res.json({ success: true, message: 'Ticket upgraded.', difference, tier: target.name });
+    } catch (err) { console.error('[solver upgrade]', err.message); res.status(500).json({ success: false, message: 'Could not upgrade ticket.' }); }
+});
+
+app.get('/api/solver/tickets/:ticketId/history', requireMasterAdmin, async (req, res) => {
+    try { const sale = await db.getByTicketId(req.params.ticketId); if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' }); res.json({ success: true, history: await db.getTicketHistory(sale.ticketId) }); }
+    catch (_) { res.status(500).json({ success: false, message: 'Could not load ticket history.' }); }
+});
 
 app.get('/api/admin/sales', requireAdmin, async (req, res) => {
     let sales = (await db.getAll()).filter(s => !isShadowSale(s));
@@ -2503,7 +2703,7 @@ app.post('/api/scan-ticket', async (req, res) => {
                     generatedAt: sale.generatedAt,
                     status: 'cancelled',
                     scannedBy: 'Admin',
-                    scannedAt: 'Cancelled by Admin'
+                    scannedAt: sale.disabledAt ? 'Disabled by Solver' : 'Cancelled by Admin'
                 }
             });
         }
@@ -2553,7 +2753,7 @@ app.post('/api/scan-ticket', async (req, res) => {
             if (!currentSale || currentSale.status === 'cancelled') {
                 if (currentSale?.status === 'cancelled') {
                     db.createScanLog({ ticketId, result: 'cancelled', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event }).catch(err => console.error('[ScanLog write error]', err.message));
-                    return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: ticketTypeForSale(currentSale), quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: 'cancelled', scannedBy: 'Admin', scannedAt: 'Cancelled by Admin' } });
+                    return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: ticketTypeForSale(currentSale), quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: 'cancelled', scannedBy: currentSale.disabledBy || 'Admin', scannedAt: currentSale.disabledAt ? 'Disabled by Solver' : 'Cancelled by Admin' } });
                 }
                 db.createScanLog({ ticketId, result: 'invalid', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown' }).catch(err => console.error('[ScanLog write error]', err.message));
                 return res.json({ result: 'not_found' });
@@ -2853,8 +3053,13 @@ app.post('/api/portal-auth/login', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Enter a valid portal access key.' });
     }
 
-    const expected = isAdmin ? process.env.PORTAL_ADMIN_KEY : process.env.PORTAL_DASHBOARD_KEY;
-    if (!expected || password !== expected) {
+    // Master admins may sign in with either the dedicated portal key or the
+    // existing ADMIN_KEY already accepted by requireMasterAdmin. This keeps
+    // the Solver login compatible with both established admin credentials.
+    const expectedKeys = isAdmin
+        ? [process.env.PORTAL_ADMIN_KEY, process.env.ADMIN_KEY].filter(Boolean)
+        : [process.env.PORTAL_DASHBOARD_KEY].filter(Boolean);
+    if (!expectedKeys.some(expected => password === expected)) {
         return res.status(401).json({ success: false, message: 'Invalid access key.' });
     }
 
