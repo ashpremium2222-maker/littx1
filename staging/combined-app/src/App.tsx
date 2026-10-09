@@ -64,7 +64,13 @@ function MainAppShell() {
   }
 
   if (path === '/solverbydevashtu' || path === '/solverbydevashtu/') {
-    if (userSession?.role === 'master_admin' && userSession.portalScope === 'admin') return <SolverByDevashtu />
+    if (userSession?.role === 'master_admin' && userSession.portalScope === 'admin') return <SolverByDevashtu onSessionExpired={() => {
+      sessionStorage.removeItem('littx_user')
+      sessionStorage.removeItem('littx_token')
+      localStorage.removeItem('littx_user')
+      localStorage.removeItem('littx_token')
+      setUserSession(null)
+    }} />
     return <LoginPage portal="admin" onLoginSuccess={handleLoginRedirect} brandTitle="SOLVER BY DEVASHTU" accessHelpText="Sign in with your existing master admin access key. The generator reveal password is requested inside the panel." />
   }
 

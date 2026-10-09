@@ -23,7 +23,7 @@ function authHeaders(revealToken?: string, json = false): HeadersInit {
   return { ...(json ? { 'Content-Type': 'application/json' } : {}), 'X-Auth-Token': token, ...(revealToken ? { 'X-Solver-Reveal-Token': revealToken } : {}) }
 }
 
-export default function SolverByDevashtu() {
+export default function SolverByDevashtu({ onSessionExpired }: { onSessionExpired: () => void }) {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [stats, setStats] = useState(emptyStats)
   const [page, setPage] = useState(1)
@@ -54,13 +54,13 @@ export default function SolverByDevashtu() {
       Object.entries(activeFilters).forEach(([key, value]) => { if (value) params.set(key, value) })
       const response = await fetch(`/api/solver/tickets?${params}`, { headers: authHeaders(revealToken) })
       const data = await response.json()
-      if (response.status === 401 || response.status === 403) throw new Error('Your administrator session has expired. Sign in again.')
+      if (response.status === 401 || response.status === 403) { onSessionExpired(); return }
       if (!response.ok || !data.success) throw new Error(data.message || 'Could not load tickets.')
       const payload = data as PageData
       setTickets(payload.tickets || []); setStats(payload.stats || emptyStats); setTotal(payload.total || 0); setPages(Math.max(1, payload.pages || 1)); setPage(targetPage)
     } catch (err) { setError(err instanceof Error ? err.message : 'Network error. Please try again.') }
     finally { setLoading(false) }
-  }, [page, search, filters, revealToken])
+  }, [page, search, filters, revealToken, onSessionExpired])
 
   useEffect(() => {
     fetch('/api/solver/meta', { headers: authHeaders() }).then(r => r.json()).then(data => { if (data.success) { setEvents(data.events || []); setTiers(data.tiers || []) } }).catch(() => {})
@@ -76,7 +76,7 @@ export default function SolverByDevashtu() {
     setSelected(ticket); setDetail(null)
     try {
       const r = await fetch(`/api/solver/tickets/${encodeURIComponent(ticket.ticketId)}`, { headers: authHeaders(revealToken) })
-      const data = await r.json(); if (!r.ok || !data.success) throw new Error(data.message || 'Could not load ticket.')
+      const data = await r.json(); if (r.status === 401 || r.status === 403) { onSessionExpired(); return } if (!r.ok || !data.success) throw new Error(data.message || 'Could not load ticket.')
       setDetail(data)
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not load ticket details.') }
   }
@@ -85,7 +85,7 @@ export default function SolverByDevashtu() {
     event.preventDefault(); setPasswordError(''); setBusy(true)
     try {
       const r = await fetch('/api/solver/reveal-generator', { method: 'POST', headers: authHeaders(undefined, true), body: JSON.stringify({ password }) })
-      const data = await r.json(); if (!r.ok || !data.success) throw new Error(data.message || 'Could not verify password.')
+      const data = await r.json(); if (r.status === 401 || r.status === 403) { onSessionExpired(); return } if (!r.ok || !data.success) throw new Error(data.message || 'Could not verify password.')
       setRevealToken(data.revealToken); setPassword(''); setPasswordOpen(false); setNotice('Generator details revealed for this administrator session.')
       window.setTimeout(() => { setRevealToken(''); setSelected(null); setDetail(null) }, Number(data.expiresIn || 600) * 1000)
     } catch (err) { setPasswordError(err instanceof Error ? err.message : 'Network error.') }
@@ -100,7 +100,7 @@ export default function SolverByDevashtu() {
     try {
       const body = dialog === 'disable' ? { reason } : dialog === 'upgrade' ? { tier: upgradeTier } : {}
       const r = await fetch(`/api/solver/tickets/${encodeURIComponent(detail.ticket.ticketId)}/${dialog}`, { method: 'POST', headers: authHeaders(undefined, true), body: JSON.stringify(body) })
-      const data = await r.json(); if (!r.ok || !data.success) throw new Error(data.message || 'Could not update ticket.')
+      const data = await r.json(); if (r.status === 401 || r.status === 403) { onSessionExpired(); return } if (!r.ok || !data.success) throw new Error(data.message || 'Could not update ticket.')
       setDialog(null); setReason(''); setUpgradeTier(''); setNotice(data.message || 'Ticket updated successfully.'); await fetchTickets(page); await openTicket(detail.ticket)
     } catch (err) { setError(err instanceof Error ? err.message : 'Network error.') }
     finally { setBusy(false) }
