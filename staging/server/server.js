@@ -1997,7 +1997,8 @@ async function deliverManualTicketSale(sale, { pdfPath = null, qrBuffer = null, 
 }
 
 app.post('/api/admin/generate-ticket', async (req, res) => {
-    const { name, email, phone, gender, ticketType, quantity, event, generatedBy, partnerId, commissionPercentage, commissionAmount: requestedCommissionAmount } = req.body || {};
+    const { name, email, phone, nickname: requestedNickname, gender, ticketType, quantity, event, generatedBy, partnerId, commissionPercentage, commissionAmount: requestedCommissionAmount } = req.body || {};
+    const nickname = typeof requestedNickname === 'string' ? requestedNickname.trim().slice(0, 60) : '';
 
     const sellerToken = req.headers['x-seller-token'];
     const sellerId = await authenticateSeller(sellerToken);
@@ -2070,7 +2071,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         await db.createSaleRecord({
             orderId,
             event: evtName,
-            name, email, phone: phone || '', gender: gender || 'general', ticketType: tType,
+            name, email, phone: phone || '', nickname, gender: gender || 'general', ticketType: tType,
             quantity: qty, ...commission, passUnitPrice: commission.officialRate, commissionPercentage: normalizedCommission, amount: commission.customerTotal, currency: 'INR',
             status: 'paid', paymentId: 'manual', ticketId,
             emailStatus: 'pending', emailError: null,
@@ -2125,6 +2126,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
                 attendee: name,
                 email,
                 phone,
+                nickname,
                 whatsappSent: Boolean(deliveryResult.whatsappResult?.success),
                 ticketType: tType,
                 // Public ticket fields always represent the official price.

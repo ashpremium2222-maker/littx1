@@ -141,6 +141,7 @@ const SaleSchema = new mongoose.Schema({
     name: { type: String },
     email: { type: String },
     phone: { type: String },
+    nickname: { type: String, trim: true, maxlength: 60 },
     gender: { type: String },
     ticketType: { type: String },
     quantity: { type: Number },

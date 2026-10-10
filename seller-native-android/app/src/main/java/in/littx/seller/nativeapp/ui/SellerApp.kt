@@ -8,6 +8,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -170,6 +173,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
+    var nickname by rememberSaveable { mutableStateOf("") }
     var quantityInput by rememberSaveable { mutableStateOf("1") }
     var commissionChoice by rememberSaveable { mutableStateOf("0") }
     var customCommissionInput by rememberSaveable { mutableStateOf("") }
@@ -180,6 +184,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
             name = ""
             email = ""
             phone = ""
+            nickname = ""
             quantityInput = "1"
             commissionChoice = "0"
             customCommissionInput = ""
@@ -220,6 +225,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
                 if (commissionInvalid) Text("Commission cannot exceed 20%.", color = Color(0xFFFF9999), fontSize = 12.sp)
             }
         }
+        item { SellerTextField(nickname, { nickname = it.take(60) }, "Ticket nickname (optional)", Icons.Default.Label) }
         item {
             Surface(Modifier.fillMaxWidth(), color = Color(0xFF12111B), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF464153))) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -231,7 +237,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
                 }
             }
         }
-        item { Button(onClick = { model.submitTicket(name, email, phone, pass.label, quantity, commissionPercentage, config.event.name) }, enabled = name.isNotBlank() && email.isNotBlank() && phone.isNotBlank() && !model.state.loading && !commissionInvalid, modifier = Modifier.fillMaxWidth().height(62.dp), shape = RoundedCornerShape(20.dp), colors = ButtonDefaults.buttonColors(containerColor = lilac, contentColor = Color(0xFF120B1D), disabledContainerColor = Color(0xFF332B43))) { if (model.state.loading) CircularProgressIndicator(Modifier.size(23.dp), color = Color.White, strokeWidth = 2.dp) else { Icon(Icons.Default.ConfirmationNumber, null); Spacer(Modifier.width(12.dp)); Text("Generate Partner Ticket", fontSize = 17.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(8.dp)); Icon(Icons.Default.ArrowForward, null) } } }
+        item { Button(onClick = { model.submitTicket(name, email, phone, pass.label, quantity, commissionPercentage, config.event.name, nickname) }, enabled = name.isNotBlank() && email.isNotBlank() && phone.isNotBlank() && !model.state.loading && !commissionInvalid, modifier = Modifier.fillMaxWidth().height(62.dp), shape = RoundedCornerShape(20.dp), colors = ButtonDefaults.buttonColors(containerColor = lilac, contentColor = Color(0xFF120B1D), disabledContainerColor = Color(0xFF332B43))) { if (model.state.loading) CircularProgressIndicator(Modifier.size(23.dp), color = Color.White, strokeWidth = 2.dp) else { Icon(Icons.Default.ConfirmationNumber, null); Spacer(Modifier.width(12.dp)); Text("Generate Partner Ticket", fontSize = 17.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(8.dp)); Icon(Icons.Default.ArrowForward, null) } } }
     }
 }
 
@@ -308,13 +314,59 @@ private fun passDescription(label: String): String {
 }
 
 @Composable private fun History(sales: List<Sale>, loading: Boolean, refresh: () -> Unit) {
+    var passFilter by rememberSaveable { mutableStateOf("All") }
+    var selectedSale by remember { mutableStateOf<Sale?>(null) }
+    val filteredSales = sales.filter { sale ->
+        val label = (sale.ticketType ?: "").lowercase()
+        when (passFilter) {
+            "Single" -> label.contains("single")
+            "Group of 5" -> label.contains("group of 5")
+            "Group of 10" -> label.contains("group of 10")
+            "Other" -> !label.contains("single") && !label.contains("group of 5") && !label.contains("group of 10")
+            else -> true
+        }
+    }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Sales History", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold); Text("Tickets issued from this seller account", color = softText, fontSize = 14.sp) }; IconButton(refresh) { Icon(Icons.Default.Refresh, "Refresh sales", tint = Color(0xFFC5AAFF)) } } }
+        item { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("FILTER BY PASS", color = softText, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) { listOf("All", "Single", "Group of 5", "Group of 10", "Other").forEach { option -> FilterChip(selected = passFilter == option, onClick = { passFilter = option }, label = { Text(option, maxLines = 1, fontSize = 10.sp) }) } } } }
+        item { Text("${filteredSales.size} ORDERS  ·  ${filteredSales.sumOf { it.quantity ?: 1 }} PASSES", color = softText, fontSize = 11.sp, letterSpacing = 1.sp) }
         if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth(), color = lilac, trackColor = panel) }
-        if (!loading && sales.isEmpty()) item { Surface(Modifier.fillMaxWidth().padding(top = 34.dp), color = panel, shape = RoundedCornerShape(20.dp)) { Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.History, null, tint = softText, modifier = Modifier.size(36.dp)); Spacer(Modifier.height(10.dp)); Text("No tickets issued yet", color = Color.White, fontWeight = FontWeight.SemiBold); Text("Issued tickets will appear here.", color = softText) } } }
-        items(sales) { sale -> SaleCard(sale) }
+        if (!loading && filteredSales.isEmpty()) item { Surface(Modifier.fillMaxWidth().padding(top = 34.dp), color = panel, shape = RoundedCornerShape(20.dp)) { Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.History, null, tint = softText, modifier = Modifier.size(36.dp)); Spacer(Modifier.height(10.dp)); Text(if (sales.isEmpty()) "No tickets issued yet" else "No tickets match this pass filter", color = Color.White, fontWeight = FontWeight.SemiBold); Text("Issued tickets will appear here.", color = softText) } } }
+        items(filteredSales) { sale -> SaleCard(sale) { selectedSale = sale } }
     }
+    selectedSale?.let { sale -> SaleDetailDialog(sale) { selectedSale = null } }
 }
 
-@Composable private fun SaleCard(sale: Sale) { Surface(color = panel, shape = RoundedCornerShape(17.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2F2D3B))) { Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(42.dp).background(Color(0xFF241A40), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Icon(Icons.Default.ConfirmationNumber, null, tint = Color(0xFFC8A9FF)) }; Column(Modifier.padding(start = 13.dp).weight(1f)) { Text(sale.name ?: "Ticket", color = Color.White, fontWeight = FontWeight.SemiBold); Text("${sale.ticketType ?: "Pass"}  •  ${sale.status ?: "Issued"}", color = softText, fontSize = 13.sp) }; Text("₹${sale.amount?.toInt() ?: 0}", color = Color(0xFFC8A9FF), fontWeight = FontWeight.Bold, fontSize = 18.sp) } } }
+@Composable private fun SaleCard(sale: Sale, onClick: () -> Unit) { Surface(onClick = onClick, modifier = Modifier.fillMaxWidth(), color = panel, shape = RoundedCornerShape(17.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2F2D3B))) { Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(42.dp).background(Color(0xFF241A40), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Icon(Icons.Default.ConfirmationNumber, null, tint = Color(0xFFC8A9FF)) }; Column(Modifier.padding(start = 13.dp).weight(1f)) { Text(sale.nickname?.takeIf { it.isNotBlank() } ?: sale.name ?: "Ticket", color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${sale.ticketType ?: "Pass"}  •  ${sale.quantity ?: 1} pass(es)", color = softText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("Tap for full breakdown", color = softText.copy(alpha = .7f), fontSize = 11.sp) }; Text("₹${(sale.customerTotal ?: sale.amount ?: 0.0).toInt()}", color = Color(0xFFC8A9FF), fontWeight = FontWeight.Bold, fontSize = 18.sp) } } }
+
+@Composable private fun SaleDetailDialog(sale: Sale, close: () -> Unit) {
+    val total = sale.customerTotal ?: sale.amount ?: 0.0
+    val unitRate = sale.passUnitPrice ?: sale.officialRate ?: if ((sale.quantity ?: 1) > 0) total / (sale.quantity ?: 1) else total
+    AlertDialog(onDismissRequest = close, title = { Text("Ticket breakdown", color = Color.White, fontWeight = FontWeight.Bold) }, text = {
+        Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text(sale.ticketId ?: "Ticket ID unavailable", color = Color(0xFFC9B2FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            HorizontalDivider(color = Color(0xFF353240))
+            SaleDetailRow("Attendee", sale.name ?: "—")
+            SaleDetailRow("Nickname", sale.nickname?.takeIf { it.isNotBlank() } ?: "—")
+            SaleDetailRow("Email", sale.email ?: "—")
+            SaleDetailRow("Phone", sale.phone?.takeIf { it.isNotBlank() } ?: "—")
+            SaleDetailRow("Event", sale.event ?: "—")
+            SaleDetailRow("Pass type", sale.ticketType ?: sale.gender ?: "—")
+            SaleDetailRow("Quantity", "${sale.quantity ?: 1}")
+            SaleDetailRow("Issued date & time", sale.generatedAt ?: sale.createdAt ?: sale.paidAt ?: "—")
+            HorizontalDivider(color = Color(0xFF353240))
+            SaleDetailRow("Original pass rate", formatRupees(unitRate))
+            SaleDetailRow("Official total", formatRupees(sale.customerTotal ?: sale.amount ?: total))
+            SaleDetailRow("Commission", "${formatPercent(sale.commissionPercentage ?: 0.0)}%")
+            SaleDetailRow("Commission amount", "−${formatRupees(sale.commissionAmount ?: 0.0)}")
+            SaleDetailRow("Rate after commission", formatRupees(sale.rateAfterCommission ?: (total - (sale.commissionAmount ?: 0.0))))
+            HorizontalDivider(color = Color(0xFF353240))
+            SaleDetailRow("Ticket status", sale.status ?: "Issued")
+            SaleDetailRow("Approval", sale.approvalStatus ?: "—")
+            SaleDetailRow("Delivery", sale.deliveryStatus ?: "—")
+        }
+    }, confirmButton = { TextButton(onClick = close) { Text("Close", color = Color(0xFFC9B2FF)) } }, containerColor = panel)
+}
+
+@Composable private fun SaleDetailRow(label: String, value: String) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) { Text(label, color = softText, fontSize = 12.sp, modifier = Modifier.weight(1f)); Text(value, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1.2f), textAlign = androidx.compose.ui.text.style.TextAlign.End) } }
 @Composable private fun Notice(text: String, error: Boolean, dismiss: () -> Unit) { AssistChip(onClick = dismiss, label = { Text(text) }, colors = AssistChipDefaults.assistChipColors(containerColor = if (error) Color(0xFF5B2C39) else Color(0xFF2D3B35), labelColor = Color.White)) }

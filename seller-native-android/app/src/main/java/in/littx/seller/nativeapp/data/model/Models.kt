@@ -7,7 +7,13 @@ data class Partner(val id: String, val name: String, val registeredDeviceId: Str
 data class SessionResponse(val success: Boolean, val token: String? = null, val partner: Partner? = null, val message: String? = null)
 data class TicketSummary(val id: String? = null, val price: String? = null, val qty: Int? = null)
 data class ApiResponse(val success: Boolean, val message: String? = null, val ticket: TicketSummary? = null)
-data class Sale(val ticketId: String?, val name: String?, val email: String?, val ticketType: String?, val quantity: Int?, val amount: Double?, val generatedAt: String?, val status: String?)
+data class Sale(
+    val ticketId: String?, val name: String?, val email: String?, val ticketType: String?, val quantity: Int?, val amount: Double?, val generatedAt: String?, val status: String?,
+    val nickname: String? = null, val phone: String? = null, val event: String? = null, val gender: String? = null,
+    val officialRate: Double? = null, val customerTotal: Double? = null, val passUnitPrice: Double? = null,
+    val commissionPercentage: Double? = null, val commissionAmount: Double? = null, val rateAfterCommission: Double? = null,
+    val approvalStatus: String? = null, val deliveryStatus: String? = null, val createdAt: String? = null, val paidAt: String? = null
+)
 data class SalesResponse(val success: Boolean, val sales: List<Sale> = emptyList(), val message: String? = null)
 data class SellerPass(val id: String, val label: String, val price: Double)
 data class SellerEvent(val name: String, val displayName: String)
@@ -17,4 +23,4 @@ data class SellerPricingPass(val id: String, val name: String, val price: Double
 data class SellerPricingResponse(val success: Boolean, val event: String? = null, val passes: List<SellerPricingPass> = emptyList(), val message: String? = null)
 data class LoginStepOneRequest(val password: String)
 data class LoginStepTwoRequest(val partnerId: String, val loginId: String, val response: JsonObject)
-data class TicketRequest(val name: String, val email: String, val phone: String, val gender: String, val ticketType: String, val quantity: Int, val commissionPercentage: Double, val event: String, val generatedBy: String, val partnerId: String)
+data class TicketRequest(val name: String, val email: String, val phone: String, val gender: String, val ticketType: String, val quantity: Int, val commissionPercentage: Double, val event: String, val generatedBy: String, val partnerId: String, val nickname: String? = null)

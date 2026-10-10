@@ -28,9 +28,16 @@ interface SellerTicketRecord {
   name?: string
   email?: string
   phone?: string
+  nickname?: string
   ticketType?: string
   gender?: string
   amount?: number
+  officialRate?: number
+  customerTotal?: number
+  passUnitPrice?: number
+  commissionPercentage?: number
+  commissionAmount?: number
+  rateAfterCommission?: number
   quantity?: number
   status?: string
   approvalStatus?: string
@@ -77,6 +84,7 @@ export default function SellerPortalApp() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [nickname, setNickname] = useState('')
   const [ticketType, setTicketType] = useState('')
   const [quantity, setQuantity] = useState('1')
   const [passes, setPasses] = useState<Array<{ id: string; name: string; price: number }>>([])
@@ -346,6 +354,7 @@ export default function SellerPortalApp() {
           name,
           email,
           phone,
+          nickname: nickname.trim(),
           gender: ticketType,
           ticketType,
           quantity: parseInt(quantity, 10) || 1,
@@ -365,6 +374,7 @@ export default function SellerPortalApp() {
         setName('')
         setEmail('')
         setPhone('')
+        setNickname('')
       } else {
         setFeedback({ type: 'error', msg: data.message || 'Failed to generate ticket.' })
       }
@@ -643,6 +653,18 @@ export default function SellerPortalApp() {
               </div>
             </div>
 
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Ticket Nickname <span className="normal-case tracking-normal text-slate-600">(optional)</span></label>
+              <input
+                type="text"
+                maxLength={60}
+                placeholder="Short label to help identify this ticket"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
+              />
+            </div>
+
             <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2 text-sm">
               <div className="flex items-center justify-between text-slate-400"><span>Official Ticket Rate</span><span>{pricingLoading ? 'Loading...' : formatCurrency(customerTotal)}</span></div>
               <div className="flex items-center justify-between text-slate-400"><span>Commission</span><span>{commissionInvalid ? 'Invalid' : `${displayedCommissionPercentage}%`}</span></div>
@@ -725,6 +747,7 @@ export default function SellerPortalApp() {
                       <div className="min-w-0">
                         <div className="truncate text-sm font-extrabold text-white">{ticket.name || 'Guest'}</div>
                         <div className="truncate text-xs text-slate-500">{ticket.email || ticket.phone || 'No contact'}</div>
+                        {ticket.nickname && <div className="mt-1 truncate text-[11px] font-semibold text-violet-300">Nickname · {ticket.nickname}</div>}
                       </div>
                       <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${state.className}`}>
                         {state.label}
