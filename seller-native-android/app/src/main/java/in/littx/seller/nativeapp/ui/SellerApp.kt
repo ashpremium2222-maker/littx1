@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,15 +29,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.littx.seller.nativeapp.BuildConfig
+import com.littx.seller.nativeapp.R
 import com.littx.seller.nativeapp.data.model.*
 
 private val midnight = Color(0xFF07070D)
@@ -65,6 +69,17 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
             item { Spacer(Modifier.height(0.dp)) }
             item { Row(verticalAlignment = Alignment.CenterVertically) { Surface(shape = RoundedCornerShape(50), color = Color(0xFF1E1932).copy(alpha = .8f), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF5B3A85))) { Text("S E L L E R", Modifier.padding(horizontal = 16.dp, vertical = 7.dp), color = Color(0xFFD3BEFF), fontSize = 11.sp, letterSpacing = 4.sp) }; Text("APP BY ASHTU", color = Color(0xFF9B8DB5), fontSize = 8.sp, letterSpacing = 1.sp, modifier = Modifier.padding(start = 10.dp)) } }
             item { Text("Access\nMore Than\nEvents", color = Color(0xFFF3F0F9), fontSize = 45.sp, lineHeight = 48.sp, fontWeight = FontWeight.Light); Spacer(Modifier.height(16.dp)); Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.width(26.dp).height(1.dp).background(lilac)); Spacer(Modifier.width(9.dp)); Text("NATIVE DEVICE-BOUND\nSELLER ACCESS", style = labelStyle(), color = Color(0xFFC8C2D5)) } }
+            item {
+                Image(
+                    painter = painterResource(R.drawable.dholida_seller_banner),
+                    contentDescription = "Dholida Garba Royale event artwork",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth()
+                        .aspectRatio(1.78f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, Color(0xFF51485E), RoundedCornerShape(16.dp))
+                )
+            }
             item { Spacer(Modifier.height(10.dp)) }
             item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Seller password", color = Color(0xFFD9D5E2), fontSize = 15.sp, fontWeight = FontWeight.Medium); Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Lock, null, tint = softText, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(7.dp)); Text("Secure Access", color = softText, fontSize = 13.sp) } } }
             item { OutlinedTextField(value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Enter your seller password", color = Color(0xFF777381)) }, singleLine = true, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Show password", tint = softText) } }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = lilac, unfocusedBorderColor = Color(0xFF4A4657), focusedContainerColor = Color(0xFF12121E).copy(alpha = .9f), unfocusedContainerColor = Color(0xFF12121E).copy(alpha = .9f)), shape = RoundedCornerShape(16.dp)) }
