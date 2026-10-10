@@ -30,6 +30,11 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
   const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ userId: '', displayName: '', password: '', companyId: 'littlane', sellerSlot: 'partner-slot-1' })
+  const [passwordTarget, setPasswordTarget] = useState<Partner | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [resettingPassword, setResettingPassword] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
 
   const load = async () => {
     setLoading(true)
@@ -103,6 +108,48 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
     } catch {
       setNotice('Unable to delete partner.')
     }
+  }
+
+  const resetPartnerPassword = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!passwordTarget || resettingPassword) return
+    if (newPassword.length < 8) {
+      setPasswordError('Passwords must be at least 8 characters.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('The passwords do not match.')
+      return
+    }
+    setResettingPassword(true)
+    setPasswordError('')
+    setNotice('')
+    try {
+      const response = await fetch(`/api/admin/partners/${encodeURIComponent(passwordTarget.userId)}`, {
+        method: 'PATCH',
+        headers: headers(adminKey),
+        body: JSON.stringify({ password: newPassword }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Unable to reset this password.')
+      setPasswordTarget(null)
+      setNewPassword('')
+      setConfirmPassword('')
+      setPasswordError('')
+      setNotice(`Password reset for ${passwordTarget.displayName}. Share the new password with that partner securely.`)
+    } catch (error: any) {
+      setPasswordError(error.message || 'Unable to reset this password.')
+    } finally {
+      setResettingPassword(false)
+    }
+  }
+
+  const closePasswordReset = () => {
+    if (resettingPassword) return
+    setPasswordTarget(null)
+    setNewPassword('')
+    setConfirmPassword('')
+    setPasswordError('')
   }
 
   const updateTier = (eventId: string, index: number, patch: Partial<PassTier>) => {
@@ -188,8 +235,23 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
       <div className="card">
         <div className="card-head"><h3>Partners</h3><button className="btn-secondary" onClick={load}>Refresh</button></div>
         {notice && <p className="muted-sm" style={{ marginTop: 12 }}>{notice}</p>}
-        <div className="table-scroll scroll" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Partner</th><th>Slot</th><th>Company</th><th>Status</th><th /></tr></thead><tbody>{partners.map(partner => <tr key={partner.userId}><td>{partner.displayName}<div className="muted-sm">{partner.userId}</div></td><td>{partner.managed === false ? 'System seller' : slotLabel(partner.sellerSlot)}</td><td>{partner.companyId}</td><td>{partner.blocked || !partner.active ? 'Blocked until Master Admin unblocks' : 'Active'}</td><td>{partner.managed === false ? <span className="muted-sm">Block controls are in Active Sessions</span> : <div style={{ display: 'flex', gap: 8 }}><button className="btn-secondary" onClick={() => togglePartner(partner)}>{partner.blocked || !partner.active ? 'Unblock' : 'Block permanently'}</button><button className="btn-secondary" onClick={() => deletePartner(partner)} style={{ color: 'var(--red)' }}>Delete</button></div>}</td></tr>)}{partners.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No seller accounts are available.</td></tr>}</tbody></table></div>
+        <div className="table-scroll scroll" style={{ marginTop: 14 }}><table className="table"><thead><tr><th>Partner</th><th>Slot</th><th>Company</th><th>Status</th><th /></tr></thead><tbody>{partners.map(partner => <tr key={partner.userId}><td>{partner.displayName}<div className="muted-sm">{partner.userId}</div></td><td>{partner.managed === false ? 'System seller' : slotLabel(partner.sellerSlot)}</td><td>{partner.companyId}</td><td>{partner.blocked || !partner.active ? 'Blocked until Master Admin unblocks' : 'Active'}</td><td>{partner.managed === false ? <span className="muted-sm">Block controls are in Active Sessions</span> : <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="btn-secondary" onClick={() => { setNotice(''); setPasswordTarget(partner) }}>Reset password</button><button className="btn-secondary" onClick={() => togglePartner(partner)}>{partner.blocked || !partner.active ? 'Unblock' : 'Block permanently'}</button><button className="btn-secondary" onClick={() => deletePartner(partner)} style={{ color: 'var(--red)' }}>Delete</button></div>}</td></tr>)}{partners.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No seller accounts are available.</td></tr>}</tbody></table></div>
       </div>
+      {passwordTarget && <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) closePasswordReset() }} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(0,0,0,.68)' }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="reset-seller-password-title" className="card" style={{ width: 'min(100%, 460px)', padding: 22, boxShadow: '0 24px 80px rgba(0,0,0,.4)' }}>
+          <h3 id="reset-seller-password-title" style={{ marginTop: 0 }}>Reset seller password</h3>
+          <p className="muted-sm">Set a new password for <strong>{passwordTarget.displayName}</strong>. It must be at least 8 characters.</p>
+          {passwordError && <p role="alert" style={{ color: 'var(--red)' }}>{passwordError}</p>}
+          <form onSubmit={resetPartnerPassword} style={{ display: 'grid', gap: 14, marginTop: 18 }}>
+            <div className="field"><label htmlFor="seller-new-password">New password</label><input id="seller-new-password" type="password" autoComplete="new-password" minLength={8} required value={newPassword} onChange={event => setNewPassword(event.target.value)} /></div>
+            <div className="field"><label htmlFor="seller-confirm-password">Confirm new password</label><input id="seller-confirm-password" type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} /></div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
+              <button type="button" className="btn-secondary" onClick={closePasswordReset} disabled={resettingPassword}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={resettingPassword || newPassword.length < 8 || newPassword !== confirmPassword}>{resettingPassword ? 'Resetting…' : 'Reset password'}</button>
+            </div>
+          </form>
+        </section>
+      </div>}
     </div>
   )
 

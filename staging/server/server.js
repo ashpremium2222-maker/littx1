@@ -1827,6 +1827,7 @@ app.patch('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) =
         return res.status(403).json({ success: false, message: 'Only Master Admin can block or unblock seller accounts.' });
     }
     const updates = {};
+    const passwordChanged = password !== undefined;
     if (typeof displayName === 'string' && displayName.trim()) updates.displayName = displayName.trim();
     if (typeof companyId === 'string' && companyId.trim()) updates.companyId = companyId.trim();
     if (typeof active === 'boolean') { updates.active = active; updates.blocked = !active; }
@@ -1836,6 +1837,12 @@ app.patch('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) =
     }
     const updated = await db.updateUser(req.params.userId, updates);
     if (!updated || updated.role !== 'seller') return res.status(404).json({ success: false, message: 'Partner not found.' });
+    if (passwordChanged) {
+        const sessionIds = [updated.sellerSlot, updated.userId].filter(Boolean);
+        for (const sessionId of sessionIds) delete sellerSessions[sessionId];
+        savePersisted(SESSIONS_FILE, sellerSessions);
+        await Promise.all(sessionIds.map(sessionId => db.deleteSellerSession(sessionId)));
+    }
     if (active === false) {
         const sessionIds = [updated.sellerSlot, updated.userId].filter(Boolean);
         for (const sessionId of sessionIds) delete sellerSessions[sessionId];
