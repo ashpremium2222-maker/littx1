@@ -192,6 +192,9 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
     var quantityInput by rememberSaveable { mutableStateOf("1") }
     var commissionChoice by rememberSaveable { mutableStateOf("0") }
     var customCommissionInput by rememberSaveable { mutableStateOf("") }
+    val commissionIsUncapped = model.state.partner?.let { partner ->
+        partner.id.equals("littlane", ignoreCase = true) || partner.name.contains("ASTEX", ignoreCase = true)
+    } == true
     val livePasses = pricing?.passes?.map { SellerPass(it.id, it.name, it.price) }?.takeIf { it.isNotEmpty() } ?: config.passes
     var passId by rememberSaveable(config.version) { mutableStateOf(livePasses.first().id) }
     LaunchedEffect(model.state.formResetNonce) {
@@ -209,7 +212,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
     val pass = livePasses.firstOrNull { it.id == passId } ?: livePasses.first()
     val quantity = quantityInput.toIntOrNull()?.coerceIn(1, 20) ?: 1
     val commissionPercentage = if (commissionChoice == "custom") customCommissionInput.toDoubleOrNull() ?: 0.0 else commissionChoice.toDouble()
-    val commissionInvalid = commissionPercentage < 0 || commissionPercentage > 20
+    val commissionInvalid = commissionPercentage < 0 || (!commissionIsUncapped && commissionPercentage > 20)
     val customerTotal = pass.price * quantity
     val commissionAmount = if (commissionInvalid) 0.0 else customerTotal * commissionPercentage / 100
     val rateAfterCommission = customerTotal - commissionAmount
@@ -236,7 +239,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
                     }
                 }
                 TextButton(onClick = { commissionChoice = "custom" }) { Text("Custom commission", color = if (commissionChoice == "custom") Color(0xFFD5BFFF) else softText) }
-                if (commissionChoice == "custom") SellerTextField(customCommissionInput, { customCommissionInput = it }, "Commission percentage (0–20)", Icons.Default.Percent)
+                if (commissionChoice == "custom") SellerTextField(customCommissionInput, { customCommissionInput = it }, if (commissionIsUncapped) "Commission percentage" else "Commission percentage (0–20)", Icons.Default.Percent)
                 if (commissionInvalid) Text("Commission cannot exceed 20%.", color = Color(0xFFFF9999), fontSize = 12.sp)
             }
         }

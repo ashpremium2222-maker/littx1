@@ -101,6 +101,7 @@ export default function SellerPortalApp() {
   const [ticketsError, setTicketsError] = useState<string | null>(null)
 
   const currentPartner = partners.find((p) => p.id === selectedPartnerId) || partners[0]
+  const commissionIsUncapped = currentPartner?.id === 'littlane' || currentPartner?.name.toLowerCase().includes('astex')
   const selectedPass = passes.find((pass) => pass.name === ticketType)
   const ticketQuantity = Math.max(1, Math.min(20, Number.parseInt(quantity, 10) || 1))
   const customerTotal = (selectedPass?.price || 0) * ticketQuantity
@@ -114,8 +115,8 @@ export default function SellerPortalApp() {
     ? (customerTotal > 0 ? (commissionAmount / customerTotal) * 100 : 0)
     : Number(commissionChoice)
   const commissionInvalid = commissionChoice === 'custom'
-    ? !hasValidCustomCommissionAmount || customCommissionAmount < 0 || commissionPercentage > 20
-    : !Number.isFinite(commissionPercentage) || commissionPercentage < 0 || commissionPercentage > 20
+    ? !hasValidCustomCommissionAmount || customCommissionAmount < 0 || (!commissionIsUncapped && commissionPercentage > 20)
+    : !Number.isFinite(commissionPercentage) || commissionPercentage < 0 || (!commissionIsUncapped && commissionPercentage > 20)
   const rateAfterCommission = customerTotal - commissionAmount
   const displayedCommissionPercentage = Number.isFinite(commissionPercentage)
     ? commissionPercentage.toFixed(2).replace(/\.00$/, '')
@@ -335,7 +336,7 @@ export default function SellerPortalApp() {
       return
     }
     if (commissionInvalid) {
-      setFeedback({ type: 'error', msg: 'Enter a valid commission amount that is no more than 20% of the official total.' })
+      setFeedback({ type: 'error', msg: commissionIsUncapped ? 'Enter a valid non-negative commission amount.' : 'Enter a valid commission amount that is no more than 20% of the official total.' })
       return
     }
 
@@ -644,10 +645,10 @@ export default function SellerPortalApp() {
                       step="0.01"
                       value={customCommission}
                       onChange={(event) => setCustomCommission(event.target.value)}
-                      placeholder="Enter amount"
+                      placeholder={commissionIsUncapped ? 'Enter any amount' : 'Enter amount'}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
                     />
-                    {commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Enter a valid amount up to 20% of the official total.</p>}
+                    {commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">{commissionIsUncapped ? 'Enter a valid non-negative amount.' : 'Enter a valid amount up to 20% of the official total.'}</p>}
                   </div>
                 )}
               </div>

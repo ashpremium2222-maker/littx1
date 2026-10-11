@@ -549,12 +549,12 @@ function normalizePassCategory(value) {
     return cleaned || 'unisex';
 }
 
-function normalizeCommissionPercentage(value) {
+function normalizeCommissionPercentage(value, maximum = 20) {
     if (value === undefined || value === null || value === '') return 0;
     const numeric = Number(value);
     if (!Number.isFinite(numeric) || numeric < 0) return null;
     // Check before rounding so 20.001 cannot become a permitted 20.00.
-    if (numeric > 20) return 'maximum_exceeded';
+    if (maximum !== null && numeric > maximum) return 'maximum_exceeded';
     return Math.round(numeric * 100) / 100;
 }
 
@@ -670,6 +670,12 @@ function isDirectDeliveryCompany(companyId) {
 
 function isDirectDeliverySeller(sellerId) {
     return isDirectDeliveryCompany(sellerCompanyIdFromValue(sellerId));
+}
+
+function sellerHasUnlimitedCommission(sellerId) {
+    const companyId = sellerCompanyIdFromValue(sellerId);
+    if (companyId === 'littlane' || companyId === 'astex-testing') return true;
+    return companyId === 'partner-slot-1' && PARTNER_SLOT_COMPANY_IDS[companyId] === 'astex-testing';
 }
 
 function resolveSaleCompanyId(sale, slotCompanyMap = new Map()) {
@@ -2031,6 +2037,9 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
     }
     const { qty, amount: customerTotal, ticketType: tType, event: evtName } = pricedTicket;
+    // Only authenticated Littlane and ASTEX seller sessions are exempt. Admin
+    // supplied partner IDs cannot grant the exemption.
+    const commissionMaximum = sellerId && sellerHasUnlimitedCommission(sellerId) ? null : 20;
     const hasCustomCommissionAmount = Object.prototype.hasOwnProperty.call(req.body || {}, 'commissionAmount');
     let normalizedCommission;
     let commission;
@@ -2041,14 +2050,14 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         if (commissionAmountPaise === null) {
             return res.status(400).json({ success: false, message: 'Commission amount must be a valid non-negative number.' });
         }
-        // Use the server-derived official total to prevent an amount above 20%.
-        if (commissionAmountPaise * 100 > customerTotalPaise * 20) {
+        // Use the server-derived official total to enforce the seller's limit.
+        if (commissionMaximum !== null && commissionAmountPaise * 100 > customerTotalPaise * commissionMaximum) {
             return res.status(400).json({ success: false, message: 'Commission cannot exceed 20% of the official ticket total.' });
         }
         normalizedCommission = customerTotalPaise ? (commissionAmountPaise * 100) / customerTotalPaise : 0;
         commission = applyCommission(customerTotal, normalizedCommission, qty, commissionAmountPaise);
     } else {
-        normalizedCommission = normalizeCommissionPercentage(commissionPercentage);
+        normalizedCommission = normalizeCommissionPercentage(commissionPercentage, commissionMaximum);
         if (normalizedCommission === 'maximum_exceeded') {
             return res.status(400).json({ success: false, message: 'Commission cannot exceed 20%.' });
         }
