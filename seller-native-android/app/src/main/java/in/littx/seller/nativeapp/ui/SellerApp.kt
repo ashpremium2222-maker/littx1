@@ -344,8 +344,43 @@ private fun passDescription(label: String): String {
             else -> true
         }
     }
+    val completedSales = sales.filter { sale ->
+        val approval = sale.approvalStatus?.uppercase()
+        val delivery = sale.deliveryStatus?.uppercase()
+        val status = sale.status?.lowercase()
+        approval !in listOf("PENDING", "REJECTED") &&
+            delivery !in listOf("PENDING_APPROVAL", "BLOCKED") &&
+            status in listOf("paid", "ticket_generated", "emailed", "email_failed", "scanned")
+    }
+    val totalPassesSold = completedSales.sumOf { (it.quantity ?: 1).coerceAtLeast(0) }
+    val grossRevenue = completedSales.sumOf { it.customerTotal ?: it.amount ?: 0.0 }
+    val netRevenue = completedSales.sumOf { sale ->
+        val gross = sale.customerTotal ?: sale.amount ?: 0.0
+        sale.rateAfterCommission ?: (gross - (sale.commissionAmount ?: gross * (sale.commissionPercentage ?: 0.0) / 100.0))
+    }
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Sales History", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold); Text("Tickets issued from this seller account", color = softText, fontSize = 14.sp) }; IconButton(refresh) { Icon(Icons.Default.Refresh, "Refresh sales", tint = Color(0xFFC5AAFF)) } } }
+        item {
+            Surface(Modifier.fillMaxWidth(), color = panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2F2D3B))) {
+                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column {
+                        Text("TOTAL PASSES SOLD", color = softText, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text(totalPassesSold.toString(), color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black)
+                    }
+                    HorizontalDivider(color = Color(0xFF353240))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("REVENUE BEFORE COMMISSION", color = Color(0xFFB9DFFF), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .4.sp)
+                            Text(formatRupees(grossRevenue), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("REVENUE AFTER COMMISSION", color = Color(0xFF9AEBC0), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .4.sp)
+                            Text(formatRupees(netRevenue), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
         item { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { Text("FILTER BY PASS", color = softText, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp); Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) { listOf("All", "Single", "Group of 5", "Group of 10", "Other").forEach { option -> FilterChip(selected = passFilter == option, onClick = { passFilter = option }, label = { Text(option, maxLines = 1, fontSize = 10.sp) }) } } } }
         item { Text("${filteredSales.size} ORDERS  ·  ${filteredSales.sumOf { it.quantity ?: 1 }} PASSES", color = softText, fontSize = 11.sp, letterSpacing = 1.sp) }
         if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth(), color = lilac, trackColor = panel) }
