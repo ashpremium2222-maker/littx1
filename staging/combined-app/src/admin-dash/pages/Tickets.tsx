@@ -149,8 +149,9 @@ export default function Tickets({
   const baseTickets: Ticket[] = baseTicketSales.map(mapTicket)
   const tickets: Ticket[] = ticketSales.map(mapTicket)
 
-  const totalOrders = baseTickets.length
-  const totalPasses = baseTickets.reduce((total, ticket) => total + ticket.qty, 0)
+  const nonCancelledTickets = baseTickets.filter((ticket) => ticket.status !== 'Cancelled')
+  const totalOrders = nonCancelledTickets.length
+  const totalPasses = nonCancelledTickets.reduce((total, ticket) => total + ticket.qty, 0)
   const totalAmount = baseTickets.reduce((a, t) => a + t.price, 0)
   const activeCount = baseTickets.filter((t) => t.status === 'Active').length
   const scannedCount = baseTickets.filter((t) => t.status === 'Scanned').length
@@ -163,18 +164,18 @@ export default function Tickets({
         <div className="tile tile-teal">
           <div className="tile-label">TOTAL ORDERS</div>
           <div className="tile-value">{totalOrders}</div>
-          <div className="tile-sub">Ticketed order records</div>
+          <div className="tile-sub">Non-cancelled ticket orders</div>
           <div className="tile-delta">
-            <span>▤</span> All ticketed orders
+            <span>▤</span> Cancelled orders excluded
           </div>
         </div>
 
         <div className="tile tile-violet">
           <div className="tile-label">TOTAL PASSES</div>
           <div className="tile-value">{totalPasses.toLocaleString('en-IN')}</div>
-          <div className="tile-sub">Pass quantities across all orders</div>
+          <div className="tile-sub">Passes from non-cancelled orders</div>
           <div className="tile-delta">
-            <span>🎫</span> Including cancelled passes
+            <span>🎫</span> Cancelled orders excluded
           </div>
         </div>
 
