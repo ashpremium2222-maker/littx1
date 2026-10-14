@@ -133,7 +133,7 @@ export default function Tickets({
       phone: s.phone || '—',
       event: s.event || 'DHOLIDA GARBA ROYALE',
       type: s.ticketType || 'GA Single',
-      qty: s.quantity || 1,
+      qty: Math.max(1, Number(s.quantity) || 1),
       price: s.amount || 0,
       generated: s.generatedAt ? new Date(s.generatedAt).toLocaleString('en-IN') : '—',
       expiry: 'Event End',
@@ -149,6 +149,8 @@ export default function Tickets({
   const baseTickets: Ticket[] = baseTicketSales.map(mapTicket)
   const tickets: Ticket[] = ticketSales.map(mapTicket)
 
+  const totalOrders = baseTickets.length
+  const totalPasses = baseTickets.reduce((total, ticket) => total + ticket.qty, 0)
   const totalAmount = baseTickets.reduce((a, t) => a + t.price, 0)
   const activeCount = baseTickets.filter((t) => t.status === 'Active').length
   const scannedCount = baseTickets.filter((t) => t.status === 'Scanned').length
@@ -159,11 +161,20 @@ export default function Tickets({
       {/* Reference KPI Stat Tiles */}
       <div className="kpi-row">
         <div className="tile tile-teal">
-          <div className="tile-label">GENERATED PASSES</div>
-          <div className="tile-value">{tickets.length}</div>
-          <div className="tile-sub">Across all selected events</div>
+          <div className="tile-label">TOTAL ORDERS</div>
+          <div className="tile-value">{totalOrders}</div>
+          <div className="tile-sub">Ticketed order records</div>
           <div className="tile-delta">
-            <span>🎫</span> Valid inventory
+            <span>▤</span> All ticketed orders
+          </div>
+        </div>
+
+        <div className="tile tile-violet">
+          <div className="tile-label">TOTAL PASSES</div>
+          <div className="tile-value">{totalPasses.toLocaleString('en-IN')}</div>
+          <div className="tile-sub">Pass quantities across all orders</div>
+          <div className="tile-delta">
+            <span>🎫</span> Including cancelled passes
           </div>
         </div>
 
