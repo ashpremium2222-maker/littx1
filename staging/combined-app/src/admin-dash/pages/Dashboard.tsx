@@ -86,7 +86,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   useEffect(() => {
     if (!adminKey) return
     const loadCompanySales = () => {
-      fetch('/api/admin/seller-summary?dashboardView=true', { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
+      fetch('/api/admin/seller-summary', { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
         .then(response => response.json())
         .then(data => {
           if (data.success && Array.isArray(data.companySummary)) setSellerSummary(data.companySummary)
@@ -273,7 +273,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
 
         <div className="tile tile-gold">
           <div className="tile-label">CONFIRMED PAID</div>
-          <div className="tile-value">{paidSales.length}</div>
+          <div className="tile-value">{totalTickets}</div>
           <div className="tile-sub">Tickets successfully issued</div>
           <div className="tile-delta">
             <span>✓</span> {testMode ? 'Test mode' : 'Live mode'}

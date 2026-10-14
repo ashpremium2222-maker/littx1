@@ -219,8 +219,9 @@ export default function App({ isPresentation = false }: AppProps) {
       // Prefer sending as x-auth-token (unified auth) but fall back to ?key= for legacy ADMIN_KEY
       const isToken = keyToUse.length > 40 // tokens are 64-char hex; legacy keys are shorter
       const query = new URLSearchParams()
+      // Normal dashboard uses the complete admin sales set. Visibility rules are
+      // only applied by the dedicated presentation view / visibility tools.
       if (isPresentation) query.set('pres', 'true')
-      else query.set('dashboardView', 'true')
       const url = isToken
         ? `/api/admin/sales?${query.toString()}`
         : `/api/admin/sales?key=${encodeURIComponent(keyToUse)}&${query.toString()}`
