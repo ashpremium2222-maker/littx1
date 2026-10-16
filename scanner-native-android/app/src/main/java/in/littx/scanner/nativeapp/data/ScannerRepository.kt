@@ -14,6 +14,7 @@ class ScannerRepository {
             .client(OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build())
             .addConverterFactory(GsonConverterFactory.create()).build().create(ScannerApi::class.java)
     }
+    suspend fun openAppSession() = api.appSession()
     suspend fun login(password: String) = api.login(ScannerLoginRequest(password))
     suspend fun verifySession(token: String) = api.verifySession("Bearer $token")
     suspend fun scan(ticketId: String, scanner: String, token: String) = api.scan("Bearer $token", ScanRequest(ticketId, scanner))

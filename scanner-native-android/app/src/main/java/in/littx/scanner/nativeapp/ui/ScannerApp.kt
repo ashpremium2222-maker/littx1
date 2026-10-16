@@ -25,9 +25,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -45,13 +47,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.text.HtmlCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -83,7 +84,7 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
     LaunchedEffect(screen, model.state.authenticated) { if (screen == Screen.HOME && model.state.authenticated) model.refreshStats() }
     MaterialTheme(colorScheme = darkColorScheme(primary = blue, background = canvas, surface = Color.White)) {
         if (!model.state.authenticated) {
-            ScannerLogin(model.state.loading, model.state.error, model::login)
+            ScannerSessionScreen(model.state.sessionConnecting, model.state.error, model::retrySession)
             return@MaterialTheme
         }
         model.state.update?.let { update ->
@@ -102,17 +103,15 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
     }
 }
 
-@Composable private fun ScannerLogin(loading: Boolean, errorMessage: String?, onLogin: (String) -> Unit) {
-    var password by rememberSaveable { mutableStateOf("") }
+@Composable private fun ScannerSessionScreen(loading: Boolean, errorMessage: String?, onRetry: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(night, Color(0xFF14284B), Color(0xFF10172A)))), contentAlignment = Alignment.Center) {
-        Column(Modifier.fillMaxWidth().padding(22.dp).clip(RoundedCornerShape(32.dp)).background(Color.White.copy(.96f)).padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            androidx.compose.foundation.Image(painter = painterResource(com.littx.scanner.nativeapp.R.drawable.scanner_logo), contentDescription = "LITTX Scanner", modifier = Modifier.size(142.dp).clip(RoundedCornerShape(24.dp)))
-            Text("EVENT SCANNER", color = blue, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp, modifier = Modifier.padding(top = 20.dp))
-            Text("Your gate starts here.", color = ink, fontSize = 25.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-            Text("Sign in to validate event tickets securely.", color = muted, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
-            OutlinedTextField(value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Scanner password") }, visualTransformation = PasswordVisualTransformation(), isError = errorMessage != null, shape = RoundedCornerShape(17.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done))
-            if (errorMessage != null) Text(errorMessage, color = Color(0xFFCE344F), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-            Button(onClick = { onLogin(password) }, enabled = password.isNotBlank() && !loading, modifier = Modifier.fillMaxWidth().padding(top = 14.dp).height(56.dp), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = ink)) { Text(if (loading) "Signing in…" else "Sign in to LITTX", fontWeight = FontWeight.Bold) }
+        Column(Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            androidx.compose.foundation.Image(painter = painterResource(com.littx.scanner.nativeapp.R.drawable.scanner_logo), contentDescription = "LITTX Scanner", modifier = Modifier.size(136.dp).clip(RoundedCornerShape(24.dp)))
+            Text("EVENT SCANNER", color = cyan, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp, modifier = Modifier.padding(top = 22.dp))
+            Text(if (loading) "Connecting to LITTX" else "Scanner unavailable", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 9.dp))
+            Text(errorMessage ?: "Preparing secure scanner access…", color = Color.White.copy(.72f), fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+            if (loading) CircularProgressIndicator(Modifier.padding(top = 22.dp).size(27.dp), color = cyan, strokeWidth = 2.dp)
+            else Button(onClick = onRetry, modifier = Modifier.fillMaxWidth().padding(top = 22.dp).height(54.dp), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = blue)) { Text("Retry connection", fontWeight = FontWeight.Bold) }
         }
     }
 }
@@ -326,27 +325,73 @@ private fun ScannerState.statsValue(value: Int): String = if (statsAvailable) va
     val title = when { approved -> "ENTRY APPROVED"; duplicate -> "ALREADY SCANNED"; else -> "ENTRY DENIED" }
     val subtitle = when { approved -> "Ticket verified. Allow entry."; duplicate -> "This ticket has already been used."; entry.outcome == ScanOutcome.ERROR -> error ?: "Couldn't validate this ticket."; else -> error ?: "This ticket isn't valid or has expired." }
     val scale by animateFloatAsState(if (approved) 1f else .96f, tween(320), label = "result")
-    Column(Modifier.fillMaxSize().background(if (approved) Color(0xFF061D1C) else Color(0xFF1E101A)).padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Spacer(Modifier.height(54.dp)); Text("LITTX", color = Color.White.copy(.75f), fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-        Box(Modifier.padding(top = 34.dp).size(128.dp).scale(scale).clip(CircleShape).background(color.copy(.13f)).border(2.dp, color.copy(.7f), CircleShape), contentAlignment = Alignment.Center) { Icon(if (approved) Icons.Default.Check else Icons.Default.Close, null, tint = color, modifier = Modifier.size(69.dp)) }
-        Text(title, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = .5.sp, modifier = Modifier.padding(top = 24.dp))
-        Text(subtitle, color = Color.White.copy(.73f), fontSize = 14.sp, modifier = Modifier.padding(top = 7.dp))
-        TicketCard(entry, color, Modifier.padding(top = 23.dp))
-        Spacer(Modifier.weight(1f))
-        if (!approved) TextButton(onClick = onDetails, modifier = Modifier.fillMaxWidth()) { Text("View scan details", color = Color.White.copy(.8f)) }
-        Button(onClick = onNext, modifier = Modifier.fillMaxWidth().height(59.dp), colors = ButtonDefaults.buttonColors(containerColor = color), shape = RoundedCornerShape(19.dp)) { Text(if (approved) "Scan next ticket" else "Scan again", color = Color(0xFF10182A), fontWeight = FontWeight.Black) }
+    Box(Modifier.fillMaxSize().background(if (approved) Brush.linearGradient(listOf(Color(0xFF061D1C), Color(0xFF092B2C), Color(0xFF061D1C))) else Brush.linearGradient(listOf(Color(0xFF1E101A), Color(0xFF35141E), Color(0xFF1E101A))))) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 22.dp, vertical = 20.dp).padding(bottom = 120.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("LITTX", color = Color.White.copy(.75f), fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+            Box(Modifier.padding(top = 26.dp).size(108.dp).scale(scale).clip(CircleShape).background(color.copy(.13f)).border(2.dp, color.copy(.7f), CircleShape), contentAlignment = Alignment.Center) { Icon(if (approved) Icons.Default.Check else Icons.Default.Close, null, tint = color, modifier = Modifier.size(60.dp)) }
+            Text(title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = .5.sp, modifier = Modifier.padding(top = 20.dp))
+            Text(subtitle, color = Color.White.copy(.73f), fontSize = 14.sp, modifier = Modifier.padding(top = 7.dp))
+            TicketCard(entry, color, Modifier.padding(top = 20.dp))
+        }
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().background(if (approved) Color(0xFF061D1C) else Color(0xFF1E101A)).padding(horizontal = 22.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (!approved) TextButton(onClick = onDetails, modifier = Modifier.fillMaxWidth()) { Text("View scan details", color = Color.White.copy(.8f)) }
+            Button(onClick = onNext, modifier = Modifier.fillMaxWidth().height(59.dp), colors = ButtonDefaults.buttonColors(containerColor = color), shape = RoundedCornerShape(19.dp)) { Text(if (approved) "Scan next ticket" else "Scan again", color = Color(0xFF10182A), fontWeight = FontWeight.Black) }
+        }
     }
 }
 
 @Composable private fun TicketCard(entry: ScanEntry, color: Color, modifier: Modifier = Modifier) {
     val ticket = entry.ticket
-    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(23.dp)).background(Color.White.copy(.08f)).border(1.dp, Color.White.copy(.15f), RoundedCornerShape(23.dp)).padding(18.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
-        Text(ticket?.event ?: "Ticket validation", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+    val allocation = ticketAllocation(ticket?.ticketType, ticket?.quantity)
+    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(25.dp)).background(Color.White.copy(.09f)).border(1.dp, Color.White.copy(.19f), RoundedCornerShape(25.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
+        Text(ticket?.event ?: "Ticket validation", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        if (entry.outcome == ScanOutcome.APPROVED) AllocationPanel(allocation)
         Line("Ticket code", ticket?.id?.ifBlank { entry.rawCode } ?: entry.rawCode)
         Line("Holder", ticket?.attendee ?: "—")
-        Line("Ticket type", ticket?.ticketType ?: "—")
+        Line("Ticket type", displayTicketType(ticket?.ticketType))
         Line("Scan time", time(entry.scannedAt))
         Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(7.dp).background(color, CircleShape)); Text(entry.outcome.name.replace('_', ' '), color = color, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, modifier = Modifier.padding(start = 7.dp)) }
+    }
+}
+
+private data class TicketAllocation(val bands: Int, val accessLabel: String, val ticketLabel: String)
+
+private fun ticketAllocation(rawType: String?, quantity: Int?): TicketAllocation {
+    val decoded = HtmlCompat.fromHtml(rawType.orEmpty(), HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
+    val suffixCount = Regex("(?:\\b(?:x|×)\\s*|\\*\\s*)(\\d+)\\s*$", RegexOption.IGNORE_CASE)
+        .find(decoded)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    val baseType = decoded.replace(Regex("(?:\\b(?:x|×)\\s*|\\*\\s*)\\d+\\s*$", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("[\\s*×]+$"), "").trim()
+    val lower = baseType.lowercase(Locale.ROOT)
+    val isCouple = lower.contains("couple")
+    val bands = if (isCouple) 2 else (suffixCount ?: quantity?.takeIf { it > 0 } ?: 1).coerceIn(1, 99)
+    val access = when {
+        lower.contains("vip") && isCouple -> "VIP COUPLE ACCESS"
+        (lower.contains("general") || Regex("\\bga\\b").containsMatchIn(lower)) && isCouple -> "GA COUPLE ACCESS"
+        lower.contains("vip") -> "VIP ACCESS"
+        lower.contains("general") || Regex("\\bga\\b").containsMatchIn(lower) -> "GENERAL ACCESS"
+        isCouple -> "${baseType.uppercase(Locale.ROOT)} ACCESS"
+        baseType.isNotBlank() -> baseType.uppercase(Locale.ROOT)
+        else -> "GENERAL ACCESS"
+    }
+    return TicketAllocation(bands, access, if (bands == 1) "TICKET" else "TICKETS")
+}
+
+private fun displayTicketType(rawType: String?): String {
+    val decoded = HtmlCompat.fromHtml(rawType.orEmpty(), HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
+    val clean = decoded.replace(Regex("(?:\\b(?:x|×)\\s*|\\*\\s*)\\d+\\s*$", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("[\\s*×]+$"), "").trim()
+    return clean.ifBlank { "General Access" }
+}
+
+@Composable private fun AllocationPanel(allocation: TicketAllocation) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(19.dp)).background(Brush.horizontalGradient(listOf(Color(0xFF103E3A), Color(0xFF15544B)))).border(1.dp, Color(0xFF6CE2BD).copy(.35f), RoundedCornerShape(19.dp)).padding(horizontal = 16.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(allocation.bands.toString(), color = Color(0xFF8AF0CF), fontSize = 50.sp, fontWeight = FontWeight.Black, lineHeight = 54.sp)
+        Column(Modifier.padding(start = 14.dp)) {
+            Text(allocation.accessLabel, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = .5.sp)
+            Text("${allocation.bands} ${allocation.ticketLabel}", color = Color.White.copy(.74f), fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+            Text("RELEASE ${allocation.bands} ${if (allocation.bands == 1) "BAND" else "BANDS"}", color = Color(0xFF8AF0CF), fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = .6.sp, modifier = Modifier.padding(top = 7.dp))
+        }
     }
 }
 @Composable private fun Line(label: String, value: String) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(label, color = Color.White.copy(.58f), fontSize = 12.sp); Text(value, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 190.dp)) } }

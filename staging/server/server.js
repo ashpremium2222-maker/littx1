@@ -2636,6 +2636,21 @@ app.post('/api/scanner-login', (req, res) => {
     }
 });
 
+// Passwordless session for the distributed native scanner app. This grants
+// scanner-role access only; existing password-based scanner and seller/admin
+// authentication routes remain unchanged.
+app.post('/api/scanner-app-session', (_req, res) => {
+    try {
+        const now = Math.floor(Date.now() / 1000);
+        const token = signScannerSession({ role: 'scanner', name: 'Gate Staff', iat: now, exp: now + SCANNER_SESSION_TTL_SECONDS });
+        res.set('Cache-Control', 'no-store, private');
+        return res.json({ success: true, token, scannerName: 'Gate Staff', expiresAt: (now + SCANNER_SESSION_TTL_SECONDS) * 1000 });
+    } catch (err) {
+        console.error('[scanner-app-session] Configuration error:', err.message);
+        return res.status(503).json({ success: false, message: 'Scanner sessions are not configured on the server.' });
+    }
+});
+
 app.get('/api/scanner-session', (req, res) => {
     const session = readScannerSession(req);
     if (!session) return res.status(401).json({ success: false, message: 'Scanner session expired. Log in again.' });
