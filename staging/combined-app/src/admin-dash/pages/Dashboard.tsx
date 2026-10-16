@@ -43,7 +43,8 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const [expandedSeller, setExpandedSeller] = useState<string | null>(null)
 
   const paidSales = sales.filter(s =>
-    ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
+    !['cancelled', 'canceled'].includes(String(s.status || '').toLowerCase()) &&
+    ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(String(s.status || '').toLowerCase())
   )
   const revenueSales = paidSales.filter(
     s => !s.gender || !String(s.gender).toLowerCase().includes('exclusive')

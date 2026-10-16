@@ -31,7 +31,8 @@ export default function Analytics({ sales = [] }: Props) {
   const [activePeriod, setActivePeriod] = useState<'Today' | '7D'>('7D')
 
   const paid = sales.filter((s) =>
-    ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
+    !['cancelled', 'canceled'].includes(String(s.status || '').toLowerCase()) &&
+    ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(String(s.status || '').toLowerCase())
   )
 
   const chartData = []

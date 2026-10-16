@@ -58,6 +58,7 @@ export default function Tickets({
   const setEventFilter = propOnEventFilterChange !== undefined ? propOnEventFilterChange : setInternalEventFilter
 
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [searchQ, setSearchQ] = useState('')
 
   const effectiveSearch = searchQ || globalSearch
@@ -123,9 +124,37 @@ export default function Tickets({
     }
   }
 
+  const handleDelete = async (ticket: Ticket) => {
+    const confirmation = window.prompt(
+      `Permanently delete ticket ${ticket.id} and its generated PDF? This cannot be undone. Type DELETE to confirm.`
+    )
+    if (confirmation !== 'DELETE') return
+
+    setDeletingId(ticket.id)
+    try {
+      const res = await fetch('/api/admin/delete-ticket', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': adminKey,
+          'x-auth-token': adminKey,
+        },
+        body: JSON.stringify({ ticketId: ticket.id }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.message || 'Unable to delete ticket.')
+      await onReload()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error deleting ticket.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const mapTicket = (s: any): Ticket => {
-    const isCancelled = s.status === 'cancelled'
-    const isScanned = s.status === 'scanned' || !!s.scannedAt
+    const normalizedStatus = String(s.status || '').toLowerCase()
+    const isCancelled = normalizedStatus === 'cancelled' || normalizedStatus === 'canceled'
+    const isScanned = normalizedStatus === 'scanned' || !!s.scannedAt
     return {
       id: s.ticketId,
       buyer: s.name,
@@ -152,7 +181,7 @@ export default function Tickets({
   const nonCancelledTickets = baseTickets.filter((ticket) => ticket.status !== 'Cancelled')
   const totalOrders = nonCancelledTickets.length
   const totalPasses = nonCancelledTickets.reduce((total, ticket) => total + ticket.qty, 0)
-  const totalAmount = baseTickets.reduce((a, t) => a + t.price, 0)
+  const totalAmount = nonCancelledTickets.reduce((a, t) => a + t.price, 0)
   const activeCount = baseTickets.filter((t) => t.status === 'Active').length
   const scannedCount = baseTickets.filter((t) => t.status === 'Scanned').length
   const cancelledCount = baseTickets.filter((t) => t.status === 'Cancelled').length
@@ -200,7 +229,7 @@ export default function Tickets({
         <div className="tile tile-dark">
           <div className="tile-label">TOTAL TICKET VALUE</div>
           <div className="tile-value">₹{totalAmount.toLocaleString()}</div>
-          <div className="tile-sub">{cancelledCount} cancelled passes</div>
+          <div className="tile-sub">{cancelledCount} cancelled passes excluded</div>
           <div className="tile-delta up">
             <span>↑</span> Gross pass sales
           </div>
@@ -368,6 +397,15 @@ export default function Tickets({
                               {cancellingId === t.id ? '...' : 'Cancel'}
                             </button>
                           )}
+                          <button
+                            className="btn-secondary"
+                            onClick={() => handleDelete(t)}
+                            disabled={deletingId === t.id}
+                            title="Permanently delete this ticket"
+                            style={{ height: '28px', padding: '0 8px', fontSize: '11px', color: 'var(--red)' }}
+                          >
+                            {deletingId === t.id ? '...' : 'Delete'}
+                          </button>
                         </div>
                       </td>
                     </tr>

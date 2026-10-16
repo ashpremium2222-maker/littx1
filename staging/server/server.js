@@ -704,7 +704,8 @@ function canDeliverSale(sale) {
 }
 
 function isCountableTicketSale(sale) {
-    return canDeliverSale(sale) && ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(sale.status);
+    const status = String(sale?.status || '').toLowerCase();
+    return !['cancelled', 'canceled'].includes(status) && canDeliverSale(sale) && ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(status);
 }
 
 // ==================== LITTX SELLER ACCOUNTS (max 3 devices) ====================
@@ -2612,6 +2613,30 @@ app.post('/api/admin/cancel-ticket', requireAdmin, async (req, res) => {
     } catch (err) {
         console.error('[CANCEL ERROR]', err);
         res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.delete('/api/admin/delete-ticket', requireAdmin, async (req, res) => {
+    const ticketId = String(req.body?.ticketId || '').trim();
+    if (!ticketId) return res.status(400).json({ success: false, message: 'Ticket ID is required.' });
+
+    try {
+        const sale = await db.getByTicketId(ticketId);
+        if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+
+        const removed = await db.deleteSaleRecord(sale.orderId);
+        if (!removed) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+
+        if (sale.ticketId) {
+            const filename = `${path.basename(String(sale.ticketId))}.pdf`;
+            await fs.promises.unlink(path.join(TICKETS_DIR, filename)).catch(err => {
+                if (err.code !== 'ENOENT') throw err;
+            });
+        }
+        return res.json({ success: true, message: `Ticket ${ticketId} permanently deleted.` });
+    } catch (err) {
+        console.error('[TICKET DELETE ERROR]', err);
+        return res.status(500).json({ success: false, message: 'Could not permanently delete ticket.' });
     }
 });
 
