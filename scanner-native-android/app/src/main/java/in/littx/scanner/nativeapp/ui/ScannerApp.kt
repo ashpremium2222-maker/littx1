@@ -104,13 +104,14 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
 }
 
 @Composable private fun ScannerSessionScreen(loading: Boolean, errorMessage: String?, onRetry: () -> Unit) {
+    val isConnecting = loading || errorMessage == null
     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(night, Color(0xFF14284B), Color(0xFF10172A)))), contentAlignment = Alignment.Center) {
         Column(Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             androidx.compose.foundation.Image(painter = painterResource(com.littx.scanner.nativeapp.R.drawable.scanner_logo), contentDescription = "LITTX Scanner", modifier = Modifier.size(136.dp).clip(RoundedCornerShape(24.dp)))
             Text("EVENT SCANNER", color = cyan, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp, modifier = Modifier.padding(top = 22.dp))
-            Text(if (loading) "Connecting to LITTX" else "Scanner unavailable", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 9.dp))
+            Text(if (isConnecting) "Connecting to LITTX" else "Scanner unavailable", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 9.dp))
             Text(errorMessage ?: "Preparing secure scanner access…", color = Color.White.copy(.72f), fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-            if (loading) CircularProgressIndicator(Modifier.padding(top = 22.dp).size(27.dp), color = cyan, strokeWidth = 2.dp)
+            if (isConnecting) CircularProgressIndicator(Modifier.padding(top = 22.dp).size(27.dp), color = cyan, strokeWidth = 2.dp)
             else Button(onClick = onRetry, modifier = Modifier.fillMaxWidth().padding(top = 22.dp).height(54.dp), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = blue)) { Text("Retry connection", fontWeight = FontWeight.Bold) }
         }
     }

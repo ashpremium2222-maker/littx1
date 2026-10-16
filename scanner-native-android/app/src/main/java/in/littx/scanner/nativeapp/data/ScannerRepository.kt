@@ -15,7 +15,6 @@ class ScannerRepository {
             .addConverterFactory(GsonConverterFactory.create()).build().create(ScannerApi::class.java)
     }
     suspend fun openAppSession() = api.appSession()
-    suspend fun login(password: String) = api.login(ScannerLoginRequest(password))
     suspend fun verifySession(token: String) = api.verifySession("Bearer $token")
     suspend fun scan(ticketId: String, scanner: String, token: String) = api.scan("Bearer $token", ScanRequest(ticketId, scanner))
     suspend fun stats() = api.stats()
