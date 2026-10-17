@@ -1498,28 +1498,49 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
     }
 
     const downloadUrl = `${BASE_URL}/api/ticket/${sale.ticketId}/download`;
-    const result = await sendTicketEmail({
-        to: sale.email, name: sale.name, ticketId: sale.ticketId,
-        gender: ticketTypeForSale(sale), quantity: sale.quantity || 1, amount: sale.amount || 0,
-        pdfPath, downloadUrl, event: sale.event || EVENT.name
-    });
+    let result;
+    try {
+        result = await sendTicketEmail({
+            to: sale.email, name: sale.name, ticketId: sale.ticketId,
+            gender: ticketTypeForSale(sale), quantity: sale.quantity || 1, amount: sale.amount || 0,
+            pdfPath, downloadUrl, event: sale.event || EVENT.name
+        });
+    } catch (err) {
+        console.error(`[Ticket Resend] Email failed for ${sale.ticketId}:`, err.message);
+        result = { success: false, error: err.message || 'Email delivery failed.' };
+    }
 
-    await db.updateSaleRecord(sale.orderId, {
-        emailStatus: result.success ? 'sent' : 'failed',
-        emailError: result.success ? null : result.error,
-        status: result.success ? 'emailed' : 'email_failed'
-    });
+    try {
+        await db.updateSaleRecord(sale.orderId, {
+            emailStatus: result.success ? 'sent' : 'failed',
+            emailError: result.success ? null : result.error,
+            status: result.success ? 'emailed' : 'email_failed'
+        });
+    } catch (err) {
+        console.error(`[Ticket Resend] Could not record email status for ${sale.ticketId}:`, err.message);
+    }
 
-    const whatsappResult = await sendAndRecordTicketWhatsApp({
-        orderId: sale.orderId, phone: sale.phone, name: sale.name,
-        ticketId: sale.ticketId, event: sale.event || EVENT.name,
-        ticketType: ticketTypeForSale(sale), downloadUrl
-    });
+    let whatsappResult;
+    try {
+        whatsappResult = await sendAndRecordTicketWhatsApp({
+            orderId: sale.orderId, phone: sale.phone, name: sale.name,
+            ticketId: sale.ticketId, event: sale.event || EVENT.name,
+            ticketType: ticketTypeForSale(sale), downloadUrl
+        });
+    } catch (err) {
+        console.error(`[Ticket Resend] WhatsApp failed for ${sale.ticketId}:`, err.message);
+        whatsappResult = { success: false, error: err.message || 'WhatsApp delivery failed.' };
+    }
 
+    const emailMessage = result.success ? 'Email sent' : `Email failed: ${result.error || 'invalid recipient'}`;
+    const whatsappMessage = whatsappResult.success
+        ? 'WhatsApp sent'
+        : `WhatsApp failed: ${publicWhatsAppError(whatsappResult)}`;
     res.json({
-        success: result.success,
-        message: result.success ? 'Ticket re-sent!' : `Failed: ${result.error}`,
-        whatsappSent: whatsappResult.success
+        success: Boolean(result.success || whatsappResult.success),
+        emailSent: Boolean(result.success),
+        whatsappSent: Boolean(whatsappResult.success),
+        message: `${emailMessage}. ${whatsappMessage}.`
     });
 });
 

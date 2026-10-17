@@ -242,7 +242,7 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
 
             const payload = JSON.stringify(payloadObj);
 
-            return new Promise((resolve, reject) => {
+            return await new Promise((resolve, reject) => {
                 const https = require('https');
                 const req = https.request('https://api.brevo.com/v3/smtp/email', {
                     method: 'POST',
