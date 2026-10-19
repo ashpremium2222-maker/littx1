@@ -68,3 +68,10 @@ The follow-up review found and addressed these additional issues:
 - After the Phase 2 foundation changes, `npm test` in `staging/server` passed 15 tests; syntax checks for `server.js`, `db.js`, the new migration, and `test/security.test.js` passed; `npm run build` in `staging/combined-app` passed with a Vite large-chunk warning; and `git diff --check` passed. These are local checks against isolated mock sales, not production verification.
 - Native Android compilation was not run because this checkout has no configured local Android SDK properties/environment. No production database or payment/refund/notification provider was accessed. The automated source scan emitted only path/line categories, not credential values; no secret value was included in the report.
 - No migrations or production data changes were performed.
+
+## Phase 3 booking/payment checkpoint — 2026-10-19
+
+- Local working-tree changes add 15-minute atomic inventory reservations to public and PR online checkout, including group-size admission counts and idempotent release; payment callback/webhook reconciliation checks captured order, amount, and currency; event IDs are recorded; and ticket generation uses a retryable lease.
+- Server tests include money/signature/reconciliation helper tests and mocked checkout, group inventory race/release, and webhook retry/mismatch scenarios. The latest backend test run passed 24/24 after PR online checkout was updated.
+- Remaining limitations: group scanner policy awaits owner input; OTP recovery is not operational until a channel/template is configured; refund request/approval endpoints and delivery retry workers are incomplete; cash/manual flows are outside the new reservation lifecycle; production index migration, gateway sandbox, provider and backup/restore checks were not run.
+- The Phase 3 work is not production-ready and no live or production operations were used.

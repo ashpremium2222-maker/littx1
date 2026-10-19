@@ -88,3 +88,18 @@ Complete Phase 1 route-by-route authorization and login abuse protection, remove
 - Existing company rows may contain old fake gateway defaults; review and clear only those exact placeholders through a controlled migration. Existing plaintext seller credentials require a controlled hash migration. Rotate any credential that was actually deployed; no rotation or database migration was performed.
 - Existing short ticket IDs remain bearer links; plan a customer-safe rotation. Process-local throttles do not coordinate across serverless instances. No customer account ownership system exists; the customer login/register UI endpoints are absent from this API. Browser sessionStorage remains readable by same-origin scripts.
 - Phase 2 remains gated on review of the authorization matrix and closure of the historical ticket-link and first-class event-assignment design risks.
+
+## Phase 3 — Booking and payment reliability (2026-10-19, in progress)
+
+### Changes in the current working tree
+
+- Added persisted payment/fulfillment/refund lifecycle fields, checkout idempotency records, 15-minute event inventory reservations, and atomic reservation consume/release operations.
+- Public and PR online checkout now calculate integer minor-unit totals on the server, count group sizes as individual admissions, reserve finite inventory, and verify provider order amount/currency. Razorpay callback/webhook acceptance reconciles captured order, amount, and currency; webhook event IDs and ticket-generation leases support retry safety.
+- The frontend reuses server-provided minor-unit totals. The PDF ticket renderer tolerates missing legacy ticket-category labels.
+- Added booking/payment helper and API regression coverage. Latest backend test run: 24 passed, 0 failed.
+
+### Open work and owner decisions
+
+- Scanner behavior currently consumes one order QR once. Owner must choose whole-group admission or one-at-a-time admission counting before scanner/ticket changes.
+- OTP recovery lacks an approved configured delivery channel/template. Refund request/approval APIs, durable delivery retries, cash/manual inventory policy, migration/index validation, and gateway sandbox verification are incomplete.
+- No migration, production database, live payment, refund, or provider operation was run. This phase is not production-ready. See `docs/BOOKING_PAYMENT_AUDIT.md`.

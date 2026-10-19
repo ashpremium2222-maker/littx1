@@ -94,6 +94,7 @@ function pill(doc, { x, y, w, h, bg, textColor, label, fontSize = 8 }) {
 async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount, createdAt, event, timeZone }) {
     const filePath = path.join(TICKETS_DIR, `${ticketId}.pdf`);
     const qrPngBuffer = await buildQrBuffer(ticketId);
+    const ticketType = String(gender || 'General Admission');
 
     const isAura = event && event.toUpperCase().includes('AURA');
     const brandName = isAura ? 'DHOLIDA GARBA ROYALE' : EVENT_DETAILS.brand;
@@ -134,7 +135,7 @@ async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount,
 
         doc.font('Helvetica-Bold').fontSize(20).fillColor('#0d0d0f').text(brandName, 24, y);
         y += 28;
-        const passLabel = GENDER_LABEL[gender] || gender;
+        const passLabel = GENDER_LABEL[ticketType] || ticketType;
         doc.font('Helvetica-Bold').fontSize(11).fillColor('#A855F7')
             .text(passLabel.toUpperCase(), 24, y);
         y += 22;
@@ -158,14 +159,14 @@ async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount,
         y += 20;
 
         // Ticket type / qty / price row
-        const isExclusive = gender && gender.toUpperCase().includes('EXCLUSIVE');
+        const isExclusive = ticketType.toUpperCase().includes('EXCLUSIVE');
         const colW = (W - 48) / 3;
         const cols = isExclusive ? [
             { label: 'TICKET TYPE', value: 'Exclusive Pass', align: 'left' },
             { label: 'QTY', value: String(quantity), align: 'center' },
             { label: 'ACCESS', value: 'Complimentary', align: 'right' }
         ] : [
-            { label: 'TICKET TYPE', value: GENDER_LABEL[gender] || gender, align: 'left' },
+            { label: 'TICKET TYPE', value: GENDER_LABEL[ticketType] || ticketType, align: 'left' },
             { label: 'QTY', value: String(quantity), align: 'center' },
             { label: 'PRICE', value: `Rs. ${amount}`, align: 'right' }
         ];

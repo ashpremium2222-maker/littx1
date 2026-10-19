@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const { toMinorUnits, fromMinorUnits, expectedSaleAmountMinor, verifyRazorpaySignature, reconcileCapturedPayment, normalizePaymentStatus } = require('./booking-payment');
 const { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } = require('@simplewebauthn/server');
 require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
 
@@ -272,6 +273,7 @@ function rateLimit({ limit, windowMs, keyPrefix }) {
 }
 const loginRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'login' });
 const ticketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, keyPrefix: 'ticket-resend' });
+const CHECKOUT_RESERVATION_MS = 15 * 60 * 1000;
 const checkoutRateLimit = rateLimit({ limit: 20, windowMs: 15 * 60 * 1000, keyPrefix: 'checkout' });
 
 function deviceNameFromUserAgent(userAgent = '') {
@@ -313,7 +315,6 @@ const cors = require('cors');
 const { whatsappWebhook } = require('./whatsapp-webhook');
 
 const db = require('./db');
-const { atomicClaimOrder } = db;
 const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
 const { sendTicketEmail } = require('./mailer');
 const { sendTicketWhatsApp, getWhatsAppConfigurationStatus } = require('./whatsapp-service');
@@ -746,12 +747,176 @@ async function resolveTicketAmount(eventName, ticketType, quantity) {
     if (pass.salesEndAt && new Date(pass.salesEndAt).getTime() < now) return null;
     const qty = Number(quantity === undefined || quantity === null || quantity === '' ? 1 : quantity);
     if (!Number.isInteger(qty) || qty < 1 || qty > Math.min(20, pass.maxPerCustomer || 20)) return null;
-    if (pass.remainingAvailability !== null && pass.remainingAvailability !== undefined && pass.remainingAvailability < qty) return null;
+    const admissionCount = qty * pass.groupSize;
+    if (!Number.isSafeInteger(admissionCount) || admissionCount < 1) return null;
+    if (pass.totalInventory !== null && pass.totalInventory !== undefined && !Number.isInteger(pass.remainingAvailability)) return null;
+    if (pass.remainingAvailability !== null && pass.remainingAvailability !== undefined && pass.remainingAvailability < admissionCount) return null;
+    const unitPriceMinor = toMinorUnits(pass.price, pass.currency || 'INR');
+    if (!Number.isSafeInteger(unitPriceMinor)) return null;
+    const amountMinor = unitPriceMinor * qty;
+    const amount = fromMinorUnits(amountMinor, pass.currency || 'INR');
+    if (!Number.isSafeInteger(amountMinor) || amount === null) return null;
     return {
-        amount: Math.round(pass.price * qty * 100) / 100, qty,
+        amount, amountMinor, qty, admissionCount,
+        inventoryLimited: pass.totalInventory !== null && pass.totalInventory !== undefined,
         ticketType: pass.name, ticketCategoryId: pass.id,
         event: pricing.event.name, eventId: eventRef(pricing.event), currency: pass.currency || 'INR'
     };
+}
+
+async function expireEventReservations(eventId = null) {
+    const now = new Date();
+    const events = (await db.getAllEvents()).filter(event => !eventId || String(event.id || event._id) === String(eventId));
+    for (const event of events) {
+        for (const reservation of event.inventoryReservations || []) {
+            if (reservation.status !== 'active' || new Date(reservation.expiresAt).getTime() > now.getTime()) continue;
+            const sale = await db.getByOrderId(reservation.reservationId);
+            if (sale) {
+                const expired = await db.atomicExpireOrder(reservation.reservationId, now.toISOString());
+                if (!expired) continue;
+                const released = await db.releaseEventInventoryReservation({
+                    eventId: event.id || event._id, reservationId: reservation.reservationId, now, expiredOnly: true
+                });
+                if (released) await db.updateSaleRecord(reservation.reservationId, { inventoryReserved: false, reservationStatus: 'expired' });
+            } else {
+                await db.releaseEventInventoryReservation({
+                    eventId: event.id || event._id, reservationId: reservation.reservationId, now, expiredOnly: true
+                });
+            }
+        }
+    }
+    for (const sale of await db.getAll()) {
+        if (normalizePaymentStatus(sale) !== 'pending' || !sale.reservationExpiresAt || new Date(sale.reservationExpiresAt) > now) continue;
+        const expired = await db.atomicExpireOrder(sale.orderId, now.toISOString());
+        if (!expired) continue;
+        if (sale.inventoryReserved) {
+            const released = await db.releaseEventInventoryReservation({ eventId: sale.eventId, reservationId: sale.orderId, now, expiredOnly: true });
+            if (released) await db.updateSaleRecord(sale.orderId, { inventoryReserved: false, reservationStatus: 'expired' });
+        }
+    }
+}
+
+async function acceptCapturedPayment(sale, paymentId) {
+    const now = new Date();
+    let state = normalizePaymentStatus(sale);
+    if (state === 'pending' && sale.reservationExpiresAt && new Date(sale.reservationExpiresAt) <= now) {
+        const expired = await db.atomicExpireOrder(sale.orderId, now.toISOString());
+        if (expired) {
+            await db.releaseEventInventoryReservation({ eventId: sale.eventId, reservationId: sale.orderId, now, expiredOnly: true });
+            await db.updateSaleRecord(sale.orderId, { inventoryReserved: false, reservationStatus: 'expired' });
+            sale = await db.getByOrderId(sale.orderId);
+            state = normalizePaymentStatus(sale);
+        }
+    }
+    if (state === 'expired') {
+        await db.releaseEventInventoryReservation({ eventId: sale.eventId, reservationId: sale.orderId, now, expiredOnly: true });
+        const late = await db.atomicRecordLateCapturedPayment(sale.orderId, paymentId, now.toISOString());
+        if (late && sale.inventoryReserved) await db.updateSaleRecord(sale.orderId, { inventoryReserved: false, reservationStatus: 'expired' });
+        return { kind: 'late_payment', sale: late || await db.getByOrderId(sale.orderId) };
+    }
+    if (state === 'paid') return { kind: 'already_paid', sale };
+
+    const leaseUntil = new Date(now.getTime() + 2 * 60 * 1000);
+    const processingSale = await db.atomicClaimPaymentProcessing(sale.orderId, now.toISOString(), leaseUntil.toISOString());
+    if (!processingSale) {
+        const current = await db.getByOrderId(sale.orderId);
+        const currentState = normalizePaymentStatus(current);
+        if (currentState === 'expired') {
+            const late = await db.atomicRecordLateCapturedPayment(sale.orderId, paymentId, now.toISOString());
+            if (late && current.inventoryReserved) await db.updateSaleRecord(sale.orderId, { inventoryReserved: false, reservationStatus: 'expired' });
+            return { kind: 'late_payment', sale: late || current };
+        }
+        if (currentState === 'paid') return { kind: 'already_paid', sale: current };
+        return { kind: 'processing', sale: current };
+    }
+
+    if (processingSale.inventoryReserved) {
+        const consumed = await db.consumeEventInventoryReservation({ eventId: processingSale.eventId, reservationId: processingSale.orderId });
+        if (!consumed) {
+            const exception = await db.atomicRecordCapturedPaymentException(
+                processingSale.orderId, paymentId, now.toISOString(),
+                'Captured payment could not consume its reserved inventory; manual reconciliation is required.'
+            );
+            return { kind: 'inventory_conflict', sale: exception || await db.getByOrderId(sale.orderId) };
+        }
+    }
+    let paidSale;
+    try {
+        paidSale = await db.atomicMarkPaymentPaid(
+            processingSale.orderId, paymentId, now.toISOString(), processingSale.inventoryReserved ? 'consumed' : 'not_required'
+        );
+    } catch (error) {
+        if (error.code !== 11000) throw error;
+        if (processingSale.inventoryReserved) {
+            await db.releaseEventInventoryReservation({ eventId: processingSale.eventId, reservationId: processingSale.orderId });
+        }
+        await db.updateSaleRecord(processingSale.orderId, {
+            paymentStatus: 'exception', fulfillmentStatus: 'inventory_conflict', paymentProcessingLeaseUntil: null,
+            inventoryReserved: false, reservationStatus: processingSale.inventoryReserved ? 'released' : processingSale.reservationStatus,
+            lastPaymentAttemptId: paymentId, lastPaymentAttemptStatus: 'duplicate_payment_reference',
+            paymentException: 'Captured provider payment is already associated with another order; manual reconciliation required.',
+            status: 'payment_exception', updatedAt: now.toISOString()
+        });
+        return { kind: 'payment_conflict', sale: await db.getByOrderId(processingSale.orderId) };
+    }
+    if (!paidSale) return { kind: 'processing', sale: await db.getByOrderId(sale.orderId) };
+    if (processingSale.inventoryReserved) {
+        await db.finalizeConsumedInventoryReservation({ eventId: processingSale.eventId, reservationId: processingSale.orderId })
+            .catch(err => console.error('[inventory] Reservation settlement cleanup failed:', err.message));
+    }
+    return { kind: 'paid', sale: paidSale };
+}
+
+async function ensureTicketGenerated(sale) {
+    let current = sale;
+    if (!current.ticketId) {
+        const now = new Date();
+        current = await db.atomicClaimTicketGeneration(
+            sale.orderId, now.toISOString(), new Date(now.getTime() + 2 * 60 * 1000).toISOString()
+        );
+        if (!current) {
+            const latest = await db.getByOrderId(sale.orderId);
+            if (!latest?.ticketId) return { pending: true, sale: latest };
+            current = latest;
+        } else {
+            const ticketId = generateTicketId();
+            const generatedAt = new Date().toISOString();
+            try {
+                await buildTicketPdf({
+                    ticketId, name: current.name, email: current.email, gender: current.gender,
+                    quantity: current.quantity, amount: current.amount, createdAt: generatedAt,
+                    event: current.event || 'DHOLIDA GARBA ROYALE'
+                });
+                const assigned = await db.atomicAssignGeneratedTicket(current.orderId, ticketId, generatedAt);
+                if (!assigned) {
+                    await fs.promises.unlink(path.join(TICKETS_DIR, `${ticketId}.pdf`)).catch(() => {});
+                    const latest = await db.getByOrderId(sale.orderId);
+                    if (!latest?.ticketId) return { pending: true, sale: latest };
+                    current = latest;
+                } else current = assigned;
+            } catch (error) {
+                await db.atomicFailTicketGeneration(current.orderId, error.message, new Date().toISOString());
+                console.error('[ticket] Generation failed for paid order:', error.message);
+                return { failed: true, sale: await db.getByOrderId(sale.orderId) };
+            }
+        }
+    }
+    const pdfPath = path.join(TICKETS_DIR, `${current.ticketId}.pdf`);
+    if (!fs.existsSync(pdfPath)) {
+        try {
+            await buildTicketPdf({
+                ticketId: current.ticketId, name: current.name, email: current.email, gender: current.gender,
+                quantity: current.quantity, amount: current.amount, createdAt: current.generatedAt || current.paidAt,
+                event: current.event || 'DHOLIDA GARBA ROYALE'
+            });
+        } catch (error) {
+            console.error('[ticket] Existing ticket PDF could not be rebuilt:', error.message);
+            return { failed: true, sale: current };
+        }
+    }
+    const qrBuffer = await buildQrBuffer(current.ticketId);
+    const qrDataUrl = await buildQrDataUrl(current.ticketId);
+    return { sale: current, ticketId: current.ticketId, pdfPath, qrBuffer, qrDataUrl };
 }
 
 // ==================== RAZORPAY SETUP ====================
@@ -1184,14 +1349,52 @@ async function requirePR(req, res, next) {
 app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
     if (!TEST_MODE && !PAYMENT_CREDENTIALS_CONFIGURED) return res.status(503).json({ success: false, message: 'Online payments are not configured.' });
     const { name, email, phone, gender, quantity, eventId, eventSlug, event, ticketCategoryId, ticketType } = req.body || {};
+    const idempotencyKey = String(req.get('Idempotency-Key') || '').trim();
 
     if (!name || !email || !phone || !(eventId || eventSlug || event) || !(ticketCategoryId || ticketType || gender)) {
         return res.status(400).json({ success: false, message: 'Name, email, phone, event and ticket category are all required.' });
     }
+    if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) return res.status(400).json({ success: false, message: 'A valid Idempotency-Key header is required.' });
     const requestedEvent = eventId || eventSlug || event;
     const requestedCategory = ticketCategoryId || ticketType || gender;
-    const computed = await resolveTicketAmount(requestedEvent, requestedCategory, quantity);
+    await expireEventReservations();
+    const requestHash = crypto.createHmac('sha256', RZP_KEY_SECRET || process.env.CHECKOUT_IDEMPOTENCY_SECRET || 'stageway-test-idempotency-key')
+        .update(JSON.stringify({ name: String(name).trim(), email: String(email).trim().toLowerCase(), phone: String(phone).trim(), event: String(requestedEvent), category: String(requestedCategory), quantity: String(quantity ?? 1) }))
+        .digest('hex');
+    const idempotency = await db.claimCheckoutRequest(idempotencyKey, requestHash);
+    if (!idempotency.claimed) {
+        const previous = idempotency.request;
+        if (previous.requestHash !== requestHash) return res.status(409).json({ success: false, message: 'This checkout key was already used for different checkout details.' });
+        if (previous.status === 'processing') return res.status(202).json({ success: false, pending: true, message: 'This checkout request is already being prepared. Retry shortly using the same key.' });
+        if (previous.status !== 'completed') return res.status(409).json({ success: false, message: 'This checkout attempt could not be completed. Start a new attempt.' });
+        const existing = await db.getByOrderId(previous.orderId);
+        if (!existing || normalizePaymentStatus(existing) === 'expired') return res.status(409).json({ success: false, expired: true, message: 'This checkout has expired. Start a new attempt.' });
+        if (normalizePaymentStatus(existing) !== 'pending') return res.status(409).json({ success: false, finalized: true, message: 'This checkout has already been finalized.' });
+        return res.json({ success: true, testMode: TEST_MODE, orderId: existing.orderId, amount: existing.amount, amountMinor: expectedSaleAmountMinor(existing), currency: existing.currency, reservationExpiresAt: existing.reservationExpiresAt, keyId: RZP_KEY_ID || null, event: existing.event, eventId: existing.eventId, ticketCategoryId: existing.ticketCategoryId, ticketType: existing.ticketType, idempotentReplay: true });
+    }
+    if (idempotency.reclaimed) {
+        const interrupted = await db.getSaleByCheckoutRequestId(idempotencyKey);
+        if (interrupted && normalizePaymentStatus(interrupted) === 'pending' && new Date(interrupted.reservationExpiresAt) > new Date()) {
+            if (interrupted.inventoryLimited && !interrupted.inventoryReserved) {
+                const reserved = await db.reserveEventInventory({
+                    eventId: interrupted.eventId, reservationId: interrupted.orderId, categoryId: interrupted.ticketCategoryId,
+                    admissionCount: interrupted.admissionCount, expiresAt: interrupted.reservationExpiresAt
+                });
+                if (!reserved.ok || !reserved.reserved) {
+                    await db.failCheckoutRequest(idempotencyKey);
+                    return res.status(409).json({ success: false, message: 'The interrupted checkout could not safely restore its inventory hold. Start a new attempt.' });
+                }
+                await db.updateSaleRecord(interrupted.orderId, { inventoryReserved: true, reservationStatus: 'active' });
+            }
+            await db.completeCheckoutRequest(idempotencyKey, interrupted.orderId);
+            return res.json({ success: true, testMode: TEST_MODE, orderId: interrupted.orderId, amount: interrupted.amount, amountMinor: expectedSaleAmountMinor(interrupted), currency: interrupted.currency, reservationExpiresAt: interrupted.reservationExpiresAt, keyId: RZP_KEY_ID || null, event: interrupted.event, eventId: interrupted.eventId, ticketCategoryId: interrupted.ticketCategoryId, ticketType: interrupted.ticketType, idempotentReplay: true });
+        }
+    }
+    let computed;
+    try { computed = await resolveTicketAmount(requestedEvent, requestedCategory, quantity); }
+    catch (error) { await db.failCheckoutRequest(idempotencyKey); throw error; }
     if (!computed) {
+        await db.failCheckoutRequest(idempotencyKey);
         return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable. Check the event, sale window, quantity and inventory.' });
     }
     const { amount, qty, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
@@ -1203,13 +1406,19 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
             orderId = `order_test_${crypto.randomBytes(8).toString('hex')}`;
         } else {
             const order = await razorpay.orders.create({
-                amount: amount * 100, // paise
+                amount: computed.amountMinor,
                 currency,
-                receipt: `ft_${Date.now()}`
+                receipt: `ft_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
             });
+            if (order.amount !== computed.amountMinor || String(order.currency).toUpperCase() !== String(currency).toUpperCase()) {
+                console.error('[create-order] Gateway order amount/currency did not match the server calculation.');
+                await db.failCheckoutRequest(idempotencyKey);
+                return res.status(502).json({ success: false, message: 'Payment order could not be reconciled. Please retry.' });
+            }
             orderId = order.id;
         }
 
+        const reservationExpiresAt = new Date(Date.now() + CHECKOUT_RESERVATION_MS);
         await db.createSaleRecord({
             orderId,
             event: eventName,
@@ -1218,9 +1427,18 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
             name, email, phone, gender: gender || categoryName,
             ticketType: categoryName,
             quantity: qty,
+            admissionCount: computed.admissionCount,
             amount,
+            amountMinor: computed.amountMinor,
             currency,
             status: 'created',
+            paymentStatus: 'pending',
+            fulfillmentStatus: 'pending',
+            reservationExpiresAt,
+            reservationStatus: computed.inventoryLimited ? 'active' : 'not_required',
+            inventoryReserved: false,
+            inventoryLimited: computed.inventoryLimited,
+            checkoutRequestId: idempotencyKey,
             paymentId: null,
             ticketId: null,
             emailStatus: null,
@@ -1229,6 +1447,23 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
             createdAt: new Date().toISOString()
         });
 
+        if (computed.inventoryLimited) {
+            const reservation = await db.reserveEventInventory({
+                eventId: canonicalEventId, reservationId: orderId, categoryId: canonicalCategoryId,
+                admissionCount: computed.admissionCount, expiresAt: reservationExpiresAt
+            });
+            if (!reservation.ok || !reservation.reserved) {
+                await db.updateSaleRecord(orderId, {
+                    status: 'failed', paymentStatus: 'failed', reservationStatus: 'released',
+                    errorLog: [{ at: new Date().toISOString(), stage: 'inventory_reservation', error: reservation.reason || 'Inventory unavailable.' }]
+                });
+                await db.failCheckoutRequest(idempotencyKey);
+                return res.status(409).json({ success: false, message: 'The selected ticket inventory is no longer available. Please refresh and try again.' });
+            }
+            await db.updateSaleRecord(orderId, { inventoryReserved: true, reservationStatus: 'active' });
+        }
+        await db.completeCheckoutRequest(idempotencyKey, orderId);
+
         console.log(`[Order Created] ${orderId} | ${name} <${email}> | ${gender} x${qty} = ₹${amount}`);
 
         res.json({
@@ -1236,7 +1471,9 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
             testMode: TEST_MODE,
             orderId,
             amount,
+            amountMinor: computed.amountMinor,
             currency,
+            reservationExpiresAt,
             keyId: RZP_KEY_ID || null,
             event: eventName,
             eventId: canonicalEventId,
@@ -1244,6 +1481,7 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
             ticketType: categoryName
         });
     } catch (err) {
+        await db.failCheckoutRequest(idempotencyKey).catch(() => {});
         const details = err.error?.description || err.message || JSON.stringify(err);
         console.error(`[create-order] Error (status ${err.statusCode || 'n/a'}):`, details);
         res.status(err.statusCode === 401 ? 401 : 500).json({
@@ -1259,7 +1497,7 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
 app.post('/api/verify-payment', checkoutRateLimit, async (req, res) => {
     const { orderId, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body || {};
 
-    const sale = await db.getByOrderId(orderId);
+    let sale = await db.getByOrderId(orderId);
     if (!sale) {
         return res.status(404).json({ success: false, message: 'Order not found.' });
     }
@@ -1274,96 +1512,55 @@ app.post('/api/verify-payment', checkoutRateLimit, async (req, res) => {
         if (TEST_MODE) {
             paymentId = paymentId || `pay_test_${crypto.randomBytes(8).toString('hex')}`;
         } else {
-            const expectedSignature = crypto
-                .createHmac('sha256', RZP_KEY_SECRET)
-                .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-                .digest('hex');
-
-            const expectedBuffer = Buffer.from(expectedSignature);
-            const suppliedBuffer = Buffer.from(String(razorpay_signature));
-            if (expectedBuffer.length !== suppliedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)) {
-                await db.updateSaleRecord(orderId, {
-                    status: 'failed',
-                    errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'verify-payment', error: 'Signature mismatch' }]
-                });
+            if (!verifyRazorpaySignature({ orderId: sale.orderId, paymentId: razorpay_payment_id, signature: razorpay_signature, secret: RZP_KEY_SECRET })) {
                 return res.status(400).json({ success: false, message: 'Payment verification failed (signature mismatch).' });
             }
-        }
-
-        // Attempt to atomically claim the order
-        let updatedSale = await atomicClaimOrder(orderId, paymentId);
-        
-        // If we couldn't claim it, it means the webhook (or another request) already did.
-        if (!updatedSale) {
-            console.log(`[verify-payment] Order ${orderId} already claimed — waiting for ticket generation if needed.`);
-            
-            // Wait up to 5 seconds for the ticket ID to be generated by the webhook
-            let currentSale = await db.getByOrderId(orderId);
-            let attempts = 0;
-            while (currentSale.status === 'paid' && !currentSale.ticketId && attempts < 10) {
-                await new Promise(resolve => setTimeout(resolve, 500));
-                currentSale = await db.getByOrderId(orderId);
-                attempts++;
+            const providerPayment = await razorpay.payments.fetch(razorpay_payment_id);
+            const reconciliation = reconcileCapturedPayment({
+                payment: providerPayment, orderId: sale.orderId,
+                expectedAmountMinor: expectedSaleAmountMinor(sale), expectedCurrency: sale.currency || 'INR'
+            });
+            if (!reconciliation.ok) {
+                if (reconciliation.failed) {
+                    await db.updateSaleRecord(orderId, { lastPaymentAttemptId: razorpay_payment_id, lastPaymentAttemptStatus: 'failed', lastPaymentAttemptAt: new Date() });
+                    return res.status(409).json({ success: false, retryable: true, paymentStatus: normalizePaymentStatus(sale), message: 'This payment attempt failed. You may retry checkout while the order remains valid.' });
+                }
+                if (reconciliation.pending) return res.status(202).json({ success: false, pending: true, paymentStatus: 'processing', message: 'Payment is still being confirmed. You can safely retry this status check.' });
+                await db.updateSaleRecord(orderId, {
+                    paymentException: `Provider payment reconciliation failed: ${reconciliation.reason}`,
+                    errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'payment_reconciliation', error: reconciliation.reason }]
+                });
+                return res.status(409).json({ success: false, reconciliationRequired: true, message: 'Payment details need reconciliation. No ticket has been issued.' });
             }
-
-            // Build missing fields for the frontend success modal
-            const downloadUrl = `${BASE_URL}/api/ticket/${currentSale.ticketId}/download`;
-            const qrDataUrl = currentSale.ticketId ? await buildQrDataUrl(currentSale.ticketId).catch(() => '') : '';
-
-            return res.json({
-                success: true,
-                ticketId: currentSale.ticketId,
-                downloadUrl,
-                qrDataUrl,
-                emailSent: currentSale.emailStatus === 'sent',
-                emailError: currentSale.emailError,
-                event: currentSale.event || EVENT.name,
-                name: currentSale.name,
-                email: currentSale.email,
-                gender: currentSale.gender,
-                quantity: currentSale.quantity,
-                amount: currentSale.amount,
-                generatedAt: currentSale.generatedAt || currentSale.paidAt,
-                details: EVENT_DETAILS,
-                alreadyProcessed: true
-            });
         }
 
-        // If we successfully claimed it, WE generate the ticket
-        const ticketId = generateTicketId();
-        const generatedAt = new Date().toISOString();
-        let pdfPath, qrBuffer, qrDataUrl;
-        try {
-            pdfPath = await buildTicketPdf({
-                ticketId,
-                name: sale.name,
-                email: sale.email,
-                gender: sale.gender,
-                quantity: sale.quantity,
-                amount: sale.amount,
-                createdAt: generatedAt,
-                event: sale.event || 'DHOLIDA GARBA ROYALE'
-            });
-            qrBuffer = await buildQrBuffer(ticketId);
-            qrDataUrl = await buildQrDataUrl(ticketId);
-            await db.updateSaleRecord(orderId, { status: 'ticket_generated', ticketId, generatedAt });
-        } catch (genErr) {
-            console.error('[verify-payment] Ticket generation failed:', genErr.message);
-            await db.updateSaleRecord(orderId, {
-                status: 'ticket_generation_failed',
-                errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'ticket_generation', error: genErr.message }]
-            });
+        const accepted = await acceptCapturedPayment(sale, paymentId);
+        if (accepted.kind === 'late_payment') return res.status(409).json({ success: false, paid: true, reconciliationRequired: true, paymentStatus: 'paid', message: 'Payment was received after the inventory hold expired. The booking needs support review.' });
+        if (accepted.kind === 'inventory_conflict') return res.status(409).json({ success: false, paid: true, reconciliationRequired: true, message: 'Payment was received but inventory needs support review. No ticket has been issued.' });
+        if (accepted.kind === 'payment_conflict') return res.status(409).json({ success: false, reconciliationRequired: true, message: 'This payment reference is already associated with another booking. Support review is required; no ticket has been issued.' });
+        if (accepted.kind === 'processing') return res.status(202).json({ success: false, pending: true, paymentStatus: 'processing', message: 'Payment is being processed. Retry this status check shortly.' });
+        sale = accepted.sale || sale;
+        if (accepted.kind === 'already_paid' && sale.ticketId) {
+            return res.json({ success: true, ticketId: sale.ticketId, downloadUrl: `${BASE_URL}/api/ticket/${sale.ticketId}/download`, emailSent: sale.emailStatus === 'sent', event: sale.event, name: sale.name, email: sale.email, quantity: sale.quantity, amount: sale.amount, generatedAt: sale.generatedAt || sale.paidAt, alreadyProcessed: true });
+        }
+
+        const ticket = await ensureTicketGenerated(sale);
+        if (ticket.pending) return res.status(202).json({ success: false, pending: true, paymentStatus: 'paid', message: 'Payment is confirmed. Your ticket is being generated; retry this status check shortly.' });
+        if (ticket.failed) {
             return res.status(500).json({
                 success: false,
                 message: 'Payment succeeded but ticket generation failed. Our team has been notified — contact support with your payment ID.',
                 paymentId
             });
         }
+        sale = ticket.sale;
+        const { ticketId, pdfPath, qrBuffer, qrDataUrl } = ticket;
+        const generatedAt = sale.generatedAt || sale.paidAt;
 
         const downloadUrl = `${BASE_URL}/api/ticket/${ticketId}/download`;
 
         // ---- Email the ticket ----
-        const emailResult = await sendTicketEmail({
+        const emailResult = process.env.NODE_ENV === 'test' ? { success: false, error: 'Notification delivery is disabled in tests.' } : await sendTicketEmail({
             to: sale.email,
             name: sale.name,
             ticketId,
@@ -1389,7 +1586,7 @@ app.post('/api/verify-payment', checkoutRateLimit, async (req, res) => {
 
         console.log(`[Ticket Issued] ${ticketId} for ${sale.email} | email ${emailResult.success ? 'sent ✅' : 'FAILED ❌ (' + emailResult.error + ')'}`);
 
-        const whatsappResult = await sendAndRecordTicketWhatsApp({
+        const whatsappResult = process.env.NODE_ENV === 'test' ? { success: false, reason: 'Notification delivery is disabled in tests.' } : await sendAndRecordTicketWhatsApp({
             orderId, phone: sale.phone, name: sale.name, ticketId,
             event: sale.event || EVENT.name, ticketType: ticketTypeForSale(sale), downloadUrl
         });
@@ -1414,7 +1611,7 @@ app.post('/api/verify-payment', checkoutRateLimit, async (req, res) => {
     } catch (err) {
         console.error('[verify-payment] Error:', err.message);
         await db.updateSaleRecord(orderId, {
-            status: 'failed',
+            status: 'payment_error',
             errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'verify-payment', error: safeErrorMessage(err) }]
         });
         res.status(500).json({ success: false, message: 'Something went wrong verifying your payment. Please contact support.' });
@@ -1427,13 +1624,13 @@ const RZP_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';
 app.post('/api/webhook/razorpay', async (req, res) => {
     try {
         const signature = req.headers['x-razorpay-signature'];
-        if (!signature || !RZP_WEBHOOK_SECRET) {
+        if (!signature || !RZP_WEBHOOK_SECRET || !Buffer.isBuffer(req.rawBody)) {
             return res.status(400).send('Missing signature or secret');
         }
 
         const expectedSignature = crypto
             .createHmac('sha256', RZP_WEBHOOK_SECRET)
-            .update(req.rawBody || Buffer.from(JSON.stringify(req.body)))
+            .update(req.rawBody)
             .digest('hex');
 
         const suppliedSignature = Buffer.from(String(signature));
@@ -1444,72 +1641,65 @@ app.post('/api/webhook/razorpay', async (req, res) => {
         }
 
         const event = req.body.event;
-        if (event === 'order.paid' || event === 'payment.captured') {
-            const paymentEntity = req.body.payload.payment.entity;
-            const orderId = paymentEntity.order_id;
-            const paymentId = paymentEntity.id;
-
-            if (!orderId) {
-                return res.status(200).send('No order ID');
-            }
-
-            // ATOMIC CLAIM — only one concurrent webhook can ever win this race.
-            // If status is no longer 'created', atomicClaimOrder returns null and we stop.
-            const sale = await atomicClaimOrder(orderId, paymentId);
-            if (!sale) {
-                console.log(`[webhook] Order ${orderId} already claimed by another process — skipping duplicate.`);
-                return res.status(200).send('Already processed');
-            }
-            
-            const ticketId = generateTicketId();
-            const generatedAt = new Date().toISOString();
-            let pdfPath, qrBuffer, qrDataUrl;
-            
-            try {
-                pdfPath = await buildTicketPdf({
-                    ticketId, name: sale.name, email: sale.email, gender: sale.gender,
-                    quantity: sale.quantity, amount: sale.amount, createdAt: generatedAt,
-                    event: sale.event || 'DHOLIDA GARBA ROYALE'
-                });
-                qrBuffer = await buildQrBuffer(ticketId);
-                qrDataUrl = await buildQrDataUrl(ticketId);
-                await db.updateSaleRecord(orderId, { status: 'ticket_generated', ticketId, generatedAt });
-            } catch (genErr) {
-                console.error('[webhook] Ticket generation failed:', genErr.message);
-                await db.updateSaleRecord(orderId, {
-                    status: 'ticket_generation_failed',
-                    errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'ticket_generation', error: genErr.message }]
-                });
-                return res.status(200).send('Ticket gen failed');
-            }
-
-            const downloadUrl = `${BASE_URL}/api/ticket/${ticketId}/download`;
-
-            const emailResult = await sendTicketEmail({
-                to: sale.email, name: sale.name, ticketId, gender: sale.gender,
-                quantity: sale.quantity, amount: sale.amount, pdfPath, qrBuffer,
-                downloadUrl, event: sale.event || 'DHOLIDA GARBA ROYALE'
+        if (!['order.paid', 'payment.captured', 'payment.failed'].includes(event)) return res.status(200).send('Ignored');
+        let paymentEntity = req.body?.payload?.payment?.entity;
+        let orderId = paymentEntity?.order_id || req.body?.payload?.order?.entity?.id;
+        if (!orderId) return res.status(200).send('No order ID');
+        if (!paymentEntity && razorpay) {
+            const payments = await razorpay.orders.fetchPayments(orderId);
+            paymentEntity = (payments.items || []).find(payment => payment.status === 'captured' && payment.order_id === orderId);
+        }
+        if (!paymentEntity?.id) return res.status(500).send('Captured payment details unavailable');
+        const sale = await db.getByOrderId(orderId);
+        if (!sale) return res.status(200).send('Unknown order');
+        const providerEventId = String(req.headers['x-razorpay-event-id'] || `sha256:${crypto.createHash('sha256').update(req.rawBody).digest('hex')}`);
+        if ((sale.razorpayEventIds || []).includes(providerEventId)) return res.status(200).send('Duplicate event');
+        if (event === 'payment.failed') {
+            await db.updateSaleRecord(orderId, { lastPaymentAttemptId: paymentEntity?.id || null, lastPaymentAttemptStatus: 'failed', lastPaymentAttemptAt: new Date() });
+            await db.recordRazorpayEvent(orderId, providerEventId);
+            return res.status(200).send('Payment attempt failed; order remains retryable');
+        }
+        const reconciliation = reconcileCapturedPayment({
+            payment: paymentEntity, orderId: sale.orderId,
+            expectedAmountMinor: expectedSaleAmountMinor(sale), expectedCurrency: sale.currency || 'INR'
+        });
+        if (!reconciliation.ok) {
+            if (reconciliation.pending) return res.status(200).send('Payment not captured');
+            await db.updateSaleRecord(orderId, {
+                paymentException: `Webhook payment reconciliation failed: ${reconciliation.reason}`,
+                errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'webhook_reconciliation', error: reconciliation.reason }]
             });
+            console.error(`[webhook] Payment reconciliation failed for ${orderId}: ${reconciliation.reason}`);
+            return res.status(200).send('Payment requires reconciliation');
+        }
+        const accepted = await acceptCapturedPayment(sale, paymentEntity.id);
+        if (['late_payment', 'inventory_conflict', 'payment_conflict'].includes(accepted.kind)) return res.status(200).send('Payment requires manual reconciliation');
+        if (accepted.kind === 'processing') return res.status(500).send('Payment processing is in progress; retry later');
+        const issued = await ensureTicketGenerated(accepted.sale || sale);
+        if (issued.pending || issued.failed) return res.status(500).send('Ticket issuance pending; retry later');
+        const currentSale = issued.sale;
+        const downloadUrl = `${BASE_URL}/api/ticket/${issued.ticketId}/download`;
 
-            if (emailResult.success) {
-                await db.updateSaleRecord(orderId, { status: 'emailed', emailStatus: 'sent', emailError: null, emailPreviewUrl: emailResult.previewUrl || null });
-            } else {
-                await db.updateSaleRecord(orderId, {
-                    status: 'email_failed', emailStatus: 'failed', emailError: emailResult.error,
-                    errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'email', error: emailResult.error }]
-                });
-            }
-            console.log(`[Webhook Ticket Issued] ${ticketId} for ${sale.email}`);
-
-            await sendAndRecordTicketWhatsApp({
-                orderId, phone: sale.phone, name: sale.name, ticketId,
-                event: sale.event || EVENT.name, ticketType: ticketTypeForSale(sale), downloadUrl
+        if (currentSale.emailStatus !== 'sent') {
+            const emailResult = process.env.NODE_ENV === 'test' ? { success: false, error: 'Notification delivery is disabled in tests.' } : await sendTicketEmail({
+                to: currentSale.email, name: currentSale.name, ticketId: issued.ticketId, gender: currentSale.gender,
+                quantity: currentSale.quantity, amount: currentSale.amount, pdfPath: issued.pdfPath, qrBuffer: issued.qrBuffer,
+                downloadUrl, event: currentSale.event || 'DHOLIDA GARBA ROYALE'
+            });
+            await db.updateSaleRecord(orderId, emailResult.success
+                ? { status: 'emailed', emailStatus: 'sent', emailError: null, emailPreviewUrl: emailResult.previewUrl || null }
+                : { status: 'email_failed', emailStatus: 'failed', emailError: emailResult.error });
+        }
+        if (currentSale.whatsappStatus !== 'sent') {
+            if (process.env.NODE_ENV !== 'test') await sendAndRecordTicketWhatsApp({
+                orderId, phone: currentSale.phone, name: currentSale.name, ticketId: issued.ticketId,
+                event: currentSale.event || EVENT.name, ticketType: ticketTypeForSale(currentSale), downloadUrl
             });
         }
-
-        res.status(200).send('OK');
+        await db.recordRazorpayEvent(orderId, providerEventId);
+        return res.status(200).send('OK');
     } catch (err) {
-        console.error('[webhook error]', err);
+        console.error('[webhook error]', err.message);
         res.status(500).send('Webhook Error');
     }
 });
@@ -4217,24 +4407,64 @@ app.post('/api/pr/create-order', requirePR, checkoutRateLimit, async (req, res) 
     const requestedEvent = eventId || eventSlug || event;
     if (!name || !email || !phone || !requestedEvent || !(ticketCategoryId || ticketType || gender))
         return res.status(400).json({ success: false, message: 'Missing required fields.' });
+    const idempotencyKey = String(req.get('Idempotency-Key') || '').trim();
+    if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) return res.status(400).json({ success: false, message: 'A valid Idempotency-Key header is required.' });
+
+    const requestHash = crypto.createHmac('sha256', RZP_KEY_SECRET || process.env.CHECKOUT_IDEMPOTENCY_SECRET || 'stageway-test-idempotency-key')
+        .update(JSON.stringify({ partner: req.prSession.userId, name: String(name).trim(), email: String(email).trim().toLowerCase(), phone: String(phone).trim(), event: String(requestedEvent), category: String(ticketCategoryId || ticketType || gender), quantity: String(quantity ?? 1) }))
+        .digest('hex');
+    const idempotency = await db.claimCheckoutRequest(idempotencyKey, requestHash);
+    if (!idempotency.claimed) {
+        const previous = idempotency.request;
+        if (previous.requestHash !== requestHash) return res.status(409).json({ success: false, message: 'This checkout key was already used for different checkout details.' });
+        if (previous.status === 'processing') return res.status(202).json({ success: false, pending: true, message: 'This checkout request is already being prepared. Retry shortly using the same key.' });
+        if (previous.status !== 'completed') return res.status(409).json({ success: false, message: 'This checkout attempt could not be completed. Start a new attempt.' });
+        const existing = await db.getByOrderId(previous.orderId);
+        if (!existing || existing.prUserId !== req.prSession.userId || normalizePaymentStatus(existing) !== 'pending') return res.status(409).json({ success: false, finalized: true, message: 'This checkout has already been finalized or expired.' });
+        return res.json({ success: true, orderId: existing.orderId, amount: existing.amount, amountMinor: expectedSaleAmountMinor(existing), currency: existing.currency, reservationExpiresAt: existing.reservationExpiresAt, keyId: RZP_KEY_ID || 'test_key', idempotentReplay: true });
+    }
+
+    await expireEventReservations();
 
     const computed = await resolveTicketAmount(requestedEvent, ticketCategoryId || ticketType || gender, quantity);
-    if (!computed) return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable.' });
+    if (!computed) {
+        await db.failCheckoutRequest(idempotencyKey);
+        return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable.' });
+    }
     const pricingEvent = pickCanonicalEvent(await db.getAllEvents(), requestedEvent);
-    if (!pricingEvent || pricingEvent.companyId !== req.prSession.companyId) return res.status(403).json({ success: false, message: 'PR partner is not assigned to this event.' });
-    const { amount, qty, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
+    if (!pricingEvent || pricingEvent.companyId !== req.prSession.companyId) {
+        await db.failCheckoutRequest(idempotencyKey);
+        return res.status(403).json({ success: false, message: 'PR partner is not assigned to this event.' });
+    }
+    const { amount, qty, admissionCount, amountMinor, inventoryLimited, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
 
     try {
+        const reservationExpiresAt = new Date(Date.now() + CHECKOUT_RESERVATION_MS);
         let orderId;
         if (TEST_MODE) {
             orderId = `order_pr_test_${crypto.randomBytes(8).toString('hex')}`;
         } else {
             const order = await razorpay.orders.create({
-                amount: amount * 100,
+                amount: amountMinor,
                 currency,
-                receipt: `pr_${Date.now()}`,
+                receipt: `pr_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`,
             });
+            if (order.amount !== amountMinor || String(order.currency).toUpperCase() !== String(currency).toUpperCase()) {
+                await db.failCheckoutRequest(idempotencyKey);
+                return res.status(502).json({ success: false, message: 'Payment order could not be reconciled. Please retry.' });
+            }
             orderId = order.id;
+        }
+
+        if (inventoryLimited) {
+            const reservation = await db.reserveEventInventory({
+                eventId: canonicalEventId, reservationId: orderId, categoryId: canonicalCategoryId,
+                admissionCount, expiresAt: reservationExpiresAt
+            });
+            if (!reservation.ok || !reservation.reserved) {
+                await db.failCheckoutRequest(idempotencyKey);
+                return res.status(409).json({ success: false, message: 'The selected ticket inventory is no longer available. Refresh and try again.' });
+            }
         }
 
         const ticketId = generateTicketId();
@@ -4246,9 +4476,19 @@ app.post('/api/pr/create-order', requirePR, checkoutRateLimit, async (req, res) 
             name, email, phone, gender: gender || categoryName,
             ticketType: categoryName,
             quantity: qty,
+            admissionCount,
             amount,
+            amountMinor,
             currency,
             status: 'created',
+            paymentStatus: 'pending',
+            fulfillmentStatus: 'pending',
+            reservationExpiresAt,
+            reservationStatus: inventoryLimited ? 'active' : 'not_required',
+            inventoryReserved: inventoryLimited,
+            inventoryLimited,
+            checkoutRequestId: idempotencyKey,
+            checkoutRequestHash: requestHash,
             paymentId: null,
             ticketId,
             emailStatus: 'pending',
@@ -4259,8 +4499,11 @@ app.post('/api/pr/create-order', requirePR, checkoutRateLimit, async (req, res) 
             paymentMethod: 'razorpay',
         });
 
-        res.json({ success: true, orderId, amount, currency, keyId: RZP_KEY_ID || 'test_key' });
+        await db.completeCheckoutRequest(idempotencyKey, orderId);
+
+        res.json({ success: true, orderId, amount, amountMinor, currency, reservationExpiresAt, keyId: RZP_KEY_ID || 'test_key' });
     } catch (err) {
+        await db.failCheckoutRequest(idempotencyKey).catch(() => {});
         res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });

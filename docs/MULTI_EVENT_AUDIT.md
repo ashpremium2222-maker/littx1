@@ -48,3 +48,7 @@
 - Verification on 2026-10-19: `npm test` in `staging/server` passed 15/15; Node syntax checks passed for server, DB, migration, and test files; `npm run build` in `staging/combined-app` passed with a large-chunk warning; `git diff --check` passed. Tests use isolated mock sales; no production services were accessed.
 - Remaining acceptance work: production-grade atomic inventory reservations and expiry/release; UI editing for all event fields/categories; full event-ID sales/report/scanner assignment scope; dynamic PDF and generic notification details; native seller/scanner event selection; migration execution/rollback evidence; and customer booking ownership.
 - Phase 2 must remain open until those workflows and concurrency/data migration checks are complete.
+
+## Phase 3 carry-over update — 2026-10-19
+
+The Phase 3 working tree now implements concurrency-safe inventory reservations and expiry/release for public and PR online checkout, with reservations counted in individual admissions. This closes the inventory-reservation item for those online paths only; PR cash requests remain pending admin approval without a hold, and manual/seller issuance paths still need separate inventory policy and integration. Event editor/reporting/staff assignment, event-specific ticket templates, native client updates, customer-owned booking retrieval, and migration validation remain open as previously listed. Full Phase 2 acceptance is therefore still not met.

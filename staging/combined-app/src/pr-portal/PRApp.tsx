@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 // ==================== TYPES ====================
 interface PRUser {
@@ -122,6 +122,7 @@ function SellTicketModal({
   const [ticketCategoryId, setTicketCategoryId] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'cash'>('razorpay')
   const [loading, setLoading] = useState(false)
+  const checkoutRequest = useRef<{ fingerprint: string; key: string } | null>(null)
   const [step, setStep] = useState<'form' | 'pending' | 'done'>('form')
   const [message, setMessage] = useState('')
 
@@ -150,9 +151,13 @@ function SellTicketModal({
 
     try {
       if (paymentMethod === 'razorpay') {
+        const fingerprint = JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), eventId, ticketCategoryId, quantity: 1 })
+        if (!checkoutRequest.current || checkoutRequest.current.fingerprint !== fingerprint) {
+          checkoutRequest.current = { fingerprint, key: crypto.randomUUID() }
+        }
         const res = await fetch(`${API}/api/pr/create-order`, {
           method: 'POST',
-          headers: prAuthHeaders(true),
+          headers: { ...prAuthHeaders(true), 'Idempotency-Key': checkoutRequest.current.key },
           body: JSON.stringify({ name, email, phone, eventId, ticketCategoryId, ticketType: selectedTicket.name, quantity: 1 }),
         })
         const data = await res.json()
@@ -160,7 +165,7 @@ function SellTicketModal({
 
         const rzp = new (window as any).Razorpay({
           key: data.keyId,
-          amount: data.amount * 100,
+          amount: data.amountMinor,
           currency: data.currency,
           name: 'LITTX',
           description: `${selectedTicket.name} — ${selectedEvent.name}`,
@@ -188,7 +193,7 @@ function SellTicketModal({
               setStep('done')
             }
           },
-          modal: { ondismiss: () => setLoading(false) },
+          modal: { ondismiss: () => { setLoading(false); checkoutRequest.current = null } },
         })
         rzp.open()
         setLoading(false)

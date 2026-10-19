@@ -48,6 +48,10 @@ Remaining Phase 2 acceptance work:
 
 Phase 3 booking/payment reliability must address concurrency, inventory reservation recovery, payment/webhook idempotency, and reconciliation after this event foundation stabilizes. Do not treat this checkpoint as Phase 2 completion.
 
+## Phase 3 execution checkpoint — 2026-10-19
+
+Phase 3 implementation is underway on the existing Phase 2 foundation. Local changes add 15-minute inventory holds for public and PR online checkout, individual-admission inventory arithmetic, payment/provider reconciliation, checkout and webhook idempotency, retryable ticket generation, and regression tests. This does not close Phase 2: event editor/reporting/staff assignment, dynamic event ticket templates, and migration evidence remain open. Group scanning, OTP delivery, refund request/decision APIs, notification retry workers, and production index migration also remain open. See `docs/BOOKING_PAYMENT_AUDIT.md` for approved choices and owner questions.
+
 ## Dependencies and migration safeguards
 
 - Phase 2 depends on tenant ownership rules from Phase 1.

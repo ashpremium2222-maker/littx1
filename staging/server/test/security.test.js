@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
+const { TICKETS_DIR } = require('../ticket');
 
 process.env.NODE_ENV = 'test';
 process.env.SCANNER_SESSION_SECRET = 'test-only-session-secret-with-more-than-32-characters';
@@ -342,17 +344,49 @@ test('checkout prices the selected event category and rejects cross-event and un
     });
     assert.equal(soldOut.status, 400);
 
+    const checkoutKey = `phase2-checkout-key-${Date.now()}`;
+    const checkoutBody = { name: 'Test Buyer', email: 'buyer@example.test', phone: '1234567890', eventSlug: slug, ticketCategoryId: 'premium-early', quantity: 2, amount: 1 };
     const orderResponse = await fetch(`${baseUrl}/api/create-order`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Test Buyer', email: 'buyer@example.test', phone: '1234567890', eventSlug: slug, ticketCategoryId: 'premium-early', quantity: 2, amount: 1 })
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': checkoutKey },
+        body: JSON.stringify(checkoutBody)
     });
     assert.equal(orderResponse.status, 200);
     const order = await orderResponse.json();
     assert.equal(order.amount, 2598, 'server-side event pricing overrides the client amount');
+    assert.equal(order.amountMinor, 259800);
+    const replay = await fetch(`${baseUrl}/api/create-order`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': checkoutKey }, body: JSON.stringify(checkoutBody)
+    });
+    assert.equal(replay.status, 200);
+    assert.equal((await replay.json()).orderId, order.orderId, 'retries reuse the same gateway order');
     const sale = await db.getByOrderId(order.orderId);
     assert.equal(sale.eventId, eventId);
     assert.equal(sale.ticketCategoryId, 'premium-early');
     assert.equal(sale.ticketType, 'Premium Early');
+    assert.equal(sale.admissionCount, 2);
+    assert.equal(sale.inventoryReserved, true);
+    const remainingAfterHold = (await db.getAllEvents()).find(event => event.id === eventId).ticketCategories.find(category => category.id === 'premium-early').remainingAvailability;
+    assert.equal(remainingAfterHold, 1, 'reservation decrements admission inventory before payment');
+
+    const verification = await fetch(`${baseUrl}/api/verify-payment`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: order.orderId })
+    });
+    assert.equal(verification.status, 200);
+    const verified = await verification.json();
+    assert.equal(verified.success, true);
+    assert.ok(verified.ticketId);
+    const paidSale = await db.getByOrderId(order.orderId);
+    assert.equal(paidSale.paymentStatus, 'paid');
+    assert.equal(paidSale.fulfillmentStatus, 'ticketed');
+    assert.equal(paidSale.inventoryReserved, false);
+
+    const repeatedVerification = await fetch(`${baseUrl}/api/verify-payment`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: order.orderId })
+    });
+    assert.equal(repeatedVerification.status, 200);
+    assert.equal((await repeatedVerification.json()).ticketId, verified.ticketId, 'repeat callback reuses the same ticket');
+    const { unlink } = require('node:fs/promises');
+    await unlink(path.join(TICKETS_DIR, `${verified.ticketId}.pdf`)).catch(() => {});
 
     const masterToken = 'phase2-checkout-master-token';
     await db.setUserSession('phase2-checkout-master', { token: masterToken, role: 'master_admin', companyId: 'littx', loginAt: new Date().toISOString() });
@@ -362,4 +396,161 @@ test('checkout prices the selected event category and rejects cross-event and un
     });
     assert.equal(removeUsedCategory.status, 409, 'historical order category cannot be removed');
     await db.deleteUserSession('phase2-checkout-master');
+});
+
+test('group checkout reserves individual admissions atomically and a reservation can release only once', async () => {
+    const db = require('../db');
+    const eventId = `phase3-group-${Date.now()}`;
+    const slug = `${eventId}-slug`;
+    await db.saveEvent({
+        id: eventId, slug, name: 'Phase 3 Group Event', companyId: 'littlane', organizerId: 'littlane',
+        status: 'published', active: true, visibility: 'public',
+        ticketCategories: [{ id: 'group-five', name: 'Group of Five', price: 2000, currency: 'INR', totalInventory: 5, remainingAvailability: 5, maxPerCustomer: 2, status: 'active', groupSize: 5 }]
+    });
+    const create = key => fetch(`${baseUrl}/api/create-order`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+        body: JSON.stringify({ name: 'Group Buyer', email: 'group@example.test', phone: '1234567890', eventId, ticketCategoryId: 'group-five', quantity: 1 })
+    });
+    const responses = await Promise.all([create(`phase3-group-key-a-${Date.now()}`), create(`phase3-group-key-b-${Date.now()}`)]);
+    const statuses = responses.map(response => response.status).sort();
+    assert.ok(statuses.includes(200));
+    assert.ok(statuses.every(status => status === 200 || status === 400 || status === 409));
+    assert.equal(statuses.filter(status => status === 200).length, 1, 'only one checkout can reserve the five remaining admissions');
+    const event = (await db.getAllEvents()).find(item => item.id === eventId);
+    assert.equal(event.ticketCategories[0].remainingAvailability, 0);
+    const sale = (await db.getAll()).find(item => item.eventId === eventId && item.ticketCategoryId === 'group-five' && item.paymentStatus === 'pending');
+    assert.equal(sale.admissionCount, 5);
+
+    const released = await db.releaseEventInventoryReservation({ eventId, reservationId: sale.orderId, now: new Date(Date.now() + 16 * 60 * 1000), expiredOnly: true });
+    const duplicateRelease = await db.releaseEventInventoryReservation({ eventId, reservationId: sale.orderId, now: new Date(Date.now() + 16 * 60 * 1000), expiredOnly: true });
+    assert.equal(released, true);
+    assert.equal(duplicateRelease, false);
+    assert.equal(event.ticketCategories[0].remainingAvailability, 5, 'inventory is restored once despite duplicate cleanup attempts');
+});
+
+test('PR online checkout reserves admission inventory and reuses an idempotent order', async () => {
+    const db = require('../db');
+    const eventId = `phase3-pr-${Date.now()}`;
+    const slug = `${eventId}-slug`;
+    await db.saveEvent({
+        id: eventId, slug, name: 'Phase 3 PR Event', companyId: 'littlane', organizerId: 'littlane',
+        status: 'published', active: true, visibility: 'public',
+        ticketCategories: [{ id: 'group-two', name: 'Group of Two', price: 900, currency: 'INR', totalInventory: 4, remainingAvailability: 4, maxPerCustomer: 2, status: 'active', groupSize: 2 }]
+    });
+    const token = `phase3-pr-session-${Date.now()}`;
+    await db.setUserSession('phase3-pr-user', { token, role: 'pr', companyId: 'littlane', loginAt: new Date().toISOString() });
+    const key = `phase3-pr-checkout-${Date.now()}`;
+    const body = { name: 'PR Buyer', email: 'prbuyer@example.test', phone: '1234567890', eventId, ticketCategoryId: 'group-two', quantity: 1 };
+    const create = () => fetch(`${baseUrl}/api/pr/create-order`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth-Token': token, 'Idempotency-Key': key }, body: JSON.stringify(body)
+    });
+    const firstResponse = await create();
+    assert.equal(firstResponse.status, 200);
+    const first = await firstResponse.json();
+    assert.equal(first.amountMinor, 90000);
+    const replayResponse = await create();
+    assert.equal(replayResponse.status, 200);
+    const replay = await replayResponse.json();
+    assert.equal(replay.orderId, first.orderId);
+    assert.equal(replay.idempotentReplay, true);
+    const sale = await db.getByOrderId(first.orderId);
+    assert.equal(sale.admissionCount, 2);
+    assert.equal(sale.inventoryReserved, true);
+    const event = (await db.getAllEvents()).find(item => item.id === eventId);
+    assert.equal(event.ticketCategories[0].remainingAvailability, 2);
+    await db.deleteUserSession('phase3-pr-user');
+});
+
+test('expired checkout transitions to expired and releases its admission hold', async () => {
+    const db = require('../db');
+    const eventId = `phase3-expiry-${Date.now()}`;
+    const slug = `${eventId}-slug`;
+    await db.saveEvent({
+        id: eventId, slug, name: 'Phase 3 Expiry Event', companyId: 'littlane', organizerId: 'littlane',
+        status: 'published', active: true, visibility: 'public',
+        ticketCategories: [{ id: 'single', name: 'Single', price: 100, currency: 'INR', totalInventory: 1, remainingAvailability: 1, maxPerCustomer: 1, status: 'active', groupSize: 1 }]
+    });
+    const key = `phase3-expiry-key-${Date.now()}`;
+    const response = await fetch(`${baseUrl}/api/create-order`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+        body: JSON.stringify({ name: 'Expiry Buyer', email: 'expiry@example.test', phone: '1234567890', eventId, ticketCategoryId: 'single', quantity: 1 })
+    });
+    assert.equal(response.status, 200);
+    const { orderId } = await response.json();
+    const past = new Date(Date.now() - 1000);
+    await db.updateSaleRecord(orderId, { reservationExpiresAt: past });
+    const event = (await db.getAllEvents()).find(item => item.id === eventId);
+    event.inventoryReservations[0].expiresAt = past;
+    await db.saveEvent(event);
+
+    const cleanupTrigger = await fetch(`${baseUrl}/api/create-order`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `phase3-expiry-trigger-${Date.now()}` },
+        body: JSON.stringify({ name: 'Expiry Buyer', email: 'expiry@example.test', phone: '1234567890', eventId, ticketCategoryId: 'missing', quantity: 1 })
+    });
+    assert.equal(cleanupTrigger.status, 400);
+    const expiredSale = await db.getByOrderId(orderId);
+    assert.equal(expiredSale.paymentStatus, 'expired');
+    assert.equal(expiredSale.inventoryReserved, false);
+    assert.equal((await db.getAllEvents()).find(item => item.id === eventId).ticketCategories[0].remainingAvailability, 1);
+});
+
+test('a captured payment reference cannot be attached to a second order', async () => {
+    const db = require('../db');
+    const paymentId = `pay-unique-${Date.now()}`;
+    await db.createSaleRecord({
+        orderId: `order-first-${Date.now()}`, paymentId, providerPaymentId: paymentId,
+        paymentStatus: 'paid', fulfillmentStatus: 'ticketed', status: 'ticket_generated', ticketId: `DGR-FIRST-${Date.now()}`,
+        amount: 100, amountMinor: 10000, currency: 'INR'
+    });
+    const orderId = `order-second-${Date.now()}`;
+    await db.createSaleRecord({ orderId, paymentStatus: 'pending', fulfillmentStatus: 'pending', status: 'created', amount: 100, amountMinor: 10000, currency: 'INR' });
+    const response = await fetch(`${baseUrl}/api/verify-payment`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, razorpay_payment_id: paymentId })
+    });
+    assert.equal(response.status, 409);
+    assert.equal((await db.getByOrderId(orderId)).paymentStatus, 'exception');
+    assert.equal((await db.getByOrderId(orderId)).ticketId, undefined);
+});
+
+test('captured webhook reconciliation rejects mismatched totals and safely handles retry and out-of-order events', async () => {
+    const db = require('../db');
+    const orderId = `order-phase3-webhook-${Date.now()}`;
+    await db.createSaleRecord({
+        orderId, name: 'Webhook Buyer', email: 'webhook@example.test', phone: '1234567890', event: 'Webhook Event',
+        eventId: 'event-webhook-test', ticketCategoryId: 'single', quantity: 1, admissionCount: 1,
+        amount: 123, amountMinor: 12300, currency: 'INR', status: 'created', paymentStatus: 'pending',
+        fulfillmentStatus: 'pending', reservationExpiresAt: new Date(Date.now() + 10 * 60 * 1000), inventoryReserved: false
+    });
+    const postWebhook = async (eventId, body) => {
+        const raw = JSON.stringify(body);
+        const signature = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET).update(raw).digest('hex');
+        return fetch(`${baseUrl}/api/webhook/razorpay`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-razorpay-signature': signature, 'x-razorpay-event-id': eventId }, body: raw
+        });
+    };
+    const payment = { id: `pay-phase3-${Date.now()}`, order_id: orderId, amount: 12300, currency: 'INR', status: 'captured', captured: true };
+    const mismatch = await postWebhook(`evt-mismatch-${Date.now()}`, { event: 'payment.captured', payload: { payment: { entity: { ...payment, amount: 1 } } } });
+    assert.equal(mismatch.status, 200);
+    assert.equal((await db.getByOrderId(orderId)).paymentStatus, 'pending');
+
+    const failedEventId = `evt-failed-${Date.now()}`;
+    const failedAttempt = await postWebhook(failedEventId, { event: 'payment.failed', payload: { payment: { entity: { ...payment, status: 'failed', captured: false } } } });
+    assert.equal(failedAttempt.status, 200);
+    assert.equal((await db.getByOrderId(orderId)).paymentStatus, 'pending', 'a failed attempt does not block a later successful payment');
+
+    const capturedEventId = `evt-captured-${Date.now()}`;
+    const captured = await postWebhook(capturedEventId, { event: 'payment.captured', payload: { payment: { entity: payment } } });
+    assert.equal(captured.status, 200);
+    const paid = await db.getByOrderId(orderId);
+    assert.equal(paid.paymentStatus, 'paid');
+    assert.ok(paid.ticketId);
+    assert.ok(paid.razorpayEventIds.includes(failedEventId));
+    assert.ok(paid.razorpayEventIds.includes(capturedEventId));
+
+    const duplicate = await postWebhook(capturedEventId, { event: 'payment.captured', payload: { payment: { entity: payment } } });
+    assert.equal(duplicate.status, 200);
+    assert.match(await duplicate.text(), /Duplicate event/);
+    assert.equal((await db.getByOrderId(orderId)).ticketId, paid.ticketId);
+    await require('node:fs/promises').unlink(path.join(TICKETS_DIR, `${paid.ticketId}.pdf`)).catch(() => {});
 });

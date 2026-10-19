@@ -112,6 +112,18 @@ const EventSchema = new mongoose.Schema({
         groupSize: { type: Number, default: 1, min: 1 },
         inclusions: [{ type: String }]
     }],
+    // Short-lived reservations live with the event inventory document so
+    // category counter changes and reservation state transitions are atomic.
+    // Only active/consuming entries are retained; settled reservations are
+    // removed after the corresponding Sale transition is durable.
+    inventoryReservations: [{
+        reservationId: { type: String, required: true },
+        categoryId: { type: String, required: true },
+        admissionCount: { type: Number, required: true, min: 1 },
+        expiresAt: { type: Date, required: true },
+        status: { type: String, enum: ['active', 'consuming'], default: 'active' },
+        createdAt: { type: Date, default: Date.now }
+    }],
     overrides: {
         razorpayEnabled: { type: Boolean, default: null }, // null = inherit company default
         manualPaymentEnabled: { type: Boolean, default: null },
@@ -190,6 +202,31 @@ const SaleSchema = new mongoose.Schema({
     eventId: { type: String, index: true },
     ticketCategoryId: { type: String },
     inventoryReserved: { type: Boolean, default: false },
+    inventoryLimited: { type: Boolean, default: false },
+    reservationExpiresAt: { type: Date },
+    reservationStatus: { type: String, enum: ['not_required', 'active', 'consuming', 'consumed', 'released', 'expired'] },
+    admissionCount: { type: Number, min: 0 },
+    amountMinor: { type: Number, min: 0 },
+    paymentStatus: { type: String, enum: ['pending', 'processing', 'paid', 'failed', 'expired', 'cancelled', 'exception', 'refund_pending', 'refunded'] },
+    paymentProcessingLeaseUntil: { type: Date },
+    paymentException: { type: String },
+    lastPaymentAttemptId: { type: String },
+    lastPaymentAttemptStatus: { type: String },
+    lastPaymentAttemptAt: { type: Date },
+    fulfillmentStatus: { type: String, enum: ['pending', 'generating', 'ticketed', 'delivery_pending', 'delivered', 'failed', 'inventory_conflict'] },
+    ticketGenerationLeaseUntil: { type: Date },
+    ticketGenerationError: { type: String },
+    refundStatus: { type: String, enum: ['none', 'requested', 'approved', 'rejected', 'processing', 'failed', 'refunded'], default: 'none' },
+    refundRequestId: { type: String },
+    refundRequestedAt: { type: Date },
+    refundDecidedAt: { type: Date },
+    refundDecidedBy: { type: String },
+    refundReason: { type: String },
+    refundProviderReference: { type: String },
+    refundError: { type: String },
+    razorpayEventIds: [{ type: String }],
+    checkoutRequestId: { type: String },
+    checkoutRequestHash: { type: String },
     name: { type: String },
     email: { type: String },
     phone: { type: String },
@@ -212,6 +249,7 @@ const SaleSchema = new mongoose.Schema({
     currency: { type: String },
     status: { type: String },
     paymentId: { type: String },
+    providerPaymentId: { type: String },
     ticketId: { type: String },
     emailStatus: { type: String },
     emailError: { type: String },
@@ -263,6 +301,8 @@ const SaleSchema = new mongoose.Schema({
 // Gate lookups and the atomic claim both filter by ticketId. Keep this index
 // non-unique so existing legacy records are not rejected during index builds.
 SaleSchema.index({ ticketId: 1 });
+SaleSchema.index({ checkoutRequestId: 1 }, { unique: true, sparse: true });
+SaleSchema.index({ providerPaymentId: 1 }, { unique: true, partialFilterExpression: { providerPaymentId: { $type: 'string' } } });
 SaleSchema.index({ status: 1, isShadow: 1, source: 1 });
 
 const CompanySchema = new mongoose.Schema({
@@ -384,6 +424,15 @@ const DashboardSaleVisibilitySchema = new mongoose.Schema({
 const Event = mongoose.model('Event', EventSchema);
 const User = mongoose.model('User', UserSchema);
 const Sale = mongoose.model('Sale', SaleSchema);
+const CheckoutRequestSchema = new mongoose.Schema({
+    idempotencyKey: { type: String, required: true, unique: true },
+    requestHash: { type: String, required: true },
+    status: { type: String, enum: ['processing', 'completed', 'failed'], default: 'processing' },
+    orderId: { type: String },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+const CheckoutRequest = mongoose.model('CheckoutRequest', CheckoutRequestSchema);
 const Company = mongoose.model('Company', CompanySchema);
 const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
 const Customer = mongoose.model('Customer', CustomerSchema);
@@ -647,6 +696,88 @@ async function atomicClaimOrder(orderId, paymentId) {
     return updated;
 }
 
+async function atomicClaimPaymentProcessing(orderId, now, leaseUntil) {
+    return Sale.findOneAndUpdate(
+        {
+            orderId,
+            $or: [
+                { paymentStatus: 'pending', reservationExpiresAt: { $gt: now } },
+                { paymentStatus: 'processing', paymentProcessingLeaseUntil: { $lte: now } },
+                { paymentStatus: { $exists: false }, status: 'created' }
+            ]
+        },
+        { $set: { paymentStatus: 'processing', paymentProcessingLeaseUntil: leaseUntil, status: 'payment_processing', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicMarkPaymentPaid(orderId, paymentId, now, reservationStatus = 'not_required') {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'processing' },
+        { $set: { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'pending', reservationStatus, inventoryReserved: false, status: 'paid', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicRecordCapturedPaymentException(orderId, paymentId, now, message) {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'processing' },
+        { $set: { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'inventory_conflict', paymentException: message, status: 'payment_exception', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicClaimTicketGeneration(orderId, now, leaseUntil) {
+    return Sale.findOneAndUpdate(
+        {
+            orderId, paymentStatus: 'paid', ticketId: { $in: [null, ''] },
+            $or: [
+                { fulfillmentStatus: { $in: ['pending', 'failed'] } },
+                { fulfillmentStatus: 'generating', ticketGenerationLeaseUntil: { $lte: now } },
+                { fulfillmentStatus: { $exists: false } }
+            ]
+        },
+        { $set: { fulfillmentStatus: 'generating', ticketGenerationLeaseUntil: leaseUntil, updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicAssignGeneratedTicket(orderId, ticketId, generatedAt) {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'paid', fulfillmentStatus: 'generating', ticketId: { $in: [null, ''] } },
+        { $set: { ticketId, generatedAt, fulfillmentStatus: 'ticketed', status: 'ticket_generated', updatedAt: generatedAt } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicFailTicketGeneration(orderId, error, now) {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'paid', fulfillmentStatus: 'generating', ticketId: { $in: [null, ''] } },
+        { $set: { fulfillmentStatus: 'failed', status: 'ticket_generation_failed', ticketGenerationError: String(error).slice(0, 500), updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicExpireOrder(orderId, now) {
+    return Sale.findOneAndUpdate(
+        {
+            orderId,
+            reservationExpiresAt: { $lte: now },
+            $or: [{ paymentStatus: 'pending' }, { paymentStatus: { $exists: false }, status: 'created' }]
+        },
+        { $set: { paymentStatus: 'expired', reservationStatus: 'expired', status: 'expired', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicRecordLateCapturedPayment(orderId, paymentId, now) {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'expired' },
+        { $set: { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'inventory_conflict', status: 'payment_exception', paymentException: 'Payment captured after inventory reservation expired; manual reconciliation required.', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
 // ==================== USER HELPERS ====================
 
 async function getAllUsers() {
@@ -739,6 +870,130 @@ async function updateEvent(id, updates) {
 
 async function deleteEvent(id) {
     return await Event.findByIdAndDelete(id);
+}
+
+function matchesEventRef(event, eventRef) {
+    const ref = String(eventRef || '');
+    return [event?.id, event?._id, event?.slug].some(value => String(value || '') === ref);
+}
+
+async function reserveEventInventory({ eventId, reservationId, categoryId, admissionCount, expiresAt }) {
+    if (!Number.isInteger(admissionCount) || admissionCount < 1) return { ok: false, reason: 'invalid_quantity' };
+    if (useMock()) {
+        const event = [...new Set(_mockEvents.values())].find(item => matchesEventRef(item, eventId));
+        if (!event) return { ok: false, reason: 'event_not_found' };
+        const existing = (event.inventoryReservations || []).find(item => item.reservationId === reservationId);
+        if (existing) return { ok: existing.categoryId === categoryId && existing.admissionCount === admissionCount, reserved: true, reused: true, reason: 'reservation_exists' };
+        const category = (event.ticketCategories || []).find(item => item.id === categoryId);
+        if (!category) return { ok: false, reason: 'category_not_found' };
+        if (category.totalInventory === null || category.totalInventory === undefined) return { ok: true, reserved: false, unlimited: true };
+        if (!Number.isInteger(category.remainingAvailability) || category.remainingAvailability < 0) return { ok: false, reason: 'inventory_unreconciled' };
+        if (category.status !== 'active' || category.remainingAvailability < admissionCount) return { ok: false, reason: 'sold_out' };
+        category.remainingAvailability -= admissionCount;
+        event.inventoryReservations = event.inventoryReservations || [];
+        event.inventoryReservations.push({ reservationId, categoryId, admissionCount, expiresAt: new Date(expiresAt), status: 'active', createdAt: new Date() });
+        return { ok: true, reserved: true, admissionCount };
+    }
+
+    const ref = String(eventId || '');
+    const selector = mongoose.Types.ObjectId.isValid(ref)
+        ? { $or: [{ id: ref }, { _id: new mongoose.Types.ObjectId(ref) }] }
+        : { $or: [{ id: ref }, { slug: ref }] };
+    const existing = await Event.findOne({ ...selector, 'inventoryReservations.reservationId': reservationId }).lean();
+    const existingReservation = existing?.inventoryReservations?.find(item => item.reservationId === reservationId);
+    if (existingReservation) return {
+        ok: existingReservation.categoryId === categoryId && existingReservation.admissionCount === admissionCount,
+        reserved: true, reused: true, reason: 'reservation_exists'
+    };
+    const event = await Event.findOne(selector, { ticketCategories: 1 }).lean();
+    const category = event?.ticketCategories?.find(item => item.id === categoryId);
+    if (!category) return { ok: false, reason: 'category_not_found' };
+    if (category.totalInventory === null || category.totalInventory === undefined) return { ok: true, reserved: false, unlimited: true };
+    if (!Number.isInteger(category.remainingAvailability) || category.remainingAvailability < 0) return { ok: false, reason: 'inventory_unreconciled' };
+    const updated = await Event.findOneAndUpdate(
+        {
+            ...selector,
+            'inventoryReservations.reservationId': { $ne: reservationId },
+            ticketCategories: { $elemMatch: { id: categoryId, status: 'active', remainingAvailability: { $gte: admissionCount }, totalInventory: { $ne: null } } }
+        },
+        {
+            $inc: { 'ticketCategories.$[category].remainingAvailability': -admissionCount },
+            $push: { inventoryReservations: { reservationId, categoryId, admissionCount, expiresAt: new Date(expiresAt), status: 'active', createdAt: new Date() } }
+        },
+        { arrayFilters: [{ 'category.id': categoryId }], returnDocument: 'after', lean: true }
+    );
+    return updated ? { ok: true, reserved: true, admissionCount } : { ok: false, reason: 'sold_out' };
+}
+
+async function releaseEventInventoryReservation({ eventId, reservationId, now = new Date(), expiredOnly = false }) {
+    if (useMock()) {
+        const event = [...new Set(_mockEvents.values())].find(item => matchesEventRef(item, eventId));
+        const reservation = event?.inventoryReservations?.find(item => item.reservationId === reservationId && item.status === 'active');
+        if (!reservation || (expiredOnly && new Date(reservation.expiresAt).getTime() > new Date(now).getTime())) return false;
+        const category = (event.ticketCategories || []).find(item => item.id === reservation.categoryId);
+        if (!category) return false;
+        if (Number.isInteger(category.remainingAvailability)) category.remainingAvailability += reservation.admissionCount;
+        event.inventoryReservations = event.inventoryReservations.filter(item => item.reservationId !== reservationId);
+        return true;
+    }
+    const ref = String(eventId || '');
+    const selector = mongoose.Types.ObjectId.isValid(ref)
+        ? { $or: [{ id: ref }, { _id: new mongoose.Types.ObjectId(ref) }] }
+        : { $or: [{ id: ref }, { slug: ref }] };
+    const event = await Event.findOne({ ...selector, 'inventoryReservations.reservationId': reservationId }, { inventoryReservations: 1 }).lean();
+    const reservation = event?.inventoryReservations?.find(item => item.reservationId === reservationId && item.status === 'active');
+    if (!reservation || (expiredOnly && new Date(reservation.expiresAt).getTime() > new Date(now).getTime())) return false;
+    const reservationSelector = { reservationId, status: 'active' };
+    if (expiredOnly) reservationSelector.expiresAt = { $lte: new Date(now) };
+    const released = await Event.findOneAndUpdate(
+        { ...selector, inventoryReservations: { $elemMatch: reservationSelector } },
+        {
+            $inc: { 'ticketCategories.$[category].remainingAvailability': reservation.admissionCount },
+            $pull: { inventoryReservations: { reservationId, status: 'active' } }
+        },
+        { arrayFilters: [{ 'category.id': reservation.categoryId }], returnDocument: 'after', lean: true }
+    );
+    return Boolean(released);
+}
+
+async function consumeEventInventoryReservation({ eventId, reservationId }) {
+    if (useMock()) {
+        const event = [...new Set(_mockEvents.values())].find(item => matchesEventRef(item, eventId));
+        const reservation = event?.inventoryReservations?.find(item => item.reservationId === reservationId);
+        if (!reservation) return false;
+        if (reservation.status === 'active') reservation.status = 'consuming';
+        return ['active', 'consuming'].includes(reservation.status);
+    }
+    const ref = String(eventId || '');
+    const selector = mongoose.Types.ObjectId.isValid(ref)
+        ? { $or: [{ id: ref }, { _id: new mongoose.Types.ObjectId(ref) }] }
+        : { $or: [{ id: ref }, { slug: ref }] };
+    const consumed = await Event.findOneAndUpdate(
+        { ...selector, inventoryReservations: { $elemMatch: { reservationId, status: { $in: ['active', 'consuming'] }, expiresAt: { $gt: new Date() } } } },
+        { $set: { 'inventoryReservations.$.status': 'consuming' } },
+        { returnDocument: 'after', lean: true }
+    );
+    if (consumed) return true;
+    const alreadyConsuming = await Event.exists({ ...selector, inventoryReservations: { $elemMatch: { reservationId, status: 'consuming' } } });
+    return Boolean(alreadyConsuming);
+}
+
+async function finalizeConsumedInventoryReservation({ eventId, reservationId }) {
+    if (useMock()) {
+        const event = [...new Set(_mockEvents.values())].find(item => matchesEventRef(item, eventId));
+        if (!event?.inventoryReservations?.some(item => item.reservationId === reservationId && item.status === 'consuming')) return false;
+        event.inventoryReservations = event.inventoryReservations.filter(item => item.reservationId !== reservationId);
+        return true;
+    }
+    const ref = String(eventId || '');
+    const selector = mongoose.Types.ObjectId.isValid(ref)
+        ? { $or: [{ id: ref }, { _id: new mongoose.Types.ObjectId(ref) }] }
+        : { $or: [{ id: ref }, { slug: ref }] };
+    const result = await Event.updateOne(
+        { ...selector, 'inventoryReservations.reservationId': reservationId, 'inventoryReservations.status': 'consuming' },
+        { $pull: { inventoryReservations: { reservationId, status: 'consuming' } } }
+    );
+    return result.modifiedCount > 0;
 }
 
 // ==================== COMPANY & AUDIT HELPERS ====================
@@ -938,6 +1193,7 @@ const mockDb = {
         }
     ],
     sales: [],
+    checkoutRequests: [],
     companies: [
         {
             companyId: 'littlane',
@@ -1126,6 +1382,58 @@ module.exports = {
             return sale;
         }
         return await createSaleRecord(saleData);
+    },
+    getSaleByCheckoutRequestId: async idempotencyKey => {
+        if (useMock()) return mockDb.sales.find(item => item.checkoutRequestId === idempotencyKey) || null;
+        return Sale.findOne({ checkoutRequestId: idempotencyKey }).lean();
+    },
+    claimCheckoutRequest: async (idempotencyKey, requestHash) => {
+        if (useMock()) {
+            const existing = mockDb.checkoutRequests.find(item => item.idempotencyKey === idempotencyKey);
+            if (existing && (existing.status !== 'processing' || Date.now() - new Date(existing.updatedAt).getTime() < 2 * 60 * 1000)) return { claimed: false, request: existing };
+            if (existing) {
+                existing.updatedAt = new Date();
+                return { claimed: true, request: existing, reclaimed: true };
+            }
+            const request = { idempotencyKey, requestHash, status: 'processing', createdAt: new Date(), updatedAt: new Date() };
+            mockDb.checkoutRequests.push(request);
+            return { claimed: true, request };
+        }
+        try {
+            const request = await CheckoutRequest.create({ idempotencyKey, requestHash, status: 'processing' });
+            return { claimed: true, request: request.toObject() };
+        } catch (error) {
+            if (error.code !== 11000) throw error;
+            const existing = await CheckoutRequest.findOne({ idempotencyKey }).lean();
+            if (existing?.status === 'processing' && existing.requestHash === requestHash && Date.now() - new Date(existing.updatedAt).getTime() >= 2 * 60 * 1000) {
+                const reclaimed = await CheckoutRequest.findOneAndUpdate(
+                    { idempotencyKey, requestHash, status: 'processing', updatedAt: { $lte: new Date(Date.now() - 2 * 60 * 1000) } },
+                    { $set: { updatedAt: new Date() } }, { returnDocument: 'after', lean: true }
+                );
+                if (reclaimed) return { claimed: true, request: reclaimed, reclaimed: true };
+            }
+            return { claimed: false, request: existing };
+        }
+    },
+    completeCheckoutRequest: async (idempotencyKey, orderId) => {
+        if (useMock()) {
+            const request = mockDb.checkoutRequests.find(item => item.idempotencyKey === idempotencyKey);
+            if (!request || request.status !== 'processing') return null;
+            Object.assign(request, { status: 'completed', orderId, updatedAt: new Date() });
+            return request;
+        }
+        return CheckoutRequest.findOneAndUpdate({ idempotencyKey, status: 'processing' }, { $set: { status: 'completed', orderId, updatedAt: new Date() } }, { returnDocument: 'after', lean: true });
+    },
+    failCheckoutRequest: async (idempotencyKey) => {
+        if (useMock()) {
+            const request = mockDb.checkoutRequests.find(item => item.idempotencyKey === idempotencyKey);
+            if (!request || request.status !== 'processing') return false;
+            request.status = 'failed';
+            request.updatedAt = new Date();
+            return true;
+        }
+        const result = await CheckoutRequest.updateOne({ idempotencyKey, status: 'processing' }, { $set: { status: 'failed', updatedAt: new Date() } });
+        return result.modifiedCount > 0;
     },
     updateSaleRecord: async (orderId, updates) => {
         if (useMock()) {
@@ -1360,6 +1668,100 @@ module.exports = {
             return null;
         }
         return await atomicClaimOrder(orderId, paymentId);
+    },
+    atomicClaimPaymentProcessing: async (orderId, now, leaseUntil) => {
+        if (!useMock()) return atomicClaimPaymentProcessing(orderId, new Date(now), new Date(leaseUntil));
+        const sale = mockDb.sales.find(item => item.orderId === orderId);
+        if (!sale) return null;
+        const state = sale.paymentStatus || (sale.status === 'created' ? 'pending' : sale.status === 'paid' ? 'paid' : sale.status);
+        const hasUnexpiredHold = !sale.reservationExpiresAt || new Date(sale.reservationExpiresAt) > new Date(now);
+        const available = (state === 'pending' && hasUnexpiredHold) || (state === 'processing' && new Date(sale.paymentProcessingLeaseUntil || 0) <= new Date(now));
+        if (!available) return null;
+        Object.assign(sale, { paymentStatus: 'processing', paymentProcessingLeaseUntil: leaseUntil, status: 'payment_processing', updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicMarkPaymentPaid: async (orderId, paymentId, now, reservationStatus = 'not_required') => {
+        if (!useMock()) return atomicMarkPaymentPaid(orderId, paymentId, now, reservationStatus);
+        const sale = mockDb.sales.find(item => item.orderId === orderId);
+        if (!sale || sale.paymentStatus !== 'processing') return null;
+        if (paymentId && mockDb.sales.some(item => item.orderId !== orderId && item.providerPaymentId === paymentId)) {
+            const duplicate = new Error('Provider payment is already associated with another order.'); duplicate.code = 11000; throw duplicate;
+        }
+        Object.assign(sale, { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'pending', reservationStatus, inventoryReserved: false, status: 'paid', updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicRecordCapturedPaymentException: async (orderId, paymentId, now, message) => {
+        if (!useMock()) return atomicRecordCapturedPaymentException(orderId, paymentId, now, message);
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'processing');
+        if (!sale) return null;
+        if (paymentId && mockDb.sales.some(item => item.orderId !== orderId && item.providerPaymentId === paymentId)) {
+            const duplicate = new Error('Provider payment is already associated with another order.'); duplicate.code = 11000; throw duplicate;
+        }
+        Object.assign(sale, { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'inventory_conflict', paymentException: message, status: 'payment_exception', updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicClaimTicketGeneration: async (orderId, now, leaseUntil) => {
+        if (!useMock()) return atomicClaimTicketGeneration(orderId, new Date(now), new Date(leaseUntil));
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'paid' && !item.ticketId);
+        const state = sale?.fulfillmentStatus || 'pending';
+        const canClaim = ['pending', 'failed'].includes(state) || (state === 'generating' && new Date(sale.ticketGenerationLeaseUntil || 0) <= new Date(now));
+        if (!canClaim) return null;
+        Object.assign(sale, { fulfillmentStatus: 'generating', ticketGenerationLeaseUntil: leaseUntil, updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicAssignGeneratedTicket: async (orderId, ticketId, generatedAt) => {
+        if (!useMock()) return atomicAssignGeneratedTicket(orderId, ticketId, generatedAt);
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'paid' && item.fulfillmentStatus === 'generating' && !item.ticketId);
+        if (!sale) return null;
+        Object.assign(sale, { ticketId, generatedAt, fulfillmentStatus: 'ticketed', status: 'ticket_generated', updatedAt: generatedAt });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicFailTicketGeneration: async (orderId, error, now) => {
+        if (!useMock()) return atomicFailTicketGeneration(orderId, error, now);
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'paid' && item.fulfillmentStatus === 'generating' && !item.ticketId);
+        if (!sale) return null;
+        Object.assign(sale, { fulfillmentStatus: 'failed', status: 'ticket_generation_failed', ticketGenerationError: String(error).slice(0, 500), updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    recordRazorpayEvent: async (orderId, eventId) => {
+        if (!eventId) return false;
+        if (!useMock()) {
+            const result = await Sale.updateOne({ orderId, razorpayEventIds: { $ne: eventId } }, { $addToSet: { razorpayEventIds: eventId } });
+            return result.modifiedCount > 0;
+        }
+        const sale = mockDb.sales.find(item => item.orderId === orderId);
+        if (!sale) return false;
+        sale.razorpayEventIds = sale.razorpayEventIds || [];
+        if (sale.razorpayEventIds.includes(eventId)) return false;
+        sale.razorpayEventIds.push(eventId);
+        _saveMockSales(mockDb.sales);
+        return true;
+    },
+    atomicExpireOrder: async (orderId, now) => {
+        if (!useMock()) return atomicExpireOrder(orderId, new Date(now));
+        const sale = mockDb.sales.find(item => item.orderId === orderId);
+        const state = sale?.paymentStatus || (sale?.status === 'created' ? 'pending' : sale?.status);
+        if (!sale || !['pending'].includes(state) || !sale.reservationExpiresAt || new Date(sale.reservationExpiresAt) > new Date(now)) return null;
+        Object.assign(sale, { paymentStatus: 'expired', reservationStatus: 'expired', status: 'expired', updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicRecordLateCapturedPayment: async (orderId, paymentId, now) => {
+        if (!useMock()) return atomicRecordLateCapturedPayment(orderId, paymentId, now);
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'expired');
+        if (!sale) return null;
+        if (paymentId && mockDb.sales.some(item => item.orderId !== orderId && item.providerPaymentId === paymentId)) {
+            const duplicate = new Error('Provider payment is already associated with another order.'); duplicate.code = 11000; throw duplicate;
+        }
+        Object.assign(sale, { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'inventory_conflict', status: 'payment_exception', paymentException: 'Payment captured after inventory reservation expired; manual reconciliation required.', updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
     },
 
     // User Helpers
@@ -1881,6 +2283,10 @@ module.exports = {
         }
         return doc;
     },
+    reserveEventInventory: async input => reserveEventInventory(input),
+    releaseEventInventoryReservation: async input => releaseEventInventoryReservation(input),
+    consumeEventInventoryReservation: async input => consumeEventInventoryReservation(input),
+    finalizeConsumedInventoryReservation: async input => finalizeConsumedInventoryReservation(input),
     deleteEvent: async (idOrName, nameHint) => {
         if (!idOrName && !nameHint) return false;
 

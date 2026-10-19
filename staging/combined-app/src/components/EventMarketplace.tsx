@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 
 type TicketCategory = {
@@ -71,6 +71,7 @@ export default function EventMarketplace() {
   const [quantity, setQuantity] = useState(1)
   const [checkoutBusy, setCheckoutBusy] = useState(false)
   const [confirmation, setConfirmation] = useState<{ ticketId?: string; event: string; downloadUrl?: string } | null>(null)
+  const checkoutKeyRef = useRef<{ payload: string; key: string } | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -108,9 +109,14 @@ export default function EventMarketplace() {
     }
     setCheckoutBusy(true)
     setError('')
+    const checkoutPayload = JSON.stringify({ event: event.id, category: selectedTicket.id, quantity, name: buyer.name.trim(), email: buyer.email.trim().toLowerCase(), phone: buyer.phone.trim() })
+    if (!checkoutKeyRef.current || checkoutKeyRef.current.payload !== checkoutPayload) {
+      checkoutKeyRef.current = { payload: checkoutPayload, key: crypto.randomUUID() }
+    }
+    let checkoutOpened = false
     try {
       const orderResponse = await fetch('/api/create-order', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': checkoutKeyRef.current.key },
         body: JSON.stringify({ name: buyer.name.trim(), email: buyer.email.trim(), phone: buyer.phone.trim(), eventId: event.id, ticketCategoryId: selectedTicket.id, quantity })
       })
       const order = await orderResponse.json()
@@ -122,13 +128,14 @@ export default function EventMarketplace() {
         })
         const verified = await verifyResponse.json()
         if (!verifyResponse.ok || !verified.success) throw new Error(verified.message || 'Test checkout failed.')
+        checkoutKeyRef.current = null
         setConfirmation({ ticketId: verified.ticketId, event: event.name, downloadUrl: verified.downloadUrl })
         return
       }
 
       if (!await loadRazorpay() || !window.Razorpay) throw new Error('Payment form could not be loaded.')
       const checkout = new window.Razorpay({
-        key: order.keyId, order_id: order.orderId, amount: Math.round(order.amount * 100), currency: order.currency,
+        key: order.keyId, order_id: order.orderId, amount: order.amountMinor, currency: order.currency,
         name: 'LITTX', description: `${event.name} · ${selectedTicket.name}`,
         prefill: buyer,
         handler: async (payment: Record<string, string>) => {
@@ -136,16 +143,20 @@ export default function EventMarketplace() {
             const response = await fetch('/api/verify-payment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: order.orderId, ...payment }) })
             const result = await response.json()
             if (!response.ok || !result.success) throw new Error(result.message || 'Payment verification failed.')
+            checkoutKeyRef.current = null
             setConfirmation({ ticketId: result.ticketId, event: event.name, downloadUrl: result.downloadUrl })
           } catch (reason) { setError(reason instanceof Error ? reason.message : 'Payment verification failed.') }
+          finally { setCheckoutBusy(false) }
         },
         modal: { ondismiss: () => setCheckoutBusy(false) }
       })
       checkout.open()
+      checkoutOpened = true
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Checkout could not be started.')
+      if (String(reason).toLowerCase().includes('expired')) checkoutKeyRef.current = null
     } finally {
-      setCheckoutBusy(false)
+      if (!checkoutOpened) setCheckoutBusy(false)
     }
   }
 
@@ -183,10 +194,10 @@ export default function EventMarketplace() {
             <input style={input} aria-label="Full name" placeholder="Full name" value={buyer.name} onChange={event => setBuyer({ ...buyer, name: event.target.value })} />
             <input style={input} aria-label="Email" type="email" placeholder="Email" value={buyer.email} onChange={event => setBuyer({ ...buyer, email: event.target.value })} />
             <input style={input} aria-label="Phone" type="tel" placeholder="Phone" value={buyer.phone} onChange={event => setBuyer({ ...buyer, phone: event.target.value })} />
-            <input style={input} aria-label="Quantity" type="number" min={1} max={ticket.maxPerCustomer} value={quantity} onChange={event => setQuantity(Number(event.target.value))} />
+            <input style={input} aria-label="Quantity" type="number" min={1} max={Math.min(ticket.maxPerCustomer, ticket.remainingAvailability === null ? ticket.maxPerCustomer : Math.floor(ticket.remainingAvailability / Math.max(1, ticket.groupSize)))} value={quantity} onChange={event => setQuantity(Math.max(1, Number(event.target.value) || 1))} />
           </div>}
           {error && <p role="alert" style={{ color: '#ff7777' }}>{error}</p>}
-          {ticket && <button disabled={checkoutBusy || ticket.status !== 'active' || ticket.remainingAvailability === 0} onClick={() => beginCheckout(selected, ticket)} style={{ marginTop: 16, border: 0, borderRadius: 10, padding: '14px 22px', background: '#d8ff3f', color: '#111', fontWeight: 800, cursor: 'pointer' }}>{checkoutBusy ? 'Starting checkout…' : `Continue · ${ticket.currency} ${(ticket.price * quantity).toLocaleString()}`}</button>}
+          {ticket && <button disabled={checkoutBusy || ticket.status !== 'active' || (ticket.remainingAvailability !== null && ticket.remainingAvailability < quantity * ticket.groupSize)} onClick={() => beginCheckout(selected, ticket)} style={{ marginTop: 16, border: 0, borderRadius: 10, padding: '14px 22px', background: '#d8ff3f', color: '#111', fontWeight: 800, cursor: 'pointer' }}>{checkoutBusy ? 'Payment in progress…' : `Continue · ${ticket.currency} ${(ticket.price * quantity).toLocaleString()}`}</button>}
         </section>
       </> : <>
         <h1 style={{ fontSize: 'clamp(34px, 6vw, 56px)', marginBottom: 8 }}>Find your next event</h1>
