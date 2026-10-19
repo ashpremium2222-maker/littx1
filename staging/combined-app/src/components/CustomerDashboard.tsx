@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 interface CustomerUser {
   email: string
@@ -419,7 +419,7 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
   const [bookModal, setBookModal] = useState<Event | null>(null)
   const [eventsError, setEventsError] = useState('')
   const [bookingsError, setBookingsError] = useState('')
-  const [newBookingIds, setNewBookingIds] = useState<Set<string>>(new Set())
+  const [, setNewBookingIds] = useState<Set<string>>(new Set())
 
   const fetchEvents = useCallback(async () => {
     setLoadingEvents(true)

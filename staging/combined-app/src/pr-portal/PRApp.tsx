@@ -7,20 +7,6 @@ interface PRUser {
   displayName: string
 }
 
-interface Sale {
-  orderId: string
-  name: string
-  email: string
-  phone: string
-  gender: string
-  amount: number
-  status: string
-  ticketId?: string
-  createdAt: string
-  paymentMethod?: string
-  prUserId?: string
-}
-
 const API = ''
 
 interface PRTicketCategory { id: string; name: string; price: number; currency: string; status: string; remainingAvailability: number | null }
@@ -114,6 +100,7 @@ function SellTicketModal({
   onClose: () => void
   onSuccess: () => void
 }) {
+  void prUser
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -142,7 +129,6 @@ function SellTicketModal({
   const selectedEvent = events.find(item => item.id === eventId)
   const selectedTicket = selectedEvent?.ticketCategories.find(item => item.id === ticketCategoryId)
   const amount = Number(selectedTicket?.price || 0)
-  const gender = selectedTicket?.name || 'Ticket'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

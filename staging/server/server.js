@@ -255,24 +255,33 @@ function clientIp(req) {
     return String(req.headers['x-forwarded-for'] || req.ip || req.connection?.remoteAddress || 'unknown').split(',')[0].trim();
 }
 
-const requestWindows = new Map();
 function rateLimit({ limit, windowMs, keyPrefix }) {
-    return (req, res, next) => {
+    return async (req, res, next) => {
         const now = Date.now();
-        const key = `${keyPrefix}:${req.ip || req.socket?.remoteAddress || 'unknown'}`;
-        let bucket = requestWindows.get(key);
-        if (!bucket || now - bucket.startedAt >= windowMs) bucket = { startedAt: now, count: 0 };
-        bucket.count += 1;
-        requestWindows.set(key, bucket);
-        if (requestWindows.size > 5000) {
-            for (const [entry, value] of requestWindows) if (now - value.startedAt >= windowMs) requestWindows.delete(entry);
+        const windowStartMs = Math.floor(now / windowMs) * windowMs;
+        const windowStart = new Date(windowStartMs);
+        const windowExpiresAt = new Date(windowStartMs + windowMs);
+        const secret = process.env.BOOKING_OTP_SECRET || process.env.SCANNER_SESSION_SECRET;
+        if (!secret || secret.length < 32) {
+            return res.status(503).json({ success: false, message: 'Request protection is temporarily unavailable.' });
         }
-        if (bucket.count > limit) return res.status(429).json({ success: false, message: 'Too many attempts. Please try again later.' });
-        next();
+        const ip = String(req.ip || req.socket?.remoteAddress || 'unknown');
+        const bucketKey = crypto.createHmac('sha256', secret).update(`request:${keyPrefix}:${ip}:${windowStartMs}`).digest('hex');
+        try {
+            const allowed = await db.consumeOtpIssueRateLimit({ bucketKey, windowStart, windowExpiresAt, limit });
+            if (!allowed) return res.status(429).json({ success: false, message: 'Too many attempts. Please try again later.' });
+            return next();
+        } catch (error) {
+            console.error('[RateLimit] Shared request limiter unavailable.');
+            return res.status(503).json({ success: false, message: 'Request protection is temporarily unavailable.' });
+        }
     };
 }
 const loginRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'login' });
 const ticketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, keyPrefix: 'ticket-resend' });
+const bookingRecoveryRequestRateLimit = rateLimit({ limit: 5, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-request' });
+const bookingRecoveryVerifyRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-verify' });
+const recoveredTicketDownloadRateLimit = rateLimit({ limit: 20, windowMs: 15 * 60 * 1000, keyPrefix: 'recovered-ticket-download' });
 const CHECKOUT_RESERVATION_MS = 15 * 60 * 1000;
 const checkoutRateLimit = rateLimit({ limit: 20, windowMs: 15 * 60 * 1000, keyPrefix: 'checkout' });
 
@@ -315,8 +324,10 @@ const cors = require('cors');
 const { whatsappWebhook } = require('./whatsapp-webhook');
 
 const db = require('./db');
+const { issueOtp, verifyOtp } = require('./booking-otp');
+const { issueCustomerTicketToken, verifyCustomerTicketToken } = require('./ticket-access');
 const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
-const { sendTicketEmail } = require('./mailer');
+const { sendTicketEmail, sendBookingRecoveryOtp, hasConfiguredEmailDelivery } = require('./mailer');
 const { sendTicketWhatsApp, getWhatsAppConfigurationStatus } = require('./whatsapp-service');
 
 const SCANNER_SESSION_TTL_SECONDS = 12 * 60 * 60;
@@ -383,7 +394,7 @@ async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, eve
         }
         return result;
     } catch (error) {
-        console.error(`[WhatsApp] Ticket ${ticketId} failed:`, error.message);
+        console.error('[WhatsApp] Ticket delivery failed.', { name: error.name || 'Error' });
         if (orderId) {
             await db.updateSaleRecord(orderId, {
                 whatsappStatus: 'failed',
@@ -409,6 +420,7 @@ function publicWhatsAppError(result) {
 }
 
 const app = express();
+if (process.env.VERCEL === '1') app.set('trust proxy', 1);
 const trustedOrigins = new Set((process.env.CORS_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
 if (process.env.BASE_URL) trustedOrigins.add(process.env.BASE_URL.replace(/\/$/, ''));
 if (process.env.NODE_ENV !== 'production') {
@@ -499,7 +511,12 @@ app.get('/api/seller/partners', async (_req, res) => {
 // has completed. Awaiting the shared connection here avoids Mongoose's
 // "buffering timed out" failure on cold starts.
 app.use('/api', async (req, res, next) => {
-    if (!db.hasConfiguredMongo) return next();
+    if (!db.hasConfiguredMongo) {
+        if (process.env.NODE_ENV === 'production') {
+            return res.status(503).json({ success: false, message: 'Database service is not configured.' });
+        }
+        return next();
+    }
 
     try {
         await db.connectDb();
@@ -532,6 +549,7 @@ app.post('/api/master/seller-access/:partnerId', requireMasterAdmin, async (req,
         sellerSessions[partnerId] = session;
         savePersisted(SESSIONS_FILE, sellerSessions);
         await db.setSellerSession(partnerId, session);
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: partner.user?.companyId || 'littlane', category: 'SELLER_PANEL_ACCESS_ISSUED', fieldChanged: 'sellerSession', reason: `Master admin issued a seller-panel session for ${partnerId}.` });
 
         res.json({
             success: true,
@@ -602,8 +620,28 @@ function publicEventPayload(event, pricing) {
 
 function canManageEvent(req, event) {
     if (req.adminSession?.role === 'master_admin') return true;
+    if (req.adminSession?.role === 'organizer') return Array.isArray(event?.organizerUserIds) && event.organizerUserIds.includes(req.adminSession.userId);
     const owner = event?.organizerId || event?.companyId;
     return req.adminSession?.role === 'company_admin' && Boolean(owner) && owner === req.adminSession.companyId;
+}
+
+function organizerSafeEvent(event) {
+    return {
+        id: eventRef(event), slug: event.slug || null, name: event.name,
+        description: event.description || '', category: event.category || '', images: event.images || [],
+        date: event.date || null, time: event.time || null, venue: event.venue || '', city: event.city || '',
+        address: event.address || '', timezone: event.timezone || 'Asia/Kolkata',
+        startsAt: event.startsAt || null, endsAt: event.endsAt || null,
+        salesStartAt: event.salesStartAt || null, salesEndAt: event.salesEndAt || null,
+        status: lifecycleStatus(event), visibility: event.visibility || 'public',
+        ticketCategories: (event.ticketCategories || []).map(category => ({
+            id: category.id, name: category.name, description: category.description || '', price: category.price,
+            currency: category.currency || 'INR', totalInventory: category.totalInventory ?? null,
+            remainingAvailability: category.remainingAvailability ?? null, salesStartAt: category.salesStartAt || null,
+            salesEndAt: category.salesEndAt || null, maxPerCustomer: category.maxPerCustomer || 20,
+            status: category.status || 'active', groupSize: category.groupSize || 1, inclusions: category.inclusions || []
+        }))
+    };
 }
 
 function normalizeTicketCategories(input) {
@@ -1032,33 +1070,144 @@ function canDeliverSale(sale) {
     return true;
 }
 
+function ticketPdfPath(ticketId) {
+    const normalized = String(ticketId || '');
+    if (!/^[A-Za-z0-9-]{1,128}$/.test(normalized)) throw new Error('Invalid ticket reference.');
+    const root = path.resolve(TICKETS_DIR);
+    const resolved = path.resolve(root, `${normalized}.pdf`);
+    if (!resolved.startsWith(`${root}${path.sep}`)) throw new Error('Invalid ticket file path.');
+    return resolved;
+}
+
 function isCountableTicketSale(sale) {
     const status = String(sale?.status || '').toLowerCase();
     return !['cancelled', 'canceled'].includes(status) && canDeliverSale(sale) && ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(status);
 }
+function isVerifiedSalesRecord(sale) {
+    if (!isCountableTicketSale(sale)) return false;
+    if (sale.paymentStatus === 'paid') return true;
+    if (sale.paymentStatus !== undefined && sale.paymentStatus !== null && sale.paymentStatus !== '') return false;
+    // Established offline ticket sale flow: the authenticated seller records a
+    // manual sale, then direct-delivery accounts issue it (or an admin approves
+    // it). Do not extend this compatibility rule to online or unknown records.
+    const offline = ['offline_seller', 'offline_pr'].includes(String(sale.source || '').toLowerCase())
+        || ['cash', 'manual'].includes(String(sale.paymentMethod || '').toLowerCase());
+    return offline && sale.paymentId === 'manual' && sale.status !== 'pr_cash_pending'
+        && ['NOT_REQUIRED', 'APPROVED', undefined, null].includes(sale.approvalStatus)
+        && Boolean(sale.sellerId || sale.prUserId || sale.generatedBy || sale.paymentVerificationSource === 'admin_cash_approval');
+}
+
+function buildReconciliationFindings(events, sales) {
+    const findings = [];
+    const add = (code, orderIds, sale, detail) => findings.push({
+        code, severity: 'review', orderIds: [...new Set(orderIds)].filter(Boolean),
+        eventId: sale?.eventId || null, detail
+    });
+    const saleById = new Map(sales.map(sale => [String(sale.orderId), sale]));
+    const eventsById = new Map(events.map(event => [eventRef(event), event]));
+    const ticketGroups = new Map();
+    for (const sale of sales) {
+        if (sale.ticketId) ticketGroups.set(sale.ticketId, [...(ticketGroups.get(sale.ticketId) || []), sale]);
+        const status = String(sale.status || '').toLowerCase();
+        const offline = ['offline_seller', 'offline_pr'].includes(String(sale.source || '').toLowerCase())
+            || ['cash', 'manual'].includes(String(sale.paymentMethod || '').toLowerCase());
+        if (isCountableTicketSale(sale) && !isVerifiedSalesRecord(sale)) {
+            add('issued_without_confirmed_payment_state', [sale.orderId], sale, 'A ticket or paid order lacks a confirmed payment state under the recorded online or offline workflow.');
+        }
+        if (offline && !sale.sellerId && !sale.prUserId && !sale.generatedBy && !sale.issuedByAdmin) {
+            add('offline_attribution_missing', [sale.orderId], sale, 'Offline sale has no seller, PR, or admin attribution.');
+        }
+        if (sale.ticketId && (['cancelled', 'canceled', 'expired', 'payment_exception', 'pr_cash_pending', 'pending_approval'].includes(status)
+            || ['pending', 'processing', 'failed', 'expired', 'cancelled', 'exception'].includes(String(sale.paymentStatus || '').toLowerCase()))) {
+            add('ticket_with_non_deliverable_order_state', [sale.orderId], sale, 'A ticket identifier exists while the order is cancelled, expired, pending, or in payment exception.');
+        }
+        if (sale.inventoryReserved && ['consumed', 'released', 'expired', 'not_required'].includes(String(sale.reservationStatus || '').toLowerCase())) {
+            add('inventory_reservation_state_conflict', [sale.orderId], sale, 'Inventory is marked reserved while its reservation state is terminal or not required.');
+        }
+        const event = eventsById.get(String(sale.eventId || ''));
+        const category = event?.ticketCategories?.find(item => String(item.id) === String(sale.ticketCategoryId));
+        if (category && Number.isInteger(Number(sale.quantity)) && Number.isInteger(Number(sale.admissionCount))) {
+            const expected = Number(sale.quantity) * Math.max(1, Number(category.groupSize) || 1);
+            if (expected !== Number(sale.admissionCount)) add('group_admission_quantity_mismatch', [sale.orderId], sale, `Recorded admissions differ from quantity multiplied by the category group size (${expected}).`);
+        }
+        if (sale.refundStatus === 'approved' && (sale.paymentStatus === 'refunded' || sale.refundStatus === 'refunded' || sale.refundProviderReference)) {
+            add('internal_refund_looks_like_money_returned', [sale.orderId], sale, 'Internal refund approval is accompanied by a provider refund state or reference; verify separately.');
+        }
+        if (sale.refundStatus === 'refunded' && !sale.refundProviderReference) {
+            add('refund_marked_complete_without_provider_reference', [sale.orderId], sale, 'Refund status says completed but no provider refund reference is recorded.');
+        }
+    }
+    for (const [ticketId, group] of ticketGroups) {
+        if (group.length > 1) add('duplicate_ticket_identifier', group.map(sale => sale.orderId), group[0], `Ticket identifier ${ticketId} is assigned to multiple orders.`);
+    }
+    for (const event of events) {
+        for (const reservation of event.inventoryReservations || []) {
+            if (reservation.status !== 'active') continue;
+            const sale = saleById.get(String(reservation.reservationId));
+            if (!sale || !sale.inventoryReserved || String(sale.eventId || '') !== eventRef(event)) {
+                add('inventory_reservation_without_matching_order', [reservation.reservationId], { eventId: eventRef(event) }, 'An active event reservation has no matching order reservation record.');
+            }
+        }
+        for (const sale of sales.filter(item => String(item.eventId || '') === eventRef(event) && item.inventoryReserved)) {
+            const hasActiveReservation = (event.inventoryReservations || []).some(item => String(item.reservationId) === String(sale.orderId) && item.status === 'active');
+            if (!hasActiveReservation && sale.reservationStatus === 'active') {
+                add('order_reservation_missing_from_event_inventory', [sale.orderId], sale, 'Order says inventory is actively reserved but the event has no matching active reservation.');
+            }
+        }
+    }
+    return findings;
+}
+
 function buildSalesReport(sales) {
-    const countable = sales.filter(sale => isCountableTicketSale(sale) && (!sale.paymentStatus || sale.paymentStatus === 'paid'));
+    const countable = sales.filter(isVerifiedSalesRecord);
     const isOffline = sale => ['offline_seller', 'offline_pr'].includes(String(sale.source || '').toLowerCase()) || ['cash', 'manual'].includes(String(sale.paymentMethod || '').toLowerCase());
+    const amountFor = sale => Number(sale.customerTotal ?? sale.amount ?? 0) || 0;
+    const money = records => {
+        const byCurrency = {};
+        for (const sale of records) {
+            const currency = String(sale.currency || 'INR').toUpperCase();
+            byCurrency[currency] = (byCurrency[currency] || 0) + amountFor(sale);
+        }
+        const currencies = Object.keys(byCurrency);
+        return { total: currencies.length <= 1 ? (currencies.length ? byCurrency[currencies[0]] : 0) : null, currency: currencies.length === 1 ? currencies[0] : null, byCurrency };
+    };
+    const pending = sales.filter(sale => ['pending', 'processing'].includes(String(sale.paymentStatus || '').toLowerCase()) || ['pending', 'pr_cash_pending', 'pending_approval', 'ticket_approval_pending'].includes(String(sale.status || '').toLowerCase()) || sale.approvalStatus === 'PENDING');
+    const cancelled = sales.filter(sale => ['cancelled', 'canceled'].includes(String(sale.status || '').toLowerCase()) || sale.paymentStatus === 'cancelled');
+    const expired = sales.filter(sale => sale.status === 'expired' || sale.paymentStatus === 'expired');
+    const excluded = new Set([...countable, ...pending, ...cancelled, ...expired]);
+    const unverified = sales.filter(sale => !excluded.has(sale) && !['failed', 'rejected', 'pr_cash_rejected'].includes(String(sale.status || '').toLowerCase()) && !['failed', 'cancelled'].includes(String(sale.paymentStatus || '').toLowerCase()));
     const grouped = (keyFor, eligible = countable) => {
         const groups = new Map();
         for (const sale of eligible) {
             const key = keyFor(sale) || 'Unknown';
-            const item = groups.get(key) || { key, orders: 0, qrCodes: 0, admissions: 0, verifiedRevenue: 0 };
+            const item = groups.get(key) || { key, orders: 0, qrCodes: 0, admissions: 0, verifiedRevenue: 0, verifiedRevenueByCurrency: {} };
             item.orders += 1; item.qrCodes += sale.ticketId ? 1 : 0;
             item.admissions += Math.max(0, Number(sale.admissionCount) || Number(sale.quantity) || 1);
-            item.verifiedRevenue += Number(sale.amount) || 0; groups.set(key, item);
+            const currency = String(sale.currency || 'INR').toUpperCase();
+            item.verifiedRevenueByCurrency[currency] = (item.verifiedRevenueByCurrency[currency] || 0) + amountFor(sale);
+            item.verifiedRevenue = Object.keys(item.verifiedRevenueByCurrency).length === 1 ? item.verifiedRevenueByCurrency[currency] : null;
+            groups.set(key, item);
         }
         return [...groups.values()];
     };
-    const channel = records => ({ orders: records.length, qrCodes: records.filter(sale => Boolean(sale.ticketId)).length, admissions: records.reduce((sum, sale) => sum + Math.max(0, Number(sale.admissionCount) || Number(sale.quantity) || 1), 0), verifiedRevenue: records.reduce((sum, sale) => sum + (Number(sale.amount) || 0), 0) });
+    const channel = records => {
+        const gross = money(records);
+        return { orders: records.length, qrCodes: records.filter(sale => Boolean(sale.ticketId)).length, admissions: records.reduce((sum, sale) => sum + Math.max(0, Number(sale.admissionCount) || Number(sale.quantity) || 1), 0), verifiedRevenue: gross.total, verifiedRevenueCurrency: gross.currency, verifiedRevenueByCurrency: gross.byCurrency };
+    };
+    const confirmedMoney = money(countable), pendingMoney = money(pending), unverifiedMoney = money(unverified);
     const online = countable.filter(sale => !isOffline(sale)), offline = countable.filter(isOffline);
     return {
-        totalOrders: countable.length, qrCodes: countable.filter(sale => Boolean(sale.ticketId)).length,
+        totalOrders: sales.length, confirmedOrders: countable.length, qrCodes: countable.filter(sale => Boolean(sale.ticketId)).length,
         admissions: countable.reduce((sum, sale) => sum + Math.max(0, Number(sale.admissionCount) || Number(sale.quantity) || 1), 0),
-        verifiedRevenue: countable.reduce((sum, sale) => sum + (Number(sale.amount) || 0), 0),
+        verifiedRevenue: confirmedMoney.total, verifiedRevenueCurrency: confirmedMoney.currency, verifiedRevenueByCurrency: confirmedMoney.byCurrency,
+        revenueBasis: 'Gross confirmed customerTotal; legacy amount fallback where customerTotal is absent. Excludes unverified and pending orders; internal refund approvals are not subtracted or represented as money returned. Amounts are grouped by currency; mixed-currency totals are not combined.',
+        pendingOrders: pending.length, pendingAmount: pendingMoney.total, pendingAmountCurrency: pendingMoney.currency, pendingAmountByCurrency: pendingMoney.byCurrency,
+        unverifiedOrders: unverified.length, unverifiedAmount: unverifiedMoney.total, unverifiedAmountCurrency: unverifiedMoney.currency, unverifiedAmountByCurrency: unverifiedMoney.byCurrency,
+        expiredOrders: expired.length, cancelledOrders: cancelled.length,
+        refundRequests: sales.filter(sale => sale.refundStatus === 'requested').length,
+        refundApprovals: sales.filter(sale => sale.refundStatus === 'approved').length,
+        refundRejections: sales.filter(sale => sale.refundStatus === 'rejected').length,
         online: channel(online), offline: channel(offline),
-        pendingOrders: sales.filter(sale => sale.paymentStatus === 'pending' || ['pending', 'pr_cash_pending', 'pending_approval', 'ticket_approval_pending'].includes(String(sale.status || '').toLowerCase()) || sale.approvalStatus === 'PENDING').length,
-        cancelledOrders: sales.filter(sale => ['cancelled', 'canceled'].includes(String(sale.status || '').toLowerCase())).length,
         manualReviewOrders: sales.filter(sale => sale.manualReview === true || sale.status === 'manual_review').length,
         byEvent: grouped(sale => sale.event || sale.eventId),
         byCategory: grouped(sale => sale.ticketType || sale.gender || sale.ticketCategoryId),
@@ -1324,6 +1473,49 @@ async function requireAdmin(req, res, next) {
     return res.status(401).json({ success: false, message: 'Access Denied: Invalid admin credentials.' });
 }
 
+// Event-specific management accepts explicit organizer assignments while the
+// broader admin middleware remains limited to master/company administrators.
+async function requireEventManager(req, res, next) {
+    const key = req.headers['x-admin-key'];
+    if (ADMIN_KEY && key && key === ADMIN_KEY) {
+        req.adminSession = { userId: 'Legacy Admin', role: 'master_admin', companyId: 'littx' };
+        return next();
+    }
+    const token = req.headers['x-auth-token'];
+    if (!token) return res.status(401).json({ success: false, message: 'Administrator or organizer authentication is required.' });
+    try {
+        const session = await db.getUserSessionByToken(token);
+        if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
+        if (!['master_admin', 'company_admin', 'organizer'].includes(session.role)) return res.status(403).json({ success: false, message: 'Event management is not authorized for this role.' });
+        if (session.role === 'organizer') {
+            const account = await db.getUserById(session.userId);
+            if (!account || account.role !== 'organizer' || account.active === false || account.blocked) {
+                await db.deleteUserSession(session.userId);
+                return res.status(403).json({ success: false, message: 'Organizer account is inactive or suspended.' });
+            }
+        }
+        req.adminSession = session;
+        return next();
+    } catch (error) { return next(error); }
+}
+
+async function requireOrganizer(req, res, next) {
+    const token = req.headers['x-auth-token'] || String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (!token) return res.status(401).json({ success: false, message: 'Organizer authentication is required.' });
+    try {
+        const session = await db.getUserSessionByToken(token);
+        if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
+        const account = await db.getUserById(session.userId);
+        if (session.role !== 'organizer' || !account || account.role !== 'organizer' || account.active === false || account.blocked) {
+            if (session.role === 'organizer') await db.deleteUserSession(session.userId);
+            return res.status(403).json({ success: false, message: 'Organizer access is not authorized or the account is suspended.' });
+        }
+        req.adminSession = session;
+        req.organizerAccount = account;
+        return next();
+    } catch (error) { return next(error); }
+}
+
 async function requireMasterAdmin(req, res, next) {
     const key = req.headers['x-admin-key'];
     if (key && key === ADMIN_KEY) {
@@ -1406,6 +1598,11 @@ async function requirePR(req, res, next) {
         if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
         if (session.role !== 'pr' || !session.userId) {
             return res.status(403).json({ success: false, message: 'Partner access is not authorized.' });
+        }
+        const account = await db.getUserById(session.userId);
+        if (account && (account.role !== 'pr' || account.active === false || account.blocked)) {
+            await db.deleteUserSession(session.userId);
+            return res.status(403).json({ success: false, message: 'Partner account is inactive or suspended.' });
         }
         req.prSession = session;
         return next();
@@ -1533,7 +1730,7 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
         }
         await db.completeCheckoutRequest(idempotencyKey, orderId);
 
-        console.log(`[Order Created] ${orderId} | ${name} <${email}> | ${gender} x${qty} = ₹${amount}`);
+        console.log(`[Order Created] ${categoryName} x${qty} | amount ${amount} ${currency}`);
 
         res.json({
             success: true,
@@ -1551,8 +1748,7 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
         });
     } catch (err) {
         await db.failCheckoutRequest(idempotencyKey).catch(() => {});
-        const details = err.error?.description || err.message || JSON.stringify(err);
-        console.error(`[create-order] Error (status ${err.statusCode || 'n/a'}):`, details);
+        console.error('[create-order] Failed to create checkout order.', { status: err.statusCode || 'n/a', name: err.name || 'Error' });
         res.status(err.statusCode === 401 ? 401 : 500).json({
             success: false,
             message: err.statusCode === 401
@@ -1653,7 +1849,7 @@ app.post('/api/verify-payment', checkoutRateLimit, async (req, res) => {
             });
         }
 
-        console.log(`[Ticket Issued] ${ticketId} for ${sale.email} | email ${emailResult.success ? 'sent ✅' : 'FAILED ❌ (' + emailResult.error + ')'}`);
+        console.log(`[Ticket Issued] Email delivery ${emailResult.success ? 'accepted' : 'failed'}.`);
 
         const whatsappResult = process.env.NODE_ENV === 'test' ? { success: false, reason: 'Notification delivery is disabled in tests.' } : await sendAndRecordTicketWhatsApp({
             orderId, phone: sale.phone, name: sale.name, ticketId,
@@ -1738,7 +1934,7 @@ app.post('/api/webhook/razorpay', async (req, res) => {
                 paymentException: `Webhook payment reconciliation failed: ${reconciliation.reason}`,
                 errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'webhook_reconciliation', error: reconciliation.reason }]
             });
-            console.error(`[webhook] Payment reconciliation failed for ${orderId}: ${reconciliation.reason}`);
+            console.error('[webhook] Payment reconciliation failed.', { reason: reconciliation.reason });
             return res.status(200).send('Payment requires reconciliation');
         }
         const accepted = await acceptCapturedPayment(sale, paymentEntity.id);
@@ -1816,6 +2012,7 @@ app.get('/api/ticket/:ticketId', rateLimit({ limit: 30, windowMs: 15 * 60 * 1000
     if (!canDeliverSale(sale)) {
         return res.status(403).json({ success: false, message: 'This ticket is awaiting dashboard approval.' });
     }
+    if (!isCountableTicketSale(sale)) return res.status(410).json({ success: false, message: 'This ticket is no longer active.' });
 
     // Build event details (mirrors ticket.js)
     const isAura = sale.event && sale.event.toUpperCase().includes('AURA');
@@ -1828,6 +2025,8 @@ app.get('/api/ticket/:ticketId', rateLimit({ limit: 30, windowMs: 15 * 60 * 1000
     const passUnitPrice = Math.round((amount / quantity) * 100) / 100;
     // Public lookup stays read-only; legacy pricing repair belongs in a
     // controlled migration rather than an unauthenticated GET request.
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Pragma', 'no-cache');
     res.json({
         success: true,
         ticket: {
@@ -1853,13 +2052,16 @@ app.get('/api/ticket/:ticketId/download', rateLimit({ limit: 30, windowMs: 15 * 
     if (!sale) return res.status(404).send('Ticket not found.');
     if (sale.disabledAt) return res.status(410).send('This ticket has been disabled.');
     if (!canDeliverSale(sale)) return res.status(403).send('Ticket is awaiting dashboard approval.');
+    if (!isCountableTicketSale(sale)) return res.status(410).send('This ticket is no longer active.');
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Pragma', 'no-cache');
     
-    const filePath = path.join(TICKETS_DIR, `${sale.ticketId}.pdf`);
+    const filePath = ticketPdfPath(sale.ticketId);
     
     // Dynamically rebuild the PDF if it has been deleted or lost on restart/redeploy
     if (!fs2.existsSync(filePath)) {
         try {
-            console.log(`[Ticket Download] File not found for ${sale.ticketId}. Rebuilding...`);
+            console.log('[Ticket Download] Ticket file missing; rebuilding.');
             const tType = ticketTypeForSale(sale);
             await buildTicketPdf({
                 ticketId: sale.ticketId,
@@ -1873,7 +2075,7 @@ app.get('/api/ticket/:ticketId/download', rateLimit({ limit: 30, windowMs: 15 * 
                 timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
             });
         } catch (err) {
-            console.error('[Ticket Download] Failed to rebuild ticket PDF:', err.message);
+            console.error('[Ticket Download] Failed to rebuild ticket PDF.', { name: err.name || 'Error' });
         }
     }
 
@@ -1891,13 +2093,16 @@ app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res)
     if (!canDeliverSale(sale)) {
         return res.status(403).json({ success: false, message: 'Ticket delivery is blocked until dashboard approval.' });
     }
+    if (!isCountableTicketSale(sale)) return res.status(410).json({ success: false, message: 'This ticket is no longer active.' });
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Pragma', 'no-cache');
 
-    const pdfPath = path.join(TICKETS_DIR, `${sale.ticketId}.pdf`);
+    const pdfPath = ticketPdfPath(sale.ticketId);
     
     // Rebuild the PDF if it has been deleted or lost on restart/redeploy
     if (!fs2.existsSync(pdfPath)) {
         try {
-            console.log(`[Ticket Resend] File not found for ${sale.ticketId}. Rebuilding...`);
+            console.log('[Ticket Resend] Ticket file missing; rebuilding.');
             const tType = ticketTypeForSale(sale);
             await buildTicketPdf({
                 ticketId: sale.ticketId,
@@ -1911,7 +2116,7 @@ app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res)
                 timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
             });
         } catch (err) {
-            console.error('[Ticket Resend] Failed to rebuild ticket PDF:', err.message);
+            console.error('[Ticket Resend] Failed to rebuild ticket PDF.', { name: err.name || 'Error' });
         }
     }
 
@@ -1924,7 +2129,7 @@ app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res)
             pdfPath, downloadUrl, event: sale.event || EVENT.name
         });
     } catch (err) {
-        console.error(`[Ticket Resend] Email failed for ${sale.ticketId}:`, err.message);
+        console.error('[Ticket Resend] Email delivery failed.', { name: err.name || 'Error' });
         result = { success: false, error: safeErrorMessage(err) || 'Email delivery failed.' };
     }
 
@@ -1935,7 +2140,7 @@ app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res)
             status: result.success ? 'emailed' : 'email_failed'
         });
     } catch (err) {
-        console.error(`[Ticket Resend] Could not record email status for ${sale.ticketId}:`, err.message);
+        console.error('[Ticket Resend] Could not record email delivery status.', { name: err.name || 'Error' });
     }
 
     let whatsappResult;
@@ -1946,7 +2151,7 @@ app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res)
             ticketType: ticketTypeForSale(sale), downloadUrl
         });
     } catch (err) {
-        console.error(`[Ticket Resend] WhatsApp failed for ${sale.ticketId}:`, err.message);
+        console.error('[Ticket Resend] WhatsApp delivery failed.', { name: err.name || 'Error' });
         whatsappResult = { success: false, error: safeErrorMessage(err) || 'WhatsApp delivery failed.' };
     }
 
@@ -2200,17 +2405,22 @@ app.get('/api/solver/tickets/:ticketId/history', requireMasterAdmin, async (req,
 app.get('/api/admin/sales', requireAdmin, async (req, res) => {
     let sales = (await db.getAll()).filter(s => !isShadowSale(s));
     if (req.presentationOnly) {
-        sales = sales.filter(s => s.showInPres === true).map(s => ({
+        const reportSales = sales.filter(s => s.showInPres === true);
+        const countable = reportSales.filter(isVerifiedSalesRecord);
+        sales = reportSales.map(s => ({
             orderId: s.orderId, ticketId: s.ticketId, event: s.event, name: s.name,
             gender: s.gender, ticketType: ticketTypeForSale(s), quantity: s.quantity,
-            amount: s.amount, status: s.status, scannedAt: s.scannedAt,
+            amount: saleGrossAmount(s), customerTotal: saleGrossAmount(s), status: s.status,
+            paymentStatus: s.paymentStatus || null, source: s.source || null,
+            paymentMethod: s.paymentMethod || null, paymentId: s.paymentId || null,
+            sellerId: s.sellerId || null, prUserId: s.prUserId || null,
+            approvalStatus: s.approvalStatus || null, scannedAt: s.scannedAt,
             scannedBy: s.scannedBy, generatedAt: s.generatedAt, showInPres: true,
         }));
-        const countable = sales.filter(isCountableTicketSale);
         const summary = {
-            totalOrders: countable.length,
-            paidOrders: countable.filter(s => s.status === 'paid').length,
-            totalRevenue: countable.filter(s => s.status === 'paid').reduce((sum, s) => sum + (Number(s.amount) || 0), 0),
+            totalOrders: reportSales.length,
+            paidOrders: countable.length,
+            totalRevenue: countable.reduce((sum, s) => sum + saleGrossAmount(s), 0),
             emailFailures: 0,
             ticketFailures: 0,
         };
@@ -2223,11 +2433,11 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
         sales = await filterDashboardVisibleSales(sales);
     }
 
-    const countableSales = sales.filter(isCountableTicketSale);
+    const countableSales = sales.filter(isVerifiedSalesRecord);
     const summary = {
-        totalOrders: countableSales.length,
+        totalOrders: sales.length,
         paidOrders: countableSales.length,
-        totalRevenue: countableSales.reduce((sum, s) => sum + (s.amount || 0), 0),
+        totalRevenue: countableSales.reduce((sum, s) => sum + saleGrossAmount(s), 0),
         emailFailures: sales.filter(s => s.emailStatus === 'failed').length,
         ticketFailures: sales.filter(s => s.status === 'ticket_generation_failed').length
     };
@@ -2236,7 +2446,7 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
     report.remainingInventory = reportEvents
         .filter(event => req.adminSession?.role !== 'company_admin' || event.companyId === req.adminSession.companyId)
         .map(event => ({ eventId: event.id || event._id, event: event.name, categories: (event.ticketCategories || []).map(category => ({ categoryId: category.id, category: category.name, remaining: Number.isInteger(category.remainingAvailability) ? category.remainingAvailability : (Number.isInteger(category.totalInventory) ? category.totalInventory : null) })) }));
-    res.json({ success: true, testMode: TEST_MODE, summary: { ...summary, ...report }, report, sales });
+    res.json({ success: true, testMode: TEST_MODE, summary: { ...summary, ...report, totalOrders: sales.length, paidOrders: report.confirmedOrders, totalRevenue: report.verifiedRevenue }, report, sales });
 });
 
 app.get('/api/admin/config', requireAdmin, async (req, res) => {
@@ -2326,6 +2536,7 @@ app.post('/api/admin/partners', requirePartnerAdmin, async (req, res) => {
             passwordHash: hashPassword(password),
         });
         const { password: _, passwordHash: __, ...partner } = created.toObject ? created.toObject() : created;
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId, category: 'SELLER_ACCOUNT_CREATED', fieldChanged: 'sellerAccount', newValue: normalizedId, reason: `Created seller account for slot ${sellerSlot}.` });
         res.status(201).json({ success: true, partner });
     } catch (err) {
         res.status(err?.code === 11000 ? 409 : 500).json({ success: false, message: err?.code === 11000 ? 'That partner already exists.' : 'Unable to create partner.' });
@@ -2360,6 +2571,7 @@ app.patch('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) =
         savePersisted(SESSIONS_FILE, sellerSessions);
         await Promise.all(sessionIds.map(sessionId => db.deleteSellerSession(sessionId)));
     }
+    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: updated.companyId || 'littlane', category: 'SELLER_ACCOUNT_UPDATED', fieldChanged: Object.keys(updates).filter(field => field !== 'passwordHash').join(','), reason: `Updated seller account ${updated.userId}.` });
     const { password: _, passwordHash: __, ...partner } = updated.toObject ? updated.toObject() : updated;
     res.json({ success: true, partner });
 });
@@ -2382,6 +2594,7 @@ app.delete('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) 
         delete webauthnAuthenticators[slot];
         savePersisted(SESSIONS_FILE, sellerSessions);
         savePersisted(WEBAUTHN_FILE, webauthnAuthenticators);
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: user.companyId || 'littlane', category: 'SELLER_ACCOUNT_CLEARED', fieldChanged: 'sellerAccount', previousValue: user.userId, reason: `Cleared managed seller login slot ${slot}; sales and tickets were retained.` });
         res.json({ success: true, message: `${slot === 'partner-slot-1' ? 'Partner Login 1' : 'Partner Login 2'} was cleared and is ready for a new partner.` });
     } catch (err) {
         console.error('[DELETE PARTNER ERROR]', err);
@@ -2892,7 +3105,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
 
         await db.createSaleRecord(record);
 
-        console.log(`👻 [Shadow Ticket Issued] Order ${orderId} | Ticket ${ticketId} for ${name} (${email})`);
+        console.log('Shadow ticket issued; email delivery status recorded.');
 
         // Generate and queue both delivery channels before responding. This is
         // required in a serverless deployment, where work after res.json() is
@@ -3108,6 +3321,7 @@ app.post('/api/admin/cancel-ticket', requireMasterAdmin, async (req, res) => {
             scannedAt: 'Cancelled by Admin',
             scannedBy: 'Admin'
         });
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: sale.companyId || 'littlane', eventId: sale.eventId || null, category: 'TICKET_CANCELLED', fieldChanged: 'status', previousValue: sale.status, newValue: 'cancelled', reason: `Cancelled ticket ${sale.ticketId}.` });
         res.json({ success: true, message: `Ticket ${ticketId} cancelled successfully.` });
     } catch (err) {
         console.error('[CANCEL ERROR]', err);
@@ -3125,6 +3339,8 @@ app.delete('/api/admin/delete-ticket', requireMasterAdmin, async (req, res) => {
 
         const removed = await db.deleteSaleRecord(sale.orderId);
         if (!removed) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: sale.companyId || 'littlane', eventId: sale.eventId || null, category: 'TICKET_RECORD_DELETED', fieldChanged: 'orderRecord', previousValue: sale.orderId, reason: `Permanently removed ticket record ${sale.ticketId}.` });
 
         if (sale.ticketId) {
             const filename = `${path.basename(String(sale.ticketId))}.pdf`;
@@ -3436,10 +3652,30 @@ app.get('/api/test-email', requireMasterAdmin, async (req, res) => {
 });
 
 // ==================== MULTI-EVENT MANAGEMENT ====================
-app.get('/api/admin/events', requireAdmin, async (req, res) => {
-    const events = (await db.getAllEvents()).filter(event => canManageEvent(req, event));
+app.get('/api/admin/events', requireEventManager, async (req, res) => {
+    let events = (await db.getAllEvents()).filter(event => canManageEvent(req, event));
+    const search = String(req.query.search || '').trim().toLowerCase();
+    const status = String(req.query.status || '').trim().toLowerCase();
+    const companyId = String(req.query.companyId || '').trim();
+    if (search) events = events.filter(event => [event.name, event.slug, event.city, event.venue, event.companyId].some(value => String(value || '').toLowerCase().includes(search)));
+    if (status) events = events.filter(event => lifecycleStatus(event) === status);
+    if (companyId) events = events.filter(event => event.companyId === companyId);
+    const sort = String(req.query.sort || 'updatedAt');
+    const direction = String(req.query.direction || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+    const sortKeys = {
+        name: event => String(event.name || '').toLowerCase(),
+        status: event => lifecycleStatus(event),
+        createdAt: event => new Date(event.createdAt || 0).getTime(),
+        updatedAt: event => new Date(event.updatedAt || event.createdAt || 0).getTime()
+    };
+    if (sortKeys[sort]) events.sort((a, b) => (sortKeys[sort](a) > sortKeys[sort](b) ? 1 : sortKeys[sort](a) < sortKeys[sort](b) ? -1 : 0) * direction);
+    const total = events.length;
+    const hasPagination = req.query.page !== undefined || req.query.pageSize !== undefined;
+    const page = Math.max(1, Number.parseInt(String(req.query.page || ''), 10) || 1);
+    const pageSize = Math.max(1, Math.min(100, Number.parseInt(String(req.query.pageSize || ''), 10) || 25));
+    if (hasPagination) events = events.slice((page - 1) * pageSize, page * pageSize);
     res.set('Cache-Control', 'no-store');
-    res.json({ success: true, events });
+    res.json({ success: true, events: req.adminSession?.role === 'organizer' ? events.map(organizerSafeEvent) : events, total, page, pageSize });
 });
 
 app.post('/api/admin/events', requireAdmin, async (req, res) => {
@@ -3472,11 +3708,11 @@ app.post('/api/admin/events', requireAdmin, async (req, res) => {
     if (record.startsAt && record.endsAt && record.endsAt < record.startsAt) return res.status(400).json({ success: false, message: 'Event end must be after its start.' });
     if (record.salesStartAt && record.salesEndAt && record.salesEndAt < record.salesStartAt) return res.status(400).json({ success: false, message: 'Ticket sales end must be after sales start.' });
     const created = await db.saveEvent(record);
-    await db.createAuditLog({ companyId, eventId: record.id, category: 'EVENT_CREATED', actor: req.adminSession.userId, message: `Created event ${name}` });
+    await db.createAuditLog({ adminUser: req.adminSession.userId, companyId, eventId: record.id, category: 'EVENT_CREATED', fieldChanged: 'event', newValue: name, reason: 'Event draft created.' });
     return res.status(201).json({ success: true, event: created });
 });
 
-app.patch('/api/admin/events/:eventRef', requireAdmin, async (req, res) => {
+app.patch('/api/admin/events/:eventRef', requireEventManager, async (req, res) => {
     const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
     if (!canManageEvent(req, event)) return res.status(403).json({ success: false, message: 'You cannot manage this event.' });
@@ -3532,11 +3768,15 @@ app.patch('/api/admin/events/:eventRef', requireAdmin, async (req, res) => {
     if (merged.startsAt && merged.endsAt && merged.endsAt < merged.startsAt) return res.status(400).json({ success: false, message: 'Event end must be after its start.' });
     if (merged.salesStartAt && merged.salesEndAt && merged.salesEndAt < merged.salesStartAt) return res.status(400).json({ success: false, message: 'Ticket sales end must be after sales start.' });
     const updated = await db.saveEvent({ ...merged, id: event.id || event._id, _id: event._id });
-    await db.createAuditLog({ companyId: event.companyId, eventId: eventRef(event), category: 'EVENT_UPDATED', actor: req.adminSession.userId, message: `Updated event ${event.name}` });
-    return res.json({ success: true, event: updated });
+    const categoryAudit = updates.ticketCategories ? {
+        previousValue: (event.ticketCategories || []).map(category => ({ id: category.id, name: category.name, price: category.price, totalInventory: category.totalInventory ?? null, groupSize: category.groupSize || 1, status: category.status || 'active' })),
+        newValue: (updated.ticketCategories || []).map(category => ({ id: category.id, name: category.name, price: category.price, totalInventory: category.totalInventory ?? null, groupSize: category.groupSize || 1, status: category.status || 'active' }))
+    } : {};
+    await db.createAuditLog({ adminUser: req.adminSession.userId, companyId: event.companyId, eventId: eventRef(event), category: 'EVENT_UPDATED', fieldChanged: Object.keys(updates).join(','), ...categoryAudit, reason: 'Event configuration updated.' });
+    return res.json({ success: true, event: req.adminSession?.role === 'organizer' ? organizerSafeEvent(updated) : updated });
 });
 
-app.post('/api/admin/events/:eventRef/transition', requireAdmin, async (req, res) => {
+app.post('/api/admin/events/:eventRef/transition', requireEventManager, async (req, res) => {
     const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
     if (!canManageEvent(req, event)) return res.status(403).json({ success: false, message: 'You cannot manage this event.' });
@@ -3547,12 +3787,101 @@ app.post('/api/admin/events/:eventRef/transition', requireAdmin, async (req, res
     if (target === 'published' && req.adminSession.role !== 'master_admin') return res.status(403).json({ success: false, message: 'Only a master administrator can publish an event.' });
     const now = new Date().toISOString();
     const updated = await db.saveEvent({ ...event, id: event.id || event._id, _id: event._id, status: target, active: target === 'published', archived: target === 'completed', publishedAt: target === 'published' ? (event.publishedAt || now) : event.publishedAt, updatedAt: now });
-    await db.createAuditLog({ companyId: event.companyId, eventId: eventRef(event), category: 'EVENT_STATUS_CHANGED', actor: req.adminSession.userId, message: `Changed event ${event.name} from ${current} to ${target}` });
-    return res.json({ success: true, event: updated });
+    await db.createAuditLog({ adminUser: req.adminSession.userId, companyId: event.companyId, eventId: eventRef(event), category: 'EVENT_STATUS_CHANGED', fieldChanged: 'status', previousValue: current, newValue: target, reason: 'Event lifecycle transition.' });
+    return res.json({ success: true, event: req.adminSession?.role === 'organizer' ? organizerSafeEvent(updated) : updated });
 });
 
 // ==================== HEALTH ====================
 app.get('/api/health', (req, res) => res.json({ success: true, event: EVENT.name }));
+
+function customerBookingSummary(sale, email) {
+    const ticketAvailable = Boolean(sale.ticketId && isCountableTicketSale(sale));
+    return {
+        orderId: sale.orderId,
+        event: sale.event || EVENT.name,
+        ticketCategory: sale.ticketType || sale.gender || null,
+        quantity: Math.max(1, Number.parseInt(sale.quantity, 10) || 1),
+        admissionCount: Math.max(1, Number.parseInt(sale.admissionCount, 10) || Number.parseInt(sale.quantity, 10) || 1),
+        amount: Number.isFinite(Number(sale.amount)) ? Number(sale.amount) : null,
+        currency: sale.currency || 'INR',
+        status: String(sale.paymentStatus || sale.status || 'unknown'),
+        createdAt: sale.createdAt || null,
+        reservationExpiresAt: sale.reservationExpiresAt || null,
+        emailStatus: sale.emailStatus || 'not_sent',
+        whatsappStatus: sale.whatsappStatus || 'not_sent',
+        ticketId: ticketAvailable ? sale.ticketId : null,
+        ticketAccessToken: ticketAvailable ? issueCustomerTicketToken({ ticketId: sale.ticketId, email, secret: process.env.BOOKING_OTP_SECRET }) : null
+    };
+}
+
+app.post('/api/customer/bookings/recovery/request', bookingRecoveryRequestRateLimit, async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+        return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
+    }
+    const secret = process.env.BOOKING_OTP_SECRET;
+    if (process.env.NODE_ENV === 'test' || !secret || secret.length < 32 || !hasConfiguredEmailDelivery()) {
+        return res.status(503).json({ success: false, message: 'Booking recovery email is temporarily unavailable. Please contact event support.' });
+    }
+    try {
+        const challenge = await issueOtp({ subject: email, purpose: 'booking_recovery', secret, db });
+        if (!challenge.ok) return res.status(429).json({ success: false, message: 'Too many recovery requests. Please try again later.' });
+        const delivered = await sendBookingRecoveryOtp({ to: email, code: challenge.deliveryCode });
+        if (!delivered.success) return res.status(503).json({ success: false, message: 'Booking recovery email is temporarily unavailable. Please contact event support.' });
+        res.set('Cache-Control', 'no-store');
+        return res.json({ success: true, message: 'If bookings match this email, a verification code has been sent.', challengeId: challenge.challengeId, expiresAt: challenge.expiresAt });
+    } catch (error) {
+        return res.status(503).json({ success: false, message: 'Booking recovery email is temporarily unavailable. Please contact event support.' });
+    }
+});
+
+app.post('/api/customer/bookings/recovery/verify', bookingRecoveryVerifyRateLimit, async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const challengeId = String(req.body?.challengeId || '');
+    const code = String(req.body?.code || '');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+        return res.status(400).json({ success: false, message: 'Verification failed. Request a new code and try again.' });
+    }
+    try {
+        const verified = await verifyOtp({ subject: email, purpose: 'booking_recovery', challengeId, code, secret: process.env.BOOKING_OTP_SECRET, db });
+        if (!verified.ok) return res.status(401).json({ success: false, message: 'Verification failed. Request a new code and try again.' });
+        const bookings = await db.getCustomerBookingsByEmail(email);
+        res.set('Cache-Control', 'no-store');
+        res.set('Pragma', 'no-cache');
+        return res.json({ success: true, bookings: bookings.map(sale => customerBookingSummary(sale, email)) });
+    } catch (error) {
+        return res.status(503).json({ success: false, message: 'Booking history is temporarily unavailable.' });
+    }
+});
+
+app.post('/api/customer/bookings/ticket-download', recoveredTicketDownloadRateLimit, async (req, res) => {
+    const ticketId = String(req.body?.ticketId || '');
+    const token = String(req.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+    if (!/^[A-Za-z0-9-]{1,128}$/.test(ticketId)) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+    try {
+        const sale = await db.getByTicketId(ticketId);
+        if (!sale || !verifyCustomerTicketToken({ token, ticketId, email: sale.email || '', secret: process.env.BOOKING_OTP_SECRET })) {
+            return res.status(401).json({ success: false, message: 'Ticket access is invalid or expired. Verify your booking again.' });
+        }
+        if (sale.disabledAt || !isCountableTicketSale(sale)) return res.status(410).json({ success: false, message: 'This ticket is no longer active.' });
+        const filePath = ticketPdfPath(sale.ticketId);
+        if (!fs2.existsSync(filePath)) {
+            await buildTicketPdf({
+                ticketId: sale.ticketId, name: sale.name, email: sale.email,
+                gender: ticketTypeForSale(sale), quantity: sale.quantity || 1,
+                amount: sale.amount || 0, createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
+                event: sale.event || EVENT.name, timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
+            });
+        }
+        res.set('Cache-Control', 'private, no-store');
+        res.set('Pragma', 'no-cache');
+        return res.download(filePath, `${EVENT.name.replace(/\s+/g, '-')}-${sale.ticketId}.pdf`, error => {
+            if (error && !res.headersSent) res.status(404).send('Ticket file not found. Please contact support.');
+        });
+    } catch (error) {
+        return res.status(503).json({ success: false, message: 'Ticket download is temporarily unavailable.' });
+    }
+});
 
 // Public discovery is deliberately separate from the authenticated admin list.
 app.get('/api/events', async (req, res) => {
@@ -3615,6 +3944,245 @@ app.get('/api/admin/sellers', requireAdmin, async (req, res) => {
 });
 
 // ==================== MASTER ADMIN COMPANY PORTAL / GOVERNANCE API ====================
+// GET /api/master/overview — verified platform totals and actionable queues.
+app.get('/api/master/overview', requireMasterAdmin, async (_req, res) => {
+    try {
+        const [rawEvents, users, rawSales, auditLogs] = await Promise.all([
+            db.getAllEvents(), db.getAllUsers(), db.getAll(), db.getAuditLogs(null)
+        ]);
+        const events = rawEvents.filter(event => !event.archived || lifecycleStatus(event) === 'completed');
+        const sales = rawSales.filter(sale => !isShadowSale(sale));
+        const verifiedSales = sales.filter(isVerifiedSalesRecord);
+        const report = buildSalesReport(sales);
+        const statusCounts = events.reduce((counts, event) => {
+            const status = lifecycleStatus(event);
+            counts[status] = (counts[status] || 0) + 1;
+            return counts;
+        }, {});
+        const eventSummary = events.map(event => {
+            const ref = eventRef(event);
+            const related = sales.filter(sale => sale.eventId ? String(sale.eventId) === String(ref) : String(sale.event || '').toLowerCase() === String(event.name || '').toLowerCase());
+            const verified = related.filter(isVerifiedSalesRecord);
+            const eventReport = buildSalesReport(related);
+            return {
+                eventId: ref, name: event.name, companyId: event.companyId || event.organizerId || null,
+                organizerUserIds: Array.isArray(event.organizerUserIds) ? event.organizerUserIds : [],
+                status: lifecycleStatus(event), orders: eventReport.totalOrders, ticketsIssued: eventReport.qrCodes,
+                admissions: eventReport.admissions, online: eventReport.online, offline: eventReport.offline,
+                pendingOrders: related.filter(sale => ['pending', 'pr_cash_pending', 'pending_approval', 'ticket_approval_pending'].includes(String(sale.status || '').toLowerCase()) || sale.paymentStatus === 'pending' || sale.approvalStatus === 'PENDING').length,
+                cancelledOrders: related.filter(sale => ['cancelled', 'canceled'].includes(String(sale.status || '').toLowerCase())).length,
+                manualReviewOrders: related.filter(sale => sale.manualReview === true || sale.status === 'manual_review').length,
+                remainingInventory: (event.ticketCategories || []).reduce((sum, category) => sum + (Number.isInteger(category.remainingAvailability) ? category.remainingAvailability : 0), 0),
+                inventoryLimited: (event.ticketCategories || []).some(category => Number.isInteger(category.totalInventory)),
+                verifiedRevenue: eventReport.verifiedRevenue,
+                verifiedRevenueCurrency: eventReport.verifiedRevenueCurrency,
+                verifiedRevenueByCurrency: eventReport.verifiedRevenueByCurrency,
+                confirmedOrders: verified.length, pendingOrders: eventReport.pendingOrders,
+                unverifiedOrders: eventReport.unverifiedOrders, expiredOrders: eventReport.expiredOrders,
+                refundRequests: eventReport.refundRequests, refundApprovals: eventReport.refundApprovals,
+                refundRejections: eventReport.refundRejections
+            };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+        const pendingRefunds = sales.filter(sale => sale.refundStatus === 'requested');
+        const pendingTicketApprovals = sales.filter(sale => sale.approvalStatus === 'PENDING' || sale.status === 'pr_cash_pending' || sale.status === 'pending_approval');
+        const organizerCompanies = new Set(events.map(event => event.organizerId || event.companyId).filter(Boolean));
+        const organizerAccounts = users.filter(user => user.role === 'organizer');
+        const sellerAccounts = users.filter(user => user.role === 'seller');
+        const prAccounts = users.filter(user => user.role === 'pr');
+        const accounts = records => ({ total: records.length, active: records.filter(user => user.active !== false && !user.blocked).length, suspended: records.filter(user => user.active === false || user.blocked).length });
+        const recentActivity = (auditLogs || []).slice(0, 12).map(log => ({
+            actor: log.adminUser || log.actor || log.performedBy || 'Administrator',
+            action: log.category || log.action || 'ADMIN_ACTION',
+            entity: log.eventId || log.companyId || null,
+            fieldChanged: log.fieldChanged || null,
+            timestamp: log.timestamp || null
+        }));
+        const alerts = [];
+        if (statusCounts.pending_review) alerts.push({ type: 'organizer_approval', count: statusCounts.pending_review, label: 'Events awaiting publication review' });
+        if (pendingRefunds.length) alerts.push({ type: 'refund_review', count: pendingRefunds.length, label: 'Internal refund requests awaiting review' });
+        if (pendingTicketApprovals.length) alerts.push({ type: 'ticket_approval', count: pendingTicketApprovals.length, label: 'Offline tickets awaiting approval' });
+        const manualReviewCount = sales.filter(sale => sale.manualReview === true || sale.status === 'manual_review').length;
+        if (manualReviewCount) alerts.push({ type: 'manual_review', count: manualReviewCount, label: 'Orders requiring manual review' });
+        res.set('Cache-Control', 'no-store');
+        return res.json({
+            success: true,
+            events: { total: events.length, active: statusCounts.published || 0, draft: statusCounts.draft || 0, completed: statusCounts.completed || 0, pendingReview: statusCounts.pending_review || 0 },
+            accounts: {
+                organizerCompanies: organizerCompanies.size,
+                organizers: accounts(organizerAccounts),
+                sellers: accounts(sellerAccounts), pr: accounts(prAccounts),
+                users: [...organizerAccounts, ...sellerAccounts, ...prAccounts].map(user => ({
+                    userId: user.userId, displayName: user.displayName || user.userId, role: user.role,
+                    companyId: user.companyId || null, sellerSlot: user.sellerSlot || null,
+                    active: user.active !== false && !user.blocked, blocked: Boolean(user.blocked)
+                })).sort((a, b) => a.role.localeCompare(b.role) || a.displayName.localeCompare(b.displayName))
+            },
+            sales: { ...report, totalOrders: sales.length, confirmedOrders: verifiedSales.length, ticketsIssued: report.qrCodes },
+            queues: { pendingOrganizerApprovals: statusCounts.pending_review || 0, pendingRefundRequests: pendingRefunds.length, pendingTicketApprovals: pendingTicketApprovals.length, manualReviewOrders: manualReviewCount },
+            byEvent: eventSummary,
+            recentActivity,
+            alerts
+        });
+    } catch (error) {
+        console.error('[master overview]', error.message);
+        return res.status(500).json({ success: false, message: safeErrorMessage(error) });
+    }
+});
+
+// Read-only reconciliation. The report contains order references and state
+// findings only; it never mutates a sale, ticket, reservation, or refund.
+app.get('/api/admin/reconciliation', requireEventManager, async (req, res) => {
+    try {
+        const [allEvents, allSales] = await Promise.all([db.getAllEvents(), db.getAll()]);
+        let events;
+        if (req.adminSession?.role === 'master_admin') events = allEvents;
+        else if (req.adminSession?.role === 'organizer') events = await db.getEventsForOrganizer(req.adminSession.userId);
+        else events = allEvents.filter(event => (event.companyId || event.organizerId) === req.adminSession?.companyId);
+        const eventIds = new Set(events.map(eventRef));
+        const scopedSales = allSales.filter(sale => !isShadowSale(sale) && (
+            (sale.eventId && eventIds.has(String(sale.eventId))) ||
+            (!sale.eventId && events.some(event => String(sale.event || '').toLowerCase() === String(event.name || '').toLowerCase()
+                && String(sale.companyId || event.companyId || '') === String(event.companyId || '')))
+        ));
+        const findings = buildReconciliationFindings(events, scopedSales);
+        res.set('Cache-Control', 'no-store');
+        return res.json({
+            success: true,
+            readOnly: true,
+            scope: { eventCount: events.length },
+            summary: { findings: findings.length, byCode: findings.reduce((counts, finding) => ({ ...counts, [finding.code]: (counts[finding.code] || 0) + 1 }), {}) },
+            findings
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(error) });
+    }
+});
+
+app.patch('/api/master/accounts/:userId/status', requireMasterAdmin, async (req, res) => {
+    const userId = String(req.params.userId || '').trim();
+    const active = req.body?.active;
+    if (!userId || typeof active !== 'boolean') return res.status(400).json({ success: false, message: 'Provide an account identifier and active true or false.' });
+    const user = await db.getUserById(userId);
+    if (!user || !['organizer', 'seller', 'pr'].includes(user.role)) return res.status(404).json({ success: false, message: 'Managed organizer, seller, or PR account not found.' });
+    const updated = await db.updateUser(userId, { active, blocked: !active });
+    if (!updated) return res.status(404).json({ success: false, message: 'Account could not be updated.' });
+    if (!active) {
+        const sessionIds = [userId, user.sellerSlot].filter(Boolean);
+        await Promise.all(sessionIds.map(id => db.deleteUserSession(id)));
+        if (user.role === 'seller') {
+            for (const id of sessionIds) { delete sellerSessions[id]; await db.deleteSellerSession(id); }
+            savePersisted(SESSIONS_FILE, sellerSessions);
+        }
+    }
+    await db.createAuditLog({
+        adminUser: req.adminSession?.userId || 'Master Admin', companyId: user.companyId || 'littlane',
+        category: user.role === 'organizer'
+            ? (active ? 'ORGANIZER_ACCOUNT_ACTIVATED' : 'ORGANIZER_ACCOUNT_SUSPENDED')
+            : (active ? 'PARTNER_ACCOUNT_ACTIVATED' : 'PARTNER_ACCOUNT_SUSPENDED'),
+        fieldChanged: 'active', previousValue: user.active !== false && !user.blocked, newValue: active,
+        reason: `${user.role} account ${user.userId} ${active ? 'activated' : 'suspended'}.`
+    });
+    return res.json({ success: true, account: { userId, role: user.role, companyId: user.companyId || null, active, blocked: !active } });
+});
+
+app.post('/api/master/organizers', requireMasterAdmin, async (req, res) => {
+    const userId = String(req.body?.userId || '').trim().toLowerCase();
+    const displayName = String(req.body?.displayName || '').trim();
+    const companyId = String(req.body?.companyId || '').trim();
+    const password = req.body?.password;
+    if (!/^[a-z0-9][a-z0-9._@+-]{2,119}$/.test(userId) || !displayName || displayName.length > 120 || typeof password !== 'string' || password.length < 12 || password.length > 200) {
+        return res.status(400).json({ success: false, message: 'Provide a valid account ID, display name, and password of at least 12 characters.' });
+    }
+    if (!companyId || !(await db.getCompanyById(companyId))) return res.status(400).json({ success: false, message: 'Select a valid organizer company.' });
+    if ((await db.getAllUsers()).some(user => user.userId.toLowerCase() === userId)) return res.status(409).json({ success: false, message: 'An account with that ID already exists.' });
+    try {
+        const account = await db.createUser({ userId, displayName, companyId, role: 'organizer', passwordHash: hashPassword(password), active: true, blocked: false });
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId, category: 'ORGANIZER_ACCOUNT_CREATED', fieldChanged: 'organizerAccount', newValue: userId, reason: 'Created organizer account. Event access requires explicit event assignment.' });
+        return res.status(201).json({ success: true, organizer: { userId: account.userId, displayName: account.displayName, companyId: account.companyId, role: account.role, active: account.active } });
+    } catch (error) {
+        if (error?.code === 11000) return res.status(409).json({ success: false, message: 'An account with that ID already exists.' });
+        return res.status(500).json({ success: false, message: safeErrorMessage(error) });
+    }
+});
+
+app.put('/api/master/events/:eventRef/organizers', requireMasterAdmin, async (req, res) => {
+    const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    const organizerUserIds = Array.isArray(req.body?.organizerUserIds)
+        ? [...new Set(req.body.organizerUserIds.map(id => String(id || '').trim().toLowerCase()).filter(Boolean))]
+        : null;
+    if (!organizerUserIds || organizerUserIds.length > 100) return res.status(400).json({ success: false, message: 'Provide a list of at most 100 organizer accounts.' });
+    const users = await Promise.all(organizerUserIds.map(id => db.getUserById(id)));
+    const eventCompanyId = event.companyId || event.organizerId;
+    if (users.some(user => !user || user.role !== 'organizer' || user.companyId !== eventCompanyId)) {
+        return res.status(400).json({ success: false, message: 'Every assigned account must be an organizer in the event’s company.' });
+    }
+    const previous = Array.isArray(event.organizerUserIds) ? event.organizerUserIds : [];
+    const updated = await db.saveEvent({ ...event, id: event.id || event._id, organizerUserIds, updatedAt: new Date().toISOString() });
+    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: event.companyId || 'littlane', eventId: eventRef(event), category: 'EVENT_ORGANIZER_ASSIGNMENTS_CHANGED', fieldChanged: 'organizerUserIds', previousValue: previous, newValue: organizerUserIds, reason: 'Updated explicit organizer event assignments.' });
+    return res.json({ success: true, eventId: eventRef(event), organizerUserIds: updated.organizerUserIds || organizerUserIds });
+});
+
+app.get('/api/organizer/overview', requireOrganizer, async (req, res) => {
+    try {
+        const [events, allSales] = await Promise.all([db.getEventsForOrganizer(req.organizerAccount.userId), db.getAll()]);
+        const sales = allSales.filter(sale => !isShadowSale(sale));
+        const byEvent = await Promise.all(events.map(async event => {
+            const ref = eventRef(event);
+            const eventSales = sales.filter(sale => sale.eventId
+                ? String(sale.eventId) === ref
+                : String(sale.event || '').toLowerCase() === String(event.name || '').toLowerCase() && String(sale.companyId || event.companyId || '') === String(event.companyId || ''));
+            const verified = eventSales.filter(isVerifiedSalesRecord);
+            const report = buildSalesReport(eventSales);
+            const scanSummary = await db.getScanSummaryForEvent(event.name, event.companyId || null);
+            const audits = (await db.getAuditLogs(event.companyId || null)).filter(log => String(log.eventId || '') === ref).slice(0, 10);
+            const orders = eventSales.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 100).map(sale => ({
+                orderId: sale.orderId, ticketId: sale.ticketId || null, ticketType: ticketTypeForSale(sale),
+                quantity: Number(sale.quantity) || 1, admissions: Number(sale.admissionCount) || Number(sale.quantity) || 1,
+                status: sale.status || 'unknown', paymentStatus: sale.paymentStatus || null,
+                approvalStatus: sale.approvalStatus || null,
+                channel: ['offline_seller', 'offline_pr'].includes(String(sale.source || '').toLowerCase()) || ['cash', 'manual'].includes(String(sale.paymentMethod || '').toLowerCase()) ? 'offline' : 'online',
+                sellerId: sale.sellerId || sale.prUserId || sale.generatedBy || null, sellerName: sale.prName || null,
+                amount: isVerifiedSalesRecord(sale) ? Number(sale.customerTotal ?? sale.amount ?? 0) : null,
+                currency: sale.currency || 'INR',
+                scannedAt: sale.scannedAt || null, scannedAdmissions: Number(sale.scannedAdmissionCount) || 0,
+                createdAt: sale.createdAt || null
+            }));
+            return {
+                eventId: ref, name: event.name, slug: event.slug || null, status: lifecycleStatus(event),
+                city: event.city || '', venue: event.venue || '', description: event.description || '', startsAt: event.startsAt || event.date || null,
+                ticketCategories: (event.ticketCategories || []).map(category => ({ id: category.id, name: category.name, description: category.description || '', price: category.price, currency: category.currency || 'INR', totalInventory: category.totalInventory ?? null, remainingInventory: category.remainingAvailability ?? null, groupSize: category.groupSize || 1, status: category.status || 'active', maxPerCustomer: category.maxPerCustomer || 20, salesStartAt: category.salesStartAt || null, salesEndAt: category.salesEndAt || null, inclusions: category.inclusions || [] })),
+                sales: {
+                    orders: eventSales.length, confirmedOrders: verified.length, ticketsIssued: report.qrCodes,
+                    admissions: report.admissions, online: report.online, offline: report.offline,
+                    verifiedRevenue: report.verifiedRevenue,
+                    verifiedRevenueCurrency: report.verifiedRevenueCurrency,
+                    verifiedRevenueByCurrency: report.verifiedRevenueByCurrency,
+                    revenueBasis: report.revenueBasis,
+                    pending: report.pendingOrders, pendingAmount: report.pendingAmount,
+                    cancelled: report.cancelledOrders, expired: report.expiredOrders,
+                    unverified: report.unverifiedOrders, unverifiedAmount: report.unverifiedAmount,
+                    refundRequests: report.refundRequests, refundApprovals: report.refundApprovals,
+                    refundRejections: report.refundRejections
+                },
+                scans: {
+                    accepted: scanSummary.accepted,
+                    duplicate: scanSummary.duplicate,
+                    admissions: scanSummary.admissions,
+                    recent: scanSummary.recent.map(log => ({ ticketId: log.ticketId, result: log.result, admissionCount: log.admissionCount || 1, timestamp: log.timestamp }))
+                },
+                refundRequests: eventSales.filter(sale => sale.refundStatus === 'requested').map(sale => ({ orderId: sale.orderId, ticketId: sale.ticketId || null, amount: sale.amount, currency: sale.currency || 'INR', reason: sale.refundReason || '', requestedAt: sale.refundRequestedAt || null })),
+                activity: audits.map(log => ({ actor: log.adminUser, action: log.category, fieldChanged: log.fieldChanged, timestamp: log.timestamp })),
+                orders
+            };
+        }));
+        res.set('Cache-Control', 'no-store');
+        return res.json({ success: true, organizer: { userId: req.organizerAccount.userId, displayName: req.organizerAccount.displayName, companyId: req.organizerAccount.companyId }, events: byEvent });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(error) });
+    }
+});
+
 // GET /api/master/companies — returns all companies with aggregated stats
 app.get('/api/master/companies', requireMasterAdmin, async (req, res) => {
     try {
@@ -3622,7 +4190,7 @@ app.get('/api/master/companies', requireMasterAdmin, async (req, res) => {
         await syncManagedPartnerCompanies(users);
         const list = await db.getAllCompanies();
         const allSales = (await db.getAll()).filter(s => !isShadowSale(s));
-        const paidSales = allSales.filter(isCountableTicketSale);
+        const paidSales = allSales.filter(isVerifiedSalesRecord);
         const companyById = new Map(list.map(company => [company.companyId, company]));
         const slotCompanyMap = new Map(
             users
@@ -3667,7 +4235,7 @@ app.get('/api/master/companies', requireMasterAdmin, async (req, res) => {
             const companyEvents = visibleDashboardEvents(allEvents).filter(event => event.companyId === c.companyId);
             const activePRs = users.filter(user => user.role === 'pr' && user.companyId === c.companyId && user.active !== false && !user.blocked).length;
             const totalOrders = companySales.length;
-            const ticketCount = companySales.reduce((acc, s) => acc + (s.quantity || 1), 0);
+            const ticketCount = companySales.reduce((acc, s) => acc + (Number(s.admissionCount) || Number(s.quantity) || 1), 0);
             const grossRevenue = companySales.reduce((acc, s) => acc + saleGrossAmount(s), 0);
             const revenueAfterCommission = companySales.reduce((acc, s) => acc + saleRevenueAfterCommission(s), 0);
             const sellerCommission = companySales.reduce((acc, s) => acc + (Number(s.commissionAmount) || 0), 0);
@@ -3761,10 +4329,9 @@ app.post('/api/master/companies/:id/config', requireMasterAdmin, async (req, res
         }
         const updated = await db.updateCompanyConfig(id, safeUpdates);
         await db.createAuditLog({
-            companyId: id,
-            action: 'UPDATE_CONFIG',
-            performedBy: req.adminSession?.userId || 'Master Admin',
-            details: `Updated company parameters. Reason: ${reason || 'Governance Update'}`
+            adminUser: req.adminSession?.userId || 'Master Admin', companyId: id,
+            category: 'COMPANY_CONFIG_UPDATED', fieldChanged: Object.keys(updates).join(','),
+            reason: String(reason || 'Governance update').slice(0, 500)
         });
 
         res.json({ success: true, company: redactCompanySecrets(updated) });
@@ -3788,10 +4355,9 @@ app.post('/api/master/companies/:id/emergency', requireMasterAdmin, async (req, 
 
         const updated = await db.updateCompanyConfig(id, { status, statusReason });
         await db.createAuditLog({
-            companyId: id,
-            action,
-            performedBy: req.adminSession?.userId || 'Master Admin',
-            details: `Emergency Governance action triggered: ${action}. Reason: ${statusReason}`
+            adminUser: req.adminSession?.userId || 'Master Admin', companyId: id,
+            category: 'COMPANY_STATUS_CHANGED', fieldChanged: 'status', previousValue: company.status, newValue: status,
+            reason: String(statusReason || action).slice(0, 500)
         });
 
         res.json({ success: true, company: redactCompanySecrets(updated) });
@@ -3882,6 +4448,16 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
                 companyId: platformUser.companyId
             }
         });
+    }
+
+    const managedUser = (await db.getAllUsers()).find(user => user.userId.toLowerCase() === String(username).toLowerCase());
+    if (managedUser?.role === 'organizer') {
+        if (managedUser.active === false || managedUser.blocked) return res.status(403).json({ success: false, message: 'Organizer account is inactive. Contact the Master Admin.' });
+        if (!verifyPassword(String(password), managedUser.passwordHash)) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        const token = generateToken();
+        const session = { token, ip: clientIp(req), loginAt: new Date().toISOString(), role: 'organizer', companyId: managedUser.companyId, displayName: managedUser.displayName || managedUser.userId };
+        await db.setUserSession(managedUser.userId, session);
+        return res.json({ success: true, token, user: { userId: managedUser.userId, displayName: session.displayName, role: 'organizer', companyId: managedUser.companyId, portalScope: 'organizer' } });
     }
 
     // 2. Check PR partners
@@ -4249,6 +4825,7 @@ app.post('/api/admin/seller-devices/:partnerId/logout', requireMasterAdmin, asyn
     savePersisted(SESSIONS_FILE, sellerSessions);
     await db.deleteSellerSession(partnerId);
     const partner = await resolveSellerPartner(partnerId);
+    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: partner?.user?.companyId || 'littlane', category: 'SELLER_SESSION_REVOKED', fieldChanged: 'session', reason: `Revoked seller session for ${partner?.name || partnerId}.` });
     res.json({ success: true, message: `${partner?.name || partnerId} has been logged out.` });
 });
 
@@ -4274,6 +4851,8 @@ app.post('/api/admin/seller-devices/:partnerId/block', requireMasterAdmin, async
         const account = PARTNER_LOGIN_SLOTS.includes(partnerId) ? await db.getUserBySellerSlot(partnerId) : null;
         if (account?.userId !== undefined) await db.deleteSellerSession(account.userId);
     }
+    const blockedAccount = PARTNER_LOGIN_SLOTS.includes(partnerId) ? await db.getUserBySellerSlot(partnerId) : null;
+    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: blockedAccount?.companyId || PARTNER_NAMES[partnerId] && partnerId || 'littlane', category: blocked ? 'SELLER_ACCESS_SUSPENDED' : 'SELLER_ACCESS_RESTORED', fieldChanged: 'blocked', newValue: blocked, reason: `Seller access ${blocked ? 'suspended' : 'restored'} for ${partnerId}.` });
     res.json({ success: true, blocked, message: blocked ? 'Seller permanently blocked until a Master Admin unblocks them.' : 'Seller unblocked. They can sign in again.' });
 });
 
@@ -4299,7 +4878,7 @@ app.get('/api/admin/seller-summary', requireMasterAdmin, async (req, res) => {
             ? await filterDashboardVisibleSales(rawSales.filter(s => !isShadowSale(s)))
             : rawSales;
         const all = allSales.filter(s => !isShadowSale(s));
-        const paid = all.filter(isCountableTicketSale);
+        const paid = all.filter(isVerifiedSalesRecord);
         const slotCompanyMap = new Map(
             users
                 .filter(user => user.role === 'seller' && user.sellerSlot && user.companyId)
@@ -4409,7 +4988,7 @@ app.get('/api/admin/seller-summary', requireMasterAdmin, async (req, res) => {
             }
             const companyRecord = companySummary.get(companyId);
             const quantity = Number(s.quantity) || 1;
-            const grossAmount = Number(s.customerTotal ?? s.amount) || 0;
+            const grossAmount = saleGrossAmount(s);
             const commissionAmount = Number(s.commissionAmount);
             const netAmount = Number(s.rateAfterCommission);
             const percentageCommission = Number(s.commissionPercentage) > 0
@@ -4730,6 +5309,7 @@ app.post('/api/admin/refund-requests/:orderId/decision', requireApprovalAdmin, a
             decision, actor: req.adminSession?.userId || 'Master Admin', reason, now: new Date().toISOString()
         });
         if (!updated) return res.status(409).json({ success: false, message: 'Refund request has already been decided.' });
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: existing.companyId || 'littlane', eventId: existing.eventId || null, category: 'INTERNAL_REFUND_DECISION', fieldChanged: 'refundStatus', previousValue: 'requested', newValue: decision, reason: reason || 'Internal refund request review.' });
         return res.json({ success: true, refundStatus: updated.refundStatus, liveRefundTriggered: false, ticketInvalidated: false, inventoryRestored: false });
     } catch (error) {
         return res.status(500).json({ success: false, message: safeErrorMessage(error) });

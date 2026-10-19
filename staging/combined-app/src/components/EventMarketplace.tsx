@@ -12,6 +12,8 @@ type TicketCategory = {
   status: string
   groupSize: number
   inclusions: string[]
+  salesStartAt?: string | null
+  salesEndAt?: string | null
 }
 
 type EventRecord = {
@@ -76,6 +78,7 @@ export default function EventMarketplace() {
   useEffect(() => {
     let alive = true
     setLoading(true)
+    setError('')
     const url = requested ? `/api/events/${encodeURIComponent(requested)}` : '/api/events'
     fetch(url).then(async response => {
       const data = await response.json()
@@ -101,6 +104,15 @@ export default function EventMarketplace() {
       (!toDate || (Number.isFinite(eventDate) && eventDate <= new Date(`${toDate}T23:59:59`).getTime()))
   })
   const ticket = selected?.ticketCategories.find(item => item.id === selectedCategoryId) || selected?.ticketCategories[0]
+  const ticketMaxQuantity = ticket ? Math.min(ticket.maxPerCustomer || 20, ticket.remainingAvailability === null ? (ticket.maxPerCustomer || 20) : Math.floor(ticket.remainingAvailability / Math.max(1, ticket.groupSize || 1))) : 0
+  const ticketUnavailableReason = (item: TicketCategory) => {
+    if (item.status !== 'active') return 'Unavailable'
+    if (item.remainingAvailability !== null && item.remainingAvailability <= 0) return 'Sold out'
+    const now = Date.now()
+    if (item.salesStartAt && new Date(item.salesStartAt).getTime() > now) return `Sales open ${new Date(item.salesStartAt).toLocaleString()}`
+    if (item.salesEndAt && new Date(item.salesEndAt).getTime() <= now) return 'Sales closed'
+    return null
+  }
 
   async function beginCheckout(event: EventRecord, selectedTicket: TicketCategory) {
     if (!buyer.name.trim() || !buyer.email.trim() || !buyer.phone.trim()) {
@@ -165,9 +177,9 @@ export default function EventMarketplace() {
   const input: CSSProperties = { width: '100%', padding: '12px 14px', background: '#0c0b13', color: 'inherit', border: '1px solid #393548', borderRadius: 10, boxSizing: 'border-box' }
 
   return <main style={page}>
-    <a href="/" style={{ color: '#d8ff3f', textDecoration: 'none', fontWeight: 700 }}>← LITTX</a>
+    <nav style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}><a href="/" style={{ color: '#d8ff3f', textDecoration: 'none', fontWeight: 700 }}>← LITTX</a><a href="/bookings" style={{ color: '#d8ff3f', textDecoration: 'none', fontWeight: 700 }}>My bookings</a></nav>
     <div style={{ maxWidth: 1100, margin: '28px auto' }}>
-      {confirmation ? <section style={{ ...panel, textAlign: 'center', padding: 36 }}>
+      {loading ? <p role="status">Loading event information…</p> : error && requested && !selected ? <p role="alert" style={{ ...panel, color: '#ff7777' }}>{error}</p> : confirmation ? <section style={{ ...panel, textAlign: 'center', padding: 36 }}>
         <h1>Booking confirmed</h1><p>{confirmation.event}</p>
         {confirmation.ticketId && <p>Ticket reference: <strong>{confirmation.ticketId}</strong></p>}
         {confirmation.downloadUrl && <a href={confirmation.downloadUrl} style={{ color: '#d8ff3f' }}>Open your ticket</a>}
@@ -187,17 +199,17 @@ export default function EventMarketplace() {
           {!selected.ticketCategories?.length && <p>Ticket sales are not open for this event yet.</p>}
           {selected.ticketCategories?.map(item => <label key={item.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: 14, border: `1px solid ${selectedCategoryId === item.id ? '#d8ff3f' : '#393548'}`, borderRadius: 12, margin: '10px 0', cursor: 'pointer' }}>
             <input type="radio" name="ticketCategory" checked={selectedCategoryId === item.id} onChange={() => { setSelectedCategoryId(item.id); setQuantity(1) }} />
-            <span style={{ flex: 1 }}><strong>{item.name}</strong><br /><small style={{ color: '#aaa6b8' }}>{item.description || (item.groupSize > 1 ? `Group ticket for ${item.groupSize}` : '')}{item.remainingAvailability !== null ? ` · ${item.remainingAvailability} remaining` : ''}</small></span>
+            <span style={{ flex: 1 }}><strong>{item.name}</strong><br /><small style={{ color: '#aaa6b8' }}>{item.description || (item.groupSize > 1 ? `Group ticket for ${item.groupSize} admissions` : '')}{item.remainingAvailability !== null ? ` · ${item.remainingAvailability} remaining` : ''}{ticketUnavailableReason(item) ? ` · ${ticketUnavailableReason(item)}` : item.remainingAvailability === null ? ' · Inventory availability checked at checkout' : ' · Available'}</small></span>
             <strong>{item.currency} {item.price.toLocaleString()}</strong>
           </label>)}
           {ticket && <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', marginTop: 18 }}>
             <input style={input} aria-label="Full name" placeholder="Full name" value={buyer.name} onChange={event => setBuyer({ ...buyer, name: event.target.value })} />
             <input style={input} aria-label="Email" type="email" placeholder="Email" value={buyer.email} onChange={event => setBuyer({ ...buyer, email: event.target.value })} />
             <input style={input} aria-label="Phone" type="tel" placeholder="Phone" value={buyer.phone} onChange={event => setBuyer({ ...buyer, phone: event.target.value })} />
-            <input style={input} aria-label="Quantity" type="number" min={1} max={Math.min(ticket.maxPerCustomer, ticket.remainingAvailability === null ? ticket.maxPerCustomer : Math.floor(ticket.remainingAvailability / Math.max(1, ticket.groupSize)))} value={quantity} onChange={event => setQuantity(Math.max(1, Number(event.target.value) || 1))} />
+            <input style={input} aria-label="Quantity" type="number" min={1} max={ticketMaxQuantity} value={quantity} onChange={event => setQuantity(Math.max(1, Math.min(ticketMaxQuantity || 1, Number(event.target.value) || 1)))} />
           </div>}
           {error && <p role="alert" style={{ color: '#ff7777' }}>{error}</p>}
-          {ticket && <button disabled={checkoutBusy || ticket.status !== 'active' || (ticket.remainingAvailability !== null && ticket.remainingAvailability < quantity * ticket.groupSize)} onClick={() => beginCheckout(selected, ticket)} style={{ marginTop: 16, border: 0, borderRadius: 10, padding: '14px 22px', background: '#d8ff3f', color: '#111', fontWeight: 800, cursor: 'pointer' }}>{checkoutBusy ? 'Payment in progress…' : `Continue · ${ticket.currency} ${(ticket.price * quantity).toLocaleString()}`}</button>}
+          {ticket && <button disabled={checkoutBusy || Boolean(ticketUnavailableReason(ticket)) || quantity > ticketMaxQuantity || quantity < 1} onClick={() => beginCheckout(selected, ticket)} style={{ marginTop: 16, border: 0, borderRadius: 10, padding: '14px 22px', background: '#d8ff3f', color: '#111', fontWeight: 800, cursor: 'pointer' }}>{checkoutBusy ? 'Payment in progress…' : `Continue · ${ticket.currency} ${(ticket.price * quantity).toLocaleString()}`}</button>}
         </section>
       </> : <>
         <h1 style={{ fontSize: 'clamp(34px, 6vw, 56px)', marginBottom: 8 }}>Find your next event</h1>

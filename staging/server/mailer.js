@@ -60,6 +60,10 @@ async function getTransporter() {
         return transporter;
     }
 
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error('Real SMTP delivery is not configured.');
+    }
+
     // No SMTP configured — fall back to a free Ethereal test inbox so the
     // whole flow (including "email sent") still works out of the box while
     // you're testing. Nothing will land in a real inbox until you set
@@ -83,9 +87,13 @@ async function getTransporter() {
  */
 async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, pdfPath, qrBuffer, downloadUrl, event }) {
     try {
+        const htmlEscape = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
         const eventTitle = event || EVENT_NAME;
+        const safeName = htmlEscape(name);
+        const safeEventTitle = htmlEscape(eventTitle);
+        const safeTicketId = htmlEscape(ticketId);
         const genderLabel = GENDER_LABEL[gender] || gender;
-        let envEmail = process.env.EMAIL_FROM || 'events@littx.com';
+        let envEmail = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'events@littx.com';
         let envName = process.env.EMAIL_FROM_NAME || 'LITTX Events';
 
         if (envEmail.includes('<') && envEmail.includes('>')) {
@@ -110,7 +118,7 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
         if (gender && gender.toUpperCase().includes('EXCLUSIVE')) {
             html = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111111; font-size: 15px; line-height: 1.6;">
-              <p>Hi ${name},</p>
+              <p>Hi ${safeName},</p>
               <p>Congratulations! 🎉</p>
               <p>We’re excited to officially welcome you to the Dholida Garba Royale Influencer Lineup, presented by LITTX.</p>
               <p>Thank you for being a part of this journey. We’re looking forward to having you with us and creating an unforgettable experience together.</p>
@@ -149,17 +157,17 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
               <div style="background: linear-gradient(135deg, #1a0a2e 0%, #0d0d0d 100%); padding: 40px 32px 32px; text-align: center; border-bottom: 1px solid #1e1e1e;">
                 <img src="${publicOrigin}/logo.png" alt="LITTX" style="height: 36px; width: auto; display: block; margin: 0 auto 16px;" />
                 <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">🎉 You're In!</h1>
-                <p style="margin: 8px 0 0; font-size: 14px; color: #a0a0a0;">Your ticket to <strong style="color: #c084fc;">${eventTitle}</strong> is confirmed</p>
+                <p style="margin: 8px 0 0; font-size: 14px; color: #a0a0a0;">Your ticket to <strong style="color: #c084fc;">${safeEventTitle}</strong> is confirmed</p>
               </div>
 
               <!-- Ticket Card -->
               <div style="padding: 28px 24px;">
                 <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 20px; padding: 24px; margin-bottom: 24px;">
                   <p style="margin: 0 0 6px; font-size: 11px; font-weight: 700; color: #6b6b6b; text-transform: uppercase; letter-spacing: 1px;">Attendee</p>
-                  <p style="margin: 0 0 20px; font-size: 20px; font-weight: 800; color: #ffffff;">${name}</p>
+                  <p style="margin: 0 0 20px; font-size: 20px; font-weight: 800; color: #ffffff;">${safeName}</p>
                   
                   <p style="margin: 0 0 6px; font-size: 11px; font-weight: 700; color: #6b6b6b; text-transform: uppercase; letter-spacing: 1px;">Ticket ID</p>
-                  <p style="margin: 0 0 20px; font-size: 16px; font-weight: 700; color: #a855f7; font-family: monospace;">${ticketId}</p>
+                  <p style="margin: 0 0 20px; font-size: 16px; font-weight: 700; color: #a855f7; font-family: monospace;">${safeTicketId}</p>
 
                   <div style="border-top: 1px solid #2a2a2a; padding-top: 16px; display: flex; gap: 24px;">
                     <div>
@@ -214,7 +222,7 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
 
         // 1. If Brevo API is configured, use Brevo HTTP API (Port 443 — Never Blocked)
         if (process.env.BREVO_API_KEY) {
-            console.log(`[Mailer] Sending ticket to ${to} via Brevo HTTP API...`);
+            console.log('[Mailer] Sending ticket through configured Brevo delivery.');
             
             // Format attachments for Brevo (Base64)
             const brevoAttachments = [];
@@ -259,7 +267,7 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
                         try {
                             const resData = JSON.parse(data);
                             if (res.statusCode >= 200 && res.statusCode < 300) {
-                                console.log('[Mailer] Brevo send response:', resData);
+                                console.log('[Mailer] Brevo accepted ticket email.');
                                 resolve({ success: true, messageId: resData.messageId });
                             } else {
                                 reject(new Error(resData.message || 'Brevo API request failed'));
@@ -278,7 +286,7 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
 
         // 2. If Mailgun is configured, use Mailgun API
         if (mgClient) {
-            console.log(`[Mailer] Sending ticket to ${to} via Mailgun...`);
+            console.log('[Mailer] Sending ticket through configured Mailgun delivery.');
             
             // Format attachments for Mailgun API
             const mgAttachments = [];
@@ -319,11 +327,11 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
                 attachment: mgAttachments.filter(att => !att.cid)
             });
 
-            console.log('[Mailer] Mailgun send response:', response);
+            console.log('[Mailer] Mailgun accepted ticket email.');
             return { success: true, id: response.id };
         } else {
             // 3. SMTP fallback
-            console.log(`[Mailer] Sending ticket to ${to} via SMTP...`);
+            console.log('[Mailer] Sending ticket through configured SMTP delivery.');
             const t = await getTransporter();
             const info = await t.sendMail({
                 from: fromEmail,
@@ -335,13 +343,51 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
             });
 
             const previewUrl = usingTestAccount ? nodemailer.getTestMessageUrl(info) : null;
-            if (previewUrl) console.log(`[Mailer] Test email preview: ${previewUrl}`);
             return { success: true, messageId: info.messageId, previewUrl };
         }
     } catch (error) {
-        console.error(`[Mailer] Failed to send ticket to ${to}:`, error.message);
-        return { success: false, error: error.message };
+        console.error('[Mailer] Ticket email delivery failed.', { name: error.name || 'Error' });
+        return { success: false, error: 'Email delivery failed.' };
     }
 }
 
-module.exports = { sendTicketEmail };
+function hasConfiguredEmailDelivery() {
+    return Boolean(process.env.BREVO_API_KEY || mgClient || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
+}
+
+async function sendBookingRecoveryOtp({ to, code, expiresMinutes = 10 }) {
+    if (!hasConfiguredEmailDelivery()) return { success: false, error: 'A real email delivery provider is not configured.' };
+    try {
+            const from = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'events@littx.com';
+        const subject = 'Your Stageway booking recovery code';
+        const text = `Your booking recovery code is ${code}. It expires in ${expiresMinutes} minutes and can be used once. If you did not request this code, you can ignore this email.`;
+        if (process.env.BREVO_API_KEY) {
+            const from = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'events@littx.com';
+            const [name, address] = from.includes('<') ? [from.replace(/<.*$/, '').replace(/"/g, '').trim() || 'Stageway', from.match(/<([^>]+)>/)?.[1]] : ['Stageway', from];
+            if (!address) return { success: false, error: 'Email sender is not configured.' };
+            const payload = JSON.stringify({ sender: { name, email: address }, to: [{ email: to }], subject, textContent: text });
+            const response = await new Promise((resolve, reject) => {
+                const request = require('https').request('https://api.brevo.com/v3/smtp/email', {
+                    method: 'POST', headers: { accept: 'application/json', 'api-key': process.env.BREVO_API_KEY, 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) }
+                }, result => {
+                    let body = '';
+                    result.on('data', chunk => { body += chunk; });
+                    result.on('end', () => result.statusCode >= 200 && result.statusCode < 300 ? resolve(true) : reject(new Error(`Email provider returned HTTP ${result.statusCode}.`)));
+                });
+                request.on('error', reject);
+                request.write(payload); request.end();
+            });
+            return { success: Boolean(response) };
+        }
+        if (mgClient) {
+            const response = await mgClient.messages.create(process.env.MAILGUN_DOMAIN, { from, to: [to], subject, text });
+            return { success: true, id: response.id };
+        }
+        const info = await (await getTransporter()).sendMail({ from, to, subject, text });
+        return { success: true, messageId: info.messageId };
+    } catch (error) {
+        return { success: false, error: 'Email delivery failed.' };
+    }
+}
+
+module.exports = { sendTicketEmail, sendBookingRecoveryOtp, hasConfiguredEmailDelivery };

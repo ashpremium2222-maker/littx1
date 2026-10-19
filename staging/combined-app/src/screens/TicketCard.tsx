@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import LittixLogo from '../components/LittixLogo'
 import QRCode from '../components/QRCode'
 import type { Ticket } from '../lib/store'
 

@@ -1,4 +1,3 @@
-import React from 'react'
 
 interface ChangePreviewModalProps {
   companyName: string
@@ -152,7 +151,7 @@ export default function ChangePreviewModal({
             background: 'var(--panel-2)',
             borderTop: '1px solid var(--line)',
             display: 'flex',
-            justify: 'flex-end',
+            justifyContent: 'flex-end',
             gap: '12px'
           }}
         >

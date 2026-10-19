@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import Dashboard from './Dashboard'
 import Orders from './Orders'
 import Tickets from './Tickets'
 import Events from './Events'
 import PRApprovals from './PRApprovals'
 import QRScans from './QRScans'
+import { customerTotal, isConfirmedSale } from '../reporting'
 
 interface CompanyPortalProps {
   companyId: string
@@ -84,8 +85,8 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
   const ticketedSales = filteredSales.filter(s => !isApprovalOnlySale(s))
   const ticketedAllSales = sales.filter(s => !isApprovalOnlySale(s))
 
-  const paidSales = ticketedSales.filter(s => ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status))
-  const totalRevenue = paidSales.reduce((acc, s) => acc + (Number(s.customerTotal ?? s.amount ?? 0) || 0), 0)
+  const paidSales = ticketedSales.filter(isConfirmedSale)
+  const totalRevenue = paidSales.reduce((acc, s) => acc + customerTotal(s), 0)
 
   const summary = {
     totalOrders: paidSales.length,

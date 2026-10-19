@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import Dashboard from './pages/AdminDashboardPage'
+import { customerTotal, isConfirmedSale } from './reporting'
 import Orders from './pages/Orders'
 import Customers from './pages/Customers'
 import Events from './pages/Events'
@@ -327,12 +328,10 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
       let activeSummary = data.summary
       if (isPresentation) {
-        const countableSales = filteredSales.filter((s: any) => !isApprovalOnlySale(s))
-        const totalOrders = countableSales.length
-        const paidOrders = countableSales.filter((s: any) => s.status === 'paid').length
-        const totalRevenue = countableSales
-          .filter((s: any) => s.status === 'paid')
-          .reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0)
+        const countableSales = filteredSales.filter(isConfirmedSale)
+        const totalOrders = filteredSales.length
+        const paidOrders = countableSales.length
+        const totalRevenue = countableSales.reduce((sum: number, s: any) => sum + customerTotal(s), 0)
 
         activeSummary = {
           totalOrders,
@@ -389,6 +388,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     setSales([])
     if (errMsg) setAuthError(errMsg)
   }
+  void [setKeyInput, isAuthenticated, authChecking, authError, setManualQty, handleLogin, handleLogout]
 
   const handleResend = async (ticketId: string) => {
     try {
@@ -527,7 +527,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             globalSearch={search}
             isPresentation={isPresentation}
             adminKey={adminKey}
-            onReload={() => fetchSales(adminKey)}
+            onReload={async () => { await fetchSales(adminKey) }}
           />
         )
       case 'tickets':
@@ -537,10 +537,9 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             allSales={ticketedAllSales}
             onResend={handleResend}
             adminKey={adminKey}
-            onReload={() => fetchSales()}
+            onReload={async () => { await fetchSales() }}
             globalSearch={search}
             isPresentation={isPresentation}
-            isManager={isManager}
             eventFilter={ticketEventFilter}
             onEventFilterChange={setTicketEventFilter}
           />
@@ -555,13 +554,13 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       case 'refunds':
         return <Refunds sales={ticketedSales} />
       case 'qr':
-        return <QRScans sales={ticketedSales} isPresentation={isPresentation} scanStats={scanStats} />
+        return <QRScans sales={ticketedSales} isPresentation={isPresentation} />
       case 'analytics':
       case 'reports':
         return <Analytics sales={ticketedSales} />
       case 'settings':
       case 'admins':
-        return <Settings sales={sales} adminKey={adminKey} testMode={testMode} />
+        return <Settings adminKey={adminKey} />
       case 'pr-approvals':
         return <PRApprovals adminKey={adminKey} isPresentation={isPresentation} sales={sales} />
       case 'company-control':

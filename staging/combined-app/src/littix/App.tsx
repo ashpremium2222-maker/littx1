@@ -642,7 +642,7 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
 // ==================== MAIN APP SHELL ====================
 function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; sellerToken: string; forceScanner?: boolean }) {
   const { dark, toggleTheme, tickets, findTicket, scanTicket } = useStore()
-  const [screen, setScreen] = useState<Screen>({ name: forceScanner ? 'scanner' : 'dashboard' })
+  const [screen, setScreen] = useState<Screen>(() => forceScanner ? { name: 'scanner' } : { name: 'dashboard' })
   const [prevDepth, setPrevDepth] = useState(0)
   const [rejectedScans, setRejectedScans] = useState<RejectedScan[]>([])
   const [scannerFeedback, setScannerFeedback] = useState<ScannerFeedback | null>(null)
@@ -934,7 +934,7 @@ function getSavedSellerValue(key: string) {
 export default function App({ forceScanner }: { forceScanner?: boolean }) {
   const [sellerId, setSellerId] = useState<string | null>(() => getSavedSellerValue('littx_seller_id'))
   const [sellerToken, setSellerToken] = useState<string | null>(() => getSavedSellerValue('littx_seller_token'))
-  const [verified, setVerified] = useState(false)
+  const [, setVerified] = useState(false)
   const [checking, setChecking] = useState(!forceScanner)
 
   if (forceScanner) {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import Dashboard from './pages/Dashboard'
+import { customerTotal, isConfirmedSale } from './reporting'
 import Orders from './pages/Orders'
 import Customers from './pages/Customers'
 import Events from './pages/Events'
@@ -238,12 +239,10 @@ export default function App({ isPresentation = false }: AppProps) {
 
       let activeSummary = data.summary
       if (isPresentation) {
-        const countableSales = filteredSales.filter((s: any) => !isApprovalOnlySale(s))
-        const totalOrders = countableSales.length
-        const paidOrders = countableSales.filter((s: any) => s.status === 'paid').length
-        const totalRevenue = countableSales
-          .filter((s: any) => s.status === 'paid')
-          .reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0)
+        const countableSales = filteredSales.filter(isConfirmedSale)
+        const totalOrders = filteredSales.length
+        const paidOrders = countableSales.length
+        const totalRevenue = countableSales.reduce((sum: number, s: any) => sum + customerTotal(s), 0)
 
         activeSummary = {
           totalOrders,
@@ -531,7 +530,7 @@ export default function App({ isPresentation = false }: AppProps) {
             globalSearch={search}
             isPresentation={isPresentation}
             adminKey={adminKey}
-            onReload={() => fetchSales(adminKey)}
+            onReload={async () => { await fetchSales(adminKey) }}
           />
         )
       case 'tickets':
@@ -541,7 +540,7 @@ export default function App({ isPresentation = false }: AppProps) {
             allSales={ticketedAllSales}
             onResend={handleResend}
             adminKey={adminKey}
-            onReload={() => fetchSales(adminKey)}
+            onReload={async () => { await fetchSales(adminKey) }}
             globalSearch={search}
             isPresentation={isPresentation}
             eventFilter={ticketEventFilter}
@@ -564,7 +563,7 @@ export default function App({ isPresentation = false }: AppProps) {
         return <Analytics sales={ticketedSales} />
       case 'settings':
       case 'admins':
-        return <Settings sales={sales} adminKey={adminKey} testMode={testMode} />
+        return <Settings adminKey={adminKey} />
       default:
         return (
           <Dashboard

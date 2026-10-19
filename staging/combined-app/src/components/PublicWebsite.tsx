@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import PublicSignInModal from './PublicSignInModal'
 
 interface PublicWebsiteProps {

@@ -48,6 +48,7 @@ const EventSchema = new mongoose.Schema({
     legacyNames: [{ type: String }],
     companyId: { type: String, default: 'littlane' },
     organizerId: { type: String, index: true },
+    organizerUserIds: { type: [String], default: [] },
     // Custom string ID (for frontend reference)
     id: { type: String },
     date: { type: String },
@@ -137,13 +138,14 @@ const EventSchema = new mongoose.Schema({
 EventSchema.index({ slug: 1 }, { unique: true, sparse: true });
 EventSchema.index({ companyId: 1, status: 1, active: 1 });
 EventSchema.index({ organizerId: 1, createdAt: -1 });
+EventSchema.index({ organizerUserIds: 1, updatedAt: -1 });
 
 const UserSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     companyId: { type: String, default: 'littlane' },
     password: { type: String, required: false },
     displayName: { type: String },
-    role: { type: String, enum: ['master_admin', 'company_admin', 'seller', 'pr'], default: 'pr' },
+    role: { type: String, enum: ['master_admin', 'company_admin', 'organizer', 'seller', 'pr'], default: 'pr' },
     // New accounts use passwordHash. `password` remains for legacy seeded users
     // while they are migrated through the existing admin flow.
     passwordHash: { type: String, default: null },
@@ -658,6 +660,16 @@ async function getByOrderId(orderId) {
 
 async function getByTicketId(ticketId) {
     return await Sale.findOne({ ticketId }).lean();
+}
+
+async function getCustomerBookingsByEmail(email) {
+    const normalized = String(email || '').trim().toLowerCase();
+    if (!normalized) return [];
+    if (useMock()) return mockDb.sales
+        .filter(sale => String(sale.email || '').trim().toLowerCase() === normalized)
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return Sale.find({ email: { $regex: `^${escaped}$`, $options: 'i' } }).sort({ createdAt: -1 }).lean();
 }
 
 async function getAll() {
@@ -1677,6 +1689,7 @@ module.exports = {
         }
         return await getByTicketId(ticketId);
     },
+    getCustomerBookingsByEmail: async (email) => getCustomerBookingsByEmail(email),
     getAll: async () => {
         if (useMock()) {
             return [...mockDb.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -2112,7 +2125,7 @@ module.exports = {
     },
     getAuditLogs: async (companyId) => {
         if (useMock()) {
-            return mockDb.auditLogs.filter(l => l.companyId === companyId);
+            return companyId ? mockDb.auditLogs.filter(l => l.companyId === companyId) : [...mockDb.auditLogs].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100);
         }
         return await getAuditLogs(companyId);
     },
@@ -2185,6 +2198,29 @@ module.exports = {
             declined: c.duplicate + c.cancelled + c.invalid + c.manual_review,
             declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid, manualReview: c.manual_review }
         };
+    },
+
+    getScanSummaryForEvent: async (eventName, companyId) => {
+        const normalizedName = String(eventName || '').trim().toLowerCase();
+        if (useMock()) {
+            const logs = _mockScanLogs.filter(log =>
+            String(log.event || '').trim().toLowerCase() === normalizedName &&
+            (!companyId || log.companyId === companyId)
+            );
+            return {
+                accepted: logs.filter(log => log.result === 'accepted').length,
+                duplicate: logs.filter(log => log.result === 'duplicate').length,
+                admissions: logs.filter(log => log.result === 'accepted').reduce((sum, log) => sum + (Number(log.admissionCount) || 1), 0),
+                recent: logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 30)
+            };
+        }
+        const query = { event: eventName, ...(companyId ? { companyId } : {}) };
+        const [groups, recent] = await Promise.all([
+            ScanLog.aggregate([{ $match: query }, { $group: { _id: '$result', count: { $sum: 1 }, admissions: { $sum: { $cond: [{ $eq: ['$result', 'accepted'] }, { $ifNull: ['$admissionCount', 1] }, 0] } } } }]),
+            ScanLog.find(query).sort({ timestamp: -1 }).limit(30).lean()
+        ]);
+        const accepted = groups.find(group => group._id === 'accepted');
+        return { accepted: accepted?.count || 0, duplicate: groups.find(group => group._id === 'duplicate')?.count || 0, admissions: accepted?.admissions || 0, recent };
     },
 
     // Count unique scanner userIds who have scanned since sinceDate.
@@ -2409,6 +2445,10 @@ module.exports = {
             }
         }
         return unique;
+    },
+    getEventsForOrganizer: async (userId) => {
+        if (useMock()) return [...new Set(_mockEvents.values())].filter(event => Array.isArray(event.organizerUserIds) && event.organizerUserIds.includes(userId));
+        return Event.find({ organizerUserIds: userId }).sort({ updatedAt: -1 }).lean();
     },
     saveEvent: async (eventData) => {
         const { _id: mongoId, ...eventFields } = eventData;

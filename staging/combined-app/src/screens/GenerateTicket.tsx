@@ -96,15 +96,6 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
   const text = dark ? 'text-white' : 'text-[#111]'
   const subText = dark ? 'text-[#A0A0A0]' : 'text-[#6B6B6B]'
 
-  function formatDateLabel(v: string) {
-    if (!v) return 'TBA'
-    const d = new Date(v)
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    const hh = d.getHours().toString().padStart(2, '0')
-    const mm = d.getMinutes().toString().padStart(2, '0')
-    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${hh}:${mm}`
-  }
-
   async function handleGenerate() {
     if (!attendee.trim() || !email.trim() || !phone.trim()) {
       setError('Attendee name, email, and WhatsApp number are required')
@@ -118,7 +109,6 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
     setStatus('loading')
     try {
       const resolvedEvent = event.trim()
-      const resolvedDate = formatDateLabel(datetime)
 
       // Build headers — use seller token if available, otherwise admin key
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }

@@ -10,13 +10,15 @@ import ShadowPanelApp from './shadow/ShadowPanelApp'
 import LoginPage from './components/LoginPage'
 import SolverByDevashtu from './admin-dash/pages/SolverByDevashtu'
 import EventMarketplace from './components/EventMarketplace'
+import CustomerBookingHistory from './components/CustomerBookingHistory'
+import OrganizerPortal from './organizer-portal/OrganizerPortal'
 
 interface UserSession {
   userId: string
   displayName: string
   role: string
   companyId: string
-  portalScope?: 'admin' | 'dashboard'
+  portalScope?: 'admin' | 'dashboard' | 'organizer'
 }
 
 function MainAppShell() {
@@ -55,6 +57,7 @@ function MainAppShell() {
   }
 
   if (path === '/events' || path.startsWith('/events/')) return <EventMarketplace />
+  if (path === '/bookings') return <CustomerBookingHistory />
 
   const handleLoginRedirect = (session: UserSession) => {
     setUserSession(session)
@@ -64,6 +67,8 @@ function MainAppShell() {
       navigate('/seller')
     } else if (session.role === 'pr') {
       navigate('/pr')
+    } else if (session.role === 'organizer') {
+      navigate('/organizer')
     } else {
       navigate('/dashboard')
     }
@@ -97,6 +102,16 @@ function MainAppShell() {
       return <DevAdminApp isPresentation={false} />
     }
     return <LoginPage portal="admin" onLoginSuccess={handleLoginRedirect} />
+  }
+
+  if (path.startsWith('/organizer')) {
+    if (userSession?.role === 'organizer' && userSession.portalScope === 'organizer') return <OrganizerPortal onLogout={() => {
+      sessionStorage.removeItem('littx_user')
+      sessionStorage.removeItem('littx_token')
+      setUserSession(null)
+      navigate('/organizer')
+    }} />
+    return <LoginPage portal="organizer" onLoginSuccess={handleLoginRedirect} brandTitle="STAGEWAY ORGANIZER" accessHelpText="Sign in with the organizer account created by your platform administrator." />
   }
 
   // ── COMPANY DASHBOARD (/dashboard) ────────────────────────────────────────

@@ -42,12 +42,18 @@ function lineupForEvent(name: string) {
   return [{ time: 'Event details', name, stage: 'Venue managed by organizer', status: 'Configured', badge: 'green' }]
 }
 
-interface DashboardEvent { id: string; name: string; status?: string; city?: string; venue?: string; date?: string; startsAt?: string; category?: string }
+interface DashboardEvent { id: string; name: string; status?: string; active?: boolean; city?: string; venue?: string; date?: string; startsAt?: string; category?: string; companyId?: string }
 
 export default function Events({ sales = [], adminKey, onNavigateToTickets }: Props) {
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
   const [catalogEvents, setCatalogEvents] = useState<DashboardEvent[]>([])
+  const [eventsLoading, setEventsLoading] = useState(true)
+  const [eventsLoadError, setEventsLoadError] = useState('')
+  const [eventSearch, setEventSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [eventSort, setEventSort] = useState('name')
+  const [eventPage, setEventPage] = useState(1)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [createError, setCreateError] = useState('')
   const [createBusy, setCreateBusy] = useState(false)
@@ -60,9 +66,13 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
 
   useEffect(() => {
     fetch('/api/admin/events', { headers: authHeaders() })
-      .then(response => response.json())
-      .then(data => { if (data.success && Array.isArray(data.events)) setCatalogEvents(data.events) })
-      .catch(() => {})
+      .then(async response => {
+        const data = await response.json()
+        if (!response.ok || !data.success || !Array.isArray(data.events)) throw new Error(data.message || 'Events could not be loaded.')
+        setCatalogEvents(data.events)
+      })
+      .catch((error: unknown) => setEventsLoadError(error instanceof Error ? error.message : 'Events could not be loaded.'))
+      .finally(() => setEventsLoading(false))
   }, [])
 
   async function createEvent(event: FormEvent) {
@@ -86,6 +96,12 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
   }
 
   async function transitionEvent(record: DashboardEvent, status: string) {
+    const confirmations: Record<string, string> = {
+      published: `Publish ${record.name}? It will become visible according to its event visibility setting.`,
+      cancelled: `Cancel ${record.name}? This changes its lifecycle state for attendees and sales.`,
+      completed: `Mark ${record.name} completed and archive it from active-event listings? Existing orders and tickets will be preserved.`,
+    }
+    if (confirmations[status] && !window.confirm(confirmations[status])) return
     try {
       const response = await fetch(`/api/admin/events/${encodeURIComponent(record.id)}/transition`, {
         method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
@@ -115,16 +131,16 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
 
   sales.forEach((s) => {
     const name = eventNameForSale(s)
-    const isPaid = PAID_STATUSES.includes(s.status)
+    const isPaid = PAID_STATUSES.includes(s.status) && (!(s as any).paymentStatus || (s as any).paymentStatus === 'paid')
 
     const entry = eventMap.get(name) || { name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' }
     eventMap.set(name, entry)
     if (isPaid) {
       entry.totalRevenue += amountForSale(s)
-      entry.ticketsSold += Number(s.quantity) || 1
+      entry.ticketsSold += Math.max(0, Number((s as any).admissionCount) || Number(s.quantity) || 1)
     }
     if (s.scannedAt || s.status === 'scanned') {
-      entry.scanned += 1
+      entry.scanned += Math.max(0, Number((s as any).scannedAdmissionCount) || Number((s as any).admissionCount) || Number(s.quantity) || 1)
     }
     if (s.createdAt) {
       if (!entry.firstSale || s.createdAt < entry.firstSale) entry.firstSale = s.createdAt
@@ -136,6 +152,20 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
   const totalRevenueSum = events.reduce((acc, evt) => acc + evt.totalRevenue, 0)
   const totalSoldSum = events.reduce((acc, evt) => acc + evt.ticketsSold, 0)
   const totalScanned = events.reduce((acc, evt) => acc + evt.scanned, 0)
+  const eventStatus = (record?: DashboardEvent) => record ? String(record.status || (record.active === false ? 'draft' : 'published')).toLowerCase() : 'historical'
+  const filteredEvents = events
+    .filter(event => {
+      const record = catalogEvents.find(item => item.name === event.name)
+      const matchesSearch = `${event.name} ${record?.companyId || ''} ${record?.city || ''} ${record?.venue || ''}`.toLowerCase().includes(eventSearch.trim().toLowerCase())
+      const status = eventStatus(record)
+      return matchesSearch && (statusFilter === 'all' || status === statusFilter)
+    })
+    .sort((a, b) => eventSort === 'status'
+      ? eventStatus(catalogEvents.find(item => item.name === a.name)).localeCompare(eventStatus(catalogEvents.find(item => item.name === b.name)))
+      : eventSort === 'admissions' ? b.ticketsSold - a.ticketsSold : a.name.localeCompare(b.name))
+  const eventsPerPage = 9
+  const eventPageCount = Math.max(1, Math.ceil(filteredEvents.length / eventsPerPage))
+  const pagedEvents = filteredEvents.slice((eventPage - 1) * eventsPerPage, eventPage * eventsPerPage)
 
   // ── Detail View ─────────────────────────────────────────────────────────
   if (selectedEvent) {
@@ -377,13 +407,23 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
         <button className="btn-primary" disabled={createBusy}>{createBusy ? 'Saving…' : 'Save draft'}</button>
       </form>}
       {createError && <div role="alert" style={{ color: '#ff7777' }}>{createError}</div>}
+      {eventsLoadError && <div role="alert" style={{ color: '#ff7777' }}>{eventsLoadError}</div>}
+      <div className="card" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input aria-label="Search events" placeholder="Search event, organizer, venue or city" value={eventSearch} onChange={event => { setEventSearch(event.target.value); setEventPage(1) }} />
+        <select aria-label="Filter event status" value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setEventPage(1) }}>
+          <option value="all">All statuses</option><option value="draft">Draft</option><option value="pending_review">Pending review</option><option value="published">Published</option><option value="postponed">Postponed</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="historical">Historical</option>
+        </select>
+        <select aria-label="Sort events" value={eventSort} onChange={event => { setEventSort(event.target.value); setEventPage(1) }}>
+          <option value="name">Sort by name</option><option value="status">Sort by status</option><option value="admissions">Sort by admissions</option>
+        </select>
+      </div>
       {/* KPI Row */}
       <div className="kpi-row">
         <div className="tile tile-teal">
-          <div className="tile-label">LIVE EVENTS</div>
-          <div className="tile-value">{events.length}</div>
-          <div className="tile-sub">{events.length === 1 ? events[0]?.name : 'Across dashboard'}</div>
-          <div className="tile-delta"><span>🟢</span> All Live</div>
+          <div className="tile-label">EVENTS</div>
+          <div className="tile-value">{catalogEvents.length}</div>
+          <div className="tile-sub">{catalogEvents.filter(record => eventStatus(record) === 'published').length} active · {catalogEvents.filter(record => eventStatus(record) === 'draft').length} draft · {catalogEvents.filter(record => eventStatus(record) === 'completed').length} completed</div>
+          <div className="tile-delta"><span>🟢</span> {catalogEvents.filter(record => eventStatus(record) === 'pending_review').length} pending review</div>
         </div>
         <div className="tile tile-gold">
           <div className="tile-label">TOTAL PASSES SOLD</div>
@@ -405,9 +445,10 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
         </div>
       </div>
 
-      {/* Events Grid — 3 cards */}
+      {eventsLoading && <div role="status" className="card">Loading events…</div>}
+      {/* Events Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--gutter)' }}>
-        {events.map((event) => {
+        {pagedEvents.map((event) => {
           const meta = metaForEvent(event.name)
           const eventRecord = catalogEvents.find(record => record.name === event.name)
           meta.tagline = [eventRecord?.venue, eventRecord?.city, eventRecord?.startsAt || eventRecord?.date].filter(Boolean).join(' · ') || 'Historical sales event'
@@ -451,7 +492,7 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
 
                 <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '6px' }}>
                   <span className="badge" style={{ background: 'rgba(61,220,132,0.25)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', fontSize: '10px' }}>
-                    <span className="badge-dot" style={{ background: eventRecord?.status === 'published' ? '#3DDC84' : '#F5B942' }} /> {eventRecord?.status || 'historical'}
+                    <span className="badge-dot" style={{ background: eventStatus(eventRecord) === 'published' ? '#3DDC84' : '#F5B942' }} /> {eventStatus(eventRecord)}
                   </span>
                 </div>
 
@@ -470,7 +511,7 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '14px' }}>
                   {[
                     { label: 'REVENUE', val: `₹${event.totalRevenue.toLocaleString()}` },
-                    { label: 'PASSES', val: event.ticketsSold.toString() },
+                    { label: 'ADMISSIONS', val: event.ticketsSold.toString() },
                     { label: 'SCANNED', val: event.scanned.toString() },
                   ].map(stat => (
                     <div key={stat.label} style={{
@@ -518,6 +559,12 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
             </div>
           )
         })}
+        {!eventsLoading && !pagedEvents.length && <div className="card muted-sm">{events.length ? 'No events match these filters.' : 'No events or historical sales are available.'}</div>}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10 }}>
+        <span className="muted-sm">{filteredEvents.length} events · page {eventPage} of {eventPageCount}</span>
+        <button className="btn-secondary" disabled={eventPage <= 1} onClick={() => setEventPage(page => Math.max(1, page - 1))}>Previous</button>
+        <button className="btn-secondary" disabled={eventPage >= eventPageCount} onClick={() => setEventPage(page => Math.min(eventPageCount, page + 1))}>Next</button>
       </div>
     </div>
   )

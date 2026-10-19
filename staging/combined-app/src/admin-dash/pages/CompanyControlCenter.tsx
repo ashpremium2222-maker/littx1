@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import ChangePreviewModal from './ChangePreviewModal'
 
 interface CompanyStats {
@@ -60,6 +60,7 @@ export default function CompanyControlCenter() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('littlane')
   const [company, setCompany] = useState<CompanyData | null>(null)
   const [effectiveConfig, setEffectiveConfig] = useState<any>(null)
+  void effectiveConfig
   const [events, setEvents] = useState<any[]>([])
   const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [loading, setLoading] = useState<boolean>(true)

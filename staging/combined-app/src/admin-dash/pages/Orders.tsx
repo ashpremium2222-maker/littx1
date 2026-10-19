@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { isConfirmedSale } from '../reporting'
 
 interface OrdersProps {
   sales: any[]
@@ -21,6 +22,7 @@ interface Order {
   event: string
   ticketType: string
   qty: number
+  admissions: number
   subtotal: number
   tax: number
   discount: number
@@ -28,6 +30,7 @@ interface Order {
   gateway: string
   txnId: string
   paymentStatus: PaymentStatus
+  refundStatus?: string
   emailStatus: EmailStatus
   downloadStatus: string
   qrStatus: QRStatus
@@ -35,6 +38,9 @@ interface Order {
   ticketId: string
   errorLog: any[]
   showInPres?: boolean
+  prUserId?: string
+  paymentMethod?: string
+  prName?: string
 }
 
 function OrderDrawer({
@@ -158,7 +164,7 @@ function OrderDrawer({
             </div>
             <div style={{ background: 'var(--panel-2)', padding: '10px', borderRadius: '10px', border: '1px solid var(--line)' }}>
               <div style={{ fontSize: '10px', color: 'var(--ink-faint)', fontWeight: 700 }}>QUANTITY</div>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ink)', marginTop: '2px' }}>{order.qty} pass(es)</div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ink)', marginTop: '2px' }}>{order.qty} ticket order · {order.admissions} admission(s)</div>
             </div>
             <div style={{ background: 'var(--panel-2)', padding: '10px', borderRadius: '10px', border: '1px solid var(--line)' }}>
               <div style={{ fontSize: '10px', color: 'var(--ink-faint)', fontWeight: 700 }}>QR SCAN STATUS</div>
@@ -267,6 +273,8 @@ export default function Orders({
   const [filter, setFilter] = useState<string>('all')
   const [gatewayFilter, setGatewayFilter] = useState<string>('all')
   const [eventFilter, setEventFilter] = useState<string>('all')
+  const [page, setPage] = useState(1)
+  const pageSize = 20
   const [searchQ, setSearchQ] = useState('')
   const [showPhoneList, setShowPhoneList] = useState(false)
   const [phoneCopied, setPhoneCopied] = useState(false)
@@ -277,10 +285,14 @@ export default function Orders({
     () =>
       sales.map((s: any) => {
         let paymentStatus: PaymentStatus = 'Pending'
-        if (['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)) {
+        if (isConfirmedSale(s)) {
           paymentStatus = 'Paid'
-        } else if (s.status === 'failed') {
+        } else if (s.paymentStatus === 'failed' || s.status === 'failed') {
           paymentStatus = 'Failed'
+        } else if (s.status === 'cancelled' || s.status === 'canceled' || s.paymentStatus === 'cancelled') {
+          paymentStatus = 'Cancelled'
+        } else if (s.paymentStatus === 'refunded') {
+          paymentStatus = 'Refunded'
         }
 
         let emailStatus: EmailStatus = 'Queued'
@@ -308,6 +320,7 @@ export default function Orders({
           event: s.event || 'DHOLIDA GARBA ROYALE',
           ticketType: tType,
           qty: s.quantity || 1,
+          admissions: Math.max(0, Number(s.admissionCount) || Number(s.quantity) || 1),
           subtotal: Number(s.customerTotal ?? s.amount ?? 0),
           tax: 0,
           discount: Number(s.commissionAmount ?? 0),
@@ -316,6 +329,7 @@ export default function Orders({
           gateway: s.paymentId === 'manual' ? 'Manual' : 'Razorpay',
           txnId: s.paymentId || '—',
           paymentStatus,
+          refundStatus: s.refundStatus || 'none',
           emailStatus,
           downloadStatus: s.ticketId ? 'PDF' : '—',
           qrStatus: s.status === 'scanned' || s.scannedAt ? 'Scanned' : 'Not Scanned',
@@ -354,6 +368,11 @@ export default function Orders({
     }
     return true
   })
+  const eventOptions = Array.from(new Map(orders.map(order => [order.event.toLowerCase(), order.event])).entries())
+    .sort((a, b) => a[1].localeCompare(b[1]))
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const currentPage = Math.min(page, pageCount)
+  const pageOrders = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   const totalAmount = filtered.reduce((a, o) => {
     if (filter === 'all' && o.paymentStatus !== 'Paid') return a
@@ -429,8 +448,7 @@ export default function Orders({
 
         <select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)}>
           <option value="all">All events</option>
-          <option value="freshers takeover">DHOLIDA GARBA ROYALE</option>
-          <option value="aura genesis">AURA GENESIS</option>
+          {eventOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
 
         <select value={gatewayFilter} onChange={(e) => setGatewayFilter(e.target.value)}>
@@ -473,7 +491,7 @@ export default function Orders({
                   </td>
                 </tr>
               ) : (
-                filtered.map((o) => (
+                pageOrders.map((o) => (
                     <tr key={o.id} onClick={() => setSelected(o)} style={{ cursor: 'pointer' }}>
                       <td>
                         <div className="cell-main">
@@ -514,11 +532,11 @@ export default function Orders({
                       </td>
                       <td>{o.event}</td>
                       <td>
-                        <span style={{ fontWeight: 600 }}>{o.ticketType}</span> ({o.qty})
+                        <span style={{ fontWeight: 600 }}>{o.ticketType}</span> ({o.qty} orders · {o.admissions} admissions)
                       </td>
                       <td style={{ fontWeight: 700, color: 'var(--ink)' }}>₹{o.final.toLocaleString()}</td>
                       <td>
-                        {o.paymentStatus === 'Paid' ? (
+                        <div>{o.paymentStatus === 'Paid' ? (
                           <span className="badge badge-green">
                             <span className="badge-dot" />
                             Completed
@@ -533,7 +551,8 @@ export default function Orders({
                             <span className="badge-dot" />
                             In Progress
                           </span>
-                        )}
+                        )}</div>
+                        {o.refundStatus !== 'none' && <div className="muted-sm" style={{ marginTop: 4 }}>Internal refund {o.refundStatus}{o.refundStatus === 'approved' ? ' · money return unconfirmed' : ''}</div>}
                       </td>
                       <td>{o.time}</td>
                       <td onClick={(e) => e.stopPropagation()}>
@@ -551,6 +570,15 @@ export default function Orders({
             </tbody>
           </table>
         </div>
+        {filtered.length > pageSize && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--line)' }}>
+            <span style={{ fontSize: '12px', color: 'var(--ink-faint)' }}>Page {currentPage} of {pageCount} · {filtered.length} orders</span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn-secondary" disabled={currentPage <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}>Previous</button>
+              <button className="btn-secondary" disabled={currentPage >= pageCount} onClick={() => setPage(current => Math.min(pageCount, current + 1))}>Next</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Slide-over Order Details Drawer */}

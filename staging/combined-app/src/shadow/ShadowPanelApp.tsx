@@ -83,6 +83,7 @@ export default function ShadowPanelApp({
   const paymentStatusRef = useRef('Paid')
   const [commissionChoice, setCommissionChoice] = useState('0')
   const [customCommission, setCustomCommission] = useState('')
+  void [setGender, setCommissionChoice, setCustomCommission]
   const amountForTicketForm = (unitPrice: number, count: number) =>
     isShadowByAshPanel && paymentStatusRef.current === 'Free / Chai Pani' ? '0' : String(unitPrice * count)
   const [amount, setAmount]         = useState('499')
@@ -304,6 +305,7 @@ export default function ShadowPanelApp({
   }
 
   const handleResendTicket = async (ticketId: string | undefined, orderId: string) => {
+    void orderId
     if (!ticketId) {
       alert('Cannot resend: Ticket ID is missing for this order.')
       return
@@ -1062,7 +1064,7 @@ export default function ShadowPanelApp({
                   <div className="shadow-box-title">
                     <span>📑</span> SHADOW ORDERS DIRECTORY ({filteredOrders.length})
                   </div>
-                  <button className="shadow-sec-btn" onClick={fetchShadowData}>
+                  <button className="shadow-sec-btn" onClick={() => { void fetchShadowData() }}>
                     Refresh Orders
                   </button>
                 </div>
@@ -1197,7 +1199,7 @@ export default function ShadowPanelApp({
                   <div className="shadow-box-title">
                     <span>👥</span> SHADOW CUSTOMERS DIRECTORY ({customerList.length})
                   </div>
-                  <button className="shadow-sec-btn" onClick={fetchShadowData}>
+                  <button className="shadow-sec-btn" onClick={() => { void fetchShadowData() }}>
                     Refresh Directory
                   </button>
                   <button className="shadow-primary-btn" style={{ width: 'auto', padding: '9px 14px' }} onClick={exportCustomers}>

@@ -2,6 +2,7 @@ import { Fragment, useState, useMemo, useEffect } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
+import { customerTotal, isConfirmedSale } from '../reporting'
 
 interface DashboardProps {
   sales: any[]
@@ -37,26 +38,24 @@ function formatINR(value: number) {
 }
 
 export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, adminKey = '' }: DashboardProps) {
+  void [summary, onManualGenerate]
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
   const [chartMode, setChartMode] = useState<'actual' | 'forecast'>('actual')
   const [popupEvent, setPopupEvent] = useState<{ name: string; top: number; left: number } | null>(null)
   const [expandedSeller, setExpandedSeller] = useState<string | null>(null)
 
-  const paidSales = sales.filter(s =>
-    !['cancelled', 'canceled'].includes(String(s.status || '').toLowerCase()) &&
-    ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(String(s.status || '').toLowerCase())
-  )
+  const paidSales = sales.filter(isConfirmedSale)
   const revenueSales = paidSales.filter(
     s => !s.gender || !String(s.gender).toLowerCase().includes('exclusive')
   )
 
-  const totalRevenue = revenueSales.reduce((acc, s) => acc + (s.amount || 0), 0)
+  const totalRevenue = revenueSales.reduce((acc, s) => acc + customerTotal(s), 0)
   const totalTickets = paidSales.reduce((acc, s) => acc + (s.quantity || 1), 0)
 
   const todayStr = new Date().toDateString()
   const todayRevenue = revenueSales
     .filter(s => s.createdAt && new Date(s.createdAt).toDateString() === todayStr)
-    .reduce((acc, s) => acc + (s.amount || 0), 0)
+    .reduce((acc, s) => acc + customerTotal(s), 0)
 
   const revenueAfterCommission = revenueSales.reduce((total, sale) => {
     const gross = Number(sale.customerTotal ?? sale.amount ?? 0)
@@ -70,7 +69,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
 
   const emailFailures = sales.filter(s => s.emailStatus === 'failed').length
   const ticketFailures = sales.filter(s => s.status === 'ticket_generation_failed').length
-  const qrScannedCount = sales.filter(s => s.status === 'scanned' || !!s.scannedAt).length
 
   const sectionTicketTotal = Math.max(1, paidSales
     .filter(s => getPassSectionId(s))
@@ -319,7 +317,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                 </tr>
               ) : sellerSummary.map(seller => {
                 const expanded = expandedSeller === seller.companyId
-                const categories = Object.entries(seller.categories).sort((a, b) => b[1].ticketCount - a[1].ticketCount)
+                const categories = Object.entries(seller.categories as Record<string, { ticketCount: number; grossSales: number; commissionEarned: number; netAfterCommission: number }>).sort((a, b) => b[1].ticketCount - a[1].ticketCount)
                 return (
                   <Fragment key={seller.companyId}>
                     <tr>

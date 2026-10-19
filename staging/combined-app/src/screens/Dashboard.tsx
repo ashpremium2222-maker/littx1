@@ -16,6 +16,7 @@ interface Props {
 }
 
 export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, rejectedScans, onGenerateTicket, sellerId }: Props) {
+  void onOpenTicket
   const { tickets } = useStore()
   const [activeTab, setActiveTab] = useState<'scanned' | 'failed'>('scanned')
   const [search, setSearch] = useState('')

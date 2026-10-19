@@ -5,12 +5,12 @@ interface UserSession {
   displayName: string
   role: string
   companyId: string
-  portalScope: 'admin' | 'dashboard'
+  portalScope: 'admin' | 'dashboard' | 'organizer'
   token?: string
 }
 
 interface LoginPageProps {
-  portal: 'admin' | 'dashboard'
+  portal: 'admin' | 'dashboard' | 'organizer'
   onLoginSuccess: (session: UserSession) => void
   brandTitle?: string
   accessHelpText?: string
@@ -18,9 +18,10 @@ interface LoginPageProps {
 
 export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHelpText }: LoginPageProps) {
   const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const portalTitle = portal === 'admin' ? 'Admin Portal' : 'Dashboard'
+  const portalTitle = portal === 'admin' ? 'Admin Portal' : portal === 'organizer' ? 'Organizer Portal' : 'Dashboard'
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,10 +30,10 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
     setError('')
 
     try {
-      const res = await fetch('/api/portal-auth/login', {
+      const res = await fetch(portal === 'organizer' ? '/api/auth/login' : '/api/portal-auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ portal, password })
+        body: JSON.stringify(portal === 'organizer' ? { username, password } : { portal, password })
       })
       const data = await res.json()
       if (!res.ok || !data.success || !data.user || !data.token) {
@@ -66,9 +67,13 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
         {error && <div style={{ background: 'rgba(255,107,107,0.15)', border: '1px solid rgba(255,107,107,0.3)', color: 'var(--red)', padding: '12px', borderRadius: '10px', fontSize: '12px', fontWeight: 600, marginBottom: '20px', textAlign: 'center' }}>⚠️ {error}</div>}
 
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {portal === 'organizer' && <div className="field">
+            <label style={{ color: 'var(--volt)', fontWeight: 700 }}>ACCOUNT ID</label>
+            <input type="text" name="organizer-account" placeholder="Organizer account ID" value={username} onChange={event => setUsername(event.target.value)} required autoComplete="username" autoFocus />
+          </div>}
           <div className="field">
-            <label style={{ color: 'var(--volt)', fontWeight: 700 }}>ACCESS KEY</label>
-          <input type="password" name="solverbydevashtu-access-key" placeholder="Enter access key" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus autoComplete="off" />
+            <label style={{ color: 'var(--volt)', fontWeight: 700 }}>{portal === 'organizer' ? 'PASSWORD' : 'ACCESS KEY'}</label>
+          <input type="password" name={portal === 'organizer' ? 'organizer-password' : 'solverbydevashtu-access-key'} placeholder={portal === 'organizer' ? 'Enter password' : 'Enter access key'} value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus={portal !== 'organizer'} autoComplete={portal === 'organizer' ? 'current-password' : 'off'} />
           </div>
           <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', padding: '14px', fontSize: '14px', marginTop: '8px' }}>
             {loading ? 'Authenticating…' : 'Continue'}

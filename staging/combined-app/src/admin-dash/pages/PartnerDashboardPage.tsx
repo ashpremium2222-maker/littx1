@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
+import { customerTotal, isConfirmedSale } from '../reporting'
 
 interface DashboardProps {
   sales: any[]
@@ -17,31 +18,29 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, scanStats }: DashboardProps) {
+  void [summary, testMode, onManualGenerate]
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
   const [chartMode, setChartMode] = useState<'actual' | 'forecast'>('actual')
   const [popupEvent, setPopupEvent] = useState<{ name: string; top: number; left: number } | null>(null)
-  const [expandedSeller, setExpandedSeller] = useState<string | null>(null)
 
-  const paidSales = sales.filter(s =>
-    ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
-  )
+  const paidSales = sales.filter(isConfirmedSale)
   const revenueSales = paidSales.filter(
     s => !s.gender || !String(s.gender).toLowerCase().includes('exclusive')
   )
 
-  const totalRevenue = revenueSales.reduce((acc, s) => acc + (s.amount || 0), 0)
+  const totalRevenue = revenueSales.reduce((acc, s) => acc + customerTotal(s), 0)
   const totalTickets = paidSales.reduce((acc, s) => acc + (s.quantity || 1), 0)
 
   const todayStr = new Date().toDateString()
   const todayRevenue = revenueSales
     .filter(s => s.createdAt && new Date(s.createdAt).toDateString() === todayStr)
-    .reduce((acc, s) => acc + (s.amount || 0), 0)
+    .reduce((acc, s) => acc + customerTotal(s), 0)
 
   const manualSales = revenueSales.filter(s => s.paymentId === 'manual' || s.paymentMethod === 'manual' || s.paymentMethod === 'cash')
-  const cashSales = revenueSales // all sales are cash/manual now
+  const cashSales = manualSales
 
-  const manualRevenue = manualSales.reduce((acc, s) => acc + (s.amount || 0), 0)
-  const cashRevenue = totalRevenue // all revenue is cash
+  const manualRevenue = manualSales.reduce((acc, s) => acc + customerTotal(s), 0)
+  const cashRevenue = manualRevenue
 
   const emailFailures = sales.filter(s => s.emailStatus === 'failed').length
   const ticketFailures = sales.filter(s => s.status === 'ticket_generation_failed').length
@@ -107,6 +106,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
     }
     return Object.values(map).sort((a, b) => b.revenue - a.revenue)
   }, [paidSales])
+  void sellerSummary
 
   const getChartData = () => {
     const chartData = []
@@ -255,7 +255,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gutter)' }}>
       <div className="kpi-row">
         <div className="tile tile-orange">
-          <div className="tile-label">REVENUE MTD</div>
+          <div className="tile-label">GROSS CONFIRMED CUSTOMER TOTAL</div>
           <div className="tile-value">₹{totalRevenue.toLocaleString()}</div>
           <div className="tile-sub">From {paidSales.length} paid passes</div>
           <div className="tile-delta">
@@ -273,9 +273,9 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         </div>
 
         <div className="tile tile-violet">
-          <div className="tile-label">CASH COLLECTED</div>
-          <div className="tile-value">₹{totalRevenue.toLocaleString()}</div>
-          <div className="tile-sub">All manual / cash sales</div>
+          <div className="tile-label">CONFIRMED OFFLINE CUSTOMER TOTAL</div>
+          <div className="tile-value">₹{cashRevenue.toLocaleString()}</div>
+          <div className="tile-sub">Attributed manual/cash orders only</div>
           <div className="tile-delta">
             <span>💵</span> {cashSales.length} manual transactions
           </div>
@@ -286,7 +286,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
           <div className="tile-value">{paidSales.length}</div>
           <div className="tile-sub">Tickets successfully issued</div>
           <div className="tile-delta">
-            <span>✓</span> Cash-only mode
+            <span>✓</span> Confirmed collection state
           </div>
         </div>
 

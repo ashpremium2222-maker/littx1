@@ -158,6 +158,7 @@ export default function SellerPortalApp() {
     },
     { passes: 0, gross: 0, net: 0 }
   )
+  void sellerSalesSummary
 
   const loadSellerTickets = async () => {
     const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
@@ -357,6 +358,7 @@ export default function SellerPortalApp() {
   const handleEventChange = (newEvent: string) => {
     setEvent(newEvent)
   }
+  void handleEventChange
 
   const handleGenerateTicket = async (e: React.FormEvent) => {
     e.preventDefault()

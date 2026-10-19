@@ -22,7 +22,7 @@ export type TicketType =
   | 'VIP Single'
   | 'VIP Group of 5'
   | 'VIP Group of 10'
-export type TicketStatus = 'pending' | 'scanned'
+export type TicketStatus = 'pending' | 'scanned' | 'cancelled'
 
 export interface Ticket {
   id: string

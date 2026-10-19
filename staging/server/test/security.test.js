@@ -5,6 +5,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { TICKETS_DIR } = require('../ticket');
+const { issueCustomerTicketToken } = require('../ticket-access');
 
 process.env.NODE_ENV = 'test';
 process.env.SCANNER_SESSION_SECRET = 'test-only-session-secret-with-more-than-32-characters';
@@ -13,8 +14,9 @@ process.env.SCANNER_EVENT_NAMES = 'DHOLIDA GARBA ROYALE';
 process.env.SCANNER_COMPANY_ID = 'littlane';
 process.env.RAZORPAY_WEBHOOK_SECRET = 'test-webhook-secret';
 process.env.PRESENTATION_KEY = 'test-presentation-secret';
-process.env.LITTX_MOCK_SALES_FILE = path.join(os.tmpdir(), `littx-security-test-sales-${process.pid}.json`);
+process.env.LITTX_MOCK_SALES_FILE = path.join(os.tmpdir(), `littx-security-test-sales-${process.pid}-${crypto.randomUUID()}.json`);
 
+const db = require('../db');
 const app = require('../server');
 let server;
 let baseUrl;
@@ -79,14 +81,97 @@ test('PR sales and sale submission routes reject requests without a partner sess
     }
 });
 
+test('booking recovery reports the same provider-unavailable response without exposing booking existence', async () => {
+    process.env.BOOKING_OTP_SECRET = 'test-only-booking-otp-secret-with-more-than-32-characters';
+    const request = email => fetch(`${baseUrl}/api/customer/bookings/recovery/request`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+    });
+    const [one, two] = await Promise.all([request('known@example.test'), request('unknown@example.test')]);
+    assert.equal(one.status, 503);
+    assert.equal(two.status, 503);
+    assert.deepEqual(await one.json(), await two.json());
+});
+
+test('booking history cannot be retrieved by supplying a guessed order reference', async () => {
+    const response = await fetch(`${baseUrl}/api/customer/bookings/recovery/verify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'customer@example.test', challengeId: 'order-guessed-123', code: '123456', orderId: 'order-guessed-123' }),
+    });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { success: false, message: 'Verification failed. Request a new code and try again.' });
+});
+
+test('verified ticket PDF access requires an unexpired token bound to ticket and booking email', async () => {
+    const secret = process.env.BOOKING_OTP_SECRET || 'test-only-booking-otp-secret-with-more-than-32-characters';
+    process.env.BOOKING_OTP_SECRET = secret;
+    const orderId = `security-ticket-download-${Date.now()}`;
+    const ticketId = `DGR-${crypto.randomUUID()}`;
+    const email = 'verified-customer@example.test';
+    await db.createSaleRecord({ orderId, ticketId, email, name: 'Verified Customer', event: 'Test Event', ticketType: 'General', status: 'ticket_generated', paymentStatus: 'paid', quantity: 2, admissionCount: 2, amount: 246, createdAt: new Date().toISOString() });
+    const token = issueCustomerTicketToken({ ticketId, email, secret });
+    try {
+        const denied = await fetch(`${baseUrl}/api/customer/bookings/ticket-download`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketId }),
+        });
+        assert.equal(denied.status, 401);
+
+        const wrongSubject = issueCustomerTicketToken({ ticketId, email: 'other@example.test', secret });
+        const mismatched = await fetch(`${baseUrl}/api/customer/bookings/ticket-download`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${wrongSubject}` }, body: JSON.stringify({ ticketId }),
+        });
+        assert.equal(mismatched.status, 401);
+
+        const allowed = await fetch(`${baseUrl}/api/customer/bookings/ticket-download`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ticketId }),
+        });
+        assert.equal(allowed.status, 200);
+        assert.match(allowed.headers.get('content-type') || '', /application\/pdf/);
+        assert.match(allowed.headers.get('cache-control') || '', /no-store/);
+    } finally {
+        await db.deleteSaleRecord(orderId);
+        try { fs.unlinkSync(path.join(TICKETS_DIR, `${ticketId}.pdf`)); } catch (_) {}
+    }
+});
+
+test('production API fails closed instead of using local mock storage without MongoDB configuration', async () => {
+    const previousMode = process.env.NODE_ENV;
+    const previousConfigured = db.hasConfiguredMongo;
+    process.env.NODE_ENV = 'production';
+    db.hasConfiguredMongo = false;
+    try {
+        const response = await fetch(`${baseUrl}/api/events`);
+        assert.equal(response.status, 503);
+        assert.deepEqual(await response.json(), { success: false, message: 'Database service is not configured.' });
+    } finally {
+        process.env.NODE_ENV = previousMode;
+        db.hasConfiguredMongo = previousConfigured;
+    }
+});
+
+test('cancelled tickets cannot be viewed or downloaded from a stale bearer link', async () => {
+    const orderId = `security-cancelled-ticket-${Date.now()}`;
+    const ticketId = `DGR-${crypto.randomUUID()}`;
+    await db.createSaleRecord({ orderId, ticketId, email: 'cancelled@example.test', name: 'Cancelled Customer', event: 'Test Event', status: 'cancelled', paymentStatus: 'paid', quantity: 1, amount: 100, createdAt: new Date().toISOString() });
+    try {
+        const view = await fetch(`${baseUrl}/api/ticket/${ticketId}`);
+        const download = await fetch(`${baseUrl}/api/ticket/${ticketId}/download`);
+        assert.equal(view.status, 410);
+        assert.equal(download.status, 410);
+    } finally {
+        await db.deleteSaleRecord(orderId);
+    }
+});
+
 test('sensitive master, diagnostics, email and destructive routes reject unauthenticated calls', async () => {
     for (const route of [
         '/api/master/companies',
+        '/api/master/overview',
         '/api/master/companies/littlane/control-center',
         '/api/debug/db-status',
         '/api/test-email?to=attacker@example.test',
         '/api/admin/sellers',
         '/api/admin/refund-requests',
+        '/api/admin/reconciliation',
     ]) {
         const response = await fetch(`${baseUrl}${route}`);
         assert.equal(response.status, 401, route);
@@ -114,6 +199,233 @@ test('master routes reject insufficient roles and expired persisted sessions', a
     const expired = await fetch(`${baseUrl}/api/master/companies`, { headers: { 'x-auth-token': expiredToken } });
     assert.equal(expired.status, 401);
     await db.deleteUserSession('test-expired-admin');
+});
+
+test('master overview reports verified channel and admission totals without exposing audit values', async () => {
+    const db = require('../db');
+    const suffix = Date.now();
+    const eventId = `test-phase5-overview-${suffix}`;
+    const masterId = `test-phase5-master-${suffix}`;
+    const token = `test-phase5-token-${suffix}`;
+    const onlineOrder = `test-phase5-online-${suffix}`;
+    const offlineOrder = `test-phase5-offline-${suffix}`;
+    const pendingOrder = `test-phase5-pending-${suffix}`;
+    await db.setUserSession(masterId, { userId: masterId, token, role: 'master_admin', companyId: 'littx', loginAt: new Date().toISOString() });
+    await db.createUser({ userId: `test-phase5-seller-${suffix}`, role: 'seller', companyId: 'phase5-company', active: true });
+    await db.createUser({ userId: `test-phase5-pr-${suffix}`, role: 'pr', companyId: 'phase5-company', active: true });
+    await db.saveEvent({ id: eventId, slug: eventId, name: eventId, companyId: 'phase5-company', organizerId: 'phase5-company', status: 'pending_review', active: false, ticketCategories: [{ id: 'cat-5', name: 'Group Five', price: 500, totalInventory: 10, remainingAvailability: 2, groupSize: 5 }] });
+    await db.createSaleRecord({ orderId: onlineOrder, ticketId: `DGR-ONLINE-${suffix}`, eventId, event: eventId, companyId: 'phase5-company', status: 'emailed', paymentStatus: 'paid', paymentMethod: 'razorpay', amount: 500, quantity: 1, admissionCount: 5 });
+    await db.createSaleRecord({ orderId: offlineOrder, ticketId: `DGR-OFFLINE-${suffix}`, eventId, event: eventId, companyId: 'phase5-company', status: 'ticket_generated', paymentStatus: 'paid', paymentMethod: 'cash', source: 'offline_pr', amount: 500, quantity: 1, admissionCount: 5, prUserId: `test-phase5-pr-${suffix}` });
+    await db.createSaleRecord({ orderId: pendingOrder, ticketId: `DGR-PENDING-${suffix}`, eventId, event: eventId, companyId: 'phase5-company', status: 'pr_cash_pending', paymentStatus: 'pending', paymentMethod: 'cash', amount: 500, quantity: 1, admissionCount: 5, manualReview: true });
+    await db.createAuditLog({ adminUser: masterId, companyId: 'phase5-company', eventId, category: 'PHASE5_AUDIT_TEST', fieldChanged: 'status', reason: 'safe test record', newValue: 'SECRET_MUST_NOT_BE_RETURNED' });
+    try {
+        const response = await fetch(`${baseUrl}/api/master/overview`, { headers: { 'x-auth-token': token } });
+        assert.equal(response.status, 200);
+        const data = await response.json();
+        const event = data.byEvent.find(item => item.eventId === eventId);
+        assert.equal(event.orders, 3);
+        assert.equal(event.confirmedOrders, 2);
+        assert.equal(event.ticketsIssued, 2);
+        assert.equal(event.admissions, 10);
+        assert.equal(event.online.admissions, 5);
+        assert.equal(event.offline.admissions, 5);
+        assert.equal(event.pendingOrders, 1);
+        assert.equal(event.verifiedRevenue, 1000);
+        assert.equal(data.queues.pendingOrganizerApprovals >= 1, true);
+        assert.equal(data.queues.manualReviewOrders >= 1, true);
+        assert.equal(data.accounts.sellers.total >= 1, true);
+        assert.equal(data.accounts.pr.total >= 1, true);
+        assert.equal(data.recentActivity.some(item => item.action === 'PHASE5_AUDIT_TEST'), true);
+        assert.equal(JSON.stringify(data.recentActivity).includes('SECRET_MUST_NOT_BE_RETURNED'), false);
+
+        const list = await fetch(`${baseUrl}/api/admin/events?search=${encodeURIComponent(eventId)}&page=1&pageSize=1`, { headers: { 'x-auth-token': token } });
+        assert.equal(list.status, 200);
+        const listData = await list.json();
+        assert.equal(listData.total, 1);
+        assert.equal(listData.events.length, 1);
+
+        const transition = await fetch(`${baseUrl}/api/admin/events/${encodeURIComponent(eventId)}/transition`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': token }, body: JSON.stringify({ status: 'published' }),
+        });
+        assert.equal(transition.status, 200);
+        const activity = await db.getAuditLogs('phase5-company');
+        assert.equal(activity.some(item => item.category === 'EVENT_STATUS_CHANGED' && item.adminUser === masterId && item.newValue === 'published'), true);
+    } finally {
+        for (const orderId of [onlineOrder, offlineOrder, pendingOrder]) await db.deleteSaleRecord(orderId);
+        await db.deleteUserSession(masterId);
+        await db.deleteUser(`test-phase5-seller-${suffix}`);
+        await db.deleteUser(`test-phase5-pr-${suffix}`);
+        await db.deleteEvent(eventId);
+    }
+});
+
+test('master can suspend a PR account, revoke its session, and retain its sale history', async () => {
+    const db = require('../db');
+    const suffix = Date.now();
+    const masterId = `test-account-admin-${suffix}`;
+    const masterToken = `test-account-admin-token-${suffix}`;
+    const prId = `test-account-pr-${suffix}`;
+    const prToken = `test-account-pr-token-${suffix}`;
+    const orderId = `test-account-pr-sale-${suffix}`;
+    await db.setUserSession(masterId, { userId: masterId, token: masterToken, role: 'master_admin', companyId: 'littx', loginAt: new Date().toISOString() });
+    await db.createUser({ userId: prId, role: 'pr', companyId: 'phase5-company', active: true });
+    await db.setUserSession(prId, { userId: prId, token: prToken, role: 'pr', companyId: 'phase5-company', loginAt: new Date().toISOString() });
+    await db.createSaleRecord({ orderId, event: 'History Retention Event', companyId: 'phase5-company', prUserId: prId, status: 'pr_cash_pending', paymentStatus: 'pending', amount: 10 });
+    try {
+        const denied = await fetch(`${baseUrl}/api/master/accounts/${encodeURIComponent(prId)}/status`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': prToken }, body: JSON.stringify({ active: false }),
+        });
+        assert.equal(denied.status, 403);
+        const response = await fetch(`${baseUrl}/api/master/accounts/${encodeURIComponent(prId)}/status`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': masterToken }, body: JSON.stringify({ active: false }),
+        });
+        assert.equal(response.status, 200);
+        const oldSession = await fetch(`${baseUrl}/api/pr/sales`, { headers: { 'x-auth-token': prToken } });
+        assert.equal(oldSession.status, 401);
+        assert.equal((await db.getByOrderId(orderId)).prUserId, prId);
+        const logs = await db.getAuditLogs('phase5-company');
+        assert.equal(logs.some(log => log.category === 'PARTNER_ACCOUNT_SUSPENDED' && log.adminUser === masterId), true);
+    } finally {
+        await db.deleteSaleRecord(orderId);
+        await db.deleteUserSession(masterId);
+        await db.deleteUserSession(prId);
+        await db.deleteUser(prId);
+    }
+});
+
+test('organizers can only view and edit explicitly assigned company events', async () => {
+    const db = require('../db');
+    const suffix = Date.now();
+    const companyId = `phase6-company-${suffix}`;
+    const otherCompanyId = `phase6-other-${suffix}`;
+    const masterId = `phase6-master-${suffix}`;
+    const masterToken = `phase6-master-token-${suffix}`;
+    const accountId = `phase6-organizer-${suffix}`;
+    const eventId = `phase6-event-${suffix}`;
+    const otherEventId = `phase6-other-event-${suffix}`;
+    const sameCompanyUnassignedId = `phase6-unassigned-event-${suffix}`;
+    const onlineOrder = `phase6-online-${suffix}`;
+    const offlineOrder = `phase6-offline-${suffix}`;
+    const refundOrder = `phase6-refund-${suffix}`;
+    const prId = `phase6-pr-user-${suffix}`;
+    const prToken = `phase6-pr-token-${suffix}`;
+    const password = 'phase6-strong-organizer-password';
+    await db.ensureCompany(companyId, 'Phase 6 Organizer Company');
+    await db.ensureCompany(otherCompanyId, 'Phase 6 Other Company');
+    await db.setUserSession(masterId, { userId: masterId, token: masterToken, role: 'master_admin', companyId: 'littx', loginAt: new Date().toISOString() });
+    await db.saveEvent({ id: eventId, slug: eventId, name: `Phase 6 Event ${suffix}`, companyId, organizerId: companyId, status: 'published', active: true, ticketCategories: [{ id: 'group', name: 'Group', price: 500, totalInventory: 25, remainingAvailability: 10, groupSize: 5 }] });
+    await db.saveEvent({ id: otherEventId, slug: otherEventId, name: `Phase 6 Other ${suffix}`, companyId: otherCompanyId, organizerId: otherCompanyId, status: 'published', active: true, ticketCategories: [] });
+    await db.saveEvent({ id: sameCompanyUnassignedId, slug: sameCompanyUnassignedId, name: `Phase 6 Unassigned ${suffix}`, companyId, organizerId: companyId, status: 'published', active: true, ticketCategories: [] });
+    await db.createSaleRecord({ orderId: onlineOrder, ticketId: `DGR-P6-ON-${suffix}`, eventId, event: `Phase 6 Event ${suffix}`, companyId, ticketType: 'Group', status: 'emailed', paymentStatus: 'paid', amount: 500, quantity: 1, admissionCount: 5, paymentMethod: 'razorpay' });
+    await db.createSaleRecord({ orderId: offlineOrder, ticketId: `DGR-P6-OFF-${suffix}`, eventId, event: `Phase 6 Event ${suffix}`, companyId, ticketType: 'Group', status: 'ticket_generated', paymentStatus: 'paid', amount: 500, quantity: 1, admissionCount: 5, paymentMethod: 'cash', source: 'offline_pr', prUserId: 'phase6-pr' });
+    await db.createSaleRecord({ orderId: refundOrder, ticketId: `DGR-P6-REF-${suffix}`, eventId, event: `Phase 6 Event ${suffix}`, companyId, ticketType: 'Group', status: 'emailed', paymentStatus: 'paid', amount: 500, refundStatus: 'requested', refundReason: 'Test request', refundRequestedAt: new Date().toISOString() });
+    await db.createScanLog({ ticketId: `DGR-P6-ON-${suffix}`, result: 'accepted', event: `Phase 6 Event ${suffix}`, companyId, admissionCount: 5 });
+    await db.createScanLog({ ticketId: `DGR-P6-ON-${suffix}`, result: 'duplicate', event: `Phase 6 Event ${suffix}`, companyId, admissionCount: 5 });
+    await db.setUserSession(prId, { userId: prId, token: prToken, role: 'pr', companyId, loginAt: new Date().toISOString() });
+    try {
+        const create = await fetch(`${baseUrl}/api/master/organizers`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': masterToken },
+            body: JSON.stringify({ userId: accountId, displayName: 'Phase 6 Organizer', companyId, password })
+        });
+        assert.equal(create.status, 201);
+        const created = await create.json();
+        assert.equal(created.organizer.userId, accountId);
+        assert.equal(JSON.stringify(created).includes(password), false);
+        assert.match((await db.getUserById(accountId)).passwordHash, /^scrypt:/);
+
+        const login = await fetch(`${baseUrl}/api/auth/login`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: accountId, password })
+        });
+        assert.equal(login.status, 200);
+        const session = await login.json();
+        const organizerToken = session.token;
+        assert.equal(session.user.role, 'organizer');
+        const unassigned = await fetch(`${baseUrl}/api/organizer/overview`, { headers: { 'x-auth-token': organizerToken } });
+        assert.equal((await unassigned.json()).events.length, 0);
+
+        const assign = await fetch(`${baseUrl}/api/master/events/${encodeURIComponent(eventId)}/organizers`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-auth-token': masterToken }, body: JSON.stringify({ organizerUserIds: [accountId] })
+        });
+        assert.equal(assign.status, 200);
+        const assignmentAudit = await db.getAuditLogs(companyId);
+        assert.equal(assignmentAudit.some(log => log.category === 'EVENT_ORGANIZER_ASSIGNMENTS_CHANGED' && log.eventId === eventId), true);
+        const crossCompanyAssignment = await fetch(`${baseUrl}/api/master/events/${encodeURIComponent(otherEventId)}/organizers`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-auth-token': masterToken }, body: JSON.stringify({ organizerUserIds: [accountId] })
+        });
+        assert.equal(crossCompanyAssignment.status, 400);
+
+        const overview = await fetch(`${baseUrl}/api/organizer/overview`, { headers: { 'x-auth-token': organizerToken } });
+        assert.equal(overview.status, 200);
+        const overviewData = await overview.json();
+        assert.equal(overviewData.events.length, 1);
+        assert.equal(overviewData.events[0].scans.accepted, 1);
+        assert.equal(overviewData.events[0].scans.duplicate, 1);
+        assert.equal(overviewData.events[0].scans.admissions, 5);
+        assert.equal(overviewData.events[0].sales.admissions, 11);
+        assert.equal(overviewData.events[0].sales.online.admissions, 6);
+        assert.equal(overviewData.events[0].sales.offline.admissions, 5);
+        assert.equal(overviewData.events[0].refundRequests.length, 1);
+        assert.equal((await db.getByOrderId(refundOrder)).refundStatus, 'requested');
+        assert.equal(overviewData.events[0].orders.every(order => !('email' in order) && !('name' in order) && !('phone' in order)), true);
+        assert.equal(overviewData.events[0].orders.some(order => order.orderId === refundOrder), true);
+        const eventList = await fetch(`${baseUrl}/api/admin/events`, { headers: { 'x-auth-token': organizerToken } });
+        const eventListData = await eventList.json();
+        assert.equal(eventList.status, 200);
+        assert.deepEqual(eventListData.events.map(event => event.id), [eventId]);
+        assert.equal('overrides' in eventListData.events[0], false);
+        const prAccess = await fetch(`${baseUrl}/api/organizer/overview`, { headers: { 'x-auth-token': prToken } });
+        assert.equal(prAccess.status, 403);
+        const adminSales = await fetch(`${baseUrl}/api/admin/sales`, { headers: { 'x-auth-token': organizerToken } });
+        assert.equal(adminSales.status, 403);
+
+        const deniedEvent = await fetch(`${baseUrl}/api/admin/events/${encodeURIComponent(otherEventId)}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': organizerToken }, body: JSON.stringify({ venue: 'Unauthorized' })
+        });
+        assert.equal(deniedEvent.status, 403);
+        const sameCompanyDenied = await fetch(`${baseUrl}/api/admin/events/${encodeURIComponent(sameCompanyUnassignedId)}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': organizerToken }, body: JSON.stringify({ venue: 'Unassigned edit' })
+        });
+        assert.equal(sameCompanyDenied.status, 403);
+        const protectedCapacity = await fetch(`${baseUrl}/api/admin/events/${encodeURIComponent(eventId)}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': organizerToken }, body: JSON.stringify({ ticketCategories: [{ id: 'group', name: 'Group', price: 600, totalInventory: 26, groupSize: 5 }] })
+        });
+        assert.equal(protectedCapacity.status, 409);
+        const ownEventEdit = await fetch(`${baseUrl}/api/admin/events/${encodeURIComponent(eventId)}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': organizerToken }, body: JSON.stringify({ venue: 'Organizer Venue' })
+        });
+        assert.equal(ownEventEdit.status, 200);
+        const categoryEdit = await fetch(`${baseUrl}/api/admin/events/${encodeURIComponent(eventId)}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': organizerToken },
+            body: JSON.stringify({ ticketCategories: [{ id: 'group', name: 'Group', price: 600, totalInventory: 25, groupSize: 5 }] })
+        });
+        assert.equal(categoryEdit.status, 200);
+        const audits = await db.getAuditLogs(companyId);
+        assert.equal(audits.some(log => log.category === 'EVENT_UPDATED' && log.adminUser === accountId && log.fieldChanged === 'venue'), true);
+        assert.equal(audits.some(log => log.category === 'EVENT_UPDATED' && log.adminUser === accountId && log.fieldChanged === 'ticketCategories' && log.newValue?.[0]?.price === 600), true);
+
+        const suspended = await fetch(`${baseUrl}/api/master/accounts/${encodeURIComponent(accountId)}/status`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': masterToken }, body: JSON.stringify({ active: false })
+        });
+        assert.equal(suspended.status, 200);
+        const blocked = await fetch(`${baseUrl}/api/organizer/overview`, { headers: { 'x-auth-token': organizerToken } });
+        assert.equal(blocked.status, 401);
+        const suspendedLogin = await fetch(`${baseUrl}/api/auth/login`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: accountId, password })
+        });
+        assert.equal(suspendedLogin.status, 403);
+        assert.equal((await db.getByOrderId(onlineOrder)).ticketId, `DGR-P6-ON-${suffix}`);
+    } finally {
+        await db.deleteSaleRecord(onlineOrder);
+        await db.deleteSaleRecord(offlineOrder);
+        await db.deleteSaleRecord(refundOrder);
+        await db.deleteUserSession(masterId);
+        await db.deleteUserSession(prId);
+        await db.deleteUserSession(accountId);
+        await db.deleteUser(accountId);
+        await db.deleteEvent(eventId);
+        await db.deleteEvent(otherEventId);
+        await db.deleteEvent(sameCompanyUnassignedId);
+    }
 });
 
 test('seller access is limited to events owned by the seller company', async () => {
@@ -756,6 +1068,8 @@ test('refund request and admin decision are single-use and never restore invento
     assert.equal(await db.atomicDecideRefund(orderId, { decision: 'rejected', actor: 'Master Admin', reason: '', now: new Date().toISOString() }), null);
     assert.equal((await db.getByOrderId(orderId)).paymentStatus, 'paid');
     assert.equal((await db.getAllEvents()).find(item => item.id === eventId).ticketCategories[0].remainingAvailability, 1);
+    const refundAudit = await db.getAuditLogs('littlane');
+    assert.equal(refundAudit.some(log => log.category === 'INTERNAL_REFUND_DECISION' && log.newValue === 'approved'), true);
     await db.deleteUserSession('phase3-refund-admin');
 });
 
@@ -799,4 +1113,100 @@ test('captured webhook reconciliation rejects mismatched totals and safely handl
     assert.match(await duplicate.text(), /Duplicate event/);
     assert.equal((await db.getByOrderId(orderId)).ticketId, paid.ticketId);
     await require('node:fs/promises').unlink(path.join(TICKETS_DIR, `${paid.ticketId}.pdf`)).catch(() => {});
+});
+
+test('financial report separates order, confirmed and pending amounts; reconciliation is read-only, scoped and redacted', async () => {
+    const db = require('../db');
+    const suffix = Date.now();
+    const companyId = `phase7-company-${suffix}`;
+    const eventId = `phase7-event-${suffix}`;
+    const otherEventId = `phase7-other-event-${suffix}`;
+    const masterId = `phase7-master-${suffix}`;
+    const masterToken = `phase7-master-token-${suffix}`;
+    const organizerId = `phase7-organizer-${suffix}`;
+    const organizerToken = `phase7-organizer-token-${suffix}`;
+    const confirmedOrder = `phase7-confirmed-${suffix}`;
+    const pendingOrder = `phase7-pending-${suffix}`;
+    const legacyOrder = `phase7-legacy-unverified-${suffix}`;
+    const otherOrder = `phase7-other-order-${suffix}`;
+    const duplicatedTicket = `DGR-PHASE7-DUP-${suffix}`;
+    await db.ensureCompany(companyId, 'Phase 7 Company');
+    await db.createUser({ userId: organizerId, role: 'organizer', companyId, active: true, displayName: 'Phase 7 Organizer' });
+    await db.setUserSession(masterId, { userId: masterId, token: masterToken, role: 'master_admin', companyId: 'littx', loginAt: new Date().toISOString() });
+    await db.setUserSession(organizerId, { userId: organizerId, token: organizerToken, role: 'organizer', companyId, loginAt: new Date().toISOString() });
+    await db.saveEvent({ id: eventId, name: `Phase 7 Event ${suffix}`, companyId, organizerId: companyId, organizerUserIds: [organizerId], status: 'published', active: true, ticketCategories: [{ id: 'group-five', name: 'Group Five', price: 100, totalInventory: 30, remainingAvailability: 20, groupSize: 5 }], inventoryReservations: [] });
+    await db.saveEvent({ id: otherEventId, name: `Phase 7 Other Event ${suffix}`, companyId, organizerId: companyId, status: 'published', active: true, ticketCategories: [{ id: 'group-five', name: 'Group Five', price: 100, totalInventory: 30, remainingAvailability: 20, groupSize: 5 }], inventoryReservations: [] });
+    await db.createSaleRecord({ orderId: confirmedOrder, eventId, ticketCategoryId: 'group-five', event: `Phase 7 Event ${suffix}`, companyId, status: 'emailed', paymentStatus: 'paid', paymentId: 'test-verified-reference', refundStatus: 'approved', ticketId: duplicatedTicket, amount: 100, customerTotal: 125, quantity: 2, admissionCount: 5, name: 'PRIVATE CUSTOMER', email: 'private@example.test', source: 'online' });
+    await db.createSaleRecord({ orderId: pendingOrder, eventId, ticketCategoryId: 'group-five', event: `Phase 7 Event ${suffix}`, companyId, status: 'emailed', paymentStatus: 'pending', paymentMethod: 'cash', source: 'offline_seller', ticketId: duplicatedTicket, amount: 250, quantity: 1, admissionCount: 5, name: 'PRIVATE CUSTOMER', email: 'private@example.test' });
+    await db.createSaleRecord({ orderId: legacyOrder, eventId, ticketCategoryId: 'group-five', event: `Phase 7 Event ${suffix}`, companyId, status: 'emailed', ticketId: `DGR-PHASE7-LEGACY-${suffix}`, amount: 300, quantity: 1, admissionCount: 5 });
+    await db.createSaleRecord({ orderId: otherOrder, eventId: otherEventId, ticketCategoryId: 'group-five', event: `Phase 7 Other Event ${suffix}`, companyId, status: 'emailed', paymentStatus: 'paid', paymentId: 'test-other-reference', ticketId: `DGR-PHASE7-OTHER-${suffix}`, amount: 100, quantity: 1, admissionCount: 1 });
+    const beforeSales = (await db.getAll()).filter(sale => [confirmedOrder, pendingOrder, legacyOrder, otherOrder].includes(sale.orderId)).map(sale => ({ orderId: sale.orderId, status: sale.status, paymentStatus: sale.paymentStatus, ticketId: sale.ticketId }));
+    const beforeEvents = (await db.getAllEvents()).filter(event => [eventId, otherEventId].includes(event.id)).map(event => ({ id: event.id, remaining: event.ticketCategories[0].remainingAvailability }));
+    try {
+        const reportResponse = await fetch(`${baseUrl}/api/master/overview`, { headers: { 'x-auth-token': masterToken } });
+        assert.equal(reportResponse.status, 200);
+        const report = await reportResponse.json();
+        const eventReport = report.byEvent.find(event => event.eventId === eventId);
+        assert.equal(eventReport.orders, 3);
+        assert.equal(eventReport.confirmedOrders, 1);
+        assert.equal(eventReport.pendingOrders, 1);
+        assert.equal(eventReport.unverifiedOrders, 1);
+        assert.equal(eventReport.verifiedRevenue, 125);
+        assert.equal(report.sales.refundApprovals >= 1, true);
+        assert.equal(report.sales.pendingAmount >= 250, true);
+
+        const auditResponse = await fetch(`${baseUrl}/api/admin/reconciliation`, { headers: { 'x-auth-token': masterToken } });
+        assert.equal(auditResponse.status, 200);
+        const audit = await auditResponse.json();
+        assert.equal(audit.readOnly, true);
+        assert.equal(audit.findings.some(item => item.code === 'duplicate_ticket_identifier' && item.orderIds.includes(confirmedOrder) && item.orderIds.includes(pendingOrder)), true);
+        assert.equal(audit.findings.some(item => item.code === 'group_admission_quantity_mismatch' && item.orderIds.includes(confirmedOrder)), true);
+        assert.equal(audit.findings.some(item => item.code === 'offline_attribution_missing' && item.orderIds.includes(pendingOrder)), true);
+        assert.equal(audit.findings.some(item => item.code === 'issued_without_confirmed_payment_state' && item.orderIds.includes(legacyOrder)), true);
+        assert.equal(audit.findings.some(item => item.orderIds.includes(otherOrder)), true);
+        assert.equal(JSON.stringify(audit).includes('PRIVATE CUSTOMER'), false);
+        assert.equal(JSON.stringify(audit).includes('private@example.test'), false);
+
+        const organizerAuditResponse = await fetch(`${baseUrl}/api/admin/reconciliation`, { headers: { 'x-auth-token': organizerToken } });
+        assert.equal(organizerAuditResponse.status, 200);
+        const organizerAudit = await organizerAuditResponse.json();
+        assert.equal(organizerAudit.findings.some(item => item.orderIds.includes(confirmedOrder)), true);
+        assert.equal(organizerAudit.findings.some(item => item.orderIds.includes(otherOrder)), false);
+        const afterSales = (await db.getAll()).filter(sale => [confirmedOrder, pendingOrder, legacyOrder, otherOrder].includes(sale.orderId)).map(sale => ({ orderId: sale.orderId, status: sale.status, paymentStatus: sale.paymentStatus, ticketId: sale.ticketId }));
+        const afterEvents = (await db.getAllEvents()).filter(event => [eventId, otherEventId].includes(event.id)).map(event => ({ id: event.id, remaining: event.ticketCategories[0].remainingAvailability }));
+        assert.deepEqual(afterSales, beforeSales);
+        assert.deepEqual(afterEvents, beforeEvents);
+    } finally {
+        await db.deleteSaleRecord(confirmedOrder);
+        await db.deleteSaleRecord(pendingOrder);
+        await db.deleteSaleRecord(legacyOrder);
+        await db.deleteSaleRecord(otherOrder);
+        await db.deleteUserSession(masterId);
+        await db.deleteUserSession(organizerId);
+        await db.deleteUser(organizerId);
+        await db.deleteEvent(eventId);
+        await db.deleteEvent(otherEventId);
+    }
+});
+
+test('public ticket view request budget is enforced by the shared rate-limit store', async () => {
+    let throttled = false;
+    for (let attempt = 0; attempt < 31; attempt += 1) {
+        const response = await fetch(`${baseUrl}/api/ticket/nonexistent-rate-limit-fixture`);
+        if (response.status === 429) throttled = true;
+    }
+    assert.equal(throttled, true);
+});
+
+test('sensitive route rate limiting fails closed if the shared store is unavailable', async () => {
+    const consume = db.consumeOtpIssueRateLimit;
+    db.consumeOtpIssueRateLimit = async () => { throw new Error('synthetic store outage'); };
+    try {
+        const response = await fetch(`${baseUrl}/api/customer/bookings/recovery/request`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'limit@example.test' }),
+        });
+        assert.equal(response.status, 503);
+    } finally {
+        db.consumeOtpIssueRateLimit = consume;
+    }
 });

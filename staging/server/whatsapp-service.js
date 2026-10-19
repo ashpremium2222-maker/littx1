@@ -12,7 +12,7 @@ const https = require('https');
  */
 async function sendTicketWhatsApp({ phone, name, ticketId, event, date, venue, ticketType, viewUrl, pdfUrl }) {
     if (!phone) {
-        console.warn(`[WhatsApp] Skipped: no phone number for ticket ${ticketId}.`);
+        console.warn('[WhatsApp] Skipped ticket delivery because the recipient phone is missing.');
         return { success: false, reason: 'phone_missing' };
     }
 
@@ -91,26 +91,26 @@ async function sendViaRichAutomate({ to, ticketId, variables, pdfUrl }) {
                     const result = JSON.parse(data);
                     if (res.statusCode >= 200 && res.statusCode < 300) {
                         const messageId = result?.messageId || result?.message_id || result?.id;
-                        console.log(`[RichAutomate] Ticket ${ticketId} queued for ${to} (msgId: ${messageId ?? 'n/a'})`);
+                        console.log('[RichAutomate] Ticket message accepted by provider.');
                         resolve({ success: true, messageId, provider: 'richautomate' });
                     } else {
-                        console.error(`[RichAutomate Error] HTTP ${res.statusCode} for ticket ${ticketId}:`, data);
-                        resolve({ success: false, error: data, provider: 'richautomate' });
+                        console.error(`[RichAutomate] Ticket message rejected with HTTP ${res.statusCode}.`);
+                        resolve({ success: false, error: `Provider returned HTTP ${res.statusCode}.`, provider: 'richautomate' });
                     }
                 } catch (_) {
-                    console.error('[RichAutomate Parse Error] for ticket', ticketId, ':', data);
+                    console.error('[RichAutomate] Provider returned an invalid response.');
                     resolve({ success: false, error: 'Invalid JSON from RichAutomate', provider: 'richautomate' });
                 }
             });
         });
 
         req.on('error', (err) => {
-            console.error('[RichAutomate Network Error] ticket', ticketId, ':', err.message);
-            resolve({ success: false, error: err.message, provider: 'richautomate' });
+            console.error('[RichAutomate] Ticket delivery request failed.');
+            resolve({ success: false, error: 'Provider request failed.', provider: 'richautomate' });
         });
 
         req.on('timeout', () => {
-            console.error('[RichAutomate Timeout] ticket', ticketId);
+            console.error('[RichAutomate] Ticket delivery request timed out.');
             req.destroy(new Error('RichAutomate request timed out'));
         });
 
@@ -174,26 +174,26 @@ async function sendViaMetaCloudApi({ to, ticketId, variables, pdfUrl }) {
                     const result = JSON.parse(data);
                     if (res.statusCode >= 200 && res.statusCode < 300) {
                         const messageId = result?.messages?.[0]?.id;
-                        console.log(`[Meta WhatsApp] Ticket ${ticketId} queued for ${to} (msgId: ${messageId})`);
+                        console.log('[Meta WhatsApp] Ticket message accepted by provider.');
                         resolve({ success: true, messageId, provider: 'meta' });
                     } else {
-                        console.error(`[Meta WhatsApp Error] HTTP ${res.statusCode} for ticket ${ticketId}:`, JSON.stringify(result));
-                        resolve({ success: false, error: result, provider: 'meta' });
+                        console.error(`[Meta WhatsApp] Ticket message rejected with HTTP ${res.statusCode}.`);
+                        resolve({ success: false, error: `Provider returned HTTP ${res.statusCode}.`, provider: 'meta' });
                     }
                 } catch (_) {
-                    console.error('[Meta WhatsApp Parse Error] ticket', ticketId, ':', data);
+                    console.error('[Meta WhatsApp] Provider returned an invalid response.');
                     resolve({ success: false, error: 'Invalid response from Meta API', provider: 'meta' });
                 }
             });
         });
 
         req.on('error', (err) => {
-            console.error('[Meta WhatsApp Network Error] ticket', ticketId, ':', err.message);
-            resolve({ success: false, error: err.message, provider: 'meta' });
+            console.error('[Meta WhatsApp] Ticket delivery request failed.');
+            resolve({ success: false, error: 'Provider request failed.', provider: 'meta' });
         });
 
         req.on('timeout', () => {
-            console.error('[Meta WhatsApp Timeout] ticket', ticketId);
+            console.error('[Meta WhatsApp] Ticket delivery request timed out.');
             req.destroy(new Error('Meta WhatsApp request timed out'));
         });
 
