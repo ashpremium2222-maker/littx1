@@ -773,7 +773,23 @@ async function expireEventReservations(eventId = null) {
             const sale = await db.getByOrderId(reservation.reservationId);
             if (sale) {
                 const expired = await db.atomicExpireOrder(reservation.reservationId, now.toISOString());
-                if (!expired) continue;
+                if (!expired) {
+                    const current = await db.getByOrderId(reservation.reservationId);
+                    const awaitingAdmin = current && (current.status === 'pr_cash_pending' || current.approvalStatus === 'PENDING' || current.status === 'pending_approval');
+                    if (awaitingAdmin) {
+                        const released = await db.releaseEventInventoryReservation({ eventId: event.id || event._id, reservationId: reservation.reservationId, now, expiredOnly: true });
+                        if (released) await db.updateSaleRecord(reservation.reservationId, { inventoryReserved: false, reservationStatus: 'released', reservationExpiresAt: null });
+                        continue;
+                    }
+                    if (current?.inventoryReserved && current.eventId) {
+                        const consuming = await db.consumeEventInventoryReservation({ eventId: current.eventId, reservationId: reservation.reservationId });
+                        if (consuming) {
+                            await db.finalizeConsumedInventoryReservation({ eventId: current.eventId, reservationId: reservation.reservationId });
+                            await db.updateSaleRecord(reservation.reservationId, { inventoryReserved: false, reservationStatus: 'consumed', reservationExpiresAt: null });
+                        }
+                    }
+                    continue;
+                }
                 const released = await db.releaseEventInventoryReservation({
                     eventId: event.id || event._id, reservationId: reservation.reservationId, now, expiredOnly: true
                 });
@@ -794,6 +810,29 @@ async function expireEventReservations(eventId = null) {
             if (released) await db.updateSaleRecord(sale.orderId, { inventoryReserved: false, reservationStatus: 'expired' });
         }
     }
+}
+
+async function reserveOfflineSaleInventory(sale) {
+    if (!sale.inventoryLimited) return { ok: true, limited: false, reserved: false, expiresAt: null };
+    await expireEventReservations(sale.eventId);
+    const expiresAt = new Date(Date.now() + CHECKOUT_RESERVATION_MS);
+    const result = await db.reserveEventInventory({
+        eventId: sale.eventId,
+        reservationId: sale.orderId,
+        categoryId: sale.ticketCategoryId,
+        admissionCount: sale.admissionCount,
+        expiresAt
+    });
+    return { ...result, limited: true, expiresAt };
+}
+
+async function settleOfflineSaleInventory(sale, reservation) {
+    if (!reservation?.reserved) return true;
+    const consumed = await db.consumeEventInventoryReservation({ eventId: sale.eventId, reservationId: sale.orderId });
+    if (!consumed) return false;
+    await db.finalizeConsumedInventoryReservation({ eventId: sale.eventId, reservationId: sale.orderId });
+    await db.updateSaleRecord(sale.orderId, { inventoryReserved: false, reservationStatus: 'consumed', reservationExpiresAt: null });
+    return true;
 }
 
 async function acceptCapturedPayment(sale, paymentId) {
@@ -997,6 +1036,36 @@ function isCountableTicketSale(sale) {
     const status = String(sale?.status || '').toLowerCase();
     return !['cancelled', 'canceled'].includes(status) && canDeliverSale(sale) && ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(status);
 }
+function buildSalesReport(sales) {
+    const countable = sales.filter(sale => isCountableTicketSale(sale) && (!sale.paymentStatus || sale.paymentStatus === 'paid'));
+    const isOffline = sale => ['offline_seller', 'offline_pr'].includes(String(sale.source || '').toLowerCase()) || ['cash', 'manual'].includes(String(sale.paymentMethod || '').toLowerCase());
+    const grouped = (keyFor, eligible = countable) => {
+        const groups = new Map();
+        for (const sale of eligible) {
+            const key = keyFor(sale) || 'Unknown';
+            const item = groups.get(key) || { key, orders: 0, qrCodes: 0, admissions: 0, verifiedRevenue: 0 };
+            item.orders += 1; item.qrCodes += sale.ticketId ? 1 : 0;
+            item.admissions += Math.max(0, Number(sale.admissionCount) || Number(sale.quantity) || 1);
+            item.verifiedRevenue += Number(sale.amount) || 0; groups.set(key, item);
+        }
+        return [...groups.values()];
+    };
+    const channel = records => ({ orders: records.length, qrCodes: records.filter(sale => Boolean(sale.ticketId)).length, admissions: records.reduce((sum, sale) => sum + Math.max(0, Number(sale.admissionCount) || Number(sale.quantity) || 1), 0), verifiedRevenue: records.reduce((sum, sale) => sum + (Number(sale.amount) || 0), 0) });
+    const online = countable.filter(sale => !isOffline(sale)), offline = countable.filter(isOffline);
+    return {
+        totalOrders: countable.length, qrCodes: countable.filter(sale => Boolean(sale.ticketId)).length,
+        admissions: countable.reduce((sum, sale) => sum + Math.max(0, Number(sale.admissionCount) || Number(sale.quantity) || 1), 0),
+        verifiedRevenue: countable.reduce((sum, sale) => sum + (Number(sale.amount) || 0), 0),
+        online: channel(online), offline: channel(offline),
+        pendingOrders: sales.filter(sale => sale.paymentStatus === 'pending' || ['pending', 'pr_cash_pending', 'pending_approval', 'ticket_approval_pending'].includes(String(sale.status || '').toLowerCase()) || sale.approvalStatus === 'PENDING').length,
+        cancelledOrders: sales.filter(sale => ['cancelled', 'canceled'].includes(String(sale.status || '').toLowerCase())).length,
+        manualReviewOrders: sales.filter(sale => sale.manualReview === true || sale.status === 'manual_review').length,
+        byEvent: grouped(sale => sale.event || sale.eventId),
+        byCategory: grouped(sale => sale.ticketType || sale.gender || sale.ticketCategoryId),
+        bySeller: grouped(sale => sale.sellerId || sale.generatedBy || sale.prUserId || (isOffline(sale) ? 'Offline team' : null)),
+    };
+}
+
 
 // ==================== LITTX SELLER ACCOUNTS (max 3 devices) ====================
 // Credentials are deployment configuration; never provide source-code defaults.
@@ -1397,7 +1466,7 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
         await db.failCheckoutRequest(idempotencyKey);
         return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable. Check the event, sale window, quantity and inventory.' });
     }
-    const { amount, qty, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
+    const { amount, qty, admissionCount, inventoryLimited, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
 
     try {
         let orderId;
@@ -1899,9 +1968,20 @@ app.post('/api/admin/ticket-approvals/:orderId/approve', requireApprovalAdmin, a
     if (!approvalAdminOwnsSale(req, existing)) return res.status(403).json({ success: false, message: 'This sale belongs to another company.' });
     const approvedBy = await resolveAdminPrincipal(req);
     const approvedAt = new Date().toISOString();
-    const claimed = await db.atomicApprovePendingSale(req.params.orderId, approvedBy, approvedAt);
+    let inventoryReservation;
+    try {
+        inventoryReservation = await reserveOfflineSaleInventory(existing);
+    } catch (error) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(error) });
+    }
+    if (!inventoryReservation.ok || (existing.inventoryLimited && !inventoryReservation.reserved)) {
+        await db.updateSaleRecord(existing.orderId, { manualReview: true, manualReviewReason: 'offline_inventory_unavailable', manualReviewAt: new Date().toISOString() });
+        return res.status(409).json({ success: false, manualReview: true, message: 'Inventory is unavailable. This ticket remains pending for manual review.' });
+    }
+    const claimed = await db.atomicApprovePendingSale(req.params.orderId, approvedBy, approvedAt, inventoryReservation);
 
     if (!claimed) {
+        if (inventoryReservation.reserved && !inventoryReservation.reused) await db.releaseEventInventoryReservation({ eventId: existing.eventId, reservationId: existing.orderId });
         const current = await db.getByOrderId(req.params.orderId);
         if (!current) return res.status(404).json({ success: false, message: 'Sale not found.' });
         if (current.deliveryStatus === 'DELIVERED' || current.status === 'emailed') {
@@ -1909,6 +1989,22 @@ app.post('/api/admin/ticket-approvals/:orderId/approve', requireApprovalAdmin, a
         }
         return res.status(409).json({ success: false, message: `Ticket is not pending approval. Current status: ${current.approvalStatus || current.status}.`, sale: current });
     }
+
+    if (!await settleOfflineSaleInventory(claimed, inventoryReservation)) {
+        return res.status(500).json({ success: false, message: 'Ticket approval was recorded, but inventory finalization requires manual review.' });
+    }
+
+    await db.createAuditLog({
+        adminUser: approvedBy,
+        companyId: claimed.companyId || 'littlane',
+        eventId: claimed.eventId || null,
+        category: 'OFFLINE_TICKET_APPROVAL',
+        fieldChanged: 'approvalStatus',
+        previousValue: 'PENDING',
+        newValue: 'APPROVED',
+        reason: `Approved offline seller ticket ${claimed.ticketId || claimed.orderId}`,
+        timestamp: approvedAt
+    }).catch(error => console.error('[offline ticket approval audit]', error.message));
 
     try {
         const filePath = path.join(TICKETS_DIR, `${claimed.ticketId}.pdf`);
@@ -2135,7 +2231,12 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
         emailFailures: sales.filter(s => s.emailStatus === 'failed').length,
         ticketFailures: sales.filter(s => s.status === 'ticket_generation_failed').length
     };
-    res.json({ success: true, testMode: TEST_MODE, summary, sales });
+    const report = buildSalesReport(sales);
+    const reportEvents = await db.getAllEvents();
+    report.remainingInventory = reportEvents
+        .filter(event => req.adminSession?.role !== 'company_admin' || event.companyId === req.adminSession.companyId)
+        .map(event => ({ eventId: event.id || event._id, event: event.name, categories: (event.ticketCategories || []).map(category => ({ categoryId: category.id, category: category.name, remaining: Number.isInteger(category.remainingAvailability) ? category.remainingAvailability : (Number.isInteger(category.totalInventory) ? category.totalInventory : null) })) }));
+    res.json({ success: true, testMode: TEST_MODE, summary: { ...summary, ...report }, report, sales });
 });
 
 app.get('/api/admin/config', requireAdmin, async (req, res) => {
@@ -2446,7 +2547,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
     if (!pricedTicket) {
         return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
     }
-    const { qty, amount: customerTotal, ticketType: tType, event: evtName } = pricedTicket;
+    const { qty, admissionCount, inventoryLimited, event: evtName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: tType, amount: customerTotal } = pricedTicket;
     const events = await db.getAllEvents();
     const eventRecord = pickCanonicalEvent(events, evtName);
     const users = await db.getAllUsers();
@@ -2488,8 +2589,10 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         commission = applyCommission(customerTotal, normalizedCommission, qty);
     }
 
+    let orderId;
+    let inventoryReservation = null;
     try {
-        const orderId = `order_manual_${crypto.randomBytes(8).toString('hex')}`;
+        orderId = `order_manual_${crypto.randomBytes(8).toString('hex')}`;
         const ticketId = generateTicketId();
         const generatedAt = new Date().toISOString();
 
@@ -2504,13 +2607,27 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         const approvalStatus = directDelivery ? 'NOT_REQUIRED' : 'PENDING';
         const deliveryStatus = directDelivery ? 'NOT_STARTED' : 'PENDING_APPROVAL';
         const publicStatus = directDelivery ? 'pending' : 'pending_approval';
+        const offlineSale = { orderId, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, admissionCount, inventoryLimited };
+        if (directDelivery) {
+            inventoryReservation = await reserveOfflineSaleInventory(offlineSale);
+            if (!inventoryReservation.ok || (inventoryLimited && !inventoryReservation.reserved)) {
+                return res.status(409).json({ success: false, message: 'Inventory is no longer available for this ticket. No ticket was issued.' });
+            }
+        }
 
         await db.createSaleRecord({
             orderId,
             event: evtName,
+            eventId: canonicalEventId,
+            ticketCategoryId: canonicalCategoryId,
+            admissionCount,
+            inventoryLimited,
+            inventoryReserved: Boolean(directDelivery && inventoryReservation?.reserved),
+            reservationStatus: directDelivery && inventoryLimited ? 'active' : 'not_required',
+            reservationExpiresAt: directDelivery ? inventoryReservation?.expiresAt || null : null,
             name, email, phone: phone || '', nickname, gender: gender || 'general', ticketType: tType,
             quantity: qty, ...commission, passUnitPrice: commission.officialRate, commissionPercentage: normalizedCommission, amount: commission.customerTotal, currency: 'INR',
-            status: 'paid', paymentId: 'manual', ticketId,
+            status: 'paid', paymentId: 'manual', paymentMethod: 'manual', source: 'offline_seller', ticketId,
             emailStatus: 'pending', emailError: null,
             whatsappStatus: directDelivery ? 'pending' : 'blocked_pending_approval',
             whatsappError: null,
@@ -2527,6 +2644,10 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             deliveryStatus,
             scannedBy: null, scannedAt: null
         });
+
+        if (directDelivery && !await settleOfflineSaleInventory(offlineSale, inventoryReservation)) {
+            return res.status(500).json({ success: false, message: 'Ticket was recorded but inventory finalization requires administrator review.' });
+        }
 
         // Build PDF and QR
         const pdfPath = await buildTicketPdf({
@@ -2585,6 +2706,9 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             }
         });
     } catch (err) {
+        if (inventoryReservation?.reserved && !inventoryReservation.reused && orderId && !(await db.getByOrderId(orderId).catch(() => null))) {
+            await db.releaseEventInventoryReservation({ eventId: canonicalEventId, reservationId: orderId }).catch(() => {});
+        }
         console.error('[manual-generate] Error:', err);
         res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
@@ -3159,9 +3283,12 @@ app.post('/api/scan-ticket', async (req, res) => {
                 ticketId: sale.ticketId,
                 result: 'cancelled',
                 scannedBy: scannedBy || 'Gate Staff',
+                scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId,
                 ip: req.ip || req.socket?.remoteAddress || 'unknown',
                 companyId: sale.companyId || 'littlane',
-                event: sale.event
+                event: sale.event,
+                orderId: sale.orderId,
+                admissionCount: sale.admissionCount || sale.quantity || 1
             }).catch(err => console.error('[ScanLog write error]', err.message));
             return res.json({
                 result: 'rejected',
@@ -3187,9 +3314,12 @@ app.post('/api/scan-ticket', async (req, res) => {
                 ticketId: sale.ticketId,
                 result: 'duplicate',
                 scannedBy: scannedBy || 'Gate Staff',
+                scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId,
                 ip: req.ip || req.socket?.remoteAddress || 'unknown',
                 companyId: sale.companyId || 'littlane',
-                event: sale.event
+                event: sale.event,
+                orderId: sale.orderId,
+                admissionCount: sale.scannedAdmissionCount || sale.admissionCount || sale.quantity || 1
             }).catch(err => console.error('[ScanLog write error]', err.message));
             return res.json({
                 result: 'rejected',
@@ -3229,24 +3359,28 @@ app.post('/api/scan-ticket', async (req, res) => {
             const currentSale = await db.getByTicketId(ticketId);
             if (!currentSale || currentSale.status === 'cancelled') {
                 if (currentSale?.status === 'cancelled') {
-                    db.createScanLog({ ticketId, result: 'cancelled', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event }).catch(err => console.error('[ScanLog write error]', err.message));
+                    db.createScanLog({ ticketId, result: 'cancelled', scannedBy: scannedBy || 'Gate Staff', scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId, ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event, orderId: currentSale.orderId, admissionCount: currentSale.admissionCount || currentSale.quantity || 1 }).catch(err => console.error('[ScanLog write error]', err.message));
                     return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: ticketTypeForSale(currentSale), quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: 'cancelled', scannedBy: currentSale.disabledBy || 'Admin', scannedAt: currentSale.disabledAt ? 'Disabled by Solver' : 'Cancelled by Admin' } });
                 }
                 db.createScanLog({ ticketId, result: 'invalid', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown' }).catch(err => console.error('[ScanLog write error]', err.message));
                 return res.json({ result: 'not_found' });
             }
             const alreadyUsed = currentSale.status === 'scanned' || Boolean(currentSale.scannedAt);
-            db.createScanLog({ ticketId: currentSale.ticketId, result: alreadyUsed ? 'duplicate' : 'invalid', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event }).catch(err => console.error('[ScanLog write error]', err.message));
-            return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: ticketTypeForSale(currentSale), quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: currentSale.status, scannedBy: currentSale.scannedBy, scannedAt: currentSale.scannedAt } });
+            const requiresReview = !alreadyUsed;
+            db.createScanLog({ ticketId: currentSale.ticketId, result: alreadyUsed ? 'duplicate' : 'manual_review', scannedBy: scannedBy || 'Gate Staff', scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId, ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event, orderId: currentSale.orderId, admissionCount: currentSale.admissionCount || currentSale.quantity || 1 }).catch(err => console.error('[ScanLog write error]', err.message));
+            return res.json({ result: requiresReview ? 'manual_review' : 'rejected', reason: requiresReview ? 'ticket_not_issued' : 'already_used', message: requiresReview ? 'Ticket is not in an issued state and requires manual review.' : 'Ticket has already been used.', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: ticketTypeForSale(currentSale), quantity: currentSale.quantity, admissionCount: currentSale.admissionCount || currentSale.quantity || 1, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: currentSale.status, scannedBy: currentSale.scannedBy, scannedAt: currentSale.scannedAt } });
         }
 
         db.createScanLog({
             ticketId: updatedSale.ticketId,
             result: 'accepted',
             scannedBy: scannedBy || 'Gate Staff',
+            scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId,
             ip: req.ip || req.socket?.remoteAddress || 'unknown',
             companyId: updatedSale.companyId || 'littlane',
-            event: updatedSale.event
+            event: updatedSale.event,
+            orderId: updatedSale.orderId,
+            admissionCount: updatedSale.scannedAdmissionCount || admissionCount
         }).catch(err => console.error('[ScanLog write error]', err.message));
 
         res.json({
@@ -4036,7 +4170,7 @@ app.get('/api/seller/sales', requireSeller, async (req, res) => {
         const mySales = all.filter(s =>
             s.generatedBy === req.sellerId || s.prUserId === req.sellerId
         );
-        res.json({ success: true, sellerId: req.sellerId, sales: mySales });
+        res.json({ success: true, sellerId: req.sellerId, report: buildSalesReport(mySales), sales: mySales });
     } catch (err) {
         res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
@@ -4524,7 +4658,7 @@ app.post('/api/pr/cash-request', requirePR, async (req, res) => {
     if (!computed) return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable.' });
     const pricingEvent = pickCanonicalEvent(await db.getAllEvents(), requestedEvent);
     if (!pricingEvent || pricingEvent.companyId !== req.prSession.companyId) return res.status(403).json({ success: false, message: 'PR partner is not assigned to this event.' });
-    const { amount, qty, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
+    const { amount, qty, admissionCount, inventoryLimited, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
 
     try {
         const orderId = `order_cash_${crypto.randomBytes(8).toString('hex')}`;
@@ -4538,9 +4672,15 @@ app.post('/api/pr/cash-request', requirePR, async (req, res) => {
             name, email, phone, gender: gender || categoryName,
             ticketType: categoryName,
             quantity: qty,
+            admissionCount,
+            inventoryLimited,
+            inventoryReserved: false,
+            reservationStatus: 'not_required',
             amount,
             currency,
             status: 'pr_cash_pending',
+            paymentStatus: 'pending',
+            fulfillmentStatus: 'pending',
             paymentId: 'cash_pending',
             ticketId,
             emailStatus: 'pending',
@@ -4549,6 +4689,7 @@ app.post('/api/pr/cash-request', requirePR, async (req, res) => {
             prUserId: req.prSession.userId,
             prName: req.prSession.displayName,
             companyId: req.prSession.companyId,
+            source: 'offline_pr',
             paymentMethod: 'cash',
         });
 
@@ -4620,8 +4761,37 @@ app.post('/api/admin/pr-approve', requireApprovalAdmin, async (req, res) => {
     if (!existing) return res.status(404).json({ success: false, message: 'Sale not found' });
     if (!approvalAdminOwnsSale(req, existing)) return res.status(403).json({ success: false, message: 'This sale belongs to another company.' });
     const approvedAt = new Date().toISOString();
-    const sale = await db.atomicApproveCashSale(orderId, req.adminSession?.userId || 'Master Admin', approvedAt);
-    if (!sale) return res.status(409).json({ success: false, message: 'Sale is no longer pending approval.' });
+    let reservation;
+    try {
+        reservation = await reserveOfflineSaleInventory(existing);
+    } catch (error) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(error) });
+    }
+    if (!reservation.ok || (existing.inventoryLimited && !reservation.reserved)) {
+        await db.updateSaleRecord(existing.orderId, { manualReview: true, manualReviewReason: 'offline_inventory_unavailable', manualReviewAt: new Date().toISOString() });
+        return res.status(409).json({ success: false, manualReview: true, message: 'Inventory is unavailable for this offline order. It remains pending for manual review.' });
+    }
+    const approvedBy = req.adminSession?.userId || 'Master Admin';
+    const sale = await db.atomicApproveCashSale(orderId, approvedBy, approvedAt, reservation);
+    if (!sale) {
+        if (reservation.reserved && !reservation.reused) await db.releaseEventInventoryReservation({ eventId: existing.eventId, reservationId: orderId });
+        return res.status(409).json({ success: false, message: 'Sale is no longer pending approval.' });
+    }
+    if (!await settleOfflineSaleInventory(sale, reservation)) {
+        return res.status(500).json({ success: false, message: 'Cash was verified, but inventory finalization needs manual review before ticket delivery.' });
+    }
+
+    await db.createAuditLog({
+        adminUser: approvedBy,
+        companyId: sale.companyId || 'littlane',
+        eventId: sale.eventId || null,
+        category: 'OFFLINE_CASH_VERIFIED',
+        fieldChanged: 'paymentStatus',
+        previousValue: 'pending',
+        newValue: 'paid',
+        reason: `Admin approval verified cash collection for order ${orderId}`,
+        timestamp: approvedAt
+    }).catch(error => console.error('[cash approval audit]', error.message));
 
     // Generate ticket + send email (same flow as normal payment)
     try {
@@ -4639,7 +4809,7 @@ app.post('/api/admin/pr-approve', requireApprovalAdmin, async (req, res) => {
         await db.updateSaleRecord(orderId, { status: 'ticket_generated', generatedAt: new Date().toISOString() });
 
         const downloadUrl = `${BASE_URL}/api/ticket/${sale.ticketId}/download`;
-        const result = await sendTicketEmail({ to: sale.email, name: sale.name, ticketId: sale.ticketId, pdfPath, downloadUrl });
+        const result = process.env.NODE_ENV === 'test' ? { success: false, error: 'Notification delivery is disabled in tests.' } : await sendTicketEmail({ to: sale.email, name: sale.name, ticketId: sale.ticketId, pdfPath, downloadUrl });
 
         await db.updateSaleRecord(orderId, {
             emailStatus: result.success ? 'sent' : 'failed',
@@ -4647,7 +4817,7 @@ app.post('/api/admin/pr-approve', requireApprovalAdmin, async (req, res) => {
             status: result.success ? 'emailed' : 'email_failed',
         });
 
-        await sendAndRecordTicketWhatsApp({
+        if (process.env.NODE_ENV !== 'test') await sendAndRecordTicketWhatsApp({
             orderId, phone: sale.phone, name: sale.name, ticketId: sale.ticketId,
             event: sale.event || EVENT.name, ticketType: tType, downloadUrl
         });

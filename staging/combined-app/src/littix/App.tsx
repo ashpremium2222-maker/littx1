@@ -30,7 +30,7 @@ export interface RejectedScan {
   ticket: Ticket | null
   rawCode?: string
   timestamp: string
-  reason: 'duplicate' | 'cancelled' | 'invalid'
+  reason: 'duplicate' | 'cancelled' | 'invalid' | 'manual_review'
   attemptNumber: number
 }
 
@@ -47,7 +47,7 @@ const SELLER_IDS = ['littlane', '7th-heaven', 'nitro'] as const
 
 type DirectScannerTab = 'scanner' | 'history' | 'profile'
 type HistoryTab = 'approved' | 'rejected'
-export type ScannerHistoryStatus = 'approved' | 'duplicate' | 'cancelled' | 'invalid'
+export type ScannerHistoryStatus = 'approved' | 'duplicate' | 'cancelled' | 'invalid' | 'manual_review'
 
 export type ScannerHistoryEntry = {
   id: string
@@ -375,6 +375,7 @@ function DirectScannerPassDetails({
     entry.status === 'approved' ? 'Approved' :
     entry.status === 'duplicate' ? 'Duplicate' :
     entry.status === 'cancelled' ? 'Cancelled' :
+    entry.status === 'manual_review' ? 'Manual review' :
     'Invalid'
   const quickFields = [
     { label: 'A. Attendee', value: entry.attendee },
@@ -747,10 +748,11 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
         return
       }
       go({ name: 'scan-success', ticket: outcome.ticket })
-    } else if (outcome.result === 'rejected' && outcome.ticket) {
+    } else if ((outcome.result === 'rejected' || outcome.result === 'manual_review') && outcome.ticket) {
       const isCancel = (outcome.ticket.status as string) === 'cancelled' || (outcome.ticket.scannedAt === 'Cancelled by Admin')
       const isDisabled = isCancel && outcome.ticket.scannedAt === 'Disabled by Solver'
-      const reason: RejectedScan['reason'] = isCancel ? 'cancelled' : 'duplicate'
+      const isManualReview = outcome.result === 'manual_review'
+      const reason: RejectedScan['reason'] = isCancel ? 'cancelled' : isManualReview ? 'manual_review' : 'duplicate'
       const prevCount = rejectedScans.filter(r => (r.ticket?.id === outcome.ticket!.id || r.rawCode === cleaned)).length
       const attemptNumber = prevCount + 1
       setRejectedScans(prev => [{
@@ -763,7 +765,7 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
       const entry = buildHistoryEntry(
         reason,
         outcome.ticket,
-        isCancel ? (isDisabled ? 'This ticket is disabled and cannot be used.' : 'This ticket is cancelled and cannot be used.') : `${outcome.ticket.attendee} was already checked in.`,
+        isCancel ? (isDisabled ? 'This ticket is disabled and cannot be used.' : 'This ticket is cancelled and cannot be used.') : isManualReview ? 'This order is not in an issued state. Verify it with an administrator before admission.' : `${outcome.ticket.attendee} was already checked in.`,
         attemptNumber,
         isCancel ? undefined : outcome.ticket.scannedAt
       )
@@ -771,8 +773,8 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
       if (forceScanner) {
         setScannerFeedback({
           status: 'rejected',
-          title: isCancel ? (isDisabled ? 'Ticket Disabled' : 'Ticket Cancelled') : 'Already Scanned',
-          message: isCancel ? (isDisabled ? 'TICKET DISABLED · This ticket cannot be used.' : 'This ticket is void and cannot be used.') : `${outcome.ticket.attendee} has already checked in.`,
+          title: isCancel ? (isDisabled ? 'Ticket Disabled' : 'Ticket Cancelled') : isManualReview ? 'Requires Manual Review' : 'Already Scanned',
+          message: isCancel ? (isDisabled ? 'TICKET DISABLED · This ticket cannot be used.' : 'This ticket is void and cannot be used.') : isManualReview ? 'This order is not in an issued state. Verify it with an administrator before admission.' : `${outcome.ticket.attendee} has already checked in.`,
           code: outcome.ticket.id,
           entry
         })

@@ -58,7 +58,7 @@ interface StoreValue {
     dateLabel: string
     ticketType: TicketType
   }) => Promise<Ticket>
-  scanTicket: (idOrRaw: string, scannedBy: string) => Promise<{ result: 'success' | 'rejected' | 'not_found' | 'error'; ticket?: Ticket }>
+  scanTicket: (idOrRaw: string, scannedBy: string) => Promise<{ result: 'success' | 'rejected' | 'manual_review' | 'not_found' | 'error'; ticket?: Ticket }>
   findTicket: (id: string) => Ticket | undefined
 }
 
@@ -234,7 +234,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           setTickets(prev => prev.map(ticket => ticket.id === resolvedTicket.id ? resolvedTicket : ticket))
           return { result: 'success', ticket: resolvedTicket }
-        } else if (data.result === 'rejected') {
+        } else if (data.result === 'rejected' || data.result === 'manual_review') {
           const t = data.ticket
           // Server sends name as attendee field; map all fields correctly
           const matchedTicket: Ticket = {
@@ -250,7 +250,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             qty: t.quantity || 1,
             generatedBy: t.generatedBy || 'LITTX',
             generatedAt: fmtIST(t.generatedAt),
-            status: (t.status === 'cancelled' ? 'scanned' : 'scanned') as any,
+            status: t.status === 'scanned' || t.status === 'cancelled' ? 'scanned' : 'pending',
             scannedBy: t.scannedBy || undefined,
             scannedAt: t.scannedAt || undefined,
             // Carry cancelled marker for the UI to detect
@@ -258,7 +258,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           // Override with live store data if we have it (most up-to-date)
           const liveTicket = tickets.find(tk => tk.id === (t.id || t.ticketId || cleanId))
-          return { result: 'rejected', ticket: liveTicket || matchedTicket, serverTicket: t }
+          return { result: data.result === 'manual_review' ? 'manual_review' : 'rejected', ticket: liveTicket || matchedTicket, serverTicket: t }
 
         }
       } catch (err) {

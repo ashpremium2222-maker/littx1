@@ -18,7 +18,7 @@ interface Props {
     code?: string
     entry?: {
       ticketId: string
-      status: 'approved' | 'duplicate' | 'cancelled' | 'invalid'
+      status: 'approved' | 'duplicate' | 'cancelled' | 'invalid' | 'manual_review'
       attendee: string
       event: string
       ticketType: string
@@ -208,14 +208,14 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
       title: entry.event,
       holder: entry.attendee,
       time: `Generated ${entry.generatedAt} · Attempt ${entry.scannedAt}`,
-      reason: entry.status === 'duplicate' ? `Already Scanned${entry.originalScanAt ? ` · First ${entry.originalScanAt}` : ''}` : entry.status === 'cancelled' ? 'Ticket Cancelled' : 'Invalid Ticket',
+      reason: entry.status === 'duplicate' ? `Already Scanned${entry.originalScanAt ? ` · First ${entry.originalScanAt}` : ''}` : entry.status === 'cancelled' ? 'Ticket Cancelled' : entry.status === 'manual_review' ? 'Requires Manual Review' : 'Invalid Ticket',
     }))
     : rejectedScans.map(r => ({
       id: r.ticket?.id || r.rawCode || '—',
       title: r.ticket?.event || 'Unknown Ticket',
       holder: r.ticket?.attendee || r.rawCode || 'Unknown',
       time: r.timestamp,
-      reason: r.reason === 'duplicate' ? 'Already Scanned' : r.reason === 'cancelled' ? 'Ticket Cancelled' : 'Invalid Ticket',
+      reason: r.reason === 'duplicate' ? 'Already Scanned' : r.reason === 'cancelled' ? 'Ticket Cancelled' : r.reason === 'manual_review' ? 'Requires Manual Review' : 'Invalid Ticket',
     }))
   const feedbackEntry = scanFeedback?.entry
   const feedbackOk = scanFeedback?.status === 'success'
@@ -821,6 +821,7 @@ function RefinedScanResult({
   const rejectedReason =
     feedbackEntry?.status === 'duplicate' ? 'Duplicate Pass' :
     feedbackEntry?.status === 'cancelled' ? 'Cancelled Pass' :
+    feedbackEntry?.status === 'manual_review' ? 'Requires Manual Review' :
     'Invalid Pass'
   const background = approved
     ? 'radial-gradient(circle at 50% 20%, rgba(5,231,119,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(5,231,119,0.1) 0%, transparent 50%), #131313'

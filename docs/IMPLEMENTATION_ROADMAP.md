@@ -52,6 +52,9 @@ Phase 3 booking/payment reliability must address concurrency, inventory reservat
 
 Phase 3 continuation implements 15-minute inventory holds, individual-admission inventory arithmetic, secure OTP challenge storage primitives, one-scan whole-group admission reporting, and full-refund request/admin decision state transitions. Customer OTP recovery and refund submission remain unavailable pending verified OTP delivery. Payment gateway integration is deferred in this continuation; existing provider code/configuration is preserved without edits. Late captures after reservation expiry require manual review, without automatic ticket issuance, oversell, or refund. This does not close Phase 2: event editor/reporting/staff assignment, dynamic event ticket templates, and migration evidence remain open. Notification retry workers and production index verification also remain open. See `docs/BOOKING_PAYMENT_AUDIT.md`.
 
+## Phase 4 execution checkpoint — 2026-10-20
+
+The scanner audit and shared online/offline inventory integration are recorded in `docs/PHASE4_QR_OFFLINE_AUDIT.md`. Group scans, duplicate/cancelled/manual-review outcomes, seller/PR attribution, report channel counts, and offline inventory competition pass local tests. Phase 4 is not fully operationally verified: seller issue and scanner flows still need staging walkthroughs, MongoDB concurrency/index behavior is unverified, and event-specific ticket templates/notification delivery need staging checks. Payment gateway work remains deferred; late captures after inventory expiry require manual review.
 ## Dependencies and migration safeguards
 
 - Phase 2 depends on tenant ownership rules from Phase 1.

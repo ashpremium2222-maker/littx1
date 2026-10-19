@@ -116,6 +116,30 @@ test('master routes reject insufficient roles and expired persisted sessions', a
     await db.deleteUserSession('test-expired-admin');
 });
 
+test('seller access is limited to events owned by the seller company', async () => {
+    const db = require('../db');
+    const sellerId = `test-seller-scope-${Date.now()}`;
+    const token = `test-seller-scope-token-${Date.now()}`;
+    const ownedId = `test-seller-owned-event-${Date.now()}`;
+    const otherId = `test-seller-other-event-${Date.now()}`;
+    await db.createUser({ userId: sellerId, role: 'seller', companyId: 'phase4-seller-company', active: true, displayName: 'Scope Seller' });
+    await db.setSellerSession(sellerId, { sellerId, token, loginAt: new Date().toISOString() });
+    await db.saveEvent({ id: ownedId, name: ownedId, companyId: 'phase4-seller-company', status: 'published', visibility: 'public', active: true, ticketCategories: [] });
+    await db.saveEvent({ id: otherId, name: otherId, companyId: 'another-company', status: 'published', visibility: 'public', active: true, ticketCategories: [] });
+    try {
+        const allowed = await fetch(`${baseUrl}/api/seller/pricing?event=${encodeURIComponent(ownedId)}`, { headers: { 'x-seller-token': token } });
+        assert.notEqual(allowed.status, 403);
+        const denied = await fetch(`${baseUrl}/api/seller/pricing?event=${encodeURIComponent(otherId)}`, { headers: { 'x-seller-token': token } });
+        assert.equal(denied.status, 403);
+    } finally {
+        await db.deleteUserSession(sellerId);
+        await db.deleteSellerSession(sellerId);
+        await db.deleteUser(sellerId);
+        await db.deleteEvent(ownedId);
+        await db.deleteEvent(otherId);
+    }
+});
+
 test('scanner cannot scan an event outside its configured company and event assignment', async () => {
     const db = require('../db');
     const orderId = `test-scan-${Date.now()}`;
@@ -162,6 +186,55 @@ test('group ticket scan admits its full admission count once and rejects concurr
         const sale = await db.getByTicketId(ticketId);
         assert.equal(sale.status, 'scanned');
         assert.equal(sale.scannedAdmissionCount, 5);
+        const stats = await db.getScanStats('littlane', new Date(Date.now() - 10_000));
+        assert.equal(stats.declinedByReason.duplicate >= 1, true);
+    } finally {
+        await db.deleteSaleRecord(orderId);
+    }
+});
+
+test('cancelled tickets are rejected by the scanner without changing their status', async () => {
+    const db = require('../db');
+    const orderId = `test-cancelled-scan-${Date.now()}`;
+    const ticketId = `DGR-CANCELLED-${Date.now()}`;
+    await db.createSaleRecord({ orderId, ticketId, event: 'DHOLIDA GARBA ROYALE', companyId: 'littlane', status: 'cancelled', admissionCount: 2, quantity: 1, name: 'Cancelled Buyer' });
+    try {
+        const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
+        });
+        const { token } = await login.json();
+        const response = await fetch(`${baseUrl}/api/scan-ticket`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ticketId }),
+        });
+        const result = await response.json();
+        assert.equal(result.result, 'rejected');
+        assert.equal(result.ticket.status, 'cancelled');
+        assert.equal((await db.getByTicketId(ticketId)).status, 'cancelled');
+    } finally { await db.deleteSaleRecord(orderId); }
+});
+
+test('unissued offline order requires manual review and remains unchanged when scanned', async () => {
+    const db = require('../db');
+    const orderId = `test-manual-review-${Date.now()}`;
+    const ticketId = `DGR-REVIEW-${Date.now()}`;
+    const since = new Date(Date.now() - 10_000);
+    await db.createSaleRecord({ orderId, ticketId, event: 'DHOLIDA GARBA ROYALE', companyId: 'littlane', status: 'pr_cash_pending', paymentStatus: 'pending', admissionCount: 5, quantity: 1, name: 'Pending Buyer' });
+    try {
+        const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
+        });
+        const { token } = await login.json();
+        const response = await fetch(`${baseUrl}/api/scan-ticket`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ ticketId }),
+        });
+        const result = await response.json();
+        assert.equal(result.result, 'manual_review');
+        assert.match(result.message, /manual review/i);
+        assert.equal((await db.getByTicketId(ticketId)).status, 'pr_cash_pending');
+        const stats = await db.getScanStats('littlane', since);
+        assert.equal(stats.declinedByReason.manualReview >= 1, true);
     } finally {
         await db.deleteSaleRecord(orderId);
     }
@@ -226,6 +299,110 @@ test('cash approval transition is atomic and prevents duplicate ticket issuance'
         assert.equal((await db.getByOrderId(orderId)).status, 'paid');
     } finally {
         await db.deleteSaleRecord(orderId);
+    }
+});
+
+test('online and offline sales share event inventory and group admissions', async () => {
+    const db = require('../db');
+    const eventId = `phase4-shared-inventory-${Date.now()}`;
+    const eventName = `Phase 4 Shared Inventory ${Date.now()}`;
+    const prToken = `test-pr-${Date.now()}`;
+    const adminToken = `test-admin-${Date.now()}`;
+    const prUserId = `phase4-pr-${Date.now()}`;
+    const adminSessionId = `phase4-admin-${Date.now()}`;
+    const categoryId = 'group-five';
+    const createdOrders = [];
+    let generatedTicketId = null;
+    await db.saveEvent({
+        id: eventId, slug: eventId, name: eventName, companyId: 'littlane', organizerId: 'littlane',
+        status: 'published', visibility: 'public', active: true,
+        ticketCategories: [{ id: categoryId, name: 'Group of 5', price: 50, currency: 'INR', totalInventory: 5, remainingAvailability: 5, groupSize: 5, maxPerCustomer: 5, status: 'active' }],
+    });
+    await db.setUserSession(prUserId, { userId: prUserId, token: prToken, role: 'pr', companyId: 'littlane', displayName: 'Phase 4 PR', loginAt: new Date().toISOString() });
+    await db.setUserSession(adminSessionId, { userId: adminSessionId, token: adminToken, role: 'master_admin', companyId: 'littx', loginAt: new Date().toISOString() });
+    try {
+        const cashResponse = await fetch(`${baseUrl}/api/pr/cash-request`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': prToken },
+            body: JSON.stringify({ name: 'Offline Group', email: 'offline-group@example.test', phone: '9999999999', eventId, ticketCategoryId: categoryId, quantity: 1 }),
+        });
+        assert.equal(cashResponse.status, 200);
+        const cash = await cashResponse.json();
+        const cashSale = await db.getByOrderId(cash.orderId);
+        createdOrders.push(cash.orderId);
+        assert.equal(cashSale.admissionCount, 5);
+        assert.equal(cashSale.amount, 50);
+        assert.equal(cashSale.paymentStatus, 'pending');
+        assert.equal(cashSale.prUserId, prUserId);
+        assert.equal(cashSale.inventoryReserved, false);
+
+        const onlineResponse = await fetch(`${baseUrl}/api/create-order`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `online-${Date.now()}-phase4` },
+            body: JSON.stringify({ name: 'Online Group', email: 'online-group@example.test', phone: '8888888888', eventId, ticketCategoryId: categoryId, quantity: 1 }),
+        });
+        assert.equal(onlineResponse.status, 200);
+        const online = await onlineResponse.json();
+        createdOrders.push(online.orderId);
+        assert.equal((await db.getByOrderId(online.orderId)).admissionCount, 5);
+
+        const approvalResponse = await fetch(`${baseUrl}/api/admin/pr-approve`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': adminToken },
+            body: JSON.stringify({ orderId: cash.orderId }),
+        });
+        assert.equal(approvalResponse.status, 409);
+        const stillPending = await db.getByOrderId(cash.orderId);
+        assert.equal(stillPending.status, 'pr_cash_pending');
+        assert.equal(stillPending.paymentStatus, 'pending');
+        assert.equal(stillPending.manualReview, true);
+        assert.equal(stillPending.ticketId, cashSale.ticketId);
+        assert.equal((await db.getAllEvents()).find(event => event.id === eventId).ticketCategories[0].remainingAvailability, 0);
+
+        const secondEventId = `${eventId}-offline-wins`;
+        await db.saveEvent({
+            id: secondEventId, slug: secondEventId, name: `${eventName} Offline Wins`, companyId: 'littlane', organizerId: 'littlane',
+            status: 'published', visibility: 'public', active: true,
+            ticketCategories: [{ id: categoryId, name: 'Group of 5', price: 50, currency: 'INR', totalInventory: 5, remainingAvailability: 5, groupSize: 5, maxPerCustomer: 5, status: 'active' }],
+        });
+        const offlineFirstResponse = await fetch(`${baseUrl}/api/pr/cash-request`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': prToken },
+            body: JSON.stringify({ name: 'Verified Cash Group', email: 'cash-group@example.test', phone: '7777777777', eventId: secondEventId, ticketCategoryId: categoryId, quantity: 1 }),
+        });
+        assert.equal(offlineFirstResponse.status, 200);
+        const offlineFirst = await offlineFirstResponse.json();
+        createdOrders.push(offlineFirst.orderId);
+        const approved = await fetch(`${baseUrl}/api/admin/pr-approve`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': adminToken },
+            body: JSON.stringify({ orderId: offlineFirst.orderId }),
+        });
+        assert.equal(approved.status, 200);
+        const verifiedSale = await db.getByOrderId(offlineFirst.orderId);
+        generatedTicketId = verifiedSale.ticketId;
+        assert.equal(verifiedSale.paymentStatus, 'paid');
+        assert.equal(verifiedSale.paymentVerificationSource, 'admin_cash_approval');
+        assert.equal(verifiedSale.paymentVerifiedBy, adminSessionId);
+        assert.equal(verifiedSale.admissionCount, 5);
+        assert.equal((await db.getAllEvents()).find(event => event.id === secondEventId).ticketCategories[0].remainingAvailability, 0);
+
+        const reportResponse = await fetch(`${baseUrl}/api/admin/sales`, { headers: { 'x-auth-token': adminToken } });
+        assert.equal(reportResponse.status, 200);
+        const reportData = await reportResponse.json();
+        assert.equal(reportData.report.offline.orders, 1);
+        assert.equal(reportData.report.offline.qrCodes, 1);
+        assert.equal(reportData.report.offline.admissions, 5);
+        assert.equal(reportData.report.online.orders, 0);
+        assert.equal(reportData.report.remainingInventory.find(event => event.eventId === secondEventId).categories[0].remaining, 0);
+
+        const competingOnline = await fetch(`${baseUrl}/api/create-order`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `online-${Date.now()}-phase4b` },
+            body: JSON.stringify({ name: 'Too Late Online', email: 'late@example.test', phone: '6666666666', eventId: secondEventId, ticketCategoryId: categoryId, quantity: 1 }),
+        });
+        assert.equal(competingOnline.status, 400);
+    } finally {
+        for (const orderId of createdOrders) await db.deleteSaleRecord(orderId);
+        await db.deleteEvent(eventId);
+        await db.deleteEvent(`${eventId}-offline-wins`);
+        await db.deleteUserSession(prUserId);
+        await db.deleteUserSession(adminSessionId);
+        if (generatedTicketId) { try { fs.unlinkSync(path.join(TICKETS_DIR, `${generatedTicketId}.pdf`)); } catch (_) {} }
     }
 });
 

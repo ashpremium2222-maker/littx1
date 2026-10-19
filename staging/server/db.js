@@ -168,11 +168,15 @@ const SellerSessionSchema = new mongoose.Schema({
 // Fire-and-forget from the gate endpoint — never blocks the gate response.
 const ScanLogSchema = new mongoose.Schema({
     ticketId: { type: String, required: true },
-    result: { type: String, enum: ['accepted', 'duplicate', 'cancelled', 'invalid'], required: true },
+    result: { type: String, enum: ['accepted', 'duplicate', 'cancelled', 'invalid', 'manual_review'], required: true },
     scannedBy: { type: String, default: 'Gate Staff' },
+    scannerUserId: { type: String },
     ip: { type: String, default: 'unknown' },
     companyId: { type: String, default: 'littlane' },
     event: { type: String },
+    orderId: { type: String },
+    admissionCount: { type: Number, min: 1 },
+    gate: { type: String },
     timestamp: { type: Date, default: Date.now }
 });
 ScanLogSchema.index({ timestamp: -1 });
@@ -211,6 +215,9 @@ const SaleSchema = new mongoose.Schema({
     paymentStatus: { type: String, enum: ['pending', 'processing', 'paid', 'failed', 'expired', 'cancelled', 'exception', 'refund_pending', 'refunded'] },
     paymentProcessingLeaseUntil: { type: Date },
     paymentException: { type: String },
+    paymentVerificationSource: { type: String },
+    paymentVerifiedBy: { type: String },
+    paymentVerifiedAt: { type: String },
     lastPaymentAttemptId: { type: String },
     lastPaymentAttemptStatus: { type: String },
     lastPaymentAttemptAt: { type: Date },
@@ -665,7 +672,7 @@ async function countScannedSales() {
     });
 }
 
-async function atomicApprovePendingSale(orderId, approvedBy, approvedAt) {
+async function atomicApprovePendingSale(orderId, approvedBy, approvedAt, inventory = {}) {
     return await Sale.findOneAndUpdate(
         { orderId, approvalStatus: 'PENDING' },
         {
@@ -675,6 +682,9 @@ async function atomicApprovePendingSale(orderId, approvedBy, approvedAt) {
                 approvalDecidedAt: approvedAt,
                 deliveryStatus: 'IN_PROGRESS',
                 deliveryStartedAt: approvedAt,
+                inventoryReserved: Boolean(inventory.reserved),
+                reservationStatus: inventory.limited ? 'active' : 'not_required',
+                reservationExpiresAt: inventory.expiresAt || null,
                 updatedAt: approvedAt
             },
             $inc: { deliveryAttemptCount: 1 }
@@ -1574,7 +1584,7 @@ module.exports = {
         }
         return await deleteSaleRecord(orderId);
     },
-    atomicApprovePendingSale: async (orderId, approvedBy, approvedAt) => {
+    atomicApprovePendingSale: async (orderId, approvedBy, approvedAt, inventory = {}) => {
         if (useMock()) {
             const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.approvalStatus === 'PENDING');
             if (idx === -1) return null;
@@ -1585,13 +1595,16 @@ module.exports = {
                 approvalDecidedAt: approvedAt,
                 deliveryStatus: 'IN_PROGRESS',
                 deliveryStartedAt: approvedAt,
+                inventoryReserved: Boolean(inventory.reserved),
+                reservationStatus: inventory.limited ? 'active' : 'not_required',
+                reservationExpiresAt: inventory.expiresAt || null,
                 deliveryAttemptCount: (mockDb.sales[idx].deliveryAttemptCount || 0) + 1,
                 updatedAt: approvedAt
             };
             _saveMockSales(mockDb.sales);
             return mockDb.sales[idx];
         }
-        return await atomicApprovePendingSale(orderId, approvedBy, approvedAt);
+        return await atomicApprovePendingSale(orderId, approvedBy, approvedAt, inventory);
     },
     atomicRejectPendingSale: async (orderId, rejectedBy, rejectedAt) => {
         if (useMock()) {
@@ -1610,11 +1623,22 @@ module.exports = {
         }
         return await atomicRejectPendingSale(orderId, rejectedBy, rejectedAt);
     },
-    atomicApproveCashSale: async (orderId, approvedBy, approvedAt) => {
+    atomicApproveCashSale: async (orderId, approvedBy, approvedAt, inventory = {}) => {
         const update = {
             status: 'paid',
-            paymentId: `cash_approved_${Date.now()}`,
+            paymentId: null,
+            paymentStatus: 'paid',
+            paymentVerificationSource: 'admin_cash_approval',
+            paymentVerifiedBy: approvedBy,
+            paymentVerifiedAt: approvedAt,
             paidAt: approvedAt,
+            fulfillmentStatus: 'pending',
+            inventoryReserved: Boolean(inventory.reserved),
+            reservationStatus: inventory.limited ? 'active' : 'not_required',
+            reservationExpiresAt: inventory.expiresAt || null,
+            inventoryReserved: Boolean(inventory.reserved),
+            reservationStatus: inventory.limited ? 'active' : 'not_required',
+            reservationExpiresAt: inventory.expiresAt || null,
             approvalStatus: 'APPROVED',
             approvedBy,
             approvalDecidedAt: approvedAt,
@@ -2026,11 +2050,10 @@ module.exports = {
     },
     deleteEvent: async (id) => {
         if (useMock()) {
-            const idx = mockDb.events.findIndex(e => e._id === id);
-            if (idx !== -1) {
-                return mockDb.events.splice(idx, 1)[0];
-            }
-            return null;
+            const deleted = Array.from(new Set(_mockEvents.values())).find(event => matchesEventRef(event, id));
+            if (!deleted) return null;
+            for (const [key, value] of _mockEvents.entries()) if (value === deleted) _mockEvents.delete(key);
+            return deleted;
         }
         return await deleteEvent(id);
     },
@@ -2145,9 +2168,9 @@ module.exports = {
                 (!companyId || l.companyId === companyId) &&
                 new Date(l.timestamp) >= since
             );
-            const c = { accepted: 0, duplicate: 0, cancelled: 0, invalid: 0 };
+            const c = { accepted: 0, duplicate: 0, cancelled: 0, invalid: 0, manual_review: 0 };
             logs.forEach(l => { if (c[l.result] !== undefined) c[l.result]++; });
-            return { accepted: c.accepted, declined: c.duplicate + c.cancelled + c.invalid, declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid } };
+            return { accepted: c.accepted, declined: c.duplicate + c.cancelled + c.invalid + c.manual_review, declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid, manualReview: c.manual_review } };
         }
         const query = { timestamp: { $gte: sinceDate || new Date(0) } };
         if (companyId) query.companyId = companyId;
@@ -2155,12 +2178,12 @@ module.exports = {
             { $match: query },
             { $group: { _id: '$result', count: { $sum: 1 } } }
         ]);
-        const c = { accepted: 0, duplicate: 0, cancelled: 0, invalid: 0 };
+        const c = { accepted: 0, duplicate: 0, cancelled: 0, invalid: 0, manual_review: 0 };
         agg.forEach(a => { if (c[a._id] !== undefined) c[a._id] = a.count; });
         return {
             accepted: c.accepted,
-            declined: c.duplicate + c.cancelled + c.invalid,
-            declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid }
+            declined: c.duplicate + c.cancelled + c.invalid + c.manual_review,
+            declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid, manualReview: c.manual_review }
         };
     },
 

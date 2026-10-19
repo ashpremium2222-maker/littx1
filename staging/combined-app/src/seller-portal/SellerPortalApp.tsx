@@ -142,7 +142,7 @@ export default function SellerPortalApp() {
       else acc.pending += 1
       return acc
     },
-    { total: 0, approved: 0, pending: 0, rejected: 0 }
+    { total: 0, approved: 0, pending: 0, rejected: 0, qrCodes: 0, admissions: 0 }
   )
   const sellerSalesSummary = sellerTickets.reduce(
     (acc, ticket) => {
@@ -753,6 +753,14 @@ export default function SellerPortalApp() {
             <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3">
               <div className="text-[10px] font-bold uppercase tracking-widest text-red-300/80">Rejected</div>
               <div className="mt-1 text-2xl font-black text-red-300">{ticketStats.rejected}</div>
+            </div>
+            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-violet-300/80">QR codes issued</div>
+              <div className="mt-1 text-2xl font-black text-violet-300">{ticketStats.qrCodes}</div>
+            </div>
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-cyan-300/80">Admissions sold</div>
+              <div className="mt-1 text-2xl font-black text-cyan-300">{ticketStats.admissions}</div>
             </div>
           </div>
 
