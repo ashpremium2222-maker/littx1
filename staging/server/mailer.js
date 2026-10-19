@@ -145,10 +145,10 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
             subject = `Your Invitation: Dholida Garba Royale Influencer Lineup`;
             text = `Hi ${name},\n\nCongratulations! 🎉\n\nWe’re excited to officially welcome you to the Dholida Garba Royale Influencer Lineup, presented by LITTX.\n\nThank you for being a part of this journey. We’re looking forward to having you with us and creating an unforgettable experience together.\n\nEvent Details\n• Event: Dholida Garba Royale\n• Date: 17 October 2026\n• Time: 4:00 PM onwards \n• Venue: Pethkar Ground, Kothrud, Pune\n\nYour official Invitation Pass is attached to this email as a PDF. It contains a unique QR code that will be scanned at the venue for entry. Please keep it safe and avoid sharing it, as each QR code is valid for one time entry only.\n\nWe can’t wait to see you at Dholida Garba Royale!\n\nBest Regards,\nTeam LITTX`;
         } else {
-            const viewUrl = downloadUrl ? downloadUrl.replace('/download', '').replace('/api/ticket/', `${process.env.BASE_URL || ''}/view/`) : null;
-            // Build a clean view URL: BASE_URL/view/:ticketId
+            // Direct ticket-ID URLs are in a planned migration. New email links
+            // send customers to OTP-verified booking recovery instead.
             const publicOrigin = process.env.BASE_URL || 'https://www.littx.in';
-            const ticketViewUrl = `${publicOrigin}/view/${ticketId}`;
+            const ticketViewUrl = `${publicOrigin}/bookings`;
 
             html = `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #ffffff; border-radius: 24px; overflow: hidden;">
@@ -184,7 +184,7 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
                 <!-- CTA Button -->
                 <div style="text-align: center; margin-bottom: 24px;">
                   <a href="${ticketViewUrl}" style="display: inline-block; background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%); color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 700; padding: 16px 40px; border-radius: 100px; letter-spacing: 0.3px; box-shadow: 0 8px 24px rgba(168,85,247,0.35);">
-                    🎟️ View Your Ticket Online
+                    🎟️ Recover Your Ticket Securely
                   </a>
                   <p style="margin: 10px 0 0; font-size: 11px; color: #555555;">Or paste this link: <span style="color: #a855f7;">${ticketViewUrl}</span></p>
                 </div>
@@ -217,7 +217,7 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
             </div>`;
 
             subject = `Your ${eventTitle} Pass — ${ticketId}`;
-            text = `Hi ${name},\n\nThanks for booking your ${eventTitle} pass! Your ticket (${ticketId}) is confirmed.\n\nView your ticket online: ${ticketViewUrl}\n\n🎟️ Ticket Guidelines\n\n• Your QR code is unique and valid for one-time entry only.\n• Do not share or forward this ticket. If someone else uses it first, your entry will be denied.\n• Carry a valid Photo ID and your payment screenshot/receipt for verification at the venue.\n• Keep your ticket ready on your phone or as a printed copy.\n• Duplicate, tampered, or already-scanned tickets will not be accepted.\n\nNO EXCUSES. All ticket purchases are final. Once booked, tickets are non-refundable and non-transferable under any circumstances.\n\nYour PDF ticket is attached to this email.\n\nSee you on the dancefloor!\n— LITTX`;
+            text = `Hi ${name},\n\nThanks for booking your ${eventTitle} pass! Your ticket (${ticketId}) is confirmed.\n\nView booking history and recover your ticket using an email verification code: ${ticketViewUrl}\n\n🎟️ Ticket Guidelines\n\n• Your QR code is unique and valid for one-time entry only.\n• Do not share or forward this ticket. If someone else uses it first, your entry will be denied.\n• Carry a valid Photo ID and your payment screenshot/receipt for verification at the venue.\n• Keep your ticket ready on your phone or as a printed copy.\n• Duplicate, tampered, or already-scanned tickets will not be accepted.\n\nNO EXCUSES. All ticket purchases are final. Once booked, tickets are non-refundable and non-transferable under any circumstances.\n\nYour PDF ticket is attached to this email.\n\nSee you on the dancefloor!\n— LITTX`;
         }
 
         // 1. If Brevo API is configured, use Brevo HTTP API (Port 443 — Never Blocked)

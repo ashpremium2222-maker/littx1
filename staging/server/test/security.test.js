@@ -101,6 +101,33 @@ test('booking history cannot be retrieved by supplying a guessed order reference
     assert.deepEqual(await response.json(), { success: false, message: 'Verification failed. Request a new code and try again.' });
 });
 
+test('a successfully verified booking-recovery OTP returns scoped ticket access tokens', async () => {
+    const secret = 'test-only-booking-otp-secret-with-more-than-32-characters';
+    process.env.BOOKING_OTP_SECRET = secret;
+    const orderId = `security-otp-history-${Date.now()}`;
+    const ticketId = `DGR-${crypto.randomUUID()}`;
+    const email = `otp-history-${Date.now()}@example.test`;
+    await db.createSaleRecord({ orderId, ticketId, email, name: 'OTP Customer', event: 'Test Event', ticketType: 'Group of Five', status: 'emailed', emailStatus: 'sent', paymentStatus: 'paid', quantity: 1, admissionCount: 5, amount: 500, createdAt: new Date().toISOString() });
+    const { issueOtp } = require('../booking-otp');
+    const challenge = await issueOtp({ subject: email, purpose: 'booking_recovery', secret, db });
+    try {
+        const response = await fetch(`${baseUrl}/api/customer/bookings/recovery/verify`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, challengeId: challenge.challengeId, code: challenge.deliveryCode }),
+        });
+        assert.equal(response.status, 200);
+        const result = await response.json();
+        assert.equal(result.bookings.length, 1);
+        assert.equal(result.bookings[0].ticketId, ticketId);
+        assert.equal(result.bookings[0].admissionCount, 5);
+        assert.ok(result.bookings[0].ticketAccessToken);
+        assert.ok(result.bookings[0].ticketViewToken);
+        assert.ok(result.bookings[0].ticketResendToken);
+    } finally {
+        await db.deleteSaleRecord(orderId);
+    }
+});
+
 test('verified ticket PDF access requires an unexpired token bound to ticket and booking email', async () => {
     const secret = process.env.BOOKING_OTP_SECRET || 'test-only-booking-otp-secret-with-more-than-32-characters';
     process.env.BOOKING_OTP_SECRET = secret;
@@ -128,6 +155,71 @@ test('verified ticket PDF access requires an unexpired token bound to ticket and
         assert.match(allowed.headers.get('content-type') || '', /application\/pdf/);
         assert.match(allowed.headers.get('cache-control') || '', /no-store/);
     } finally {
+        await db.deleteSaleRecord(orderId);
+        try { fs.unlinkSync(path.join(TICKETS_DIR, `${ticketId}.pdf`)); } catch (_) {}
+    }
+});
+
+test('OTP recovery ticket view and resend reject missing, wrong-purpose, wrong-ticket, and expired tokens', async () => {
+    const secret = process.env.BOOKING_OTP_SECRET || 'test-only-booking-otp-secret-with-more-than-32-characters';
+    process.env.BOOKING_OTP_SECRET = secret;
+    const orderId = `security-ticket-scopes-${Date.now()}`;
+    const ticketId = `DGR-${crypto.randomUUID()}`;
+    const email = 'scoped-customer@example.test';
+    await db.createSaleRecord({ orderId, ticketId, email, name: 'Scoped Customer', event: 'Test Event', ticketType: 'General', status: 'emailed', emailStatus: 'sent', paymentStatus: 'paid', quantity: 3, admissionCount: 3, amount: 369, createdAt: new Date().toISOString() });
+    try {
+        for (const [route, method] of [['ticket-view', 'POST'], ['ticket-download', 'POST'], ['ticket-resend', 'POST']]) {
+            const denied = await fetch(`${baseUrl}/api/customer/bookings/${route}`, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketId }) });
+            assert.equal(denied.status, 401, route);
+        }
+
+        const wrongPurpose = issueCustomerTicketToken({ ticketId, email, secret, purpose: 'customer_ticket_pdf' });
+        const wrongPurposeResponse = await fetch(`${baseUrl}/api/customer/bookings/ticket-view`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${wrongPurpose}` }, body: JSON.stringify({ ticketId }) });
+        assert.equal(wrongPurposeResponse.status, 401);
+
+        const wrongTicket = issueCustomerTicketToken({ ticketId: 'another-ticket', email, secret, purpose: 'customer_ticket_view' });
+        const wrongTicketResponse = await fetch(`${baseUrl}/api/customer/bookings/ticket-view`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${wrongTicket}` }, body: JSON.stringify({ ticketId }) });
+        assert.equal(wrongTicketResponse.status, 401);
+
+        const wrongRecipient = issueCustomerTicketToken({ ticketId, email: 'other@example.test', secret, purpose: 'customer_ticket_resend' });
+        const wrongRecipientResponse = await fetch(`${baseUrl}/api/customer/bookings/ticket-resend`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${wrongRecipient}` }, body: JSON.stringify({ ticketId }) });
+        assert.equal(wrongRecipientResponse.status, 401);
+
+        const expired = issueCustomerTicketToken({ ticketId, email, secret, purpose: 'customer_ticket_view', now: new Date(Date.now() - 16 * 60 * 1000) });
+        const expiredResponse = await fetch(`${baseUrl}/api/customer/bookings/ticket-view`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${expired}` }, body: JSON.stringify({ ticketId }) });
+        assert.equal(expiredResponse.status, 401);
+
+        const viewToken = issueCustomerTicketToken({ ticketId, email, secret, purpose: 'customer_ticket_view' });
+        const viewed = await fetch(`${baseUrl}/api/customer/bookings/ticket-view`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${viewToken}` }, body: JSON.stringify({ ticketId }) });
+        assert.equal(viewed.status, 200);
+        const body = await viewed.json();
+        assert.equal(body.ticket.quantity, 3);
+        assert.equal(body.ticket.ticketId, ticketId);
+        assert.match(viewed.headers.get('cache-control') || '', /no-store/);
+    } finally {
+        await db.deleteSaleRecord(orderId);
+    }
+});
+
+test('role-scoped staff ticket retrieval rejects anonymous and cross-PR access while allowing the owning PR', async () => {
+    const orderId = `security-pr-ticket-${Date.now()}`;
+    const ticketId = `DGR-${crypto.randomUUID()}`;
+    const prToken = `test-pr-ticket-${crypto.randomUUID()}`;
+    const otherToken = `test-pr-other-${crypto.randomUUID()}`;
+    await db.createSaleRecord({ orderId, ticketId, prUserId: 'ticket-owner-pr', email: 'pr-customer@example.test', name: 'PR Customer', event: 'Test Event', ticketType: 'General', status: 'emailed', emailStatus: 'sent', paymentStatus: 'paid', quantity: 4, admissionCount: 4, amount: 400, createdAt: new Date().toISOString() });
+    await db.setUserSession('ticket-owner-pr', { token: prToken, role: 'pr', companyId: 'littlane', loginAt: new Date().toISOString() });
+    await db.setUserSession('other-pr', { token: otherToken, role: 'pr', companyId: 'littlane', loginAt: new Date().toISOString() });
+    try {
+        const anonymous = await fetch(`${baseUrl}/api/pr/tickets/${ticketId}/download`);
+        assert.equal(anonymous.status, 401);
+        const crossAccess = await fetch(`${baseUrl}/api/pr/tickets/${ticketId}/download`, { headers: { 'x-auth-token': otherToken } });
+        assert.equal(crossAccess.status, 404);
+        const authorized = await fetch(`${baseUrl}/api/pr/tickets/${ticketId}/download`, { headers: { 'x-auth-token': prToken } });
+        assert.equal(authorized.status, 200);
+        assert.match(authorized.headers.get('content-type') || '', /application\/pdf/);
+    } finally {
+        await db.deleteUserSession('ticket-owner-pr');
+        await db.deleteUserSession('other-pr');
         await db.deleteSaleRecord(orderId);
         try { fs.unlinkSync(path.join(TICKETS_DIR, `${ticketId}.pdf`)); } catch (_) {}
     }
@@ -162,6 +254,26 @@ test('cancelled tickets cannot be viewed or downloaded from a stale bearer link'
     }
 });
 
+test('legacy ticket links remain compatible during the approved transition period', async () => {
+    const orderId = `security-legacy-compat-${Date.now()}`;
+    const ticketId = `DGR-${crypto.randomUUID()}`;
+    await db.createSaleRecord({ orderId, ticketId, email: 'legacy@example.test', name: 'Legacy Customer', event: 'Test Event', ticketType: 'General', status: 'emailed', emailStatus: 'sent', paymentStatus: 'paid', quantity: 2, admissionCount: 2, amount: 200, createdAt: new Date().toISOString() });
+    try {
+        const view = await fetch(`${baseUrl}/api/ticket/${ticketId}`);
+        assert.equal(view.status, 200);
+        const viewBody = await view.json();
+        assert.equal(viewBody.ticket.ticketId, ticketId);
+        assert.equal(viewBody.ticket.quantity, 2);
+
+        const download = await fetch(`${baseUrl}/api/ticket/${ticketId}/download`);
+        assert.equal(download.status, 200);
+        assert.match(download.headers.get('content-type') || '', /application\/pdf/);
+    } finally {
+        await db.deleteSaleRecord(orderId);
+        try { fs.unlinkSync(path.join(TICKETS_DIR, `${ticketId}.pdf`)); } catch (_) {}
+    }
+});
+
 test('sensitive master, diagnostics, email and destructive routes reject unauthenticated calls', async () => {
     for (const route of [
         '/api/master/companies',
@@ -172,8 +284,17 @@ test('sensitive master, diagnostics, email and destructive routes reject unauthe
         '/api/admin/sellers',
         '/api/admin/refund-requests',
         '/api/admin/reconciliation',
+        '/api/admin/tickets/nonexistent/download',
+        '/api/pr/tickets/nonexistent/download',
+        '/api/seller/tickets/nonexistent/download',
+        '/api/shadow/tickets/nonexistent/download',
+        '/api/shadow-private/tickets/nonexistent/download',
     ]) {
         const response = await fetch(`${baseUrl}${route}`);
+        assert.equal(response.status, 401, route);
+    }
+    for (const route of ['/api/admin/tickets/nonexistent/resend', '/api/pr/tickets/nonexistent/resend', '/api/seller/tickets/nonexistent/resend', '/api/shadow/tickets/nonexistent/resend', '/api/shadow-private/tickets/nonexistent/resend']) {
+        const response = await fetch(`${baseUrl}${route}`, { method: 'POST' });
         assert.equal(response.status, 401, route);
     }
     const destructive = await fetch(`${baseUrl}/api/admin/cancel-ticket`, {

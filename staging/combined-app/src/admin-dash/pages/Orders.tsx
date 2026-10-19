@@ -47,10 +47,12 @@ function OrderDrawer({
   order,
   onClose,
   onResend,
+  onDownload,
 }: {
   order: Order
   onClose: () => void
   onResend: (id: string) => void
+  onDownload: (id: string) => void
 }) {
   return (
     <div
@@ -174,15 +176,14 @@ function OrderDrawer({
 
           {order.ticketId && (
             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <a
-                href={`/api/ticket/${order.ticketId}/download`}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={() => onDownload(order.ticketId)}
                 className="btn-primary"
                 style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 1, fontSize: '11.5px' }}
               >
                 Download PDF
-              </a>
+              </button>
               <button
                 className="btn-secondary"
                 onClick={() => onResend(order.ticketId)}
@@ -268,6 +269,7 @@ export default function Orders({
   sales = [],
   onResend,
   globalSearch = '',
+  adminKey = '',
 }: OrdersProps) {
   const [selected, setSelected] = useState<Order | null>(null)
   const [filter, setFilter] = useState<string>('all')
@@ -278,6 +280,16 @@ export default function Orders({
   const [searchQ, setSearchQ] = useState('')
   const [showPhoneList, setShowPhoneList] = useState(false)
   const [phoneCopied, setPhoneCopied] = useState(false)
+
+  async function downloadTicket(ticketId: string) {
+    try {
+      const response = await fetch(`/api/admin/tickets/${encodeURIComponent(ticketId)}/download`, { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
+      if (!response.ok) throw new Error('Ticket download is not authorized.')
+      const url = URL.createObjectURL(await response.blob())
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = `Stageway-ticket-${ticketId}.pdf`
+      document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) { alert(error instanceof Error ? error.message : 'Ticket download failed.') }
+  }
 
   const effectiveSearch = searchQ || globalSearch
 
@@ -587,6 +599,7 @@ export default function Orders({
           order={selected}
           onClose={() => setSelected(null)}
           onResend={onResend}
+          onDownload={downloadTicket}
         />
       )}
 

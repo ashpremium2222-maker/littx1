@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import QRCode from '../components/QRCode'
 import type { Ticket } from '../lib/store'
 
@@ -10,7 +9,6 @@ interface Props {
 }
 
 export default function TicketCard({ dark, ticket, onBack }: Props) {
-  const [sendState, setSendState] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
   const bg = dark ? 'bg-[#0D0D0D]' : 'bg-[#F9F9FB]'
   const navBg = dark ? 'bg-[#0D0D0D] border-[#1E1E1E]' : 'bg-[#F9F9FB] border-[#EBEBEB]'
   const cardBg = dark ? 'bg-[#1A1A1A] border-[#2A2A2A]' : 'bg-white border-[#EBEBEB]'
@@ -20,22 +18,8 @@ export default function TicketCard({ dark, ticket, onBack }: Props) {
 
   const isScanned = ticket.status === 'scanned'
 
-  async function handleSendEmail() {
-    if (sendState !== 'idle') return
-    setSendState('loading')
-    try {
-      const res = await fetch(`/api/ticket/${ticket.id}/resend`, { method: 'POST' })
-      const data = await res.json()
-      if (data.success || res.ok) {
-        setSendState('sent')
-      } else {
-        setSendState('error')
-        setTimeout(() => setSendState('idle'), 3000)
-      }
-    } catch {
-      setSendState('error')
-      setTimeout(() => setSendState('idle'), 3000)
-    }
+  function handleSendEmail() {
+    window.location.assign('/bookings')
   }
 
   return (
@@ -217,54 +201,18 @@ export default function TicketCard({ dark, ticket, onBack }: Props) {
       >
         <motion.button
           onClick={handleSendEmail}
-          disabled={sendState !== 'idle'}
-          whileHover={sendState === 'idle' ? { scale: 1.015 } : {}}
-          whileTap={sendState === 'idle' ? { scale: 0.97 } : {}}
+          whileHover={{ scale: 1.015 }}
+          whileTap={{ scale: 0.97 }}
           className={`w-full py-3.5 rounded-2xl text-sm font-bold border flex items-center justify-center gap-2 ${
             dark ? 'bg-[#1A1A1A] border-[#2A2A2A] text-white' : 'bg-white border-[#E4E4E7] text-[#111] shadow-sm'
           }`}
         >
-          <AnimatePresence mode="wait" initial={false}>
-            {sendState === 'sent' ? (
-              <motion.span
-                key="sent"
-                initial={{ opacity: 0, scale: 0.7 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.7 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-                className="flex items-center gap-2"
-              >
-                <motion.svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <motion.path d="M2 8l4 4 8-8" stroke="#22C55E" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-                    initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4 }} />
-                </motion.svg>
-                Sent to {ticket.email}
-              </motion.span>
-            ) : sendState === 'loading' ? (
-              <motion.span key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2">
-                <motion.span className="w-4 h-4 rounded-full border-2 border-current/30 border-t-current inline-block"
-                  animate={{ rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }} />
-                Sending…
-              </motion.span>
-            ) : sendState === 'error' ? (
-              <motion.span key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 text-red-500">
-                ✕ Failed — try again
-              </motion.span>
-            ) : (
-              <motion.span
-                key="send"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center gap-2"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M2 8l6-6 6 6M8 2v10M4 14h8" stroke={dark ? '#A855F7' : '#7C3AED'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Send to Email
-              </motion.span>
-            )}
-          </AnimatePresence>
+          <span className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M2 8l6-6 6 6M8 2v10M4 14h8" stroke={dark ? '#A855F7' : '#7C3AED'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Recover ticket with email verification
+          </span>
         </motion.button>
       </motion.div>
     </div>

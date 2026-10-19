@@ -61,6 +61,16 @@ export default function Tickets({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [searchQ, setSearchQ] = useState('')
 
+  async function downloadTicket(ticketId: string) {
+    try {
+      const response = await fetch(`/api/admin/tickets/${encodeURIComponent(ticketId)}/download`, { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
+      if (!response.ok) throw new Error('Ticket download is not authorized.')
+      const url = URL.createObjectURL(await response.blob())
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = `Stageway-ticket-${ticketId}.pdf`
+      document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) { alert(error instanceof Error ? error.message : 'Ticket download failed.') }
+  }
+
   const effectiveSearch = searchQ || globalSearch
 
   const baseTicketSales = sales.filter((s) => {
@@ -353,10 +363,10 @@ export default function Tickets({
                       <td>{t.generated}</td>
                       <td>
                         <div style={{ display: 'flex', gap: '6px' }}>
-                          <a
-                            href={t.status === 'Cancelled' ? '#' : `/api/ticket/${t.id}/download`}
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => downloadTicket(t.id)}
+                            disabled={t.status === 'Cancelled'}
                             className="btn-secondary"
                             style={{
                               height: '28px',
@@ -369,7 +379,7 @@ export default function Tickets({
                             }}
                           >
                             PDF
-                          </a>
+                          </button>
                           <button
                             className="btn-secondary"
                             onClick={() => onResend(t.id)}

@@ -182,7 +182,7 @@ export default function EventMarketplace() {
       {loading ? <p role="status">Loading event information…</p> : error && requested && !selected ? <p role="alert" style={{ ...panel, color: '#ff7777' }}>{error}</p> : confirmation ? <section style={{ ...panel, textAlign: 'center', padding: 36 }}>
         <h1>Booking confirmed</h1><p>{confirmation.event}</p>
         {confirmation.ticketId && <p>Ticket reference: <strong>{confirmation.ticketId}</strong></p>}
-        {confirmation.downloadUrl && <a href={confirmation.downloadUrl} style={{ color: '#d8ff3f' }}>Open your ticket</a>}
+        {confirmation.ticketId && <a href="/bookings" style={{ color: '#d8ff3f' }}>Recover your ticket securely</a>}
         <p><a href="/events" style={{ color: '#d8ff3f' }}>Browse more events</a></p>
       </section> : selected ? <>
         <button onClick={() => { window.location.href = '/events' }} style={{ ...input, width: 'auto', cursor: 'pointer', marginBottom: 18 }}>← All events</button>

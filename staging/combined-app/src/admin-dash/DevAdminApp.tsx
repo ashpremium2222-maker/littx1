@@ -392,7 +392,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
   const handleResend = async (ticketId: string) => {
     try {
-      const res = await fetch(`/api/ticket/${ticketId}/resend`, { method: 'POST' })
+      const res = await fetch(`/api/admin/tickets/${encodeURIComponent(ticketId)}/resend`, { method: 'POST', headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
       const data = await res.json()
       alert(data.message)
       fetchSales()

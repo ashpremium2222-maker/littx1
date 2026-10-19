@@ -74,7 +74,7 @@ function MainAppShell() {
     }
   }
 
-  // Public ticket view — /view/FT-XXXXXXXX — linked from email
+  // Legacy ticket view for previously distributed /view/:ticketId links.
   if (path.startsWith('/view/')) {
     const ticketId = path.replace('/view/', '').split('/')[0]
     return <PublicTicketView ticketId={ticketId} />

@@ -282,6 +282,10 @@ const ticketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, ke
 const bookingRecoveryRequestRateLimit = rateLimit({ limit: 5, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-request' });
 const bookingRecoveryVerifyRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-verify' });
 const recoveredTicketDownloadRateLimit = rateLimit({ limit: 20, windowMs: 15 * 60 * 1000, keyPrefix: 'recovered-ticket-download' });
+const recoveredTicketViewRateLimit = rateLimit({ limit: 30, windowMs: 15 * 60 * 1000, keyPrefix: 'recovered-ticket-view' });
+const recoveredTicketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, keyPrefix: 'recovered-ticket-resend' });
+const staffTicketDownloadRateLimit = rateLimit({ limit: 20, windowMs: 15 * 60 * 1000, keyPrefix: 'staff-ticket-download' });
+const staffTicketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, keyPrefix: 'staff-ticket-resend' });
 const CHECKOUT_RESERVATION_MS = 15 * 60 * 1000;
 const checkoutRateLimit = rateLimit({ limit: 20, windowMs: 15 * 60 * 1000, keyPrefix: 'checkout' });
 
@@ -381,7 +385,7 @@ async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, eve
             ticketId,
             event,
             ticketType,
-            viewUrl: `${ticketPublicOrigin}/view/${ticketId}`,
+            viewUrl: `${ticketPublicOrigin}/bookings`,
             pdfUrl: downloadUrl
         });
 
@@ -1345,7 +1349,7 @@ app.get('/shadowbyash/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/shadow', (req, res) => res.sendFile(distIndexHtml));
 app.get('/shadow/:splat', (req, res) => res.sendFile(distIndexHtml));
 
-// Public ticket view — /view/:ticketId — linked from emails
+// Legacy public ticket view — retained for historic /view/:ticketId links until cutoff.
 app.get('/view/:ticketId', (req, res) => res.sendFile(distIndexHtml));
 
 
@@ -2027,23 +2031,39 @@ app.get('/api/ticket/:ticketId', rateLimit({ limit: 30, windowMs: 15 * 60 * 1000
     // controlled migration rather than an unauthenticated GET request.
     res.set('Cache-Control', 'private, no-store');
     res.set('Pragma', 'no-cache');
-    res.json({
-        success: true,
-        ticket: {
-            ticketId: sale.ticketId,
-            event: sale.event || 'DHOLIDA GARBA ROYALE',
-            name: sale.name,
-            attendee: sale.name,
-            dateLabel,
-            venue,
-            ticketType: ticketTypeForSale(sale),
-            amount,
-            quantity: sale.quantity || 1,
-            status: sale.scannedAt ? 'scanned' : 'paid',
-            scannedAt: sale.scannedAt,
-            generatedAt: sale.generatedAt || sale.createdAt
+    res.json({ success: true, ticket: {
+        ticketId: sale.ticketId, event: sale.event || 'DHOLIDA GARBA ROYALE', name: sale.name,
+        attendee: sale.name, dateLabel, venue, ticketType: ticketTypeForSale(sale), amount,
+        quantity: sale.quantity || 1, status: sale.scannedAt ? 'scanned' : 'paid',
+        scannedAt: sale.scannedAt, generatedAt: sale.generatedAt || sale.createdAt
+    } });
+});
+
+// OTP-verified customer view. The signed token is scoped to this operation,
+// ticket and stored recipient; the ticket ID alone is not authorization here.
+app.post('/api/customer/bookings/ticket-view', recoveredTicketViewRateLimit, async (req, res) => {
+    const ticketId = String(req.body?.ticketId || '');
+    const token = String(req.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+    if (!/^[A-Za-z0-9-]{1,128}$/.test(ticketId)) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+    try {
+        const sale = await db.getByTicketId(ticketId);
+        if (!sale || !verifyCustomerTicketToken({ token, ticketId, email: sale.email || '', secret: process.env.BOOKING_OTP_SECRET, purpose: 'customer_ticket_view' })) {
+            return res.status(401).json({ success: false, message: 'Ticket access is invalid or expired. Verify your booking again.' });
         }
-    });
+        if (sale.disabledAt || !canDeliverSale(sale) || !isCountableTicketSale(sale)) return res.status(410).json({ success: false, message: 'This ticket is no longer active.' });
+        const amount = await publicTicketAmount(sale);
+        res.set('Cache-Control', 'private, no-store');
+        res.set('Pragma', 'no-cache');
+        return res.json({ success: true, ticket: {
+            ticketId: sale.ticketId, event: sale.event || 'DHOLIDA GARBA ROYALE', name: sale.name,
+            attendee: sale.name, dateLabel: '17 OCT 2026 · 4:00 PM', venue: 'Pethkar Ground, Kothrud, Pune',
+            ticketType: ticketTypeForSale(sale), amount, quantity: sale.quantity || 1,
+            status: sale.scannedAt ? 'scanned' : 'paid', scannedAt: sale.scannedAt,
+            generatedAt: sale.generatedAt || sale.createdAt
+        } });
+    } catch (_) {
+        return res.status(503).json({ success: false, message: 'Ticket view is temporarily unavailable.' });
+    }
 });
 
 // ==================== 3b. TICKET DOWNLOAD ====================
@@ -2080,7 +2100,7 @@ app.get('/api/ticket/:ticketId/download', rateLimit({ limit: 30, windowMs: 15 * 
     }
 
     res.download(filePath, `${EVENT.name.replace(/\s+/g, '-')}-${sale.ticketId}.pdf`, err => {
-        if (err) res.status(404).send('Ticket file not found. Please contact support.');
+        if (err && !res.headersSent) res.status(404).send('Ticket file not found. Please contact support.');
     });
 });
 
@@ -2166,6 +2186,78 @@ app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res)
         message: `${emailMessage}. ${whatsappMessage}.`
     });
 });
+
+async function scopedStaffTicket(req, scope) {
+    const sale = await db.getByTicketId(req.params.ticketId);
+    if (!sale || sale.disabledAt || !canDeliverSale(sale) || !isCountableTicketSale(sale)) return null;
+    if (scope === 'admin') {
+        if (req.adminSession?.role === 'master_admin' || approvalAdminOwnsSale(req, sale)) return sale;
+        if (req.adminSession?.role === 'organizer') {
+            const event = pickCanonicalEvent(await db.getAllEvents(), sale.eventId || sale.event);
+            if (event && canManageEvent(req, event)) return sale;
+        }
+        return null;
+    }
+    if (scope === 'pr') return sale.prUserId && sale.prUserId === req.prSession?.userId ? sale : null;
+    if (scope === 'seller') return (sale.sellerId || sale.generatedBy) === req.sellerId ? sale : null;
+    if (scope === 'shadow') return sale.source === 'shadow' || sale.isShadow ? sale : null;
+    return null;
+}
+
+async function sendScopedTicketPdf(req, res, scope) {
+    const sale = await scopedStaffTicket(req, scope);
+    if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+    try {
+        const filePath = ticketPdfPath(sale.ticketId);
+        if (!fs2.existsSync(filePath)) await buildTicketPdf({
+            ticketId: sale.ticketId, name: sale.name, email: sale.email, gender: ticketTypeForSale(sale),
+            quantity: sale.quantity || 1, amount: sale.amount || 0,
+            createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
+            event: sale.event || EVENT.name, timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
+        });
+        res.set('Cache-Control', 'private, no-store');
+        res.set('Pragma', 'no-cache');
+        return res.download(filePath, `${EVENT.name.replace(/\s+/g, '-')}-${sale.ticketId}.pdf`, error => {
+            if (error && !res.headersSent) res.status(404).send('Ticket file not found. Please contact support.');
+        });
+    } catch (_) {
+        return res.status(503).json({ success: false, message: 'Ticket download is temporarily unavailable.' });
+    }
+}
+
+async function resendScopedTicket(req, res, scope) {
+    const sale = await scopedStaffTicket(req, scope);
+    if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Pragma', 'no-cache');
+    try {
+        const filePath = ticketPdfPath(sale.ticketId);
+        if (!fs2.existsSync(filePath)) await buildTicketPdf({
+            ticketId: sale.ticketId, name: sale.name, email: sale.email, gender: ticketTypeForSale(sale),
+            quantity: sale.quantity || 1, amount: sale.amount || 0,
+            createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
+            event: sale.event || EVENT.name, timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
+        });
+        const result = await sendTicketEmail({ to: sale.email, name: sale.name, ticketId: sale.ticketId,
+            gender: ticketTypeForSale(sale), quantity: sale.quantity || 1, amount: sale.amount || 0,
+            pdfPath: filePath, downloadUrl: `${BASE_URL}/bookings`, event: sale.event || EVENT.name });
+        await db.updateSaleRecord(sale.orderId, { emailStatus: result.success ? 'sent' : 'failed', emailError: result.success ? null : result.error, status: result.success ? 'emailed' : 'email_failed' });
+        return res.json({ success: Boolean(result.success), message: result.success ? 'Ticket email sent to the stored booking address.' : 'Ticket email could not be sent.' });
+    } catch (_) {
+        return res.status(503).json({ success: false, message: 'Ticket email is temporarily unavailable.' });
+    }
+}
+
+app.get('/api/admin/tickets/:ticketId/download', requireEventManager, staffTicketDownloadRateLimit, (req, res) => sendScopedTicketPdf(req, res, 'admin'));
+app.post('/api/admin/tickets/:ticketId/resend', requireEventManager, staffTicketResendRateLimit, (req, res) => resendScopedTicket(req, res, 'admin'));
+app.get('/api/pr/tickets/:ticketId/download', requirePR, staffTicketDownloadRateLimit, (req, res) => sendScopedTicketPdf(req, res, 'pr'));
+app.post('/api/pr/tickets/:ticketId/resend', requirePR, staffTicketResendRateLimit, (req, res) => resendScopedTicket(req, res, 'pr'));
+app.get('/api/seller/tickets/:ticketId/download', requireSeller, staffTicketDownloadRateLimit, (req, res) => sendScopedTicketPdf(req, res, 'seller'));
+app.post('/api/seller/tickets/:ticketId/resend', requireSeller, staffTicketResendRateLimit, (req, res) => resendScopedTicket(req, res, 'seller'));
+app.get('/api/shadow/tickets/:ticketId/download', requireShadowAuth, staffTicketDownloadRateLimit, (req, res) => sendScopedTicketPdf(req, res, 'shadow'));
+app.post('/api/shadow/tickets/:ticketId/resend', requireShadowAuth, staffTicketResendRateLimit, (req, res) => resendScopedTicket(req, res, 'shadow'));
+app.get('/api/shadow-private/tickets/:ticketId/download', requirePrivateShadowAuth, staffTicketDownloadRateLimit, (req, res) => sendScopedTicketPdf(req, res, 'shadow'));
+app.post('/api/shadow-private/tickets/:ticketId/resend', requirePrivateShadowAuth, staffTicketResendRateLimit, (req, res) => resendScopedTicket(req, res, 'shadow'));
 
 app.post('/api/admin/ticket-approvals/:orderId/approve', requireApprovalAdmin, async (req, res) => {
     const existing = await db.getByOrderId(req.params.orderId);
@@ -3810,7 +3902,9 @@ function customerBookingSummary(sale, email) {
         emailStatus: sale.emailStatus || 'not_sent',
         whatsappStatus: sale.whatsappStatus || 'not_sent',
         ticketId: ticketAvailable ? sale.ticketId : null,
-        ticketAccessToken: ticketAvailable ? issueCustomerTicketToken({ ticketId: sale.ticketId, email, secret: process.env.BOOKING_OTP_SECRET }) : null
+        ticketAccessToken: ticketAvailable ? issueCustomerTicketToken({ ticketId: sale.ticketId, email, secret: process.env.BOOKING_OTP_SECRET, purpose: 'customer_ticket_pdf' }) : null,
+        ticketViewToken: ticketAvailable ? issueCustomerTicketToken({ ticketId: sale.ticketId, email, secret: process.env.BOOKING_OTP_SECRET, purpose: 'customer_ticket_view' }) : null,
+        ticketResendToken: ticketAvailable ? issueCustomerTicketToken({ ticketId: sale.ticketId, email, secret: process.env.BOOKING_OTP_SECRET, purpose: 'customer_ticket_resend' }) : null
     };
 }
 
@@ -3880,6 +3974,35 @@ app.post('/api/customer/bookings/ticket-download', recoveredTicketDownloadRateLi
         });
     } catch (error) {
         return res.status(503).json({ success: false, message: 'Ticket download is temporarily unavailable.' });
+    }
+});
+
+app.post('/api/customer/bookings/ticket-resend', recoveredTicketResendRateLimit, async (req, res) => {
+    const ticketId = String(req.body?.ticketId || '');
+    const token = String(req.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+    if (!/^[A-Za-z0-9-]{1,128}$/.test(ticketId)) return res.status(404).json({ success: false, message: 'Ticket not found.' });
+    try {
+        const sale = await db.getByTicketId(ticketId);
+        if (!sale || !verifyCustomerTicketToken({ token, ticketId, email: sale.email || '', secret: process.env.BOOKING_OTP_SECRET, purpose: 'customer_ticket_resend' })) {
+            return res.status(401).json({ success: false, message: 'Ticket access is invalid or expired. Verify your booking again.' });
+        }
+        if (sale.disabledAt || !canDeliverSale(sale) || !isCountableTicketSale(sale)) return res.status(410).json({ success: false, message: 'This ticket is no longer active.' });
+        res.set('Cache-Control', 'private, no-store');
+        res.set('Pragma', 'no-cache');
+        const pdfPath = ticketPdfPath(sale.ticketId);
+        if (!fs2.existsSync(pdfPath)) await buildTicketPdf({
+            ticketId: sale.ticketId, name: sale.name, email: sale.email, gender: ticketTypeForSale(sale),
+            quantity: sale.quantity || 1, amount: sale.amount || 0,
+            createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
+            event: sale.event || EVENT.name, timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
+        });
+        const result = await sendTicketEmail({ to: sale.email, name: sale.name, ticketId: sale.ticketId,
+            gender: ticketTypeForSale(sale), quantity: sale.quantity || 1, amount: sale.amount || 0,
+            pdfPath, downloadUrl: `${BASE_URL}/bookings`, event: sale.event || EVENT.name });
+        await db.updateSaleRecord(sale.orderId, { emailStatus: result.success ? 'sent' : 'failed', emailError: result.success ? null : result.error, status: result.success ? 'emailed' : 'email_failed' });
+        return res.json({ success: Boolean(result.success), message: result.success ? 'Ticket email sent to the booking address.' : 'Ticket email could not be sent.' });
+    } catch (_) {
+        return res.status(503).json({ success: false, message: 'Ticket email is temporarily unavailable.' });
     }
 });
 
@@ -5430,7 +5553,8 @@ app.post('/api/admin/pr-reject', requireApprovalAdmin, async (req, res) => {
 app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
     const status = err?.status === 413 ? 413 : err?.status === 400 ? 400 : 500;
-    console.error('[Request error]', { path: req.path, status, name: err?.name || 'Error' });
+    const safePath = String(req.path || '').replace(/(\/api\/(?:ticket|(?:admin|pr|seller|shadow(?:-private)?)\/tickets)\/)[^/]+/gi, '$1[redacted]');
+    console.error('[Request error]', { path: safePath, status, name: err?.name || 'Error' });
     const message = status === 413 ? 'Request body is too large.' : status === 400 ? 'Invalid request.' : 'Request failed.';
     return res.status(status).json({ success: false, message });
 });

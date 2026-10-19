@@ -21,7 +21,7 @@ async function sendTicketWhatsApp({ phone, name, ticketId, event, date, venue, t
     if (to.length === 10) to = `91${to}`;
 
     const publicOrigin = (process.env.PUBLIC_TICKET_ORIGIN || 'https://www.littx.in').replace(/\/+$/, '');
-    const resolvedViewUrl  = viewUrl  || `${publicOrigin}/view/${ticketId}`;
+    const resolvedViewUrl  = viewUrl  || `${publicOrigin}/bookings`;
     const resolvedPdfUrl   = pdfUrl   || `${publicOrigin}/api/ticket/${ticketId}/download`;
     const resolvedName     = name      || 'Guest';
     const resolvedEvent    = event     || 'Dholida Garba Royale';

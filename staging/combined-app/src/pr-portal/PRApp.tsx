@@ -578,15 +578,24 @@ function PRDashboard({ prUser, onLogout, dark, setDark }: { prUser: PRUser; onLo
 
               {viewSale.ticketId && (
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <a href={`/api/ticket/${viewSale.ticketId}/download`} target="_blank" rel="noreferrer" className="btn btn-primary" style={{ flex: 1, textDecoration: 'none', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <button type="button" className="btn btn-primary" style={{ flex: 1, border: 0 }} onClick={async () => {
+                    try {
+                      const response = await fetch(`${API}/api/pr/tickets/${encodeURIComponent(viewSale.ticketId)}/download`, { headers: prAuthHeaders() })
+                      if (!response.ok) throw new Error('Ticket download is not authorized.')
+                      const url = URL.createObjectURL(await response.blob())
+                      const anchor = document.createElement('a'); anchor.href = url; anchor.download = `Stageway-ticket-${viewSale.ticketId}.pdf`
+                      document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+                    } catch (error) { alert(error instanceof Error ? error.message : 'Ticket download failed.') }
+                  }}>
                     Download PDF
-                  </a>
+                  </button>
                   <button className="btn btn-ghost" style={{ flex: 1, border: '1px solid var(--line)' }} onClick={async (e) => {
                     const btn = e.currentTarget
                     const orig = btn.innerText
                     btn.innerText = 'Sending...'
                     try {
-                      await fetch(`${API}/api/ticket/${viewSale.ticketId}/resend`, { method: 'POST' })
+                      const response = await fetch(`${API}/api/pr/tickets/${encodeURIComponent(viewSale.ticketId)}/resend`, { method: 'POST', headers: prAuthHeaders() })
+                      if (!response.ok) throw new Error('Ticket resend is not authorized.')
                       btn.innerText = 'Sent!'
                     } catch {
                       btn.innerText = 'Error'

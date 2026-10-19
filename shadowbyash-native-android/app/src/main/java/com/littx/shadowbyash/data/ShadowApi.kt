@@ -28,5 +28,5 @@ interface ShadowApi {
     @GET("api/shadow/pricing") suspend fun pricing(@Header("x-shadow-token") token: String): PricingRes
     @GET("api/shadow/sales") suspend fun sales(@Header("x-shadow-token") token: String): SalesRes
     @POST("api/shadow/generate-ticket") suspend fun ticket(@Header("x-shadow-token") token: String, @Body body: TicketReq): TicketRes
-    @POST("api/ticket/{id}/resend") suspend fun resend(@Path("id") id: String): ResendRes
+    @POST("api/shadow/tickets/{id}/resend") suspend fun resend(@Header("x-shadow-token") token: String, @Path("id") id: String): ResendRes
 }

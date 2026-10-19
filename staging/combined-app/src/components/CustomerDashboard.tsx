@@ -169,14 +169,7 @@ function BookModal({
                 </div>
               )}
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-                <a
-                  href={success.downloadUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-download"
-                >
-                  Download PDF Pass
-                </a>
+                <a href="/bookings" className="btn-download">Recover PDF with email verification</a>
                 <button onClick={onClose} className="btn-secondary">
                   Done
                 </button>
@@ -393,10 +386,8 @@ function BookingRow({ booking }: { booking: Booking }) {
       {/* Download Button */}
       {booking.ticketId && (
         <a
-          href={`/api/ticket/${booking.ticketId}/download`}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Download ticket PDF file"
+          href="/bookings"
+          title="Verify your booking to recover the ticket PDF"
           className="ticket-download-link-btn"
         >
           {"\u2B07\uFE0F"}

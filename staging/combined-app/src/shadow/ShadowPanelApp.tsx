@@ -312,10 +312,11 @@ export default function ShadowPanelApp({
     }
     setResendingTicketId(ticketId)
     try {
-      const res = await fetch(`/api/ticket/${ticketId}/resend`, {
+      const res = await fetch(`${apiPrefix}/tickets/${encodeURIComponent(ticketId)}/resend`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-shadow-token': shadowToken || '',
         }
       })
       const data = await res.json()

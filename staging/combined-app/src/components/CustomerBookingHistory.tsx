@@ -16,7 +16,11 @@ type Booking = {
   whatsappStatus: string
   ticketId: string | null
   ticketAccessToken: string | null
+  ticketViewToken: string | null
+  ticketResendToken: string | null
 }
+
+type TicketDetails = { ticketId: string; event: string; name: string; ticketType: string; amount: number; quantity: number; status: string; scannedAt?: string | null }
 
 export default function CustomerBookingHistory() {
   const [email, setEmail] = useState('')
@@ -25,6 +29,7 @@ export default function CustomerBookingHistory() {
   const [bookings, setBookings] = useState<Booking[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [downloading, setDownloading] = useState('')
+  const [ticketDetails, setTicketDetails] = useState<TicketDetails | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -80,6 +85,36 @@ export default function CustomerBookingHistory() {
     finally { setDownloading('') }
   }
 
+  async function viewTicket(booking: Booking) {
+    if (!booking.ticketId || !booking.ticketViewToken) return
+    setDownloading(booking.ticketId); setError('')
+    try {
+      const response = await fetch('/api/customer/bookings/ticket-view', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${booking.ticketViewToken}` },
+        body: JSON.stringify({ ticketId: booking.ticketId })
+      })
+      const result = await response.json()
+      if (!response.ok || !result.success) throw new Error(result.message || 'Ticket view failed. Verify your booking again.')
+      setTicketDetails(result.ticket)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Ticket view failed.') }
+    finally { setDownloading('') }
+  }
+
+  async function resendTicket(booking: Booking) {
+    if (!booking.ticketId || !booking.ticketResendToken) return
+    setDownloading(booking.ticketId); setError(''); setNotice('')
+    try {
+      const response = await fetch('/api/customer/bookings/ticket-resend', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${booking.ticketResendToken}` },
+        body: JSON.stringify({ ticketId: booking.ticketId })
+      })
+      const result = await response.json()
+      if (!response.ok || !result.success) throw new Error(result.message || 'Ticket resend failed. Verify your booking again.')
+      setNotice(result.message)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Ticket resend failed.') }
+    finally { setDownloading('') }
+  }
+
   const page: CSSProperties = { minHeight: '100vh', background: '#090811', color: '#f5f3fa', padding: 'clamp(20px, 5vw, 64px)', fontFamily: 'Inter, system-ui, sans-serif' }
   const panel: CSSProperties = { background: '#14121f', border: '1px solid #2a2737', borderRadius: 18, padding: 22, margin: '22px auto', maxWidth: 760 }
   const input: CSSProperties = { width: '100%', padding: '12px 14px', background: '#0c0b13', color: 'inherit', border: '1px solid #393548', borderRadius: 10, boxSizing: 'border-box' }
@@ -109,8 +144,19 @@ export default function CustomerBookingHistory() {
         {booking.reservationExpiresAt && ['pending', 'created'].includes(booking.status.toLowerCase()) && <p>Reservation expires {new Date(booking.reservationExpiresAt).toLocaleString()}.</p>}
         {booking.ticketId && <p>Ticket reference: <strong>{booking.ticketId}</strong></p>}
         <p>Email delivery: {booking.emailStatus} · WhatsApp delivery: {booking.whatsappStatus}</p>
-        {booking.ticketAccessToken && <button type="button" disabled={downloading === booking.ticketId} onClick={() => downloadTicket(booking)} style={{ border: 0, borderRadius: 10, padding: '10px 14px', background: '#d8ff3f', color: '#111', fontWeight: 700, cursor: 'pointer' }}>{downloading === booking.ticketId ? 'Preparing PDF…' : 'Download ticket PDF'}</button>}
+        {booking.ticketAccessToken && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <button type="button" disabled={downloading === booking.ticketId} onClick={() => viewTicket(booking)} style={{ border: 0, borderRadius: 10, padding: '10px 14px', background: '#262336', color: '#f5f3fa', fontWeight: 700, cursor: 'pointer' }}>View ticket details</button>
+          <button type="button" disabled={downloading === booking.ticketId} onClick={() => downloadTicket(booking)} style={{ border: 0, borderRadius: 10, padding: '10px 14px', background: '#d8ff3f', color: '#111', fontWeight: 700, cursor: 'pointer' }}>{downloading === booking.ticketId ? 'Preparing…' : 'Download ticket PDF'}</button>
+          <button type="button" disabled={downloading === booking.ticketId} onClick={() => resendTicket(booking)} style={{ border: '1px solid #4c4860', borderRadius: 10, padding: '10px 14px', background: 'transparent', color: '#f5f3fa', fontWeight: 700, cursor: 'pointer' }}>Resend to booking email</button>
+        </div>}
       </article>)}
+    </section>}
+    {ticketDetails && <section style={panel} aria-live="polite">
+      <button type="button" onClick={() => setTicketDetails(null)} style={{ float: 'right', background: 'transparent', color: 'inherit', border: '1px solid #4c4860', borderRadius: 8, padding: '6px 10px' }}>Close</button>
+      <h2>Ticket details</h2><p>{ticketDetails.event} · {ticketDetails.ticketType}</p>
+      <p>Attendee: {ticketDetails.name} · Quantity: {ticketDetails.quantity} · Status: {ticketDetails.status}</p>
+      <p>Ticket reference: {ticketDetails.ticketId} · Value: {ticketDetails.amount}</p>
+      {ticketDetails.scannedAt && <p>Scanned: {new Date(ticketDetails.scannedAt).toLocaleString()}</p>}
     </section>}
   </main>
 }

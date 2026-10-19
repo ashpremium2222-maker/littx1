@@ -23,3 +23,12 @@ test('ticket recovery access tokens expire after fifteen minutes and reject tamp
     assert.equal(verifyCustomerTicketToken({ token, ticketId, email, secret, now: new Date(now.getTime() + 15 * 60 * 1000) }), false);
     assert.equal(verifyCustomerTicketToken({ token: `${token}x`, ticketId, email, secret, now }), false);
 });
+
+test('ticket recovery tokens cannot be reused for a different purpose', () => {
+    const now = new Date('2026-10-20T00:00:00.000Z');
+    const viewToken = issueCustomerTicketToken({ ticketId, email, secret, purpose: 'customer_ticket_view', now });
+    assert.equal(verifyCustomerTicketToken({ token: viewToken, ticketId, email, secret, purpose: 'customer_ticket_view', now }), true);
+    assert.equal(verifyCustomerTicketToken({ token: viewToken, ticketId, email, secret, purpose: 'customer_ticket_pdf', now }), false);
+    assert.equal(verifyCustomerTicketToken({ token: viewToken, ticketId: 'another-ticket', email, secret, purpose: 'customer_ticket_view', now }), false);
+    assert.equal(verifyCustomerTicketToken({ token: viewToken, ticketId, email: 'other@example.test', secret, purpose: 'customer_ticket_view', now }), false);
+});
