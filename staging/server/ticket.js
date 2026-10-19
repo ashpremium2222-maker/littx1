@@ -63,8 +63,9 @@ const GENDER_LABEL = {
 };
 
 function generateTicketId() {
-    // Short, human-readable, still unique: DGR-XXXXXXXX
-    return `DGR-${randomUUID().split('-')[0].toUpperCase()}`;
+    // The ticket URL is a bearer credential, so use the full 122-bit UUID
+    // entropy rather than the old eight-hex-character (~32-bit) suffix.
+    return `DGR-${randomUUID().toUpperCase()}`;
 }
 
 /** QR data URL for inline display in the browser / email (encodes the ticket ID). */

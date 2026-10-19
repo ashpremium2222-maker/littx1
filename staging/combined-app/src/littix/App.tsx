@@ -476,8 +476,10 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
       })
       const data = await res.json()
       if (data.success) {
-        localStorage.setItem('littx_seller_token', data.token)
-        localStorage.setItem('littx_seller_id', data.sellerId)
+        localStorage.removeItem('littx_seller_token')
+        localStorage.removeItem('littx_seller_id')
+        sessionStorage.setItem('littx_seller_token', data.token)
+        sessionStorage.setItem('littx_seller_id', data.sellerId)
         onLogin(data.sellerId, data.token)
       } else {
         setError(data.message || 'Login failed')
@@ -913,12 +915,12 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
 
 // ==================== ROOT: handles seller auth ====================
 function getSavedSellerValue(key: string) {
-  const saved = localStorage.getItem(key)
+  const saved = sessionStorage.getItem(key)
   if (saved) return saved
-  const legacy = sessionStorage.getItem(key)
+  const legacy = localStorage.getItem(key)
   if (legacy) {
-    localStorage.setItem(key, legacy)
-    sessionStorage.removeItem(key)
+    sessionStorage.setItem(key, legacy)
+    localStorage.removeItem(key)
   }
   return legacy
 }
@@ -958,6 +960,8 @@ export default function App({ forceScanner }: { forceScanner?: boolean }) {
         } else if (status === 401 || status === 403) {
           localStorage.removeItem('littx_seller_token')
           localStorage.removeItem('littx_seller_id')
+          sessionStorage.removeItem('littx_seller_token')
+          sessionStorage.removeItem('littx_seller_id')
           setSellerId(null)
           setSellerToken(null)
         }

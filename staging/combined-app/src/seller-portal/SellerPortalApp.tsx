@@ -8,6 +8,17 @@ export interface PartnerOption {
   configured: boolean
 }
 
+function getSellerSessionValue(key: string) {
+  const current = sessionStorage.getItem(key)
+  if (current) return current
+  const legacy = localStorage.getItem(key)
+  if (legacy) {
+    sessionStorage.setItem(key, legacy)
+    localStorage.removeItem(key)
+  }
+  return legacy
+}
+
 const DEFAULT_PARTNERS: PartnerOption[] = [
   { id: 'partner-slot-1', name: 'Partner Login 1', active: false, configured: false },
   { id: 'partner-slot-2', name: 'Partner Login 2', active: false, configured: false },
@@ -67,14 +78,14 @@ export default function SellerPortalApp() {
   
   const [authenticatedPartner, setAuthenticatedPartner] = useState<PartnerSessionData | null>(() => {
     try {
-      const saved = localStorage.getItem('littx_seller_partner')
+      const saved = getSellerSessionValue('littx_seller_partner')
       return saved ? JSON.parse(saved) : null
     } catch {
       return null
     }
   })
 
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('littx_seller_token'))
+  const [token, setToken] = useState<string | null>(() => getSellerSessionValue('littx_seller_token'))
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loginLoading, setLoginLoading] = useState<boolean>(false)
   const [webauthnStatus, setWebauthnStatus] = useState<string | null>(null)
@@ -149,7 +160,7 @@ export default function SellerPortalApp() {
   )
 
   const loadSellerTickets = async () => {
-    const activeToken = localStorage.getItem('littx_seller_token') || token || ''
+    const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
     if (!activeToken) return
     setTicketsLoading(true)
     setTicketsError(null)
@@ -193,7 +204,7 @@ export default function SellerPortalApp() {
     const loadPricing = async () => {
       setPricingLoading(true)
       try {
-        const activeToken = localStorage.getItem('littx_seller_token') || token || ''
+        const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
         const response = await fetch(`/api/seller/pricing?event=${encodeURIComponent(event)}`, { headers: { 'x-seller-token': activeToken } })
         const data = await response.json()
         if (response.ok && data.success) {
@@ -222,8 +233,8 @@ export default function SellerPortalApp() {
   // Silent session re-validation on app load / refresh
   // RULE: Log out if session is invalid (401), but keep cached session on network errors.
   useEffect(() => {
-    const existingToken = localStorage.getItem('littx_seller_token')
-    const cachedPartner = localStorage.getItem('littx_seller_partner')
+    const existingToken = getSellerSessionValue('littx_seller_token')
+    const cachedPartner = getSellerSessionValue('littx_seller_partner')
     if (!existingToken || !cachedPartner) return
 
     const verifySession = async () => {
@@ -236,13 +247,15 @@ export default function SellerPortalApp() {
         if (res.ok && data.success) {
           // Normal: server confirmed session
           setAuthenticatedPartner(data.partner)
-          localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
+          sessionStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
         } else if (res.status === 401 || res.status === 403) {
           // Only an explicit authorization denial means the Master Admin
           // revoked or blocked this seller. Transient server errors retain login.
           console.warn('[Seller] Session revoked by server:', data.message)
           localStorage.removeItem('littx_seller_token')
+          sessionStorage.removeItem('littx_seller_token')
           localStorage.removeItem('littx_seller_partner')
+          sessionStorage.removeItem('littx_seller_partner')
           setAuthenticatedPartner(null)
           setToken(null)
         } else {
@@ -321,8 +334,10 @@ export default function SellerPortalApp() {
       if (step2Res.ok && step2Data.success) {
         setAuthenticatedPartner(step2Data.partner)
         setToken(step2Data.token)
-        localStorage.setItem('littx_seller_token', step2Data.token)
-        localStorage.setItem('littx_seller_partner', JSON.stringify(step2Data.partner))
+        sessionStorage.setItem('littx_seller_token', step2Data.token)
+        localStorage.removeItem('littx_seller_token')
+        sessionStorage.setItem('littx_seller_partner', JSON.stringify(step2Data.partner))
+        localStorage.removeItem('littx_seller_partner')
         setPasswordInput('')
       } else {
         setLoginError(step2Data.message || 'ACCESS DENIED: WebAuthn device verification failed.')
@@ -358,7 +373,7 @@ export default function SellerPortalApp() {
     setFeedback(null)
 
     try {
-      const activeToken = localStorage.getItem('littx_seller_token') || token || ''
+      const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
       const res = await fetch('/api/admin/generate-ticket', {
         method: 'POST',
         headers: {

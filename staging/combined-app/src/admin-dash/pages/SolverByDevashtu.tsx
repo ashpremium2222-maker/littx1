@@ -18,8 +18,8 @@ const money = (amount: number) => `₹${new Intl.NumberFormat('en-IN', { maximum
 const dateLabel = (date?: string | null) => date ? new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(date)) : '—'
 
 function authHeaders(revealToken?: string, json = false): HeadersInit {
-  let token = sessionStorage.getItem('littx_token') || localStorage.getItem('littx_token') || ''
-  if (!token) { try { token = JSON.parse(sessionStorage.getItem('littx_user') || localStorage.getItem('littx_user') || '{}').token || '' } catch { /* invalid cached session */ } }
+  let token = sessionStorage.getItem('littx_token') || ''
+  if (!token) { try { token = JSON.parse(sessionStorage.getItem('littx_user') || '{}' ).token || '' } catch { /* invalid cached session */ } }
   return { ...(json ? { 'Content-Type': 'application/json' } : {}), 'X-Auth-Token': token, ...(revealToken ? { 'X-Solver-Reveal-Token': revealToken } : {}) }
 }
 

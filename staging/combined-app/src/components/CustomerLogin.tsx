@@ -31,8 +31,10 @@ export default function CustomerLogin({ onLoginSuccess, onGoToRegister }: Custom
       })
       const data = await res.json()
       if (data.success && data.user) {
-        localStorage.setItem('littx_customer', JSON.stringify(data.user))
-        localStorage.setItem('littx_customer_token', data.token)
+        sessionStorage.setItem('littx_customer', JSON.stringify(data.user))
+        localStorage.removeItem('littx_customer')
+        sessionStorage.setItem('littx_customer_token', data.token)
+        localStorage.removeItem('littx_customer_token')
         onLoginSuccess(data.user)
       } else {
         setError(data.message || 'Invalid email or password.')

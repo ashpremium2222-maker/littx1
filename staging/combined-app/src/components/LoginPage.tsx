@@ -41,8 +41,8 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
       }
 
       const session = { ...data.user, token: data.token } as UserSession
-      localStorage.setItem('littx_user', JSON.stringify(session))
-      localStorage.setItem('littx_token', data.token)
+      localStorage.removeItem('littx_user')
+      localStorage.removeItem('littx_token')
       sessionStorage.setItem('littx_user', JSON.stringify(session))
       sessionStorage.setItem('littx_token', data.token)
       setPassword('')

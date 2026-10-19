@@ -22,6 +22,11 @@ function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
   const [userSession, setUserSession] = useState<UserSession | null>(() => {
     try {
+      // Older builds persisted bearer credentials; discard them so the user
+      // signs in again into tab-scoped session storage.
+      localStorage.removeItem('littx_user')
+      localStorage.removeItem('littx_token')
+      localStorage.removeItem('ft_admin_key')
       const stored = sessionStorage.getItem('littx_user')
       return stored ? JSON.parse(stored) : null
     } catch { return null }

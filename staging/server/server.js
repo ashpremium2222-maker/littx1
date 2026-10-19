@@ -32,6 +32,21 @@ function displayCompanyName(companyId, currentName) {
     return currentName;
 }
 
+function redactCompanySecrets(value) {
+    if (Array.isArray(value)) return value.map(redactCompanySecrets);
+    if (!value || typeof value !== 'object') return value;
+    const redacted = {};
+    for (const [key, item] of Object.entries(value)) {
+        if (/secret|password|token/i.test(key)) {
+            redacted[key] = '';
+            redacted[`has${key[0].toUpperCase()}${key.slice(1)}`] = Boolean(item);
+        } else {
+            redacted[key] = redactCompanySecrets(item);
+        }
+    }
+    return redacted;
+}
+
 const PARTNER_LOGIN_SLOTS = ['partner-slot-1', 'partner-slot-2'];
 const PARTNER_SLOT_COMPANY_IDS = {
     'partner-slot-1': 'astex-testing',
@@ -71,6 +86,17 @@ function verifyPassword(password, passwordHash) {
     return actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
 }
 
+function safeStringEqual(left, right) {
+    const a = Buffer.from(String(left || ''));
+    const b = Buffer.from(String(right || ''));
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function safeErrorMessage(error, fallback = 'Request failed.') {
+    if (process.env.NODE_ENV === 'production') return fallback;
+    return error?.message || fallback;
+}
+
 async function resolveSellerPartner(partnerId) {
     if (PARTNER_NAMES[partnerId]) {
         const lock = await db.getPartnerLock(partnerId);
@@ -92,7 +118,7 @@ async function findSellerPartnerByPassword(password) {
     if (typeof password !== 'string' || !password) return null;
     const matches = [];
     for (const [partnerId, expected] of Object.entries(PARTNER_PASSWORDS)) {
-        if (expected && password === expected) {
+        if (expected && safeStringEqual(password, expected)) {
             const partner = await resolveSellerPartner(partnerId);
             if (partner?.active) matches.push(partner);
         }
@@ -102,7 +128,7 @@ async function findSellerPartnerByPassword(password) {
         if (!partner?.active) continue;
         const matchesPassword = partner.passwordHash
             ? verifyPassword(password, partner.passwordHash)
-            : typeof partner.user?.password === 'string' && password === partner.user.password;
+            : typeof partner.user?.password === 'string' && safeStringEqual(password, partner.user.password);
         if (matchesPassword) matches.push(partner);
     }
     // A shared password across tenants cannot identify the intended account.
@@ -210,14 +236,43 @@ function isValidSellerSession(session, token, persistent = false) {
     const expected = Buffer.from(session.token);
     const supplied = Buffer.from(token);
     if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) return false;
-    if (persistent) return true;
     const loginAt = new Date(session.loginAt || 0).getTime();
     return Number.isFinite(loginAt) && Date.now() - loginAt <= SELLER_SESSION_TTL_MS;
+}
+
+const USER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+function isValidUserSession(session, token) {
+    if (!session || typeof session.token !== 'string' || typeof token !== 'string') return false;
+    const expected = Buffer.from(session.token);
+    const supplied = Buffer.from(token);
+    if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) return false;
+    const loginAt = new Date(session.loginAt || 0).getTime();
+    return Number.isFinite(loginAt) && loginAt <= Date.now() && Date.now() - loginAt <= USER_SESSION_TTL_MS;
 }
 
 function clientIp(req) {
     return String(req.headers['x-forwarded-for'] || req.ip || req.connection?.remoteAddress || 'unknown').split(',')[0].trim();
 }
+
+const requestWindows = new Map();
+function rateLimit({ limit, windowMs, keyPrefix }) {
+    return (req, res, next) => {
+        const now = Date.now();
+        const key = `${keyPrefix}:${req.ip || req.socket?.remoteAddress || 'unknown'}`;
+        let bucket = requestWindows.get(key);
+        if (!bucket || now - bucket.startedAt >= windowMs) bucket = { startedAt: now, count: 0 };
+        bucket.count += 1;
+        requestWindows.set(key, bucket);
+        if (requestWindows.size > 5000) {
+            for (const [entry, value] of requestWindows) if (now - value.startedAt >= windowMs) requestWindows.delete(entry);
+        }
+        if (bucket.count > limit) return res.status(429).json({ success: false, message: 'Too many attempts. Please try again later.' });
+        next();
+    };
+}
+const loginRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'login' });
+const ticketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, keyPrefix: 'ticket-resend' });
+const checkoutRateLimit = rateLimit({ limit: 20, windowMs: 15 * 60 * 1000, keyPrefix: 'checkout' });
 
 function deviceNameFromUserAgent(userAgent = '') {
     if (/iPhone/i.test(userAgent)) return 'iPhone passkey';
@@ -242,7 +297,7 @@ async function authenticateSeller(token) {
     // effect across serverless instances without a stale local session cache.
     for (const sid of sellerIds) {
         const session = sessionsBySeller.get(sid);
-        if (!isValidSellerSession(session, token, true)) continue;
+        if (!isValidSellerSession(session, token)) continue;
         const partner = users.find(user => user.role === 'seller' && (user.sellerSlot === sid || user.userId === sid));
         if (partner && (partner.active === false || partner.blocked)) return null;
         if (PARTNER_NAMES[sid] && (await db.getPartnerLock(sid))?.blocked) return null;
@@ -264,6 +319,11 @@ const { sendTicketEmail } = require('./mailer');
 const { sendTicketWhatsApp, getWhatsAppConfigurationStatus } = require('./whatsapp-service');
 
 const SCANNER_SESSION_TTL_SECONDS = 12 * 60 * 60;
+function scannerAssignments() {
+    const eventNames = String(process.env.SCANNER_EVENT_NAMES || '').split(',').map(value => value.trim()).filter(Boolean);
+    const companyId = String(process.env.SCANNER_COMPANY_ID || '').trim();
+    return eventNames.length && companyId ? { eventNames, companyId } : null;
+}
 function scannerSessionSecret() {
     const secret = process.env.SCANNER_SESSION_SECRET;
     if (!secret || secret.length < 32) throw new Error('SCANNER_SESSION_SECRET must contain at least 32 characters.');
@@ -348,8 +408,29 @@ function publicWhatsAppError(result) {
 }
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const trustedOrigins = new Set((process.env.CORS_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
+if (process.env.BASE_URL) trustedOrigins.add(process.env.BASE_URL.replace(/\/$/, ''));
+if (process.env.NODE_ENV !== 'production') {
+    trustedOrigins.add('http://localhost:5173');
+    trustedOrigins.add('http://127.0.0.1:5173');
+    trustedOrigins.add('http://localhost:3000');
+    trustedOrigins.add('http://127.0.0.1:3000');
+}
+app.use(cors({ origin(origin, callback) {
+    if (!origin || trustedOrigins.has(origin)) return callback(null, true);
+    return callback(null, false);
+} }));
+app.use((req, res, next) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('X-Frame-Options', 'DENY');
+    res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (process.env.NODE_ENV === 'production') res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    next();
+});
+app.use(express.json({ limit: '256kb', verify(req, res, buffer) {
+    if (req.path === '/api/webhook/razorpay') req.rawBody = Buffer.from(buffer);
+} }));
 
 // A malformed Meta payload should still be acknowledged promptly. This handler
 // is deliberately limited to the WhatsApp endpoint so existing API error
@@ -461,7 +542,7 @@ app.post('/api/master/seller-access/:partnerId', requireMasterAdmin, async (req,
             }
         });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message || 'Unable to open seller panel.' });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) || 'Unable to open seller panel.' });
     }
 });
 
@@ -633,15 +714,15 @@ async function resolveTicketAmount(eventName, ticketType, quantity) {
 // ==================== RAZORPAY SETUP ====================
 const RZP_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 const RZP_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
-const TEST_MODE = !RZP_KEY_ID || !RZP_KEY_SECRET;
+const PAYMENT_CREDENTIALS_CONFIGURED = Boolean(RZP_KEY_ID && RZP_KEY_SECRET);
+const TEST_MODE = process.env.NODE_ENV === 'test' || (process.env.NODE_ENV === 'development' && process.env.PAYMENT_TEST_MODE === 'true');
 
 let razorpay = null;
-if (!TEST_MODE) {
+if (PAYMENT_CREDENTIALS_CONFIGURED) {
     const Razorpay = require('razorpay');
     razorpay = new Razorpay({ key_id: RZP_KEY_ID, key_secret: RZP_KEY_SECRET });
-} else {
-    console.warn('[Payments] RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set — running in TEST MODE (no real money is charged). See server/.env.example.');
 }
+if (TEST_MODE) console.warn('[Payments] Explicit non-production test mode enabled.');
 
 // Privileged routes fail closed until an operator supplies a secret.
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -786,8 +867,16 @@ function requireSeller(req, res, next) {
     }).catch(next);
 }
 
-// Serve generated ticket PDFs at /ticket-files
-app.use('/ticket-files', express.static(TICKETS_DIR));
+async function sellerOwnsEvent(sellerId, eventName) {
+    const users = await db.getAllUsers();
+    const seller = users.find(user => user.role === 'seller' && (user.userId === sellerId || user.sellerSlot === sellerId));
+    const companyId = seller?.companyId || sellerCompanyIdFromValue(sellerId);
+    const event = pickCanonicalEvent(await db.getAllEvents(), eventName);
+    return Boolean(companyId && event?.companyId && event.companyId === companyId);
+}
+
+// Ticket PDFs contain attendee PII. Serve them only through the ticket
+// delivery handler so a guessed static filename cannot bypass ticket checks.
 
 // ==================== SPA ROUTES — /tickets and /dashboard serve React app ====================
 // Try multiple candidate paths for the React build (handles local dev + Railway)
@@ -863,7 +952,6 @@ async function computeAmount(gender, quantity, eventName = EVENT.name) {
 }
 
 // In-memory token store for unified auth sessions (populated by /api/auth/login)
-const platformAuthTokens = new Set();
 const solverRevealAttempts = new Map();
 
 function solverActor(req) {
@@ -940,30 +1028,34 @@ function solverTicketPayload(sale, reveal) {
 }
 
 async function requireAdmin(req, res, next) {
-    const key = req.headers['x-admin-key'] || req.query.key;
+    const key = req.headers['x-admin-key'];
     const token = req.headers['x-auth-token'];
     const isPres = req.headers['x-presentation'] === 'true' || req.query.pres === 'true';
 
     if (isPres) {
         const presentationKey = process.env.PRESENTATION_KEY;
-        if (presentationKey && req.method === 'GET' && key === presentationKey) {
+        if (presentationKey && req.method === 'GET' && req.path === '/api/admin/sales' && key === presentationKey) {
+            req.presentationOnly = true;
             return next();
         }
         return res.status(401).json({ success: false, message: 'Access Denied: Use the presentation password.' });
     }
 
     // Accept ADMIN_KEY (legacy)
-    if (key && key === ADMIN_KEY) return next();
+    if (ADMIN_KEY && key && key === ADMIN_KEY) {
+        req.adminSession = { userId: 'Legacy Admin', role: 'master_admin', companyId: 'littx' };
+        return next();
+    }
 
-    // Accept unified auth tokens issued by /api/auth/login (master_admin or company_admin)
-    if (token && platformAuthTokens.has(token)) return next();
-
-    // Persist platform sessions because Vercel requests do not share the
-    // process-local Set above.
+    // Persisted sessions are the source of truth across serverless instances.
     if (token) {
         try {
             const session = await db.getUserSessionByToken(token);
-            if (session && ['master_admin', 'company_admin'].includes(session.role)) return next();
+            if (isValidUserSession(session, token) && ['master_admin', 'company_admin'].includes(session.role)) {
+                req.adminSession = session;
+                return next();
+            }
+            if (session) return res.status(403).json({ success: false, message: 'Administrator access is not authorized.' });
         } catch (err) {
             return next(err);
         }
@@ -973,7 +1065,7 @@ async function requireAdmin(req, res, next) {
 }
 
 async function requireMasterAdmin(req, res, next) {
-    const key = req.headers['x-admin-key'] || req.query.key;
+    const key = req.headers['x-admin-key'];
     if (key && key === ADMIN_KEY) {
         req.adminSession = {
             userId: 'Legacy Admin',
@@ -989,7 +1081,8 @@ async function requireMasterAdmin(req, res, next) {
 
     try {
         const session = await db.getUserSessionByToken(token);
-        if (!session || session.role !== 'master_admin') {
+        if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
+        if (session.role !== 'master_admin') {
             return res.status(403).json({ success: false, message: 'Only master admin can access seller company panels.' });
         }
         req.adminSession = session;
@@ -1003,14 +1096,15 @@ async function requireMasterAdmin(req, res, next) {
 // master admin. Keep this scope limited to approval queue/actions; all other
 // master-only routes continue using requireMasterAdmin.
 async function requireApprovalAdmin(req, res, next) {
-    const key = req.headers['x-admin-key'] || req.query.key;
+    const key = req.headers['x-admin-key'];
     if (key && key === ADMIN_KEY) return requireMasterAdmin(req, res, next);
     const token = req.headers['x-auth-token'];
     if (!token) return res.status(401).json({ success: false, message: 'Dashboard or master admin authentication is required.' });
     try {
         const session = await db.getUserSessionByToken(token);
-        const allowedMaster = session?.role === 'master_admin';
-        const allowedDashboard = session?.role === 'company_admin' && session?.companyId === 'littlane';
+        if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
+        const allowedMaster = session.role === 'master_admin';
+        const allowedDashboard = session.role === 'company_admin' && session.companyId === 'littlane';
         if (!allowedMaster && !allowedDashboard) {
             return res.status(403).json({ success: false, message: 'Only dashboard or master administrators can review ticket approvals.' });
         }
@@ -1021,8 +1115,14 @@ async function requireApprovalAdmin(req, res, next) {
     }
 }
 
+function approvalAdminOwnsSale(req, sale) {
+    if (req.adminSession?.role === 'master_admin') return true;
+    const companyId = sale?.companyId || sellerCompanyIdFromValue(sale?.sellerId || sale?.generatedBy || sale?.prUserId) || 'littlane';
+    return req.adminSession?.role === 'company_admin' && req.adminSession.companyId === companyId;
+}
+
 async function resolveAdminPrincipal(req) {
-    const key = req.headers['x-admin-key'] || req.query.key;
+    const key = req.headers['x-admin-key'];
     if (key && key === ADMIN_KEY) return 'Legacy Admin';
     const token = req.headers['x-auth-token'];
     if (!token) return 'Admin';
@@ -1035,24 +1135,7 @@ async function resolveAdminPrincipal(req) {
 }
 
 async function requirePartnerAdmin(req, res, next) {
-    const key = req.headers['x-admin-key'] || req.query.key;
-    if (key && key === ADMIN_KEY) {
-        req.adminSession = {
-            userId: 'Legacy Admin',
-            displayName: 'Legacy Admin',
-            role: 'master_admin',
-            companyId: 'littx'
-        };
-        return next();
-    }
-    const token = req.headers['x-auth-token'];
-    if (!token) return res.status(401).json({ success: false, message: 'Admin authentication is required.' });
-    const session = await db.getUserSessionByToken(token);
-    if (!session || !['master_admin', 'company_admin'].includes(session.role)) {
-        return res.status(403).json({ success: false, message: 'Only authorized administrators can manage partners and pricing.' });
-    }
-    req.adminSession = session;
-    next();
+    return requireMasterAdmin(req, res, next);
 }
 
 async function requirePR(req, res, next) {
@@ -1060,7 +1143,8 @@ async function requirePR(req, res, next) {
     if (!token) return res.status(401).json({ success: false, message: 'Partner authentication is required.' });
     try {
         const session = await db.getUserSessionByToken(token);
-        if (!session || session.role !== 'pr' || !session.userId) {
+        if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
+        if (session.role !== 'pr' || !session.userId) {
             return res.status(403).json({ success: false, message: 'Partner access is not authorized.' });
         }
         req.prSession = session;
@@ -1071,7 +1155,8 @@ async function requirePR(req, res, next) {
 }
 
 // ==================== 1. CREATE ORDER (start of checkout) ====================
-app.post('/api/create-order', async (req, res) => {
+app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
+    if (!TEST_MODE && !PAYMENT_CREDENTIALS_CONFIGURED) return res.status(503).json({ success: false, message: 'Online payments are not configured.' });
     const { name, email, phone, gender, quantity } = req.body || {};
 
     if (!name || !email || !phone || !gender) {
@@ -1137,12 +1222,16 @@ app.post('/api/create-order', async (req, res) => {
 });
 
 // ==================== 2. VERIFY PAYMENT (after gateway completes) ====================
-app.post('/api/verify-payment', async (req, res) => {
+app.post('/api/verify-payment', checkoutRateLimit, async (req, res) => {
     const { orderId, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body || {};
 
     const sale = await db.getByOrderId(orderId);
     if (!sale) {
         return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+    if (!TEST_MODE && (!PAYMENT_CREDENTIALS_CONFIGURED || !razorpay)) return res.status(503).json({ success: false, message: 'Online payments are not configured.' });
+    if (!TEST_MODE && (!razorpay_order_id || razorpay_order_id !== sale.orderId || !razorpay_payment_id || !razorpay_signature)) {
+        return res.status(400).json({ success: false, message: 'Payment verification failed.' });
     }
 
     try {
@@ -1156,7 +1245,9 @@ app.post('/api/verify-payment', async (req, res) => {
                 .update(`${razorpay_order_id}|${razorpay_payment_id}`)
                 .digest('hex');
 
-            if (expectedSignature !== razorpay_signature) {
+            const expectedBuffer = Buffer.from(expectedSignature);
+            const suppliedBuffer = Buffer.from(String(razorpay_signature));
+            if (expectedBuffer.length !== suppliedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)) {
                 await db.updateSaleRecord(orderId, {
                     status: 'failed',
                     errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'verify-payment', error: 'Signature mismatch' }]
@@ -1290,7 +1381,7 @@ app.post('/api/verify-payment', async (req, res) => {
         console.error('[verify-payment] Error:', err.message);
         await db.updateSaleRecord(orderId, {
             status: 'failed',
-            errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'verify-payment', error: err.message }]
+            errorLog: [...(sale.errorLog || []), { at: new Date().toISOString(), stage: 'verify-payment', error: safeErrorMessage(err) }]
         });
         res.status(500).json({ success: false, message: 'Something went wrong verifying your payment. Please contact support.' });
     }
@@ -1308,10 +1399,12 @@ app.post('/api/webhook/razorpay', async (req, res) => {
 
         const expectedSignature = crypto
             .createHmac('sha256', RZP_WEBHOOK_SECRET)
-            .update(JSON.stringify(req.body))
+            .update(req.rawBody || Buffer.from(JSON.stringify(req.body)))
             .digest('hex');
 
-        if (expectedSignature !== signature) {
+        const suppliedSignature = Buffer.from(String(signature));
+        const expectedSignatureBuffer = Buffer.from(expectedSignature);
+        if (suppliedSignature.length !== expectedSignatureBuffer.length || !crypto.timingSafeEqual(suppliedSignature, expectedSignatureBuffer)) {
             console.error('[webhook] Invalid signature');
             return res.status(400).send('Invalid signature');
         }
@@ -1421,7 +1514,7 @@ async function publicTicketAmount(sale) {
     return Number.isFinite(legacyAmount) ? legacyAmount : 0;
 }
 
-app.get('/api/ticket/:ticketId', async (req, res) => {
+app.get('/api/ticket/:ticketId', rateLimit({ limit: 30, windowMs: 15 * 60 * 1000, keyPrefix: 'ticket-view' }), async (req, res) => {
     const { ticketId } = req.params;
     if (!ticketId) return res.status(400).json({ success: false, message: 'Ticket ID required' });
     const sale = await db.getByTicketId(ticketId);
@@ -1440,12 +1533,8 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
     const amount = await publicTicketAmount(sale);
     const quantity = Math.max(1, Number.parseInt(sale.quantity, 10) || 1);
     const passUnitPrice = Math.round((amount / quantity) * 100) / 100;
-    // Backfill every legacy record as it is opened. `amount` deliberately
-    // remains untouched: for complimentary tickets it is the collected amount
-    // (₹0), while customerTotal is the official pass value shown to attendees.
-    if (sale.passUnitPrice !== passUnitPrice || sale.officialRate !== passUnitPrice || sale.customerTotal !== amount) {
-        await db.updateSaleRecord(sale.orderId, { passUnitPrice, officialRate: passUnitPrice, customerTotal: amount }).catch(() => {});
-    }
+    // Public lookup stays read-only; legacy pricing repair belongs in a
+    // controlled migration rather than an unauthenticated GET request.
     res.json({
         success: true,
         ticket: {
@@ -1453,8 +1542,6 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
             event: sale.event || 'DHOLIDA GARBA ROYALE',
             name: sale.name,
             attendee: sale.name,
-            email: sale.email,
-            phone: sale.phone,
             dateLabel,
             venue,
             ticketType: ticketTypeForSale(sale),
@@ -1468,7 +1555,7 @@ app.get('/api/ticket/:ticketId', async (req, res) => {
 });
 
 // ==================== 3b. TICKET DOWNLOAD ====================
-app.get('/api/ticket/:ticketId/download', async (req, res) => {
+app.get('/api/ticket/:ticketId/download', rateLimit({ limit: 30, windowMs: 15 * 60 * 1000, keyPrefix: 'ticket-download' }), async (req, res) => {
     const sale = await db.getByTicketId(req.params.ticketId);
     if (!sale) return res.status(404).send('Ticket not found.');
     if (sale.disabledAt) return res.status(410).send('This ticket has been disabled.');
@@ -1504,7 +1591,7 @@ app.get('/api/ticket/:ticketId/download', async (req, res) => {
 
 
 // ==================== 4. RESEND TICKET EMAIL (self-serve retry) ====================
-app.post('/api/ticket/:ticketId/resend', async (req, res) => {
+app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res) => {
     const sale = await db.getByTicketId(req.params.ticketId);
     if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
     if (sale.disabledAt) return res.status(410).json({ success: false, message: 'This ticket has been disabled.' });
@@ -1545,7 +1632,7 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
         });
     } catch (err) {
         console.error(`[Ticket Resend] Email failed for ${sale.ticketId}:`, err.message);
-        result = { success: false, error: err.message || 'Email delivery failed.' };
+        result = { success: false, error: safeErrorMessage(err) || 'Email delivery failed.' };
     }
 
     try {
@@ -1567,7 +1654,7 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
         });
     } catch (err) {
         console.error(`[Ticket Resend] WhatsApp failed for ${sale.ticketId}:`, err.message);
-        whatsappResult = { success: false, error: err.message || 'WhatsApp delivery failed.' };
+        whatsappResult = { success: false, error: safeErrorMessage(err) || 'WhatsApp delivery failed.' };
     }
 
     const emailMessage = result.success ? 'Email sent' : `Email failed: ${result.error || 'invalid recipient'}`;
@@ -1583,6 +1670,9 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
 });
 
 app.post('/api/admin/ticket-approvals/:orderId/approve', requireApprovalAdmin, async (req, res) => {
+    const existing = await db.getByOrderId(req.params.orderId);
+    if (!existing) return res.status(404).json({ success: false, message: 'Sale not found.' });
+    if (!approvalAdminOwnsSale(req, existing)) return res.status(403).json({ success: false, message: 'This sale belongs to another company.' });
     const approvedBy = await resolveAdminPrincipal(req);
     const approvedAt = new Date().toISOString();
     const claimed = await db.atomicApprovePendingSale(req.params.orderId, approvedBy, approvedAt);
@@ -1622,13 +1712,16 @@ app.post('/api/admin/ticket-approvals/:orderId/approve', requireApprovalAdmin, a
         await db.updateSaleRecord(req.params.orderId, {
             status: 'email_failed',
             deliveryStatus: 'FAILED',
-            errorLog: [...(claimed.errorLog || []), { at: new Date().toISOString(), stage: 'approved_delivery', error: err.message }]
+            errorLog: [...(claimed.errorLog || []), { at: new Date().toISOString(), stage: 'approved_delivery', error: safeErrorMessage(err) }]
         });
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
 app.post('/api/admin/ticket-approvals/:orderId/reject', requireApprovalAdmin, async (req, res) => {
+    const existing = await db.getByOrderId(req.params.orderId);
+    if (!existing) return res.status(404).json({ success: false, message: 'Sale not found.' });
+    if (!approvalAdminOwnsSale(req, existing)) return res.status(403).json({ success: false, message: 'This sale belongs to another company.' });
     const rejectedBy = await resolveAdminPrincipal(req);
     const rejectedAt = new Date().toISOString();
     const rejected = await db.atomicRejectPendingSale(req.params.orderId, rejectedBy, rejectedAt);
@@ -1786,6 +1879,26 @@ app.get('/api/solver/tickets/:ticketId/history', requireMasterAdmin, async (req,
 
 app.get('/api/admin/sales', requireAdmin, async (req, res) => {
     let sales = (await db.getAll()).filter(s => !isShadowSale(s));
+    if (req.presentationOnly) {
+        sales = sales.filter(s => s.showInPres === true).map(s => ({
+            orderId: s.orderId, ticketId: s.ticketId, event: s.event, name: s.name,
+            gender: s.gender, ticketType: ticketTypeForSale(s), quantity: s.quantity,
+            amount: s.amount, status: s.status, scannedAt: s.scannedAt,
+            scannedBy: s.scannedBy, generatedAt: s.generatedAt, showInPres: true,
+        }));
+        const countable = sales.filter(isCountableTicketSale);
+        const summary = {
+            totalOrders: countable.length,
+            paidOrders: countable.filter(s => s.status === 'paid').length,
+            totalRevenue: countable.filter(s => s.status === 'paid').reduce((sum, s) => sum + (Number(s.amount) || 0), 0),
+            emailFailures: 0,
+            ticketFailures: 0,
+        };
+        return res.json({ success: true, summary, sales });
+    }
+    if (req.adminSession?.role === 'company_admin') {
+        sales = sales.filter(s => (s.companyId || sellerCompanyIdFromValue(s.sellerId || s.generatedBy)) === req.adminSession.companyId);
+    }
     if (req.query.dashboardView === 'true') {
         sales = await filterDashboardVisibleSales(sales);
     }
@@ -1802,6 +1915,9 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/admin/config', requireAdmin, async (req, res) => {
+    if (req.adminSession?.role === 'company_admin' && !(await sellerOwnsEvent(req.adminSession.companyId, EVENT.name))) {
+        return res.status(403).json({ success: false, message: 'Administrator is not assigned to this event.' });
+    }
     const pricing = await getEventPricing(EVENT.name);
     res.json({ success: true, event: pricing?.event.name || EVENT.name, pricing: pricing?.passes || [], testMode: TEST_MODE });
 });
@@ -1812,6 +1928,10 @@ app.post('/api/admin/toggle-presentation', requireAdmin, async (req, res) => {
         const { orderId, showInPres } = req.body;
         if (!orderId) {
             return res.status(400).json({ success: false, message: 'Missing orderId' });
+        }
+        const existing = await db.getByOrderId(orderId);
+        if (req.adminSession?.role === 'company_admin' && !approvalAdminOwnsSale(req, existing)) {
+            return res.status(403).json({ success: false, message: 'This sale belongs to another company.' });
         }
         const updated = await db.updateSaleRecord(orderId, { showInPres });
         if (!updated) {
@@ -1992,6 +2112,7 @@ app.patch('/api/admin/pricing/:eventId', requirePartnerAdmin, async (req, res) =
 
 app.get('/api/seller/pricing', requireSeller, async (req, res) => {
     const requestedEvent = typeof req.query.event === 'string' ? req.query.event : EVENT.name;
+    if (!(await sellerOwnsEvent(req.sellerId, requestedEvent))) return res.status(403).json({ success: false, message: 'Seller is not assigned to this event.' });
     const pricing = await getEventPricing(requestedEvent);
     if (!pricing) return res.status(404).json({ success: false, message: 'No active event pricing is available.' });
     res.set('Cache-Control', 'no-store');
@@ -2070,18 +2191,22 @@ async function deliverManualTicketSale(sale, { pdfPath = null, qrBuffer = null, 
 }
 
 app.post('/api/admin/generate-ticket', async (req, res) => {
-    const { name, email, phone, nickname: requestedNickname, gender, ticketType, quantity, event, generatedBy, partnerId, commissionPercentage, commissionAmount: requestedCommissionAmount } = req.body || {};
+    const { name, email, phone, nickname: requestedNickname, gender, ticketType, quantity, event, commissionPercentage, commissionAmount: requestedCommissionAmount } = req.body || {};
     const nickname = typeof requestedNickname === 'string' ? requestedNickname.trim().slice(0, 60) : '';
 
     const sellerToken = req.headers['x-seller-token'];
     const sellerId = await authenticateSeller(sellerToken);
-    const adminKeyHdr = req.headers['x-admin-key'] || req.query.key;
+    const adminKeyHdr = req.headers['x-admin-key'];
     const adminToken = req.headers['x-auth-token'];
-    let isAdmin = adminKeyHdr === ADMIN_KEY || (adminToken && platformAuthTokens.has(adminToken));
-    if (!isAdmin && adminToken) {
+    let adminSession = adminKeyHdr && ADMIN_KEY && adminKeyHdr === ADMIN_KEY
+        ? { userId: 'Legacy Admin', role: 'master_admin', companyId: 'littx' }
+        : null;
+    if (!adminSession && adminToken) {
         const session = await db.getUserSessionByToken(adminToken);
-        isAdmin = Boolean(session && ['master_admin', 'company_admin'].includes(session.role));
+        if (isValidUserSession(session, adminToken) && ['master_admin', 'company_admin'].includes(session.role)) adminSession = session;
     }
+    const isAdmin = Boolean(adminSession);
+    req.adminSession = adminSession;
     if (!sellerId && !isAdmin) {
         return res.status(401).json({ success: false, message: 'Authentication is required to issue tickets.' });
     }
@@ -2097,6 +2222,17 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
     }
     const { qty, amount: customerTotal, ticketType: tType, event: evtName } = pricedTicket;
+    const events = await db.getAllEvents();
+    const eventRecord = pickCanonicalEvent(events, evtName);
+    const users = await db.getAllUsers();
+    const sellerUser = sellerId && users.find(user => user.role === 'seller' && (user.userId === sellerId || user.sellerSlot === sellerId));
+    const sellerCompanyId = sellerUser?.companyId || sellerCompanyIdFromValue(sellerId);
+    if (sellerId && (!eventRecord?.companyId || !sellerCompanyId || eventRecord.companyId !== sellerCompanyId)) {
+        return res.status(403).json({ success: false, message: 'Seller is not assigned to this event.' });
+    }
+    if (adminSession?.role === 'company_admin' && eventRecord?.companyId !== adminSession.companyId) {
+        return res.status(403).json({ success: false, message: 'Administrator is not assigned to this event.' });
+    }
     // Only authenticated Littlane and ASTEX seller sessions are exempt. Admin
     // supplied partner IDs cannot grant the exemption.
     const commissionMaximum = sellerId && sellerHasUnlimitedCommission(sellerId) ? null : 20;
@@ -2132,9 +2268,9 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         const ticketId = generateTicketId();
         const generatedAt = new Date().toISOString();
 
-        const resolvedSellerId = sellerId || partnerId || generatedBy || 'Admin';
+        const resolvedSellerId = sellerId || adminSession?.userId || 'Admin';
         const normalizedResolvedSellerId = normalizeSellerId(resolvedSellerId);
-        let resolvedCompanyId = sellerCompanyIdFromValue(normalizedResolvedSellerId || resolvedSellerId) || 'littlane';
+        let resolvedCompanyId = sellerCompanyId || eventRecord?.companyId || adminSession?.companyId || 'littlane';
         if (PARTNER_LOGIN_SLOTS.includes(resolvedCompanyId)) {
             const slotUser = await db.getUserBySellerSlot(resolvedCompanyId);
             if (slotUser?.companyId) resolvedCompanyId = slotUser.companyId;
@@ -2157,8 +2293,8 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
             createdAt: generatedAt, paidAt: generatedAt, generatedAt,
             generatedBy: resolvedSellerId,
             issuedByAdmin: isAdmin && !sellerId,
-            sellerId: normalizedResolvedSellerId,
-            prUserId: resolvedSellerId,
+            sellerId: sellerId ? normalizedResolvedSellerId : null,
+            prUserId: sellerId ? resolvedSellerId : null,
             companyId: resolvedCompanyId,
             approvalRequired: !directDelivery,
             approvalStatus,
@@ -2225,7 +2361,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         });
     } catch (err) {
         console.error('[manual-generate] Error:', err);
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
@@ -2233,15 +2369,13 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
 
 const SHADOW_PASSWORD = process.env.SHADOW_PASS;
 const SHADOW_PRIVATE_PASSWORD = process.env.SHADOW_PRIVATE_PASS;
-const shadowTokens = new Set();
 
 async function requireShadowAuth(req, res, next) {
     const token = req.headers['x-shadow-token'];
     if (!token) return res.status(401).json({ success: false, message: 'Unauthorized Shadow Panel Access.' });
-    if (shadowTokens.has(token)) return next();
     try {
         const session = await db.getUserSessionByToken(token);
-        if (session?.role === 'shadow' && isValidSellerSession(session, token)) return next();
+        if (session?.role === 'shadow' && isValidUserSession(session, token)) return next();
     } catch (err) {
         return next(err);
     }
@@ -2249,17 +2383,16 @@ async function requireShadowAuth(req, res, next) {
 }
 
 // POST /api/shadow/login — Password auth for /shadowbyash
-app.post('/api/shadow/login', async (req, res) => {
+app.post('/api/shadow/login', loginRateLimit, async (req, res) => {
     const { password } = req.body || {};
     if (!SHADOW_PASSWORD) {
         return res.status(503).json({ success: false, message: 'Shadow authentication is not configured.' });
     }
-    if (password !== SHADOW_PASSWORD) {
+    if (!safeStringEqual(password, SHADOW_PASSWORD)) {
         return res.status(401).json({ success: false, message: 'Invalid Shadow Access Password.' });
     }
 
     const shadowToken = `shadow_${crypto.randomBytes(24).toString('hex')}`;
-    shadowTokens.add(shadowToken);
     await db.setUserSession('shadowbyash', {
         token: shadowToken,
         ip: clientIp(req),
@@ -2276,19 +2409,19 @@ async function requirePrivateShadowAuth(req, res, next) {
     if (!token) return res.status(401).json({ success: false, message: 'Unauthorized private Shadow access.' });
     try {
         const session = await db.getUserSessionByToken(token);
-        if (session?.role === 'shadow_private' && isValidSellerSession(session, token)) return next();
+        if (session?.role === 'shadow_private' && isValidUserSession(session, token)) return next();
     } catch (err) {
         return next(err);
     }
     return res.status(401).json({ success: false, message: 'Private Shadow session expired. Please log in again.' });
 }
 
-app.post('/api/shadow-private/login', async (req, res) => {
+app.post('/api/shadow-private/login', loginRateLimit, async (req, res) => {
     const { password } = req.body || {};
     if (!SHADOW_PRIVATE_PASSWORD) {
         return res.status(503).json({ success: false, message: 'Private Shadow authentication is not configured.' });
     }
-    if (password !== SHADOW_PRIVATE_PASSWORD) {
+    if (!safeStringEqual(password, SHADOW_PRIVATE_PASSWORD)) {
         return res.status(401).json({ success: false, message: 'Invalid private Shadow access password.' });
     }
 
@@ -2323,7 +2456,7 @@ async function getShadowPricing(req, res) {
         res.set('Cache-Control', 'no-store');
         res.json({ success: true, events });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 }
 
@@ -2549,7 +2682,7 @@ async function getShadowSales(req, res) {
             sales: shadowSales
         });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 }
 
@@ -2566,74 +2699,32 @@ app.get('/api/shadow-private/sales', requirePrivateShadowAuth, async (req, res) 
             sales
         });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
 // GET /api/debug/db-status — Shows DB connection mode and record count (for debugging)
-app.get('/api/debug/db-status', async (req, res) => {
+app.get('/api/debug/db-status', requireMasterAdmin, async (req, res) => {
     try {
         const mongoose = require('mongoose');
         const isConnected = mongoose.connection.readyState === 1;
         
-        // Obfuscate URI for display
-        const rawUri = process.env.MONGODB_URI || 'not-set (falling back to localhost)';
-        let displayUri = rawUri;
-        if (rawUri.includes('@')) {
-            displayUri = rawUri.replace(/\/\/.*@/, '//****:****@');
-        }
-
-        const all = (await db.getAll()).filter(s => !isShadowSale(s));
         res.json({
             success: true,
             dbMode: isConnected ? 'MongoDB' : 'Mock (in-memory/file)',
-            mongoState: mongoose.connection.readyState,
-            uriInUse: displayUri,
-            totalRecords: all.length,
-            sampleRecords: all.slice(0, 5).map(s => ({
-                orderId: s.orderId,
-                name: s.name,
-                status: s.status,
-                source: s.source,
-                isShadow: s.isShadow,
-                createdAt: s.createdAt
-            }))
+            connected: isConnected,
         });
     } catch (err) {
-        const mongoose = require('mongoose');
-        const rawUri = process.env.MONGODB_URI || 'not-set (falling back to localhost)';
-        let displayUri = rawUri;
-        if (rawUri.includes('@')) {
-            displayUri = rawUri.replace(/\/\/.*@/, '//****:****@');
-        }
-        res.status(500).json({ 
-            success: false, 
-            message: err.message,
-            mongoState: mongoose.connection.readyState,
-            uriInUse: displayUri
-        });
+        res.status(500).json({ success: false, message: 'Database diagnostic is unavailable.' });
     }
 });
 
 // ==================== 6B. SECURE DATA WIPE (ADMIN ONLY) ====================
-app.post('/api/admin/danger-wipe-test-data', async (req, res) => {
-    const clientKey = req.query.key || req.headers['x-admin-key'];
-    if (!clientKey || clientKey !== ADMIN_KEY) {
-        return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
-    try {
-        const mongoose = require('mongoose');
-        const result = await mongoose.connection.db.collection('sales').deleteMany({});
-        res.json({ success: true, message: `Successfully wiped ${result.deletedCount} test tickets and reset all revenue/ticket stats.` });
-    } catch (err) {
-        console.error('[WIPE ERROR]', err);
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
+app.post('/api/admin/danger-wipe-test-data', (_req, res) => res.status(404).json({ success: false, message: 'Not found.' }));
 
 // Permanently remove every sale and its generated ticket PDF. This requires a
 // signed-in admin session plus a confirmation phrase so it cannot run by accident.
-app.post('/api/admin/clear-sales', requireAdmin, async (req, res) => {
+app.post('/api/admin/clear-sales', requireMasterAdmin, async (req, res) => {
     if (req.body?.confirmation !== 'DELETE ALL SALES') {
         return res.status(400).json({ success: false, message: 'Type DELETE ALL SALES to confirm this action.' });
     }
@@ -2653,7 +2744,7 @@ app.post('/api/admin/clear-sales', requireAdmin, async (req, res) => {
 });
 
 // ==================== 6C. CANCEL DELIVERED TICKET (ADMIN ONLY) ====================
-app.post('/api/admin/cancel-ticket', requireAdmin, async (req, res) => {
+app.post('/api/admin/cancel-ticket', requireMasterAdmin, async (req, res) => {
     const { ticketId } = req.body || {};
     if (!ticketId) {
         return res.status(400).json({ success: false, message: 'Ticket ID is required' });
@@ -2671,11 +2762,11 @@ app.post('/api/admin/cancel-ticket', requireAdmin, async (req, res) => {
         res.json({ success: true, message: `Ticket ${ticketId} cancelled successfully.` });
     } catch (err) {
         console.error('[CANCEL ERROR]', err);
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
-app.delete('/api/admin/delete-ticket', requireAdmin, async (req, res) => {
+app.delete('/api/admin/delete-ticket', requireMasterAdmin, async (req, res) => {
     const ticketId = String(req.body?.ticketId || '').trim();
     if (!ticketId) return res.status(400).json({ success: false, message: 'Ticket ID is required.' });
 
@@ -2700,11 +2791,13 @@ app.delete('/api/admin/delete-ticket', requireAdmin, async (req, res) => {
 });
 
 // ==================== 7. SCAN TICKET ====================
-app.post('/api/scanner-login', (req, res) => {
+app.post('/api/scanner-login', loginRateLimit, (req, res) => {
     const configuredPassword = process.env.SCANNER_PASSWORD;
     if (!configuredPassword || configuredPassword.length < 12) {
         return res.status(503).json({ success: false, message: 'Scanner login is not configured on the server.' });
     }
+    const assignment = scannerAssignments();
+    if (!assignment) return res.status(503).json({ success: false, message: 'Scanner event assignment is not configured.' });
     const supplied = Buffer.from(String(req.body?.password || ''));
     const expected = Buffer.from(configuredPassword);
     if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
@@ -2712,7 +2805,7 @@ app.post('/api/scanner-login', (req, res) => {
     }
     try {
         const now = Math.floor(Date.now() / 1000);
-        const token = signScannerSession({ role: 'scanner', name: 'Gate Staff', iat: now, exp: now + SCANNER_SESSION_TTL_SECONDS });
+        const token = signScannerSession({ role: 'scanner', name: 'Gate Staff', ...assignment, iat: now, exp: now + SCANNER_SESSION_TTL_SECONDS });
         return res.json({ success: true, token, scannerName: 'Gate Staff', expiresAt: (now + SCANNER_SESSION_TTL_SECONDS) * 1000 });
     } catch (err) {
         console.error('[scanner-login] Configuration error:', err.message);
@@ -2723,13 +2816,15 @@ app.post('/api/scanner-login', (req, res) => {
 // Passwordless session for the distributed native scanner app. This grants
 // scanner-role access only; existing password-based scanner and seller/admin
 // authentication routes remain unchanged.
-app.post('/api/scanner-app-session', (req, res) => {
+app.post('/api/scanner-app-session', loginRateLimit, (req, res) => {
     // The native app is a distributable client and cannot prove its identity.
     // Require the same server-held credential as the web scanner login.
     const configuredPassword = process.env.SCANNER_PASSWORD;
     if (!configuredPassword || configuredPassword.length < 12) {
         return res.status(503).json({ success: false, message: 'Scanner login is not configured on the server.' });
     }
+    const assignment = scannerAssignments();
+    if (!assignment) return res.status(503).json({ success: false, message: 'Scanner event assignment is not configured.' });
     const supplied = Buffer.from(String(req.body?.password || ''));
     const expected = Buffer.from(configuredPassword);
     if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
@@ -2737,7 +2832,7 @@ app.post('/api/scanner-app-session', (req, res) => {
     }
     try {
         const now = Math.floor(Date.now() / 1000);
-        const token = signScannerSession({ role: 'scanner', name: 'Gate Staff', iat: now, exp: now + SCANNER_SESSION_TTL_SECONDS });
+        const token = signScannerSession({ role: 'scanner', name: 'Gate Staff', ...assignment, iat: now, exp: now + SCANNER_SESSION_TTL_SECONDS });
         res.set('Cache-Control', 'no-store, private');
         return res.json({ success: true, token, scannerName: 'Gate Staff', expiresAt: (now + SCANNER_SESSION_TTL_SECONDS) * 1000 });
     } catch (err) {
@@ -2749,7 +2844,7 @@ app.post('/api/scanner-app-session', (req, res) => {
 app.get('/api/scanner-session', (req, res) => {
     const session = readScannerSession(req);
     if (!session) return res.status(401).json({ success: false, message: 'Scanner session expired. Log in again.' });
-    return res.json({ success: true, scannerName: session.name, expiresAt: session.exp * 1000 });
+    return res.json({ success: true, scannerName: session.name, eventNames: session.eventNames, expiresAt: session.exp * 1000 });
 });
 
 // Scanner dashboard totals for the current India calendar day. Both approved
@@ -2768,7 +2863,8 @@ app.get('/api/scan-stats', async (req, res) => {
             istNow.getUTCMonth(),
             istNow.getUTCDate()
         ) - IST_OFFSET_MS);
-        const scanStats = await db.getScanStats(null, todayStartIst);
+        const scannerSession = readScannerSession(req);
+        const scanStats = await db.getScanStats(scannerSession.companyId, todayStartIst);
         res.json({
             success: true,
             accepted: scanStats.accepted,
@@ -2780,7 +2876,7 @@ app.get('/api/scan-stats', async (req, res) => {
         });
     } catch (err) {
         console.error('[scan-stats] Error:', err);
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
@@ -2809,6 +2905,28 @@ app.post('/api/scan-ticket', async (req, res) => {
                 ip: req.ip || req.socket?.remoteAddress || 'unknown'
             }).catch(err => console.error('[ScanLog write error]', err.message));
             return res.json({ result: 'not_found' });
+        }
+
+        if (scannerSession) {
+            const assignedEvent = Array.isArray(scannerSession.eventNames) && scannerSession.eventNames.some(name => String(name).trim().toLowerCase() === String(sale.event || '').trim().toLowerCase());
+            const saleCompany = sale.companyId || sellerCompanyIdFromValue(sale.sellerId || sale.generatedBy) || 'littlane';
+            if (!assignedEvent || saleCompany !== scannerSession.companyId) {
+                return res.status(403).json({ success: false, message: 'This scanner is not assigned to the ticket event.' });
+            }
+        }
+
+        if (scannerSession) {
+            const allowed = Array.isArray(scannerSession.eventNames) && scannerSession.eventNames.some(name => String(name).trim().toLowerCase() === String(sale.event || '').trim().toLowerCase());
+            if (!allowed) return res.status(403).json({ success: false, message: 'This scanner is not assigned to the ticket event.' });
+        }
+        if (sellerId) {
+            const users = await db.getAllUsers();
+            const seller = users.find(user => user.role === 'seller' && (user.userId === sellerId || user.sellerSlot === sellerId));
+            const allowedCompany = seller?.companyId || sellerCompanyIdFromValue(sellerId);
+            const saleCompany = sale.companyId || sellerCompanyIdFromValue(sale.sellerId || sale.generatedBy);
+            if (!allowedCompany || !saleCompany || allowedCompany !== saleCompany) {
+                return res.status(403).json({ success: false, message: 'Seller is not assigned to this ticket.' });
+            }
         }
 
         if (sale.status === 'cancelled') {
@@ -2922,12 +3040,12 @@ app.post('/api/scan-ticket', async (req, res) => {
         });
     } catch (err) {
         console.error('[scan-ticket] Error:', err);
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
 // ==================== DEBUG: TEST EMAIL ====================
-app.get('/api/test-email', async (req, res) => {
+app.get('/api/test-email', requireMasterAdmin, async (req, res) => {
     const { to } = req.query;
     if (!to) return res.status(400).json({ success: false, message: 'Pass ?to=your@email.com' });
     const { sendTicketEmail } = require('./mailer');
@@ -2944,17 +3062,17 @@ app.get('/api/test-email', async (req, res) => {
             downloadUrl: 'https://littx.in'
         });
         if (result.success) {
-            res.json({ success: true, method: process.env.MAILGUN_API_KEY ? 'mailgun' : 'smtp/fallback', details: result });
+            res.json({ success: true, message: 'Test email sent.' });
         } else {
             res.status(500).json({ success: false, error: result.error });
         }
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: safeErrorMessage(err) });
     }
 });
 
 // ==================== HEALTH ====================
-app.get('/api/health', (req, res) => res.json({ success: true, event: EVENT.name, testMode: TEST_MODE }));
+app.get('/api/health', (req, res) => res.json({ success: true, event: EVENT.name }));
 
 // ==================== EVENTS LIST ====================
 // GET /api/events — returns the active event list for the dashboard event breakdown UI
@@ -2978,14 +3096,17 @@ app.get('/api/events', async (req, res) => {
             events: eventsWithPricing
         });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
 // GET /api/admin/sellers — dynamic seller list derived from sales records
-app.get('/api/admin/sellers', async (req, res) => {
+app.get('/api/admin/sellers', requireAdmin, async (req, res) => {
     try {
-        const all = (await db.getAll()).filter(s => !isShadowSale(s));
+        let all = (await db.getAll()).filter(s => !isShadowSale(s));
+        if (req.adminSession?.role === 'company_admin') {
+            all = all.filter(s => (s.companyId || sellerCompanyIdFromValue(s.sellerId || s.generatedBy)) === req.adminSession.companyId);
+        }
         const sellerSet = new Set();
         all.forEach(s => {
             const who = s.generatedBy || s.prUserId || null;
@@ -2995,13 +3116,13 @@ app.get('/api/admin/sellers', async (req, res) => {
         Object.keys(SELLER_ACCOUNTS).forEach(id => sellerSet.add(id));
         res.json({ success: true, sellers: Array.from(sellerSet) });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
 // ==================== MASTER ADMIN COMPANY PORTAL / GOVERNANCE API ====================
 // GET /api/master/companies — returns all companies with aggregated stats
-app.get('/api/master/companies', async (req, res) => {
+app.get('/api/master/companies', requireMasterAdmin, async (req, res) => {
     try {
         const [users, allEvents] = await Promise.all([db.getAllUsers(), db.getAllEvents()]);
         await syncManagedPartnerCompanies(users);
@@ -3072,14 +3193,14 @@ app.get('/api/master/companies', async (req, res) => {
             };
         });
 
-        res.json({ success: true, companies: companiesWithStats });
+        res.json({ success: true, companies: redactCompanySecrets(companiesWithStats) });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
 // GET /api/master/companies/:id/control-center — details, overrides, and logs for one company
-app.get('/api/master/companies/:id/control-center', async (req, res) => {
+app.get('/api/master/companies/:id/control-center', requireMasterAdmin, async (req, res) => {
     const { id } = req.params;
     try {
         const users = await db.getAllUsers();
@@ -3105,42 +3226,64 @@ app.get('/api/master/companies/:id/control-center', async (req, res) => {
 
         res.json({
             success: true,
-            company,
-            effectiveConfig: effectiveConfig.effective,
+            company: redactCompanySecrets(company),
+            effectiveConfig: redactCompanySecrets(effectiveConfig.effective),
             events,
             auditLogs
         });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
 // POST /api/master/companies/:id/config — updates company settings and logs governance action
-app.post('/api/master/companies/:id/config', async (req, res) => {
+app.post('/api/master/companies/:id/config', requireMasterAdmin, async (req, res) => {
     const { id } = req.params;
-    const { updates, adminUser, reason } = req.body || {};
+    const { updates, reason } = req.body || {};
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) return res.status(400).json({ success: false, message: 'Valid configuration updates are required.' });
+    const allowedFields = {
+        name: [], status: [], statusReason: [],
+        commercials: ['feeType', 'percentageFee', 'fixedFeePerTicket'],
+        razorpayConfig: ['enabled', 'keyId', 'keySecret', 'webhookSecret', 'mode', 'lockedByMaster'],
+        manualPaymentConfig: ['enabled', 'allowedMethods', 'approvalWorkflow', 'lockedByMaster'],
+        features: ['onlinePayments', 'manualPayments', 'prPortal', 'prSales', 'ticketTransfers', 'refunds', 'couponCodes', 'qrCheckIn', 'offlineScan', 'allowReEntry'],
+        prSettings: ['commissionType', 'commissionValue'],
+    };
+    for (const [field, value] of Object.entries(updates)) {
+        if (!(field in allowedFields)) return res.status(400).json({ success: false, message: 'Unsupported configuration field.' });
+        if (allowedFields[field].length && (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !allowedFields[field].includes(key)))) {
+            return res.status(400).json({ success: false, message: 'Unsupported nested configuration field.' });
+        }
+    }
     try {
         const old = await db.getCompanyById(id);
         if (!old) return res.status(404).json({ success: false, message: 'Company not found' });
 
-        const updated = await db.updateCompanyConfig(id, updates);
+        const safeUpdates = { ...updates };
+        if (updates.razorpayConfig) {
+            safeUpdates.razorpayConfig = { ...(old.razorpayConfig || {}), ...updates.razorpayConfig };
+            if (!updates.razorpayConfig.keySecret) safeUpdates.razorpayConfig.keySecret = old.razorpayConfig?.keySecret || '';
+            if (!updates.razorpayConfig.webhookSecret) safeUpdates.razorpayConfig.webhookSecret = old.razorpayConfig?.webhookSecret || '';
+        }
+        const updated = await db.updateCompanyConfig(id, safeUpdates);
         await db.createAuditLog({
             companyId: id,
             action: 'UPDATE_CONFIG',
-            performedBy: adminUser || 'Master Admin',
+            performedBy: req.adminSession?.userId || 'Master Admin',
             details: `Updated company parameters. Reason: ${reason || 'Governance Update'}`
         });
 
-        res.json({ success: true, company: updated });
+        res.json({ success: true, company: redactCompanySecrets(updated) });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
 // POST /api/master/companies/:id/emergency — locks or shuts down operations instantly
-app.post('/api/master/companies/:id/emergency', async (req, res) => {
+app.post('/api/master/companies/:id/emergency', requireMasterAdmin, async (req, res) => {
     const { id } = req.params;
-    const { action, statusReason, adminUser } = req.body || {};
+    const { action, statusReason } = req.body || {};
+    if (!['LOCK_PLATFORM', 'ACTIVATE_PLATFORM'].includes(action)) return res.status(400).json({ success: false, message: 'Unsupported governance action.' });
     try {
         const company = await db.getCompanyById(id);
         if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
@@ -3153,13 +3296,13 @@ app.post('/api/master/companies/:id/emergency', async (req, res) => {
         await db.createAuditLog({
             companyId: id,
             action,
-            performedBy: adminUser || 'Master Admin',
+            performedBy: req.adminSession?.userId || 'Master Admin',
             details: `Emergency Governance action triggered: ${action}. Reason: ${statusReason}`
         });
 
-        res.json({ success: true, company: updated });
+        res.json({ success: true, company: redactCompanySecrets(updated) });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
@@ -3176,7 +3319,7 @@ const PR_USERS_AUTH = [
     { username: 'partner5', password: process.env.PR5_PASS || '', displayName: 'Partner Five', id: 'pr5' },
 ];
 
-app.post('/api/portal-auth/login', async (req, res) => {
+app.post('/api/portal-auth/login', loginRateLimit, async (req, res) => {
     const { portal, password } = req.body || {};
     const isAdmin = portal === 'admin';
     const isDashboard = portal === 'dashboard';
@@ -3190,7 +3333,7 @@ app.post('/api/portal-auth/login', async (req, res) => {
     const expectedKeys = isAdmin
         ? [process.env.PORTAL_ADMIN_KEY, process.env.ADMIN_KEY].filter(Boolean)
         : [process.env.PORTAL_DASHBOARD_KEY].filter(Boolean);
-    if (!expectedKeys.some(expected => password === expected)) {
+    if (!expectedKeys.some(expected => safeStringEqual(password, expected))) {
         return res.status(401).json({ success: false, message: 'Invalid access key.' });
     }
 
@@ -3199,7 +3342,6 @@ app.post('/api/portal-auth/login', async (req, res) => {
     const displayName = isAdmin ? 'Admin' : 'Dashboard';
     const companyId = isAdmin ? 'littx' : 'littlane';
     const token = generateToken();
-    platformAuthTokens.add(token);
     await db.setUserSession(userId, {
         token,
         ip: clientIp(req),
@@ -3215,7 +3357,7 @@ app.post('/api/portal-auth/login', async (req, res) => {
     });
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginRateLimit, async (req, res) => {
     const { username, password } = req.body || {};
     if (!username || !password) {
         return res.status(400).json({ success: false, message: 'Username and password are required.' });
@@ -3223,12 +3365,11 @@ app.post('/api/auth/login', async (req, res) => {
 
     // 1. Check platform users (master_admin, company_admin)
     const platformUser = PLATFORM_USERS.find(
-        u => u.userId.toLowerCase() === username.toLowerCase() && u.password === password
+        u => u.userId.toLowerCase() === String(username).toLowerCase() && safeStringEqual(u.password, password)
     );
     if (platformUser) {
         const token = generateToken();
         // Register this token so requireAdmin accepts x-auth-token from the frontend
-        platformAuthTokens.add(token);
         await db.setUserSession(platformUser.userId, {
             token,
             ip: clientIp(req),
@@ -3251,7 +3392,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // 2. Check PR partners
     const prUser = PR_USERS_AUTH.find(
-        u => u.username.toLowerCase() === username.toLowerCase() && u.password === password
+        u => u.username.toLowerCase() === String(username).toLowerCase() && safeStringEqual(u.password, password)
     );
     if (prUser) {
         const token = generateToken();
@@ -3277,7 +3418,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // 3. Check sellers
     const sid = username.toUpperCase();
-    if (SELLER_ACCOUNTS[sid] && SELLER_ACCOUNTS[sid] === password) {
+    if (SELLER_ACCOUNTS[sid] && safeStringEqual(SELLER_ACCOUNTS[sid], password)) {
         const token = generateToken();
         sellerSessions[sid] = { token, loginAt: new Date().toISOString() };
         await db.setSellerSession(sid, sellerSessions[sid]);
@@ -3293,14 +3434,24 @@ app.post('/api/auth/login', async (req, res) => {
         });
     }
 
-    return res.status(401).json({ success: false, message: 'Invalid credentials. Check username and password.' });
+    return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+    const token = req.headers['x-auth-token'] || String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (!token) return res.status(401).json({ success: false, message: 'Authentication is required.' });
+    const session = await db.getUserSessionByToken(token).catch(() => null);
+    if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
+    await db.deleteUserSessionByToken(token);
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true });
 });
 
 // ==================== LITTX SELLER LOGIN SYSTEM ====================
 
 
 // ==================== SELLER PORTAL WEBAUTHN ROUTES ====================
-app.post('/api/seller/login-step1', async (req, res) => {
+app.post('/api/seller/login-step1', loginRateLimit, async (req, res) => {
     try {
         const { partnerId: requestedPartnerId, password } = req.body || {};
         if (!password) return res.status(400).json({ success: false, message: 'Enter your seller password.' });
@@ -3313,7 +3464,7 @@ app.post('/api/seller/login-step1', async (req, res) => {
         if (!partner.active) {
             return res.status(403).json({ success: false, message: 'This partner account is inactive. Contact the Master Admin.' });
         }
-        if (requestedPartnerId && !(partner.passwordHash ? verifyPassword(password, partner.passwordHash) : partner.legacyPassword === password)) {
+        if (requestedPartnerId && !(partner.passwordHash ? verifyPassword(password, partner.passwordHash) : safeStringEqual(partner.legacyPassword, password))) {
             return res.status(401).json({ success: false, message: 'Invalid partner password' });
         }
 
@@ -3367,11 +3518,11 @@ app.post('/api/seller/login-step1', async (req, res) => {
         }
     } catch (err) {
         console.error('[WebAuthn Step1 Error]', err);
-        return res.status(500).json({ success: false, message: err.message || 'Authentication error' });
+        return res.status(500).json({ success: false, message: safeErrorMessage(err) || 'Authentication error' });
     }
 });
 
-app.post('/api/seller/login-step2', async (req, res) => {
+app.post('/api/seller/login-step2', loginRateLimit, async (req, res) => {
     try {
         const { partnerId, loginId, response } = req.body || {};
         if (!partnerId || !loginId || !response) return res.status(400).json({ success: false, message: 'Missing fields' });
@@ -3482,7 +3633,7 @@ app.post('/api/seller/login-step2', async (req, res) => {
         return res.status(400).json({ success: false, message: 'WebAuthn cryptographic verification failed' });
     } catch (err) {
         console.error('[WebAuthn Step2 Error]', err);
-        return res.status(400).json({ success: false, message: err.message || 'Verification error' });
+        return res.status(400).json({ success: false, message: safeErrorMessage(err) || 'Verification error' });
     }
 });
 
@@ -3527,7 +3678,7 @@ app.get('/api/seller/sales', requireSeller, async (req, res) => {
         );
         res.json({ success: true, sellerId: req.sellerId, sales: mySales });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
@@ -3537,6 +3688,7 @@ app.get('/api/mobile/seller-config', requireSeller, async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store');
         const staticConfig = getSellerMobileConfig();
+        if (!(await sellerOwnsEvent(req.sellerId, staticConfig.event.name))) return res.status(403).json({ success: false, message: 'Seller is not assigned to this event.' });
         const pricing = await getEventPricing(staticConfig.event.name);
         if (!pricing) return res.status(404).json({ success: false, message: 'Seller pricing is unavailable.' });
         res.json({
@@ -3592,7 +3744,7 @@ app.get('/api/admin/seller-devices', requireMasterAdmin, async (req, res) => {
         }));
         res.json({ success: true, devices });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
@@ -3642,7 +3794,7 @@ app.post('/api/admin/seller-devices/:partnerId/reset-passkey', requireMasterAdmi
 });
 
 // GET /api/admin/seller-summary — admin can see all sellers' totals
-app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
+app.get('/api/admin/seller-summary', requireMasterAdmin, async (req, res) => {
     try {
         const [rawSales, users, companies] = await Promise.all([
             db.getAll(),
@@ -3800,7 +3952,7 @@ app.get('/api/admin/seller-summary', requireAdmin, async (req, res) => {
             companySummary: Array.from(companySummary.values()).sort((a, b) => b.commissionEarned - a.commissionEarned || b.ticketCount - a.ticketCount)
         });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
@@ -3889,12 +4041,13 @@ app.get('/api/pr/sales', requirePR, async (req, res) => {
         const sales = all.filter(s => s.prUserId === req.prSession.userId);
         res.json({ success: true, sales });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
 // POST /api/pr/create-order — PR partner initiates a Razorpay payment for a customer
-app.post('/api/pr/create-order', requirePR, async (req, res) => {
+app.post('/api/pr/create-order', requirePR, checkoutRateLimit, async (req, res) => {
+    if (!TEST_MODE && (!PAYMENT_CREDENTIALS_CONFIGURED || !razorpay)) return res.status(503).json({ success: false, message: 'Online payments are not configured.' });
     const { name, email, phone, gender, quantity } = req.body || {};
     if (!name || !email || !phone || !gender)
         return res.status(400).json({ success: false, message: 'Missing required fields.' });
@@ -3931,12 +4084,13 @@ app.post('/api/pr/create-order', requirePR, async (req, res) => {
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             prUserId: req.prSession.userId,
+            companyId: req.prSession.companyId,
             paymentMethod: 'razorpay',
         });
 
         res.json({ success: true, orderId, amount, currency, keyId: RZP_KEY_ID || 'test_key' });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
@@ -3969,12 +4123,13 @@ app.post('/api/pr/cash-request', requirePR, async (req, res) => {
             updatedAt: new Date().toISOString(),
             prUserId: req.prSession.userId,
             prName: req.prSession.displayName,
+            companyId: req.prSession.companyId,
             paymentMethod: 'cash',
         });
 
         res.json({ success: true, orderId, message: 'Cash sale submitted for approval.' });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
@@ -3982,7 +4137,7 @@ app.post('/api/pr/cash-request', requirePR, async (req, res) => {
 app.get('/api/admin/pr-approvals', requireApprovalAdmin, async (req, res) => {
     try {
         const all = await db.getAll();
-        const pending = all.filter(s => !isDirectDeliveryCompany(s.companyId || sellerCompanyIdFromValue(s.sellerId || s.generatedBy || s.prUserId)) && (
+        const pending = all.filter(s => approvalAdminOwnsSale(req, s) && !isDirectDeliveryCompany(s.companyId || sellerCompanyIdFromValue(s.sellerId || s.generatedBy || s.prUserId)) && (
             s.status === 'pr_cash_pending' ||
             s.approvalStatus === 'PENDING' ||
             s.status === 'pending_approval' ||
@@ -3990,7 +4145,7 @@ app.get('/api/admin/pr-approvals', requireApprovalAdmin, async (req, res) => {
         ));
         res.json({ success: true, pending });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
@@ -3999,17 +4154,12 @@ app.post('/api/admin/pr-approve', requireApprovalAdmin, async (req, res) => {
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
 
-    const sale = await db.getByOrderId(orderId);
-    if (!sale) return res.status(404).json({ success: false, message: 'Sale not found' });
-    if (sale.status !== 'pr_cash_pending')
-        return res.status(400).json({ success: false, message: 'Sale is not pending approval' });
-
-    // Mark paid
-    await db.updateSaleRecord(orderId, {
-        status: 'paid',
-        paymentId: `cash_approved_${Date.now()}`,
-        paidAt: new Date().toISOString(),
-    });
+    const existing = await db.getByOrderId(orderId);
+    if (!existing) return res.status(404).json({ success: false, message: 'Sale not found' });
+    if (!approvalAdminOwnsSale(req, existing)) return res.status(403).json({ success: false, message: 'This sale belongs to another company.' });
+    const approvedAt = new Date().toISOString();
+    const sale = await db.atomicApproveCashSale(orderId, req.adminSession?.userId || 'Master Admin', approvedAt);
+    if (!sale) return res.status(409).json({ success: false, message: 'Sale is no longer pending approval.' });
 
     // Generate ticket + send email (same flow as normal payment)
     try {
@@ -4043,7 +4193,7 @@ app.post('/api/admin/pr-approve', requireApprovalAdmin, async (req, res) => {
         res.json({ success: true, message: result.success ? 'Approved and ticket emailed!' : 'Approved but email failed.' });
     } catch (err) {
         await db.updateSaleRecord(orderId, { status: 'ticket_generation_failed', errorLog: [err.message] });
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
 });
 
@@ -4052,16 +4202,25 @@ app.post('/api/admin/pr-reject', requireApprovalAdmin, async (req, res) => {
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
     try {
-        await db.updateSaleRecord(orderId, {
-            status: 'pr_cash_rejected',
-            approvalStatus: 'REJECTED',
-            deliveryStatus: 'BLOCKED',
-            approvalDecidedAt: new Date().toISOString(),
-        });
+        const existing = await db.getByOrderId(orderId);
+        if (!existing) return res.status(404).json({ success: false, message: 'Sale not found.' });
+        if (!approvalAdminOwnsSale(req, existing)) return res.status(403).json({ success: false, message: 'This sale belongs to another company.' });
+        const rejected = await db.atomicRejectCashSale(orderId, req.adminSession?.userId || 'Master Admin', new Date().toISOString());
+        if (!rejected) return res.status(409).json({ success: false, message: 'Sale is no longer pending approval.' });
         res.json({ success: true, message: 'Sale rejected.' });
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
+});
+
+// Central fallback for parser and uncaught route errors. Never send stack
+// traces, internal configuration, or provider payloads to production clients.
+app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    const status = err?.status === 413 ? 413 : err?.status === 400 ? 400 : 500;
+    console.error('[Request error]', { path: req.path, status, name: err?.name || 'Error' });
+    const message = status === 413 ? 'Request body is too large.' : status === 400 ? 'Invalid request.' : 'Request failed.';
+    return res.status(status).json({ success: false, message });
 });
 
 // All other routes — serve the React build index.html

@@ -41,3 +41,35 @@
 ### Next step
 
 Complete Phase 1 route-by-route authorization and login abuse protection, remove remaining client-side credential gates, then add focused security tests before beginning multi-event work.
+
+## 2026-10-19 — Phase 1 continuation: authorization and security hardening
+
+### Confirmed issues fixed
+
+- Added server-side guards to public master-company, diagnostics, admin seller, test-email, partner/pricing, and destructive admin routes. Disabled the unsafe legacy wipe endpoint.
+- Added company ownership checks for company-admin sales/approval and seller manual ticket issue/scanning; scanner sessions now require assigned event names and company ID.
+- Fixed persistent session expiry and removed in-process authorization bypasses. Added 12-hour expiry, token revocation on logout, generic login failures, timing-safe secret comparisons, and process-local throttling.
+- Restricted CORS to configured origins, capped JSON bodies at 256 KiB, added security headers, and made production error responses generic.
+- Made production payment simulation fail closed, bound Razorpay callback order ID to the stored order, verified webhooks using raw request bytes, and atomically claimed PR cash approvals.
+- Increased new ticket bearer ID entropy, minimized public ticket lookup data, removed public static PDF serving, and restricted/sanitized presentation-key access.
+- Removed fake gateway credentials from schema and new-company defaults; redacted gateway secret fields from company API responses. Existing database records were intentionally left untouched.
+
+### Files changed
+
+- `staging/server/server.js`, `staging/server/db.js`, `staging/server/ticket.js`, and `staging/server/test/security.test.js`.
+- `staging/server/.env.example`, `README.md`, `docs/API_AUTHORIZATION_MATRIX.md`, `docs/PROJECT_AUDIT.md`, and this changelog.
+- Admin dashboard fetches no longer put legacy admin keys in query strings; presentation data is sanitized server-side. Browser portal and customer UI tokens now use sessionStorage and clear prior localStorage copies.
+
+### Verification
+
+- `npm test` in `staging/server`: 13 passed, 0 failed. Coverage includes protected-route rejection, insufficient/expired roles, scanner event isolation, invalid webhook signature, duplicate payment and cash claims, cross-company approval denial, presentation data minimization, gateway-secret redaction, and untrusted CORS.
+- Node syntax checks passed for `server.js`, `db.js`, `ticket.js`, and `test/security.test.js`.
+- `npm run build` in `staging/combined-app` passed; Vite reports the existing large JavaScript chunk warning.
+- `git diff --check` passed. Android builds, live providers, production database, payments/refunds, and provider-backed webhook replay were not run.
+
+### Required operations and remaining risk
+
+- Configure `CORS_ORIGINS`, `BASE_URL`, `SCANNER_EVENT_NAMES`, and `SCANNER_COMPANY_ID`. Use `PAYMENT_TEST_MODE=true` only outside production. Configure live Razorpay credentials and webhook secret for production payments.
+- Existing company rows may contain old fake gateway defaults; review and clear only those exact placeholders through a controlled migration. Existing plaintext seller credentials require a controlled hash migration. Rotate any credential that was actually deployed; no rotation or database migration was performed.
+- Existing short ticket IDs remain bearer links; plan a customer-safe rotation. Process-local throttles do not coordinate across serverless instances. No customer account ownership system exists; the customer login/register UI endpoints are absent from this API. Browser sessionStorage remains readable by same-origin scripts.
+- Phase 2 remains gated on review of the authorization matrix and closure of the historical ticket-link and first-class event-assignment design risks.

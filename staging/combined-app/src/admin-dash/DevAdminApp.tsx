@@ -374,7 +374,8 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     const ok = await fetchSales(trimmed)
     if (ok) {
       sessionStorage.setItem('ft_admin_key', trimmed)
-      localStorage.setItem('ft_admin_key', trimmed)
+      sessionStorage.setItem('ft_admin_key', trimmed)
+      localStorage.removeItem('ft_admin_key')
       setAdminKey(trimmed)
     }
   }
@@ -391,7 +392,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
   const handleResend = async (ticketId: string) => {
     try {
-      const res = await fetch(`/api/ticket/${ticketId}/resend?key=${adminKey}`, { method: 'POST' })
+      const res = await fetch(`/api/ticket/${ticketId}/resend`, { method: 'POST' })
       const data = await res.json()
       alert(data.message)
       fetchSales()

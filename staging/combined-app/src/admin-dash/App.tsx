@@ -168,14 +168,12 @@ export default function App({ isPresentation = false }: AppProps) {
   const [dark, setDark] = useState(true)
   const [search, setSearch] = useState('')
   const [adminKey, setAdminKey] = useState(
-    sessionStorage.getItem('littx_token') || localStorage.getItem('littx_token') ||
-    sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key') || ''
+    sessionStorage.getItem('littx_token') || sessionStorage.getItem('ft_admin_key') || ''
   )
   const [keyInput, setKeyInput] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     // Auto-authenticate if we have a session token from LoginPage
-    return !!(sessionStorage.getItem('littx_token') || localStorage.getItem('littx_token') ||
-              sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key'))
+    return !!(sessionStorage.getItem('littx_token') || sessionStorage.getItem('ft_admin_key'))
   })
   const [authChecking, setAuthChecking] = useState(true)
   const [authError, setAuthError] = useState('')
@@ -215,17 +213,16 @@ export default function App({ isPresentation = false }: AppProps) {
       return false
     }
     try {
-      // Prefer sending as x-auth-token (unified auth) but fall back to ?key= for legacy ADMIN_KEY
+      // Prefer the persisted session token; pass legacy keys only in headers.
       const isToken = keyToUse.length > 40 // tokens are 64-char hex; legacy keys are shorter
       const query = new URLSearchParams()
       // Normal dashboard uses the complete admin sales set. Visibility rules are
       // only applied by the dedicated presentation view / visibility tools.
       if (isPresentation) query.set('pres', 'true')
-      const url = isToken
-        ? `/api/admin/sales?${query.toString()}`
-        : `/api/admin/sales?key=${encodeURIComponent(keyToUse)}&${query.toString()}`
+      const url = `/api/admin/sales?${query.toString()}`
       const headers: Record<string, string> = {}
       if (isToken) headers['x-auth-token'] = keyToUse
+      else headers['x-admin-key'] = keyToUse
 
       const res = await fetch(url, { headers })
       const data = await res.json().catch(() => ({}))
@@ -276,7 +273,7 @@ export default function App({ isPresentation = false }: AppProps) {
     if (!keyToUse) return
     try {
       const isToken = keyToUse.length > 40
-      const url = isToken ? '/api/admin/config' : `/api/admin/config?key=${encodeURIComponent(keyToUse)}`
+      const url = '/api/admin/config'
       const headers: Record<string, string> = { 'x-admin-key': keyToUse }
       if (isToken) headers['x-auth-token'] = keyToUse
       const res = await fetch(url, { headers })
@@ -332,7 +329,8 @@ export default function App({ isPresentation = false }: AppProps) {
     const ok = await fetchSales(trimmed)
     if (ok) {
       sessionStorage.setItem('ft_admin_key', trimmed)
-      localStorage.setItem('ft_admin_key', trimmed)
+      sessionStorage.setItem('ft_admin_key', trimmed)
+      localStorage.removeItem('ft_admin_key')
       setAdminKey(trimmed)
     }
   }
@@ -349,7 +347,7 @@ export default function App({ isPresentation = false }: AppProps) {
 
   const handleResend = async (ticketId: string) => {
     try {
-      const res = await fetch(`/api/ticket/${ticketId}/resend?key=${adminKey}`, { method: 'POST' })
+      const res = await fetch(`/api/ticket/${ticketId}/resend`, { method: 'POST' })
       const data = await res.json()
       alert(data.message)
       fetchSales()

@@ -90,6 +90,15 @@ independent random value of at least 32 characters) in the server environment
 before deploying. Both browser and native scanner sign-in require the password;
 the session secret signs short-lived scanner sessions. Keep both values out of
 frontend and Android build configuration.
+Set `SCANNER_EVENT_NAMES` to the exact comma-separated event names each shared
+scanner credential may validate, and `SCANNER_COMPANY_ID` to their owning
+company. Scanner login fails closed until both assignment values are configured.
+
+For production, set `CORS_ORIGINS` to the comma-separated HTTPS origins of the
+web frontends, and set `BASE_URL` to the canonical public API URL. Local payment
+simulation requires `NODE_ENV=development` and `PAYMENT_TEST_MODE=true`; the
+test-mode shortcut is unavailable in production and online payments fail closed
+until Razorpay credentials are configured.
 
 Privileged and partner passwords must be configured through deployment secrets.
 Do not use values copied from older releases or account defaults. At minimum,

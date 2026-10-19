@@ -54,8 +54,10 @@ export default function CustomerRegister({ onRegisterSuccess, onGoToLogin }: Cus
         })
         const loginData = await loginRes.json()
         if (loginData.success && loginData.user) {
-          localStorage.setItem('littx_customer', JSON.stringify(loginData.user))
-          localStorage.setItem('littx_customer_token', loginData.token)
+          sessionStorage.setItem('littx_customer', JSON.stringify(loginData.user))
+          localStorage.removeItem('littx_customer')
+          sessionStorage.setItem('littx_customer_token', loginData.token)
+          localStorage.removeItem('littx_customer_token')
           onRegisterSuccess(loginData.user)
         } else {
           onGoToLogin()

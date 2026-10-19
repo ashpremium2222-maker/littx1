@@ -93,7 +93,7 @@ export default function MasterOverview() {
   }
 
   const openSellerPanel = async (partner: SellerPartner) => {
-    const token = sessionStorage.getItem('littx_token') || localStorage.getItem('littx_token') || ''
+    const token = sessionStorage.getItem('littx_token') || ''
     if (!token) {
       alert('Master admin session expired. Please login again.')
       return
@@ -110,9 +110,9 @@ export default function MasterOverview() {
         alert(data.message || 'Unable to open seller panel.')
         return
       }
-      localStorage.setItem('littx_seller_token', data.token)
-      localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
-      window.open('/seller', '_blank', 'noopener,noreferrer')
+      sessionStorage.setItem('littx_seller_token', data.token)
+      sessionStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
+      window.open('/seller', '_blank')
     } catch {
       alert('Unable to open seller panel.')
     } finally {

@@ -230,10 +230,10 @@ const CompanySchema = new mongoose.Schema({
 
     razorpayConfig: {
         enabled: { type: Boolean, default: true },
-        keyId: { type: String, default: 'rzp_live_demoKey12345' },
-        keySecret: { type: String, default: 'demo_secret_key_12345' },
-        webhookSecret: { type: String, default: 'whsec_demo_12345' },
-        mode: { type: String, enum: ['TEST', 'LIVE'], default: 'LIVE' },
+        keyId: { type: String, default: '' },
+        keySecret: { type: String, default: '' },
+        webhookSecret: { type: String, default: '' },
+        mode: { type: String, enum: ['TEST', 'LIVE'], default: 'TEST' },
         lockedByMaster: { type: Boolean, default: false }
     },
 
@@ -690,7 +690,7 @@ async function seedDefaultCompanies() {
                 name: 'Littlane Ent',
                 status: 'ACTIVE',
                 commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
-                razorpayConfig: { enabled: true, keyId: 'rzp_live_littlane123', keySecret: 'littlane_secret', mode: 'LIVE', lockedByMaster: false },
+                razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
                 manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
                 features: {
                     onlinePayments: { enabled: true, lockedByMaster: false },
@@ -854,9 +854,7 @@ async function getEffectiveConfig(companyId = 'littlane', eventNameOrId = null) 
 
 const mockDb = {
     users: [],
-    customers: [
-        { email: 'customer@test.com', password: 'password', name: 'Test Customer', phone: '1234567890', createdAt: new Date().toISOString() }
-    ],
+    customers: [],
     events: [
         {
             _id: '64ef8bb11b6d912345678901',
@@ -880,7 +878,7 @@ const mockDb = {
             name: 'Littlane Ent',
             status: 'ACTIVE',
             commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
-            razorpayConfig: { enabled: true, keyId: 'rzp_live_littlane123', keySecret: 'littlane_secret', mode: 'LIVE', lockedByMaster: false },
+            razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
             manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
             features: {
                 onlinePayments: { enabled: true, lockedByMaster: false },
@@ -1119,6 +1117,37 @@ module.exports = {
             return mockDb.sales[idx];
         }
         return await atomicRejectPendingSale(orderId, rejectedBy, rejectedAt);
+    },
+    atomicApproveCashSale: async (orderId, approvedBy, approvedAt) => {
+        const update = {
+            status: 'paid',
+            paymentId: `cash_approved_${Date.now()}`,
+            paidAt: approvedAt,
+            approvalStatus: 'APPROVED',
+            approvedBy,
+            approvalDecidedAt: approvedAt,
+            deliveryStatus: 'IN_PROGRESS',
+            deliveryStartedAt: approvedAt,
+        };
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.status === 'pr_cash_pending');
+            if (idx === -1) return null;
+            mockDb.sales[idx] = { ...mockDb.sales[idx], ...update, updatedAt: approvedAt };
+            _saveMockSales(mockDb.sales);
+            return mockDb.sales[idx];
+        }
+        return Sale.findOneAndUpdate({ orderId, status: 'pr_cash_pending' }, { $set: { ...update, updatedAt: approvedAt } }, { returnDocument: 'after', lean: true });
+    },
+    atomicRejectCashSale: async (orderId, rejectedBy, rejectedAt) => {
+        const update = { status: 'pr_cash_rejected', approvalStatus: 'REJECTED', rejectedBy, approvalDecidedAt: rejectedAt, deliveryStatus: 'BLOCKED' };
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.status === 'pr_cash_pending');
+            if (idx === -1) return null;
+            mockDb.sales[idx] = { ...mockDb.sales[idx], ...update, updatedAt: rejectedAt };
+            _saveMockSales(mockDb.sales);
+            return mockDb.sales[idx];
+        }
+        return Sale.findOneAndUpdate({ orderId, status: 'pr_cash_pending' }, { $set: { ...update, updatedAt: rejectedAt } }, { returnDocument: 'after', lean: true });
     },
     getByOrderId: async (orderId) => {
         if (useMock()) {
