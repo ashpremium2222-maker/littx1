@@ -370,7 +370,7 @@ function readScannerSession(req) {
 // Keep WhatsApp delivery inside the request lifecycle. Vercel may freeze a
 // serverless invocation as soon as the response is sent, so fire-and-forget
 // sends can be dropped before Meta receives them.
-async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, event, ticketType, downloadUrl }) {
+async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, event, ticketType, pdfPath }) {
     if (!phone) return { success: false, reason: 'phone_missing' };
 
     // WhatsApp ticket links must always use the public canonical domain.
@@ -386,7 +386,7 @@ async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, eve
             event,
             ticketType,
             viewUrl: `${ticketPublicOrigin}/bookings`,
-            pdfUrl: downloadUrl
+            pdfPath
         });
 
         if (orderId) {
@@ -1857,7 +1857,7 @@ app.post('/api/verify-payment', checkoutRateLimit, async (req, res) => {
 
         const whatsappResult = process.env.NODE_ENV === 'test' ? { success: false, reason: 'Notification delivery is disabled in tests.' } : await sendAndRecordTicketWhatsApp({
             orderId, phone: sale.phone, name: sale.name, ticketId,
-            event: sale.event || EVENT.name, ticketType: ticketTypeForSale(sale), downloadUrl
+            event: sale.event || EVENT.name, ticketType: ticketTypeForSale(sale), pdfPath
         });
 
         res.json({
@@ -1962,7 +1962,7 @@ app.post('/api/webhook/razorpay', async (req, res) => {
         if (currentSale.whatsappStatus !== 'sent') {
             if (process.env.NODE_ENV !== 'test') await sendAndRecordTicketWhatsApp({
                 orderId, phone: currentSale.phone, name: currentSale.name, ticketId: issued.ticketId,
-                event: currentSale.event || EVENT.name, ticketType: ticketTypeForSale(currentSale), downloadUrl
+                event: currentSale.event || EVENT.name, ticketType: ticketTypeForSale(currentSale), pdfPath: issued.pdfPath
             });
         }
         await db.recordRazorpayEvent(orderId, providerEventId);
@@ -2168,7 +2168,7 @@ app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res)
         whatsappResult = await sendAndRecordTicketWhatsApp({
             orderId: sale.orderId, phone: sale.phone, name: sale.name,
             ticketId: sale.ticketId, event: sale.event || EVENT.name,
-            ticketType: ticketTypeForSale(sale), downloadUrl
+            ticketType: ticketTypeForSale(sale), pdfPath
         });
     } catch (err) {
         console.error('[Ticket Resend] WhatsApp delivery failed.', { name: err.name || 'Error' });
@@ -2809,7 +2809,7 @@ async function deliverManualTicketSale(sale, { pdfPath = null, qrBuffer = null, 
         ticketId: sale.ticketId,
         event: sale.event || EVENT.name,
         ticketType,
-        downloadUrl
+        pdfPath: existingPdfPath
     });
 
     return {
@@ -3258,7 +3258,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
         }
 
         const whatsappResult = await sendAndRecordTicketWhatsApp({
-            orderId, phone, name, ticketId, event: evtName, ticketType: tType, downloadUrl
+            orderId, phone, name, ticketId, event: evtName, ticketType: tType, pdfPath
         });
 
         res.json({
@@ -5522,7 +5522,7 @@ app.post('/api/admin/pr-approve', requireApprovalAdmin, async (req, res) => {
 
         if (process.env.NODE_ENV !== 'test') await sendAndRecordTicketWhatsApp({
             orderId, phone: sale.phone, name: sale.name, ticketId: sale.ticketId,
-            event: sale.event || EVENT.name, ticketType: tType, downloadUrl
+            event: sale.event || EVENT.name, ticketType: tType, pdfPath
         });
 
         res.json({ success: true, message: result.success ? 'Approved and ticket emailed!' : 'Approved but email failed.' });
