@@ -42,7 +42,21 @@ function lineupForEvent(name: string) {
   return [{ time: 'Event details', name, stage: 'Venue managed by organizer', status: 'Configured', badge: 'green' }]
 }
 
-interface DashboardEvent { id: string; name: string; status?: string; active?: boolean; city?: string; venue?: string; date?: string; startsAt?: string; category?: string; companyId?: string }
+interface DashboardEvent { id: string; slug?: string; name: string; status?: string; active?: boolean; visibility?: string; description?: string; images?: string[]; address?: string; city?: string; venue?: string; date?: string; time?: string; startsAt?: string | null; endsAt?: string | null; salesStartAt?: string | null; salesEndAt?: string | null; timezone?: string; category?: string; companyId?: string; ticketCategories?: Array<{ id: string; name: string; description?: string; price: number; currency?: string; totalInventory?: number | null; remainingAvailability?: number | null; groupSize?: number; maxPerCustomer?: number; status?: string; inclusions?: string[] }> }
+
+type EventEditorDraft = {
+  slug: string; name: string; description: string; category: string; images: string; city: string; venue: string;
+  address: string; timezone: string; startsAt: string; endsAt: string; salesStartAt: string; salesEndAt: string;
+  visibility: string; ticketCategories: NonNullable<DashboardEvent['ticketCategories']>
+}
+
+function dateTimeInput(value?: string | null) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return ''
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
+}
 
 export default function Events({ sales = [], adminKey, onNavigateToTickets }: Props) {
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
@@ -58,6 +72,9 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
   const [createError, setCreateError] = useState('')
   const [createBusy, setCreateBusy] = useState(false)
   const [draft, setDraft] = useState({ name: '', companyId: '', city: '', venue: '', category: '', ticketName: '', price: '' })
+  const [editingEvent, setEditingEvent] = useState<DashboardEvent | null>(null)
+  const [eventDraft, setEventDraft] = useState<EventEditorDraft | null>(null)
+  const [editBusy, setEditBusy] = useState(false)
 
   const authHeaders = () => ({
     'x-auth-token': sessionStorage.getItem('littx_token') || '',
@@ -110,6 +127,39 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
       if (!response.ok || !data.success) throw new Error(data.message || 'Event status could not be changed.')
       setCatalogEvents(current => current.map(item => item.id === record.id ? data.event : item))
     } catch (reason) { setCreateError(reason instanceof Error ? reason.message : 'Event status could not be changed.') }
+  }
+
+  function openEventEditor(record: DashboardEvent) {
+    setEditingEvent(record)
+    setEventDraft({
+      slug: record.slug || '', name: record.name || '', description: record.description || '', category: record.category || '',
+      images: (record.images || []).join('\n'), city: record.city || '', venue: record.venue || '', address: record.address || '',
+      timezone: record.timezone || 'Asia/Kolkata', startsAt: dateTimeInput(record.startsAt || record.date), endsAt: dateTimeInput(record.endsAt),
+      salesStartAt: dateTimeInput(record.salesStartAt), salesEndAt: dateTimeInput(record.salesEndAt), visibility: record.visibility || 'public',
+      ticketCategories: (record.ticketCategories || []).map(item => ({ ...item, currency: item.currency || 'INR', totalInventory: item.totalInventory ?? null, remainingAvailability: item.remainingAvailability ?? null, groupSize: item.groupSize || 1, maxPerCustomer: item.maxPerCustomer || 20, status: item.status || 'active' }))
+    })
+  }
+
+  async function saveEvent(event: FormEvent) {
+    event.preventDefault()
+    if (!editingEvent || !eventDraft) return
+    setEditBusy(true); setCreateError('')
+    try {
+      const response = await fetch(`/api/admin/events/${encodeURIComponent(editingEvent.id)}`, {
+        method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...eventDraft,
+          images: eventDraft.images.split(/\r?\n/).map(value => value.trim()).filter(Boolean),
+          startsAt: eventDraft.startsAt || null, endsAt: eventDraft.endsAt || null,
+          salesStartAt: eventDraft.salesStartAt || null, salesEndAt: eventDraft.salesEndAt || null
+        })
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Event could not be updated.')
+      setCatalogEvents(current => current.map(item => item.id === editingEvent.id ? data.event : item))
+      setEditingEvent(null); setEventDraft(null)
+    } catch (reason) { setCreateError(reason instanceof Error ? reason.message : 'Event could not be updated.') }
+    finally { setEditBusy(false) }
   }
 
   const currentRole = (() => { try { return JSON.parse(sessionStorage.getItem('littx_user') || '{}').role || '' } catch { return '' } })()
@@ -244,6 +294,7 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
         </div>
 
         {selectedRecord && <div className="card" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn-secondary" onClick={() => openEventEditor(selectedRecord)}>Edit event details</button>
           {selectedRecord.status === 'draft' && <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'pending_review')}>Submit for review</button>}
           {selectedRecord.status === 'pending_review' && currentRole === 'master_admin' && <button className="btn-primary" onClick={() => transitionEvent(selectedRecord, 'published')}>Publish event</button>}
           {selectedRecord.status === 'published' && <>
@@ -252,6 +303,22 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
             <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'completed')}>Archive as completed</button>
           </>}
           {selectedRecord.status === 'postponed' && currentRole === 'master_admin' && <button className="btn-primary" onClick={() => transitionEvent(selectedRecord, 'published')}>Republish event</button>}
+        </div>}
+        {editingEvent && eventDraft && <div role="dialog" aria-modal="true" aria-label="Edit event details" style={{ position: 'fixed', inset: 0, zIndex: 100, overflowY: 'auto', background: 'rgba(0,0,0,.76)', padding: 20 }}>
+          <form className="card" onSubmit={saveEvent} style={{ maxWidth: 1000, margin: '20px auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2>Edit {editingEvent.name}</h2><button type="button" className="btn-secondary" onClick={() => { setEditingEvent(null); setEventDraft(null) }}>Close</button></div>
+            <div className="muted-sm">Saving uses the event-scoped API. Publication, category removal, and inventory capacity rules remain enforced by the server.</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>
+              {(['name', 'slug', 'category', 'city', 'venue', 'address', 'timezone'] as const).map(field => <label key={field} style={{ display: 'grid', gap: 5 }}>{field[0].toUpperCase() + field.slice(1)}<input required={field === 'name'} value={eventDraft[field]} onChange={event => setEventDraft(current => current ? { ...current, [field]: event.target.value } : current)} /></label>)}
+              <label style={{ display: 'grid', gap: 5 }}>Visibility<select value={eventDraft.visibility} onChange={event => setEventDraft(current => current ? { ...current, visibility: event.target.value } : current)}><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></label>
+              {([['startsAt', 'Event starts'], ['endsAt', 'Event ends'], ['salesStartAt', 'Ticket sales start'], ['salesEndAt', 'Ticket sales end']] as const).map(([field, label]) => <label key={field} style={{ display: 'grid', gap: 5 }}>{label}<input type="datetime-local" value={eventDraft[field]} onChange={event => setEventDraft(current => current ? { ...current, [field]: event.target.value } : current)} /></label>)}
+            </div>
+            <label style={{ display: 'grid', gap: 5 }}>Description<textarea rows={4} value={eventDraft.description} onChange={event => setEventDraft(current => current ? { ...current, description: event.target.value } : current)} /></label>
+            <label style={{ display: 'grid', gap: 5 }}>Poster/image URLs (one per line)<textarea rows={3} placeholder="https://…" value={eventDraft.images} onChange={event => setEventDraft(current => current ? { ...current, images: event.target.value } : current)} /></label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}><h3>Ticket categories and shared inventory</h3><button type="button" className="btn-secondary" onClick={() => setEventDraft(current => current ? { ...current, ticketCategories: [...current.ticketCategories, { id: `category-${crypto.randomUUID()}`, name: '', price: 0, currency: 'INR', totalInventory: null, remainingAvailability: null, groupSize: 1, maxPerCustomer: 20, status: 'active' }] } : current)}>Add category</button></div>
+            <div className="table-scroll"><table className="table"><thead><tr><th>Name</th><th>Price</th><th>Total capacity</th><th>Group admissions</th><th>Status</th><th></th></tr></thead><tbody>{eventDraft.ticketCategories.map((category, index) => <tr key={category.id}><td><input aria-label={`Ticket category ${index + 1} name`} required value={category.name} onChange={event => setEventDraft(current => current ? { ...current, ticketCategories: current.ticketCategories.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) } : current)} /></td><td><input aria-label={`Ticket category ${index + 1} price`} type="number" min="0" step="0.01" required value={category.price} onChange={event => setEventDraft(current => current ? { ...current, ticketCategories: current.ticketCategories.map((item, itemIndex) => itemIndex === index ? { ...item, price: Number(event.target.value) } : item) } : current)} /></td><td><input aria-label={`Ticket category ${index + 1} total capacity`} type="number" min="0" placeholder="Unlimited" value={category.totalInventory ?? ''} onChange={event => setEventDraft(current => current ? { ...current, ticketCategories: current.ticketCategories.map((item, itemIndex) => itemIndex === index ? { ...item, totalInventory: event.target.value === '' ? null : Number(event.target.value) } : item) } : current)} /></td><td><input aria-label={`Ticket category ${index + 1} group size`} type="number" min="1" max="100" required value={category.groupSize || 1} onChange={event => setEventDraft(current => current ? { ...current, ticketCategories: current.ticketCategories.map((item, itemIndex) => itemIndex === index ? { ...item, groupSize: Number(event.target.value) } : item) } : current)} /></td><td><select aria-label={`Ticket category ${index + 1} status`} value={category.status || 'active'} onChange={event => setEventDraft(current => current ? { ...current, ticketCategories: current.ticketCategories.map((item, itemIndex) => itemIndex === index ? { ...item, status: event.target.value } : item) } : current)}><option value="active">Active</option><option value="paused">Paused</option><option value="sold_out">Sold out</option></select></td><td><button type="button" className="btn-secondary" onClick={() => setEventDraft(current => current ? { ...current, ticketCategories: current.ticketCategories.filter((_, itemIndex) => itemIndex !== index) } : current)}>Remove</button></td></tr>)}</tbody></table></div>
+            <button className="btn-primary" disabled={editBusy}>{editBusy ? 'Saving…' : 'Save event details'}</button>
+          </form>
         </div>}
         {createError && <div role="alert" style={{ color: '#ff7777' }}>{createError}</div>}
 

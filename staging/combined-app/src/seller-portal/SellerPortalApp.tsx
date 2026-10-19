@@ -58,6 +58,15 @@ interface SellerTicketRecord {
   deliveredAt?: string
 }
 
+interface SellerEventOption {
+  id: string
+  slug: string
+  name: string
+  city?: string
+  venue?: string
+  startsAt?: string | null
+}
+
 function sellerTicketState(ticket: SellerTicketRecord) {
   if (ticket.approvalStatus === 'REJECTED' || ticket.deliveryStatus === 'BLOCKED') {
     return { label: 'Rejected', key: 'rejected', className: 'border-red-500/30 bg-red-500/10 text-red-300' }
@@ -92,6 +101,7 @@ export default function SellerPortalApp() {
 
   // Ticket generation form state
   const [event, setEvent] = useState('DHOLIDA GARBA ROYALE')
+  const [sellerEvents, setSellerEvents] = useState<SellerEventOption[]>([])
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -202,6 +212,25 @@ export default function SellerPortalApp() {
 
   useEffect(() => {
     if (!authenticatedPartner) return
+    const loadEvents = async () => {
+      const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
+      try {
+        const response = await fetch('/api/seller/events', { headers: { 'x-seller-token': activeToken }, cache: 'no-store' })
+        const data = await response.json()
+        if (!response.ok || !data.success) throw new Error(data.message || 'Assigned events could not be loaded.')
+        const available = Array.isArray(data.events) ? data.events : []
+        setSellerEvents(available)
+        setEvent(current => available.some((item: SellerEventOption) => item.slug === current || item.id === current) ? current : (available[0]?.slug || available[0]?.id || ''))
+        if (!available.length) setFeedback({ type: 'error', msg: 'There are no published public events available to this seller.' })
+      } catch (error) {
+        setFeedback({ type: 'error', msg: error instanceof Error ? error.message : 'Assigned events could not be loaded.' })
+      }
+    }
+    void loadEvents()
+  }, [authenticatedPartner, token])
+
+  useEffect(() => {
+    if (!authenticatedPartner || !event) return
     const loadPricing = async () => {
       setPricingLoading(true)
       try {
@@ -209,7 +238,6 @@ export default function SellerPortalApp() {
         const response = await fetch(`/api/seller/pricing?event=${encodeURIComponent(event)}`, { headers: { 'x-seller-token': activeToken } })
         const data = await response.json()
         if (response.ok && data.success) {
-          setEvent(data.event)
           setPasses(data.passes)
           setTicketType(current => data.passes.some((pass: any) => pass.name === current) ? current : data.passes[0]?.name || '')
         } else {
@@ -222,7 +250,7 @@ export default function SellerPortalApp() {
       }
     }
     loadPricing()
-  }, [authenticatedPartner, token])
+  }, [authenticatedPartner, token, event])
 
   useEffect(() => {
     if (!authenticatedPartner) return
@@ -572,9 +600,10 @@ export default function SellerPortalApp() {
           <form onSubmit={handleGenerateTicket} className="space-y-4">
             <div>
               <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Event</label>
-              <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white font-semibold">
-                DHOLIDA GARBA ROYALE — 17 Oct 2026 · Pethkar Ground, Kothrud, Pune
-              </div>
+              <select aria-label="Event" value={event} onChange={change => { setEvent(change.target.value); setTicketType(''); setPasses([]); setFeedback(null) }} required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white font-semibold" disabled={!sellerEvents.length || pricingLoading}>
+                {!sellerEvents.length && <option value="">No published public company events</option>}
+                {sellerEvents.map(item => <option key={item.id} value={item.slug || item.id}>{item.name}{item.city ? ` · ${item.city}` : ''}{item.venue ? ` · ${item.venue}` : ''}</option>)}
+              </select>
             </div>
 
             <div>

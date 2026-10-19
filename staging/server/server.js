@@ -2741,6 +2741,22 @@ app.patch('/api/admin/pricing/:eventId', requireAdmin, async (req, res) => {
     res.json({ success: true, event: { id: updated.id || updated._id, name: updated.name, tiers: updated.tiers, ticketCategories: updated.ticketCategories } });
 });
 
+app.get('/api/seller/events', requireSeller, async (req, res) => {
+    try {
+        const users = await db.getAllUsers();
+        const seller = users.find(user => user.role === 'seller' && (user.userId === req.sellerId || user.sellerSlot === req.sellerId));
+        const companyId = seller?.companyId || sellerCompanyIdFromValue(req.sellerId);
+        if (!companyId) return res.status(403).json({ success: false, message: 'Seller company is not configured.' });
+        const events = (await db.getAllEvents())
+            .filter(event => event.companyId === companyId && eventIsPublic(event))
+            .map(event => ({ id: eventRef(event), slug: event.slug || slugifyEvent(event.name), name: event.name, city: event.city || '', venue: event.venue || '', startsAt: event.startsAt || event.date || null }));
+        res.set('Cache-Control', 'no-store');
+        return res.json({ success: true, events });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(error) });
+    }
+});
+
 app.get('/api/seller/pricing', requireSeller, async (req, res) => {
     const requestedEvent = typeof req.query.event === 'string' ? req.query.event : EVENT.name;
     if (!(await sellerOwnsEvent(req.sellerId, requestedEvent))) return res.status(403).json({ success: false, message: 'Seller is not assigned to this event.' });
@@ -4040,7 +4056,7 @@ app.get('/api/events/:eventRef', async (req, res) => {
 });
 
 app.get('/api/pr/events', requirePR, async (req, res) => {
-    const events = (await db.getAllEvents()).filter(event => eventIsPublic(event) && event.visibility === 'public' && event.companyId === req.prSession.companyId);
+    const events = (await db.getAllEvents()).filter(event => eventIsPublic(event) && event.companyId === req.prSession.companyId);
     const payload = await Promise.all(events.map(async event => publicEventPayload(event, await getEventPricing(eventRef(event)))));
     res.set('Cache-Control', 'no-store');
     return res.json({ success: true, events: payload });
