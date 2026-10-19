@@ -84,11 +84,19 @@ supported for existing links and passkeys during the migration.
 
 Deployments from the `main` branch are production releases.
 
-The gate scanner now authenticates with the server. Configure `SCANNER_PASSWORD`
+The gate scanner authenticates with the server. Configure `SCANNER_PASSWORD`
 (a unique password of at least 12 characters) and `SCANNER_SESSION_SECRET` (an
 independent random value of at least 32 characters) in the server environment
-before deploying; the scanner login fails closed when either value is missing.
-Keep both values out of frontend and Android build configuration.
+before deploying. Both browser and native scanner sign-in require the password;
+the session secret signs short-lived scanner sessions. Keep both values out of
+frontend and Android build configuration.
+
+Privileged and partner passwords must be configured through deployment secrets.
+Do not use values copied from older releases or account defaults. At minimum,
+configure `ADMIN_KEY`, `PORTAL_ADMIN_KEY`, `PORTAL_DASHBOARD_KEY`, seller/partner
+credentials, Razorpay credentials, and the webhook secret for the services you
+enable. `MASTER_PASS` and `COMPANY_ADMIN_PASS` are only used when creating seed
+user records in a new empty user collection; existing accounts are not rewritten.
 
 No WhatsApp values belong in source control or frontend variables. In the Meta
 developer dashboard, use the endpoint above as the callback URL and subscribe

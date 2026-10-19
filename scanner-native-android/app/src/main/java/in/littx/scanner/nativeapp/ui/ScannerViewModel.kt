@@ -56,18 +56,17 @@ class ScannerViewModel(context: Context) : ViewModel() {
 
     init {
         checkForUpdate()
-        if (prefs.getString("token", null).isNullOrBlank()) openAppSession()
-        else verifySession()
+        if (!prefs.getString("token", null).isNullOrBlank()) verifySession()
     }
 
-    fun retrySession() = openAppSession()
+    fun retrySession(password: String) = openAppSession(password)
 
-    private fun openAppSession() {
+    private fun openAppSession(password: String) {
         if (state.sessionConnecting) return
         viewModelScope.launch {
             state = state.copy(sessionConnecting = true, error = null)
             try {
-                val response = repository.openAppSession()
+                val response = repository.openAppSession(password)
                 val token = response.token
                 if (!response.success || token.isNullOrBlank()) {
                     throw IllegalStateException(response.message ?: "Scanner service is unavailable.")
@@ -95,14 +94,12 @@ class ScannerViewModel(context: Context) : ViewModel() {
                 } else {
                     prefs.edit().remove("token").apply()
                     state = state.copy(authenticated = false)
-                    openAppSession()
                 }
             }
             .onFailure { error ->
                 if (error is retrofit2.HttpException && error.code() == 401) {
                     prefs.edit().remove("token").apply()
                     state = state.copy(authenticated = false)
-                    openAppSession()
                 }
                 // Keep a cached session during network/server errors; each scan still requires server confirmation.
             }
@@ -132,7 +129,6 @@ class ScannerViewModel(context: Context) : ViewModel() {
                 val history = (listOf(entry) + state.history).take(250)
                 state = state.copy(loading = false, authenticated = state.authenticated && !expired, latest = entry, history = history, error = if (expired) "Scanner session expired. Log in again." else e.message ?: "Could not validate ticket.")
                 saveHistory(history)
-                if (expired) openAppSession()
             }
         }
     }
@@ -140,7 +136,12 @@ class ScannerViewModel(context: Context) : ViewModel() {
     fun refreshStats() = viewModelScope.launch {
         if (state.statsLoading) return@launch
         state = state.copy(statsLoading = true, statsError = false)
-        runCatching { repository.stats() }.onSuccess { stats ->
+        val token = prefs.getString("token", null)
+        if (token.isNullOrBlank()) {
+            state = state.copy(statsLoading = false, statsError = true)
+            return@launch
+        }
+        runCatching { repository.stats(token) }.onSuccess { stats ->
             if (stats.success) state = state.copy(accepted = stats.accepted, failed = stats.failed, statsLoading = false, statsAvailable = true, statsError = false)
             else state = state.copy(statsLoading = false, statsError = true)
         }.onFailure {

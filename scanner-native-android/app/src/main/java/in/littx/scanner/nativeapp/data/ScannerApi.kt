@@ -11,8 +11,8 @@ import retrofit2.http.POST
 import retrofit2.http.Header
 
 interface ScannerApi {
-    @POST("api/scanner-app-session") suspend fun appSession(): ScannerAppSessionResponse
+    @POST("api/scanner-app-session") suspend fun appSession(@Body request: ScannerLoginRequest): ScannerAppSessionResponse
     @GET("api/scanner-session") suspend fun verifySession(@Header("Authorization") authorization: String): ScannerSessionResponse
     @POST("api/scan-ticket") suspend fun scan(@Header("Authorization") authorization: String, @Body request: ScanRequest): ScanResponse
-    @GET("api/scan-stats") suspend fun stats(): ScanStats
+    @GET("api/scan-stats") suspend fun stats(@Header("Authorization") authorization: String): ScanStats
 }

@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 
 // A Vercel function can be cold-started for any request. Keep one connection
 // promise on the Node global so every request waits for the same MongoDB
@@ -35,7 +36,9 @@ async function connectDb() {
 
 // Retain the convenient local-development behaviour, but do not let a failed
 // local MongoDB instance prevent the JSON mock fallback from being used.
-connectDb().catch(err => console.error('❌ MongoDB Connection Error:', err.message));
+if (process.env.NODE_ENV !== 'test') {
+    connectDb().catch(err => console.error('❌ MongoDB Connection Error:', err.message));
+}
 
 // ==================== SCHEMAS ====================
 
@@ -82,7 +85,7 @@ const EventSchema = new mongoose.Schema({
 const UserSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     companyId: { type: String, default: 'littlane' },
-    password: { type: String, required: true },
+    password: { type: String, required: false },
     displayName: { type: String },
     role: { type: String, enum: ['master_admin', 'company_admin', 'seller', 'pr'], default: 'pr' },
     // New accounts use passwordHash. `password` remains for legacy seeded users
@@ -358,24 +361,29 @@ async function seedDefaultUsers() {
         const count = await User.countDocuments();
         if (count > 0) return; // DB already has users
 
-        console.log('🌱 Seeding multi-tenant LITTX platform users across roles...');
-        
-        const defaultUsers = [
-            // Master Admin / Super Admin
-            { userId: 'superadmin@littx.in', password: process.env.MASTER_PASS || 'littx-master-2026', displayName: 'LITTX Super Admin', role: 'master_admin', companyId: 'all' },
-            // Company Admins
-            { userId: 'admin@littlane.in', password: 'littlane-2026', displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
-            // Sellers & PR Partners
-            { userId: 'SELLER-A', companyId: 'littlane', password: process.env.SELLER_A_PASS || 'littx-a-2026', displayName: 'Seller Alpha', role: 'seller' },
-            { userId: 'SELLER-B', companyId: 'littlane', password: process.env.SELLER_B_PASS || 'littx-b-2026', displayName: 'Seller Beta', role: 'seller' },
-            { userId: 'SELLER-C', companyId: '7th-heaven', password: process.env.SELLER_C_PASS || 'littx-c-2026', displayName: 'Seller Gamma', role: 'seller' },
-            { userId: 'partner1', companyId: 'littlane', password: process.env.PR1_PASS || 'ftpr@001', displayName: 'Partner One', role: 'pr' },
-            { userId: 'partner2', companyId: 'littlane', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two', role: 'pr' },
-            { userId: 'partner5', companyId: 'littlane', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five', role: 'pr' },
-        ];
+        console.log('🌱 Seeding configured multi-tenant platform users...');
 
-        await User.insertMany(defaultUsers);
-        console.log('✅ Multi-tenant platform users seeded successfully.');
+        const configuredUsers = [
+            { userId: 'superadmin@littx.in', secret: process.env.MASTER_PASS, displayName: 'LITTX Super Admin', role: 'master_admin', companyId: 'all' },
+            { userId: 'admin@littlane.in', secret: process.env.COMPANY_ADMIN_PASS, displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
+            { userId: 'SELLER-A', secret: process.env.SELLER_A_PASS, displayName: 'Seller Alpha', role: 'seller', companyId: 'littlane' },
+            { userId: 'SELLER-B', secret: process.env.SELLER_B_PASS, displayName: 'Seller Beta', role: 'seller', companyId: 'littlane' },
+            { userId: 'SELLER-C', secret: process.env.SELLER_C_PASS, displayName: 'Seller Gamma', role: 'seller', companyId: '7th-heaven' },
+            { userId: 'partner1', secret: process.env.PR1_PASS, displayName: 'Partner One', role: 'pr', companyId: 'littlane' },
+            { userId: 'partner2', secret: process.env.PR2_PASS, displayName: 'Partner Two', role: 'pr', companyId: 'littlane' },
+            { userId: 'partner5', secret: process.env.PR5_PASS, displayName: 'Partner Five', role: 'pr', companyId: 'littlane' },
+        ];
+        const defaultUsers = configuredUsers.filter(user => user.secret).map(({ secret, ...user }) => {
+            const salt = crypto.randomBytes(16).toString('hex');
+            const digest = crypto.scryptSync(secret, salt, 64).toString('hex');
+            return { ...user, passwordHash: `scrypt:${salt}:${digest}` };
+        });
+        if (defaultUsers.length === 0) {
+            console.warn('No seed account secrets are configured; no default users were created.');
+        } else {
+            await User.insertMany(defaultUsers);
+            console.log('✅ Configured platform users seeded successfully.');
+        }
         await seedDefaultPartnerLocks();
     } catch (err) {
         console.error('❌ Failed to seed platform users:', err.message);
@@ -384,11 +392,11 @@ async function seedDefaultUsers() {
 
 async function seedDefaultPartnerLocks() {
     const defaultPartners = [
-        { partnerId: 'littlane', name: 'Littlane Ent', password: 'littlane2026' },
-        { partnerId: 'nitro', name: 'DGR', password: 'nitro2026' },
-        { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026' },
-        { partnerId: 'partner-slot-1', name: 'ASTEX Testing', password: '' },
-        { partnerId: 'partner-slot-2', name: 'Wolfera', password: '' }
+        { partnerId: 'littlane', name: 'Littlane Ent' },
+        { partnerId: 'nitro', name: 'DGR' },
+        { partnerId: '7th-heaven', name: '7th Heaven' },
+        { partnerId: 'partner-slot-1', name: 'ASTEX Testing' },
+        { partnerId: 'partner-slot-2', name: 'Wolfera' }
     ];
 
     for (const p of defaultPartners) {
@@ -845,13 +853,7 @@ async function getEffectiveConfig(companyId = 'littlane', eventNameOrId = null) 
 // ==================== IN-MEMORY MOCK DATABASE FALLBACK (For Vercel/Disconnected DB) ====================
 
 const mockDb = {
-    users: [
-        { userId: 'superadmin@littx.in', password: 'littx-master-2026', displayName: 'LITTX Super Admin', role: 'master_admin', companyId: 'all' },
-        { userId: 'admin@littlane.in', password: 'littlane-2026', displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
-        { userId: 'SELLER-A', companyId: 'littlane', password: 'littx-a-2026', displayName: 'Seller Alpha', role: 'seller' },
-        { userId: 'SELLER-B', companyId: 'littlane', password: 'littx-b-2026', displayName: 'Seller Beta', role: 'seller' },
-        { userId: 'partner1', companyId: 'littlane', password: 'ftpr@001', displayName: 'Partner One', role: 'pr' },
-    ],
+    users: [],
     customers: [
         { email: 'customer@test.com', password: 'password', name: 'Test Customer', phone: '1234567890', createdAt: new Date().toISOString() }
     ],
@@ -958,11 +960,11 @@ const _mockSessions = new Map();
 const _mockUserSessions = new Map();
 const _mockScanLogs = [];
 const _mockPartnerLocks = new Map([
-    ['littlane', { partnerId: 'littlane', name: 'Littlane Ent', password: 'littlane2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['nitro', { partnerId: 'nitro', name: 'DGR', password: 'nitro2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['partner-slot-1', { partnerId: 'partner-slot-1', name: 'ASTEX Testing', password: '', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['partner-slot-2', { partnerId: 'partner-slot-2', name: 'Wolfera', password: '', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
+    ['littlane', { partnerId: 'littlane', name: 'Littlane Ent', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['nitro', { partnerId: 'nitro', name: 'DGR', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['partner-slot-1', { partnerId: 'partner-slot-1', name: 'ASTEX Testing', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['partner-slot-2', { partnerId: 'partner-slot-2', name: 'Wolfera', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
 ]);
 const _mockDashboardSaleVisibility = new Map();
 

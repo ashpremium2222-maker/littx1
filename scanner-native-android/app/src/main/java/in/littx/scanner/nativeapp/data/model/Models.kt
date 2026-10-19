@@ -1,6 +1,7 @@
 package com.littx.scanner.nativeapp.data.model
 
 data class ScannerAppSessionResponse(val success: Boolean = false, val token: String? = null, val scannerName: String? = null, val message: String? = null, val expiresAt: Long? = null)
+data class ScannerLoginRequest(val password: String)
 data class ScannerSessionResponse(val success: Boolean = false, val scannerName: String? = null, val expiresAt: Long? = null)
 data class ScanRequest(val ticketId: String, val scannedBy: String)
 data class ScanStats(val success: Boolean = false, val accepted: Int = 0, val failed: Int = 0)

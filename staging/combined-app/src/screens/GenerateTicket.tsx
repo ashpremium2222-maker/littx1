@@ -79,8 +79,9 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
   useEffect(() => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (sellerToken) headers['x-seller-token'] = sellerToken
-    const adminKey = localStorage.getItem('ft_admin_key') || sessionStorage.getItem('ft_admin_key') || 'change-me-admin-key'
-    fetch('/api/admin/config?key=' + adminKey)
+    const adminKey = localStorage.getItem('ft_admin_key') || sessionStorage.getItem('ft_admin_key') || ''
+    const authToken = localStorage.getItem('littx_token') || sessionStorage.getItem('littx_token') || ''
+    fetch('/api/admin/config', { headers: { ...(adminKey ? { 'x-admin-key': adminKey } : {}), ...(authToken ? { 'x-auth-token': authToken } : {}) } })
       .then(r => r.json())
       .then(data => {
         if (data.success && data.event) {
@@ -124,8 +125,10 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
       if (sellerToken) {
         headers['x-seller-token'] = sellerToken
       } else {
-        const adminKey = localStorage.getItem('ft_admin_key') || sessionStorage.getItem('ft_admin_key') || 'change-me-admin-key'
-        headers['x-admin-key'] = adminKey
+        const adminKey = localStorage.getItem('ft_admin_key') || sessionStorage.getItem('ft_admin_key') || ''
+        const authToken = localStorage.getItem('littx_token') || sessionStorage.getItem('littx_token') || ''
+        if (adminKey) headers['x-admin-key'] = adminKey
+        if (authToken) headers['x-auth-token'] = authToken
       }
 
       const res = await fetch('/api/admin/generate-ticket', {

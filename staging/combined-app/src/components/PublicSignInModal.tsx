@@ -40,11 +40,6 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
     }
   }
 
-  const quickFill = (u: string, p: string) => {
-    setUsername(u)
-    setPassword(p)
-  }
-
   return (
     <div
       style={{
@@ -218,21 +213,6 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
                 </button>
               </form>
 
-              {/* Demo Fill Helper */}
-              <div style={{ marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--line)' }}>
-                <div style={{ fontSize: '9px', fontWeight: 800, color: 'var(--ink-faint)', textTransform: 'uppercase', marginBottom: '8px' }}>
-                  Demo Credentials
-                </div>
-                {loginType === 'company' ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => quickFill('admin@littlane.in', 'littlane-2026')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '4px 8px' }}>Littlane Admin</button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => quickFill('partner1', 'ftpr@001')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '4px 8px' }}>Partner One</button>
-                  </div>
-                )}
-              </div>
             </div>
           )}
         </div>

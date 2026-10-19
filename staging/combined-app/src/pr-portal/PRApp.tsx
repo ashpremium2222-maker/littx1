@@ -21,15 +21,13 @@ interface Sale {
   prUserId?: string
 }
 
-// ==================== PR USERS (login credentials) ====================
-const PR_USERS: (PRUser & { password: string })[] = [
-  { id: 'pr1', username: 'partner1', password: 'ftpr@001', displayName: 'Partner One' },
-  { id: 'pr2', username: 'partner2', password: 'ftpr@002', displayName: 'Partner Two' },
-  { id: 'pr5', username: 'partner5', password: 'ftpr@005', displayName: 'Partner Five' },
-]
-
 const PRICING = { female: 799, male: 499 }
 const API = ''
+
+function prAuthHeaders(json = false): HeadersInit {
+  const token = sessionStorage.getItem('pr_token') || ''
+  return { ...(json ? { 'Content-Type': 'application/json' } : {}), 'X-Auth-Token': token }
+}
 
 // ==================== LOGIN PAGE ====================
 function LoginPage({ onLogin }: { onLogin: (user: PRUser) => void }) {
@@ -38,21 +36,27 @@ function LoginPage({ onLogin }: { onLogin: (user: PRUser) => void }) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setTimeout(() => {
-      const user = PR_USERS.find(u => u.username === username.trim() && u.password === password)
-      if (user) {
-        const { password: _, ...safeUser } = user
-        sessionStorage.setItem('pr_user', JSON.stringify(safeUser))
-        onLogin(safeUser)
-      } else {
-        setError('Invalid credentials')
-      }
+    try {
+      const response = await fetch(`${API}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success || data.user?.role !== 'pr' || !data.token) throw new Error(data.message || 'Invalid credentials')
+      const user: PRUser = { id: data.user.userId, username: username.trim(), displayName: data.user.displayName }
+      sessionStorage.setItem('pr_user', JSON.stringify(user))
+      sessionStorage.setItem('pr_token', data.token)
+      onLogin(user)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to sign in.')
+    } finally {
       setLoading(false)
-    }, 400)
+    }
   }
 
   return (
@@ -128,7 +132,7 @@ function SellTicketModal({
       if (paymentMethod === 'razorpay') {
         const res = await fetch(`${API}/api/pr/create-order`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: prAuthHeaders(true),
           body: JSON.stringify({ name, email, phone, gender, quantity: 1, prUserId: prUser.id }),
         })
         const data = await res.json()
@@ -171,7 +175,7 @@ function SellTicketModal({
       } else {
         const res = await fetch(`${API}/api/pr/cash-request`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: prAuthHeaders(true),
           body: JSON.stringify({ name, email, phone, gender, quantity: 1, prUserId: prUser.id, prName: prUser.displayName }),
         })
         const data = await res.json()
@@ -267,7 +271,7 @@ function PRDashboard({ prUser, onLogout, dark, setDark }: { prUser: PRUser; onLo
 
   const fetchSales = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/pr/sales?prUserId=${prUser.id}`)
+      const res = await fetch(`${API}/api/pr/sales`, { headers: prAuthHeaders() })
       const data = await res.json()
       if (data.success) setSales(data.sales || [])
     } catch {
@@ -612,12 +616,13 @@ export default function PRApp() {
   const [prUser, setPrUser] = useState<PRUser | null>(() => {
     try {
       const saved = sessionStorage.getItem('pr_user')
-      return saved ? JSON.parse(saved) : null
+      return saved && sessionStorage.getItem('pr_token') ? JSON.parse(saved) : null
     } catch { return null }
   })
 
   function handleLogout() {
     sessionStorage.removeItem('pr_user')
+    sessionStorage.removeItem('pr_token')
     setPrUser(null)
   }
 

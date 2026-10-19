@@ -133,6 +133,20 @@ export default function SellerPortalApp() {
     },
     { total: 0, approved: 0, pending: 0, rejected: 0 }
   )
+  const sellerSalesSummary = sellerTickets.reduce(
+    (acc, ticket) => {
+      const state = sellerTicketState(ticket).key
+      if (state !== 'approved') return acc
+      const gross = Number(ticket.customerTotal ?? ticket.amount ?? 0)
+      const commission = Number(ticket.commissionAmount ?? (gross * Number(ticket.commissionPercentage || 0)) / 100)
+      const net = Number(ticket.rateAfterCommission ?? (gross - commission))
+      acc.passes += Math.max(0, Number(ticket.quantity) || 1)
+      acc.gross += Number.isFinite(gross) ? gross : 0
+      acc.net += Number.isFinite(net) ? net : 0
+      return acc
+    },
+    { passes: 0, gross: 0, net: 0 }
+  )
 
   const loadSellerTickets = async () => {
     const activeToken = localStorage.getItem('littx_seller_token') || token || ''

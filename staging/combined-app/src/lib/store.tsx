@@ -79,13 +79,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState<boolean>(false)
 
   const adminKey = useMemo(() => {
-    return localStorage.getItem('ft_admin_key') || sessionStorage.getItem('ft_admin_key') || 'change-me-admin-key'
+    return localStorage.getItem('ft_admin_key') || sessionStorage.getItem('ft_admin_key') || ''
   }, [])
 
   const refreshTickets = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/sales?key=${adminKey}`)
+      const token = localStorage.getItem('littx_token') || sessionStorage.getItem('littx_token') || ''
+      const res = await fetch('/api/admin/sales', { headers: { ...(adminKey ? { 'x-admin-key': adminKey } : {}), ...(token ? { 'x-auth-token': token } : {}) } })
       if (res.ok) {
         const data = await res.json()
         if (data.success && data.sales) {
@@ -142,7 +143,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-key': adminKey
+          ...(adminKey ? { 'x-admin-key': adminKey } : {}),
+          ...((localStorage.getItem('littx_token') || sessionStorage.getItem('littx_token')) ? { 'x-auth-token': localStorage.getItem('littx_token') || sessionStorage.getItem('littx_token') || '' } : {})
         },
         body: JSON.stringify({
           name: input.attendee,

@@ -643,11 +643,12 @@ if (!TEST_MODE) {
     console.warn('[Payments] RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set — running in TEST MODE (no real money is charged). See server/.env.example.');
 }
 
-const ADMIN_KEY = process.env.ADMIN_KEY || 'change-me-admin-key';
+// Privileged routes fail closed until an operator supplies a secret.
+const ADMIN_KEY = process.env.ADMIN_KEY || '';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-// Littlane Ent and DGR are the only sellers that can send immediately. Every
+// Littlane Ent, DGR, and ASTEX Media can send tickets immediately. Every
 // other event company must appear in Master Admin's approval queue first.
-const DIRECT_DELIVERY_COMPANY_IDS = new Set(['littlane', 'nitro']);
+const DIRECT_DELIVERY_COMPANY_IDS = new Set(['littlane', 'nitro', 'astex-media', 'astex-testing']);
 
 function normalizeSellerId(value) {
     return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -709,12 +710,11 @@ function isCountableTicketSale(sale) {
 }
 
 // ==================== LITTX SELLER ACCOUNTS (max 3 devices) ====================
-// 3 hardcoded seller IDs + passwords. Each seller can only have 1 active session at a time.
-// Adjust passwords here or move to env vars for production.
+// Credentials are deployment configuration; never provide source-code defaults.
 const SELLER_ACCOUNTS = {
-    'SELLER-A': process.env.SELLER_A_PASS || 'littx-a-2026',
-    'SELLER-B': process.env.SELLER_B_PASS || 'littx-b-2026',
-    'SELLER-C': process.env.SELLER_C_PASS || 'littx-c-2026',
+    'SELLER-A': process.env.SELLER_A_PASS || '',
+    'SELLER-B': process.env.SELLER_B_PASS || '',
+    'SELLER-C': process.env.SELLER_C_PASS || '',
 };
 
 function dashboardSaleKey(sale) {
@@ -945,7 +945,8 @@ async function requireAdmin(req, res, next) {
     const isPres = req.headers['x-presentation'] === 'true' || req.query.pres === 'true';
 
     if (isPres) {
-        if (req.method === 'GET' && key === 'ftlittx26') {
+        const presentationKey = process.env.PRESENTATION_KEY;
+        if (presentationKey && req.method === 'GET' && key === presentationKey) {
             return next();
         }
         return res.status(401).json({ success: false, message: 'Access Denied: Use the presentation password.' });
@@ -998,6 +999,28 @@ async function requireMasterAdmin(req, res, next) {
     }
 }
 
+// PR ticket review is available to the dashboard company admin as well as the
+// master admin. Keep this scope limited to approval queue/actions; all other
+// master-only routes continue using requireMasterAdmin.
+async function requireApprovalAdmin(req, res, next) {
+    const key = req.headers['x-admin-key'] || req.query.key;
+    if (key && key === ADMIN_KEY) return requireMasterAdmin(req, res, next);
+    const token = req.headers['x-auth-token'];
+    if (!token) return res.status(401).json({ success: false, message: 'Dashboard or master admin authentication is required.' });
+    try {
+        const session = await db.getUserSessionByToken(token);
+        const allowedMaster = session?.role === 'master_admin';
+        const allowedDashboard = session?.role === 'company_admin' && session?.companyId === 'littlane';
+        if (!allowedMaster && !allowedDashboard) {
+            return res.status(403).json({ success: false, message: 'Only dashboard or master administrators can review ticket approvals.' });
+        }
+        req.adminSession = session;
+        return next();
+    } catch (err) {
+        return next(err);
+    }
+}
+
 async function resolveAdminPrincipal(req) {
     const key = req.headers['x-admin-key'] || req.query.key;
     if (key && key === ADMIN_KEY) return 'Legacy Admin';
@@ -1030,6 +1053,21 @@ async function requirePartnerAdmin(req, res, next) {
     }
     req.adminSession = session;
     next();
+}
+
+async function requirePR(req, res, next) {
+    const token = req.headers['x-auth-token'] || String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (!token) return res.status(401).json({ success: false, message: 'Partner authentication is required.' });
+    try {
+        const session = await db.getUserSessionByToken(token);
+        if (!session || session.role !== 'pr' || !session.userId) {
+            return res.status(403).json({ success: false, message: 'Partner access is not authorized.' });
+        }
+        req.prSession = session;
+        return next();
+    } catch (err) {
+        return next(err);
+    }
 }
 
 // ==================== 1. CREATE ORDER (start of checkout) ====================
@@ -1544,7 +1582,7 @@ app.post('/api/ticket/:ticketId/resend', async (req, res) => {
     });
 });
 
-app.post('/api/admin/ticket-approvals/:orderId/approve', requireMasterAdmin, async (req, res) => {
+app.post('/api/admin/ticket-approvals/:orderId/approve', requireApprovalAdmin, async (req, res) => {
     const approvedBy = await resolveAdminPrincipal(req);
     const approvedAt = new Date().toISOString();
     const claimed = await db.atomicApprovePendingSale(req.params.orderId, approvedBy, approvedAt);
@@ -1590,7 +1628,7 @@ app.post('/api/admin/ticket-approvals/:orderId/approve', requireMasterAdmin, asy
     }
 });
 
-app.post('/api/admin/ticket-approvals/:orderId/reject', requireMasterAdmin, async (req, res) => {
+app.post('/api/admin/ticket-approvals/:orderId/reject', requireApprovalAdmin, async (req, res) => {
     const rejectedBy = await resolveAdminPrincipal(req);
     const rejectedAt = new Date().toISOString();
     const rejected = await db.atomicRejectPendingSale(req.params.orderId, rejectedBy, rejectedAt);
@@ -2685,7 +2723,18 @@ app.post('/api/scanner-login', (req, res) => {
 // Passwordless session for the distributed native scanner app. This grants
 // scanner-role access only; existing password-based scanner and seller/admin
 // authentication routes remain unchanged.
-app.post('/api/scanner-app-session', (_req, res) => {
+app.post('/api/scanner-app-session', (req, res) => {
+    // The native app is a distributable client and cannot prove its identity.
+    // Require the same server-held credential as the web scanner login.
+    const configuredPassword = process.env.SCANNER_PASSWORD;
+    if (!configuredPassword || configuredPassword.length < 12) {
+        return res.status(503).json({ success: false, message: 'Scanner login is not configured on the server.' });
+    }
+    const supplied = Buffer.from(String(req.body?.password || ''));
+    const expected = Buffer.from(configuredPassword);
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+        return res.status(401).json({ success: false, message: 'Invalid scanner password.' });
+    }
     try {
         const now = Math.floor(Date.now() / 1000);
         const token = signScannerSession({ role: 'scanner', name: 'Gate Staff', iat: now, exp: now + SCANNER_SESSION_TTL_SECONDS });
@@ -2707,6 +2756,9 @@ app.get('/api/scanner-session', (req, res) => {
 // and declined totals come from scan attempts so historical ticket state and
 // old test scans cannot be mistaken for today's gate activity.
 app.get('/api/scan-stats', async (req, res) => {
+    if (!readScannerSession(req)) {
+        return res.status(401).json({ success: false, message: 'Scanner authentication is required.' });
+    }
     try {
         const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
         const now = new Date();
@@ -3119,9 +3171,9 @@ const PLATFORM_USERS = [
 ];
 
 const PR_USERS_AUTH = [
-    { username: 'partner1', password: process.env.PR1_PASS || 'ftpr@001', displayName: 'Partner One', id: 'pr1' },
-    { username: 'partner2', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two', id: 'pr2' },
-    { username: 'partner5', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five', id: 'pr5' },
+    { username: 'partner1', password: process.env.PR1_PASS || '', displayName: 'Partner One', id: 'pr1' },
+    { username: 'partner2', password: process.env.PR2_PASS || '', displayName: 'Partner Two', id: 'pr2' },
+    { username: 'partner5', password: process.env.PR5_PASS || '', displayName: 'Partner Five', id: 'pr5' },
 ];
 
 app.post('/api/portal-auth/login', async (req, res) => {
@@ -3203,6 +3255,14 @@ app.post('/api/auth/login', async (req, res) => {
     );
     if (prUser) {
         const token = generateToken();
+        await db.setUserSession(prUser.id, {
+            token,
+            ip: clientIp(req),
+            loginAt: new Date().toISOString(),
+            role: 'pr',
+            companyId: 'littlane',
+            displayName: prUser.displayName,
+        });
         return res.json({
             success: true,
             token,
@@ -3817,18 +3877,16 @@ app.patch('/api/admin/dashboard-sale-visibility/:saleKey', requireMasterAdmin, a
 
 // PR user credentials (server-side auth)
 const PR_USERS = [
-    { id: 'pr1', username: 'partner1', password: process.env.PR1_PASS || 'ftpr@001', displayName: 'Partner One' },
-    { id: 'pr2', username: 'partner2', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two' },
-    { id: 'pr5', username: 'partner5', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five' },
+    { id: 'pr1', username: 'partner1', password: process.env.PR1_PASS || '', displayName: 'Partner One' },
+    { id: 'pr2', username: 'partner2', password: process.env.PR2_PASS || '', displayName: 'Partner Two' },
+    { id: 'pr5', username: 'partner5', password: process.env.PR5_PASS || '', displayName: 'Partner Five' },
 ];
 
 // GET /api/pr/sales?prUserId=xxx — fetch only this partner's tickets
-app.get('/api/pr/sales', async (req, res) => {
-    const { prUserId } = req.query;
-    if (!prUserId) return res.status(400).json({ success: false, message: 'prUserId required' });
+app.get('/api/pr/sales', requirePR, async (req, res) => {
     try {
         const all = await db.getAll();
-        const sales = all.filter(s => s.prUserId === prUserId);
+        const sales = all.filter(s => s.prUserId === req.prSession.userId);
         res.json({ success: true, sales });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -3836,9 +3894,9 @@ app.get('/api/pr/sales', async (req, res) => {
 });
 
 // POST /api/pr/create-order — PR partner initiates a Razorpay payment for a customer
-app.post('/api/pr/create-order', async (req, res) => {
-    const { name, email, phone, gender, quantity, prUserId } = req.body || {};
-    if (!name || !email || !phone || !gender || !prUserId)
+app.post('/api/pr/create-order', requirePR, async (req, res) => {
+    const { name, email, phone, gender, quantity } = req.body || {};
+    if (!name || !email || !phone || !gender)
         return res.status(400).json({ success: false, message: 'Missing required fields.' });
 
     const computed = await computeAmount(gender, quantity);
@@ -3872,7 +3930,7 @@ app.post('/api/pr/create-order', async (req, res) => {
             emailStatus: 'pending',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            prUserId,
+            prUserId: req.prSession.userId,
             paymentMethod: 'razorpay',
         });
 
@@ -3883,9 +3941,9 @@ app.post('/api/pr/create-order', async (req, res) => {
 });
 
 // POST /api/pr/cash-request — PR partner submits a cash sale for admin approval
-app.post('/api/pr/cash-request', async (req, res) => {
-    const { name, email, phone, gender, quantity, prUserId, prName } = req.body || {};
-    if (!name || !email || !phone || !gender || !prUserId)
+app.post('/api/pr/cash-request', requirePR, async (req, res) => {
+    const { name, email, phone, gender, quantity } = req.body || {};
+    if (!name || !email || !phone || !gender)
         return res.status(400).json({ success: false, message: 'Missing required fields.' });
 
     const computed = await computeAmount(gender, quantity);
@@ -3909,8 +3967,8 @@ app.post('/api/pr/cash-request', async (req, res) => {
             emailStatus: 'pending',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            prUserId,
-            prName: prName || prUserId,
+            prUserId: req.prSession.userId,
+            prName: req.prSession.displayName,
             paymentMethod: 'cash',
         });
 
@@ -3921,7 +3979,7 @@ app.post('/api/pr/cash-request', async (req, res) => {
 });
 
 // GET /api/admin/pr-approvals — admin sees all pending cash and seller-ticket approvals
-app.get('/api/admin/pr-approvals', requireMasterAdmin, async (req, res) => {
+app.get('/api/admin/pr-approvals', requireApprovalAdmin, async (req, res) => {
     try {
         const all = await db.getAll();
         const pending = all.filter(s => !isDirectDeliveryCompany(s.companyId || sellerCompanyIdFromValue(s.sellerId || s.generatedBy || s.prUserId)) && (
@@ -3937,7 +3995,7 @@ app.get('/api/admin/pr-approvals', requireMasterAdmin, async (req, res) => {
 });
 
 // POST /api/admin/pr-approve — admin approves a cash sale → ticket generated and emailed
-app.post('/api/admin/pr-approve', requireMasterAdmin, async (req, res) => {
+app.post('/api/admin/pr-approve', requireApprovalAdmin, async (req, res) => {
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
 
@@ -3990,7 +4048,7 @@ app.post('/api/admin/pr-approve', requireMasterAdmin, async (req, res) => {
 });
 
 // POST /api/admin/pr-reject — admin rejects a cash sale
-app.post('/api/admin/pr-reject', requireMasterAdmin, async (req, res) => {
+app.post('/api/admin/pr-reject', requireApprovalAdmin, async (req, res) => {
     const { orderId } = req.body || {};
     if (!orderId) return res.status(400).json({ success: false, message: 'orderId required' });
     try {

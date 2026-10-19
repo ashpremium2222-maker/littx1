@@ -307,7 +307,6 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_ga_single_v2') || '499')
   const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
   const [manualPartner, setManualPartner] = useState('littlane')
-  const [manualPartnerPassword, setManualPartnerPassword] = useState('')
 
   const fetchSales = async (overrideKey?: string) => {
     try {
@@ -422,17 +421,6 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       : 'GA Single'
 
     // Partner password validation check
-    const partnerPassMap: Record<string, string> = {
-      'littlane': 'littlane2026',
-      'nitro': 'nitro2026',
-      '7th-heaven': '7thheaven2026'
-    }
-    const expectedPass = partnerPassMap[manualPartner] || 'littlane2026'
-    if (manualPartnerPassword !== expectedPass && manualPartnerPassword !== 'dash-2026' && manualPartnerPassword !== 'littx-master-2026') {
-      alert(`Invalid Partner Authorization Password for selected partner.`)
-      return
-    }
-
     const partnerNameMap: Record<string, string> = {
       'littlane': 'Littlane Ent',
       'nitro': 'DGR',
@@ -770,17 +758,6 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                   <option value="nitro">DGR</option>
                   <option value="7th-heaven">7th Heaven</option>
                 </select>
-              </div>
-
-              <div className="field">
-                <label>PARTNER AUTHORIZATION PASSWORD *</label>
-                <input
-                  type="password"
-                  required
-                  placeholder="Enter partner password"
-                  value={manualPartnerPassword}
-                  onChange={(e) => setManualPartnerPassword(e.target.value)}
-                />
               </div>
 
               <div className="field">

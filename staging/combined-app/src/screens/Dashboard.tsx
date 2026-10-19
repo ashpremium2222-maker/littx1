@@ -28,7 +28,10 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
     let active = true
     const loadStats = async () => {
       try {
-        const res = await fetch('/api/scan-stats')
+        const scannerToken = sessionStorage.getItem('littx_scanner_token')
+        const res = await fetch('/api/scan-stats', {
+          headers: scannerToken ? { Authorization: `Bearer ${scannerToken}` } : {},
+        })
         const data = await res.json()
         if (active && res.ok && data.success) {
           setDatabaseStats({ accepted: data.accepted || 0, failed: data.failed || 0 })

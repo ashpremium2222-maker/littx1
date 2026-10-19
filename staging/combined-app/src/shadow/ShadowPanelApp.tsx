@@ -371,7 +371,7 @@ export default function ShadowPanelApp({
   })
 
   // Unique Customers Aggregation
-  const customerMap = new Map<string, { name: string; email: string; phone?: string; ordersCount: number; ticketsCount: number; totalSpent: number; lastDate: string }>()
+  const customerMap = new Map<string, { name: string; email: string; phone?: string; ordersCount: number; ticketsCount: number; totalSpent: number; lastDate: string }>();
   (isShadowByAshPanel ? shadowOrders.filter((o) => !o.disabledAt && o.status !== 'cancelled') : shadowOrders).forEach((o) => {
     const key = o.email?.toLowerCase() || o.name?.toLowerCase() || 'unknown'
     const existing = customerMap.get(key)

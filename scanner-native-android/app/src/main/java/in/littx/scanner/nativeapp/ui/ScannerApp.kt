@@ -46,7 +46,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -103,16 +105,29 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
     }
 }
 
-@Composable private fun ScannerSessionScreen(loading: Boolean, errorMessage: String?, onRetry: () -> Unit) {
+@Composable private fun ScannerSessionScreen(loading: Boolean, errorMessage: String?, onRetry: (String) -> Unit) {
+    var password by rememberSaveable { mutableStateOf("") }
     val isConnecting = loading || errorMessage == null
     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(night, Color(0xFF14284B), Color(0xFF10172A)))), contentAlignment = Alignment.Center) {
         Column(Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             androidx.compose.foundation.Image(painter = painterResource(com.littx.scanner.nativeapp.R.drawable.scanner_logo), contentDescription = "LITTX Scanner", modifier = Modifier.size(136.dp).clip(RoundedCornerShape(24.dp)))
             Text("EVENT SCANNER", color = cyan, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp, modifier = Modifier.padding(top = 22.dp))
-            Text(if (isConnecting) "Connecting to LITTX" else "Scanner unavailable", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 9.dp))
-            Text(errorMessage ?: "Preparing secure scanner access…", color = Color.White.copy(.72f), fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-            if (isConnecting) CircularProgressIndicator(Modifier.padding(top = 22.dp).size(27.dp), color = cyan, strokeWidth = 2.dp)
-            else Button(onClick = onRetry, modifier = Modifier.fillMaxWidth().padding(top = 22.dp).height(54.dp), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = blue)) { Text("Retry connection", fontWeight = FontWeight.Bold) }
+            Text(if (isConnecting) "Secure scanner sign in" else "Scanner sign in", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 9.dp))
+            Text(errorMessage ?: "Enter the scanner password provided by your event administrator.", color = Color.White.copy(.72f), fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+                label = { Text("Scanner password") },
+                singleLine = true,
+                enabled = !loading,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = cyan, unfocusedBorderColor = Color.White.copy(.35f), focusedLabelColor = cyan, unfocusedLabelColor = Color.White.copy(.7f), cursorColor = cyan)
+            )
+            Button(onClick = { onRetry(password); password = "" }, enabled = !loading && password.isNotBlank(), modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(54.dp), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = blue)) {
+                if (loading) CircularProgressIndicator(Modifier.size(21.dp), color = Color.White, strokeWidth = 2.dp) else Text("Sign in", fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
