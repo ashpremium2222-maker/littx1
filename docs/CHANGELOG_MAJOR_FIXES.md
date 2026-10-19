@@ -97,9 +97,12 @@ Complete Phase 1 route-by-route authorization and login abuse protection, remove
 - Public and PR online checkout now calculate integer minor-unit totals on the server, count group sizes as individual admissions, reserve finite inventory, and verify provider order amount/currency. Razorpay callback/webhook acceptance reconciles captured order, amount, and currency; webhook event IDs and ticket-generation leases support retry safety.
 - The frontend reuses server-provided minor-unit totals. The PDF ticket renderer tolerates missing legacy ticket-category labels.
 - Added booking/payment helper and API regression coverage. Latest backend test run: 24 passed, 0 failed.
+- Added protected OTP challenge storage primitives (10-minute expiry, 3/15-minute issuance limits, five-attempt cap, single use) and full-refund request/admin decision transitions. Admin approval records intent only; there is no gateway refund, ticket invalidation, or inventory restoration. Customer-facing OTP/refund submission remains disabled pending provider selection and OTP recovery API integration.
+- Group QR scanning now records and displays the whole admission count on one scan. Duplicate and concurrent scans are rejected.
+- Latest backend test run after these additions: 29 passed, 0 failed. OTP logic tests use an isolated injected store; no production Mongo/payment-provider integration was exercised.
 
 ### Open work and owner decisions
 
-- Scanner behavior currently consumes one order QR once. Owner must choose whole-group admission or one-at-a-time admission counting before scanner/ticket changes.
-- OTP recovery lacks an approved configured delivery channel/template. Refund request/approval APIs, durable delivery retries, cash/manual inventory policy, migration/index validation, and gateway sandbox verification are incomplete.
-- No migration, production database, live payment, refund, or provider operation was run. This phase is not production-ready. See `docs/BOOKING_PAYMENT_AUDIT.md`.
+- Scanner consumes one order QR once and reports the whole group admission count. It does not support partial entry.
+- OTP recovery lacks an approved configured delivery channel/template. Customer refund submission remains gated on OTP verification. Durable delivery retries, cash/manual inventory policy, and production index validation are incomplete.
+- Payment gateway work is deferred for this continuation. Existing payment code/configuration is preserved untouched; no provider integration or live operation was added or performed. A late capture after reservation expiry requires manual review, with no automatic ticket, oversell, or refund. See `docs/BOOKING_PAYMENT_AUDIT.md`.

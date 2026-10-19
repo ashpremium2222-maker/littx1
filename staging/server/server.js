@@ -3220,7 +3220,10 @@ app.post('/api/scan-ticket', async (req, res) => {
         const mm = ist.getUTCMinutes().toString().padStart(2, '0');
         const scannedAtStr = `${months[ist.getUTCMonth()]} ${ist.getUTCDate()}, ${hour12}:${mm} ${ampm}`;
 
-        const updatedSale = await db.atomicScanTicket(ticketId, scannedBy || 'Gate Staff', scannedAtStr);
+        const admissionCount = Number.isSafeInteger(sale.admissionCount) && sale.admissionCount > 0
+            ? sale.admissionCount
+            : (Number.isSafeInteger(sale.quantity) && sale.quantity > 0 ? sale.quantity : 1);
+        const updatedSale = await db.atomicScanTicket(ticketId, scannedBy || 'Gate Staff', scannedAtStr, admissionCount);
         if (!updatedSale) {
             // Another scanner may have claimed it after the initial lookup.
             const currentSale = await db.getByTicketId(ticketId);
@@ -3256,6 +3259,8 @@ app.post('/api/scan-ticket', async (req, res) => {
                 phone: updatedSale.phone,
                 ticketType: ticketTypeForSale(updatedSale),
                 quantity: updatedSale.quantity,
+                admissionCount: updatedSale.scannedAdmissionCount || updatedSale.admissionCount || updatedSale.quantity || 1,
+                scannedAdmissionCount: updatedSale.scannedAdmissionCount || updatedSale.admissionCount || updatedSale.quantity || 1,
                 amount: updatedSale.amount,
                 generatedAt: updatedSale.generatedAt,
                 status: 'scanned',
@@ -4550,6 +4555,43 @@ app.post('/api/pr/cash-request', requirePR, async (req, res) => {
         res.json({ success: true, orderId, message: 'Cash sale submitted for approval.' });
     } catch (err) {
         res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
+// Full-refund requests are only approved/rejected here. This does not call the gateway,
+// invalidate a ticket, or restore inventory; those are separate audited operations.
+app.get('/api/admin/refund-requests', requireApprovalAdmin, async (req, res) => {
+    try {
+        const requests = (await db.getAll())
+            .filter(sale => sale.refundStatus === 'requested' && approvalAdminOwnsSale(req, sale))
+            .map(sale => ({
+                orderId: sale.orderId, refundRequestId: sale.refundRequestId, event: sale.event,
+                eventId: sale.eventId, ticketId: sale.ticketId, name: sale.name, email: sale.email,
+                amount: sale.amount, currency: sale.currency, reason: sale.refundReason,
+                requestedAt: sale.refundRequestedAt
+            }));
+        res.set('Cache-Control', 'no-store');
+        return res.json({ success: true, requests });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(error) });
+    }
+});
+
+app.post('/api/admin/refund-requests/:orderId/decision', requireApprovalAdmin, async (req, res) => {
+    const decision = String(req.body?.decision || '').toLowerCase();
+    const reason = String(req.body?.reason || '').trim().slice(0, 500);
+    if (!['approved', 'rejected'].includes(decision)) return res.status(400).json({ success: false, message: 'Decision must be approved or rejected.' });
+    const existing = await db.getByOrderId(req.params.orderId);
+    if (!existing || existing.refundStatus !== 'requested') return res.status(404).json({ success: false, message: 'Pending refund request not found.' });
+    if (!approvalAdminOwnsSale(req, existing)) return res.status(403).json({ success: false, message: 'This refund request belongs to another company.' });
+    try {
+        const updated = await db.atomicDecideRefund(req.params.orderId, {
+            decision, actor: req.adminSession?.userId || 'Master Admin', reason, now: new Date().toISOString()
+        });
+        if (!updated) return res.status(409).json({ success: false, message: 'Refund request has already been decided.' });
+        return res.json({ success: true, refundStatus: updated.refundStatus, liveRefundTriggered: false, ticketInvalidated: false, inventoryRestored: false });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(error) });
     }
 });
 

@@ -728,15 +728,19 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
       const entry = buildHistoryEntry(
         'approved',
         outcome.ticket,
-        `${outcome.ticket.attendee} checked in successfully.`,
-        1
+        outcome.ticket.admissionCount && outcome.ticket.admissionCount > 1
+          ? `${outcome.ticket.admissionCount} people admitted together as one group.`
+          : `${outcome.ticket.attendee} checked in successfully.`,
+        outcome.ticket.admissionCount || 1
       )
       recordScannerHistory(entry)
       if (forceScanner) {
         setScannerFeedback({
           status: 'success',
           title: 'Ticket Valid',
-          message: `${outcome.ticket.attendee} checked in at ${timestamp}`,
+          message: outcome.ticket.admissionCount && outcome.ticket.admissionCount > 1
+            ? `${outcome.ticket.admissionCount} people admitted together at ${timestamp}`
+            : `${outcome.ticket.attendee} checked in at ${timestamp}`,
           code: outcome.ticket.id,
           entry
         })

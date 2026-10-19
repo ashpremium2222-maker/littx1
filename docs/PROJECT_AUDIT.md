@@ -72,6 +72,6 @@ The follow-up review found and addressed these additional issues:
 ## Phase 3 booking/payment checkpoint — 2026-10-19
 
 - Local working-tree changes add 15-minute atomic inventory reservations to public and PR online checkout, including group-size admission counts and idempotent release; payment callback/webhook reconciliation checks captured order, amount, and currency; event IDs are recorded; and ticket generation uses a retryable lease.
-- Server tests include money/signature/reconciliation helper tests and mocked checkout, group inventory race/release, and webhook retry/mismatch scenarios. The latest backend test run passed 24/24 after PR online checkout was updated.
-- Remaining limitations: group scanner policy awaits owner input; OTP recovery is not operational until a channel/template is configured; refund request/approval endpoints and delivery retry workers are incomplete; cash/manual flows are outside the new reservation lifecycle; production index migration, gateway sandbox, provider and backup/restore checks were not run.
-- The Phase 3 work is not production-ready and no live or production operations were used.
+- Server tests include mocked inventory reservation/expiry/release, OTP lifecycle, refund decision invariants, and whole-group scan race handling. Latest backend test run passed 29/29.
+- OTP challenge storage and admin refund decision routes are implemented, but customer-facing OTP delivery/recovery and refund submission are not operational. The scanner admits the full group on one QR scan; delivery retry workers, cash/manual inventory handling, and production index verification remain open.
+- Payment gateway integration is deferred for the current continuation. Existing provider code/configuration was left untouched. Late captures after inventory expiry require manual review without automatic ticket issuance, overselling, or automatic refunds. No production or live financial operation was performed.

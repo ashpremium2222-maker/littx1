@@ -35,6 +35,7 @@ export interface Ticket {
   ticketType: TicketType
   price: string
   qty: number
+  admissionCount?: number
   generatedBy: string
   generatedAt: string
   status: TicketStatus
@@ -224,6 +225,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ticketType: (t.ticketType as TicketType) || 'GA Single',
             price: `₹${t.amount || '—'}`,
             qty: t.quantity || 1,
+            admissionCount: t.admissionCount || t.scannedAdmissionCount || 1,
             generatedBy: t.generatedBy || 'LITTX',
             generatedAt: fmtIST(t.generatedAt),
             status: 'scanned',

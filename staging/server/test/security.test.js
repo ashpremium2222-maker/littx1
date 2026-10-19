@@ -86,6 +86,7 @@ test('sensitive master, diagnostics, email and destructive routes reject unauthe
         '/api/debug/db-status',
         '/api/test-email?to=attacker@example.test',
         '/api/admin/sellers',
+        '/api/admin/refund-requests',
     ]) {
         const response = await fetch(`${baseUrl}${route}`);
         assert.equal(response.status, 401, route);
@@ -130,6 +131,37 @@ test('scanner cannot scan an event outside its configured company and event assi
         });
         assert.equal(denied.status, 403);
         assert.equal((await db.getByTicketId(ticketId)).status, 'paid');
+    } finally {
+        await db.deleteSaleRecord(orderId);
+    }
+});
+
+test('group ticket scan admits its full admission count once and rejects concurrent duplicate scans', async () => {
+    const db = require('../db');
+    const orderId = `test-group-scan-${Date.now()}`;
+    const ticketId = `DGR-GROUP-${Date.now()}`;
+    await db.createSaleRecord({
+        orderId, ticketId, event: 'DHOLIDA GARBA ROYALE', companyId: 'littlane',
+        status: 'ticket_generated', name: 'Group Contact', quantity: 1, admissionCount: 5,
+    });
+    try {
+        const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
+        });
+        const { token } = await login.json();
+        const scan = () => fetch(`${baseUrl}/api/scan-ticket`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ ticketId }),
+        }).then(response => response.json());
+        const results = await Promise.all([scan(), scan()]);
+        assert.equal(results.filter(result => result.result === 'success').length, 1);
+        assert.equal(results.filter(result => result.result === 'rejected').length, 1);
+        const accepted = results.find(result => result.result === 'success');
+        assert.equal(accepted.ticket.admissionCount, 5);
+        const sale = await db.getByTicketId(ticketId);
+        assert.equal(sale.status, 'scanned');
+        assert.equal(sale.scannedAdmissionCount, 5);
     } finally {
         await db.deleteSaleRecord(orderId);
     }
@@ -511,6 +543,43 @@ test('a captured payment reference cannot be attached to a second order', async 
     assert.equal(response.status, 409);
     assert.equal((await db.getByOrderId(orderId)).paymentStatus, 'exception');
     assert.equal((await db.getByOrderId(orderId)).ticketId, undefined);
+});
+
+test('refund request and admin decision are single-use and never restore inventory automatically', async () => {
+    const db = require('../db');
+    const orderId = `order-refund-${Date.now()}`;
+    const eventId = `phase3-refund-${Date.now()}`;
+    await db.saveEvent({
+        id: eventId, name: 'Refund Inventory Event', companyId: 'littlane', organizerId: 'littlane',
+        ticketCategories: [{ id: 'single', name: 'Single', price: 100, currency: 'INR', totalInventory: 2, remainingAvailability: 1, maxPerCustomer: 2, status: 'active', groupSize: 1 }]
+    });
+    await db.createSaleRecord({
+        orderId, eventId, event: 'Refund Inventory Event', ticketCategoryId: 'single', amount: 100, amountMinor: 10000, currency: 'INR',
+        paymentStatus: 'paid', fulfillmentStatus: 'ticketed', status: 'ticket_generated', ticketId: `DGR-REFUND-${Date.now()}`,
+        refundStatus: 'none'
+    });
+    const request = await db.atomicRequestRefund(orderId, {
+        requestId: `refund-request-${Date.now()}`, requesterHash: 'opaque-verified-subject-hash', reason: 'Duplicate purchase', now: new Date().toISOString()
+    });
+    assert.equal(request.refundStatus, 'requested');
+    assert.equal(await db.atomicRequestRefund(orderId, {
+        requestId: 'duplicate', requesterHash: 'opaque-verified-subject-hash', reason: 'Duplicate', now: new Date().toISOString()
+    }), null);
+
+    const token = `phase3-refund-admin-${Date.now()}`;
+    await db.setUserSession('phase3-refund-admin', { token, role: 'master_admin', companyId: 'littx', loginAt: new Date().toISOString() });
+    const decision = await fetch(`${baseUrl}/api/admin/refund-requests/${encodeURIComponent(orderId)}/decision`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': token }, body: JSON.stringify({ decision: 'approved', reason: 'Reviewed' })
+    });
+    assert.equal(decision.status, 200);
+    const decisionBody = await decision.json();
+    assert.equal(decisionBody.liveRefundTriggered, false);
+    assert.equal(decisionBody.ticketInvalidated, false);
+    assert.equal(decisionBody.inventoryRestored, false);
+    assert.equal(await db.atomicDecideRefund(orderId, { decision: 'rejected', actor: 'Master Admin', reason: '', now: new Date().toISOString() }), null);
+    assert.equal((await db.getByOrderId(orderId)).paymentStatus, 'paid');
+    assert.equal((await db.getAllEvents()).find(item => item.id === eventId).ticketCategories[0].remainingAvailability, 1);
+    await db.deleteUserSession('phase3-refund-admin');
 });
 
 test('captured webhook reconciliation rejects mismatched totals and safely handles retry and out-of-order events', async () => {

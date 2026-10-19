@@ -206,6 +206,7 @@ const SaleSchema = new mongoose.Schema({
     reservationExpiresAt: { type: Date },
     reservationStatus: { type: String, enum: ['not_required', 'active', 'consuming', 'consumed', 'released', 'expired'] },
     admissionCount: { type: Number, min: 0 },
+    scannedAdmissionCount: { type: Number, min: 1 },
     amountMinor: { type: Number, min: 0 },
     paymentStatus: { type: String, enum: ['pending', 'processing', 'paid', 'failed', 'expired', 'cancelled', 'exception', 'refund_pending', 'refunded'] },
     paymentProcessingLeaseUntil: { type: Date },
@@ -218,12 +219,15 @@ const SaleSchema = new mongoose.Schema({
     ticketGenerationError: { type: String },
     refundStatus: { type: String, enum: ['none', 'requested', 'approved', 'rejected', 'processing', 'failed', 'refunded'], default: 'none' },
     refundRequestId: { type: String },
+    refundRequesterHash: { type: String },
     refundRequestedAt: { type: Date },
     refundDecidedAt: { type: Date },
     refundDecidedBy: { type: String },
+    refundDecisionReason: { type: String },
     refundReason: { type: String },
     refundProviderReference: { type: String },
     refundError: { type: String },
+    refundHistory: [{ from: { type: String }, to: { type: String }, actor: { type: String }, reason: { type: String }, at: { type: Date } }],
     razorpayEventIds: [{ type: String }],
     checkoutRequestId: { type: String },
     checkoutRequestHash: { type: String },
@@ -433,6 +437,26 @@ const CheckoutRequestSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 const CheckoutRequest = mongoose.model('CheckoutRequest', CheckoutRequestSchema);
+const OtpChallengeSchema = new mongoose.Schema({
+    challengeId: { type: String, required: true, unique: true },
+    subjectHash: { type: String, required: true },
+    purpose: { type: String, enum: ['booking_recovery', 'refund_request'], required: true },
+    codeHash: { type: String, required: true },
+    attempts: { type: Number, default: 0 },
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, required: true },
+    usedAt: { type: Date, default: null }
+});
+OtpChallengeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+OtpChallengeSchema.index({ subjectHash: 1, purpose: 1, createdAt: -1 });
+const OtpChallenge = mongoose.model('OtpChallenge', OtpChallengeSchema);
+const OtpRateLimitSchema = new mongoose.Schema({
+    bucketKey: { type: String, required: true, unique: true },
+    count: { type: Number, required: true },
+    windowExpiresAt: { type: Date, required: true }
+});
+OtpRateLimitSchema.index({ windowExpiresAt: 1 }, { expireAfterSeconds: 0 });
+const OtpRateLimit = mongoose.model('OtpRateLimit', OtpRateLimitSchema);
 const Company = mongoose.model('Company', CompanySchema);
 const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
 const Customer = mongoose.model('Customer', CustomerSchema);
@@ -774,6 +798,29 @@ async function atomicRecordLateCapturedPayment(orderId, paymentId, now) {
     return Sale.findOneAndUpdate(
         { orderId, paymentStatus: 'expired' },
         { $set: { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'inventory_conflict', status: 'payment_exception', paymentException: 'Payment captured after inventory reservation expired; manual reconciliation required.', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicRequestRefund(orderId, { requestId, requesterHash, reason, now }) {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'paid', ticketId: { $exists: true, $nin: [null, ''] }, refundStatus: { $in: ['none', null] }, status: { $nin: ['cancelled', 'refunded'] } },
+        {
+            $set: { refundStatus: 'requested', refundRequestId: requestId, refundRequesterHash: requesterHash, refundReason: reason, refundRequestedAt: now, updatedAt: now },
+            $push: { refundHistory: { from: 'none', to: 'requested', actor: 'customer_verified_otp', reason, at: now } }
+        },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicDecideRefund(orderId, { decision, actor, reason, now }) {
+    if (!['approved', 'rejected'].includes(decision)) return null;
+    return Sale.findOneAndUpdate(
+        { orderId, refundStatus: 'requested' },
+        {
+            $set: { refundStatus: decision, refundDecidedAt: now, refundDecidedBy: actor, refundDecisionReason: reason || '', updatedAt: now },
+            $push: { refundHistory: { from: 'requested', to: decision, actor, reason: reason || '', at: now } }
+        },
         { returnDocument: 'after', lean: true }
     );
 }
@@ -1194,6 +1241,8 @@ const mockDb = {
     ],
     sales: [],
     checkoutRequests: [],
+    otpChallenges: [],
+    otpRateLimits: new Map(),
     companies: [
         {
             companyId: 'littlane',
@@ -1434,6 +1483,74 @@ module.exports = {
         }
         const result = await CheckoutRequest.updateOne({ idempotencyKey, status: 'processing' }, { $set: { status: 'failed', updatedAt: new Date() } });
         return result.modifiedCount > 0;
+    },
+    consumeOtpIssueRateLimit: async ({ bucketKey, windowStart, windowExpiresAt, limit }) => {
+        const now = new Date(windowStart);
+        const expires = new Date(windowExpiresAt);
+        if (useMock()) {
+            const bucket = mockDb.otpRateLimits.get(bucketKey);
+            if (!bucket || new Date(bucket.windowExpiresAt) <= now) {
+                mockDb.otpRateLimits.set(bucketKey, { count: 1, windowExpiresAt: expires });
+                return true;
+            }
+            if (bucket.count >= limit) return false;
+            bucket.count += 1;
+            return true;
+        }
+        const current = await OtpRateLimit.updateOne(
+            { bucketKey, windowExpiresAt: { $gt: now }, count: { $lt: limit } }, { $inc: { count: 1 } }
+        );
+        if (current.modifiedCount) return true;
+        const reset = await OtpRateLimit.updateOne(
+            { bucketKey, windowExpiresAt: { $lte: now } }, { $set: { count: 1, windowExpiresAt: expires } }
+        );
+        if (reset.modifiedCount) return true;
+        try {
+            await OtpRateLimit.create({ bucketKey, count: 1, windowExpiresAt: expires });
+            return true;
+        } catch (error) {
+            if (error.code !== 11000) throw error;
+            const retried = await OtpRateLimit.updateOne(
+                { bucketKey, windowExpiresAt: { $gt: now }, count: { $lt: limit } }, { $inc: { count: 1 } }
+            );
+            return retried.modifiedCount > 0;
+        }
+    },
+    createOtpChallenge: async challenge => {
+        if (useMock()) {
+            mockDb.otpChallenges.push({ ...challenge });
+            return challenge;
+        }
+        return OtpChallenge.create(challenge);
+    },
+    consumeOtpChallenge: async ({ challengeId, subjectHash, purpose, codeHash, now, maxAttempts }) => {
+        const at = new Date(now);
+        if (useMock()) {
+            const challenge = mockDb.otpChallenges.find(item => item.challengeId === challengeId && item.subjectHash === subjectHash && item.purpose === purpose);
+            if (!challenge) return { ok: false, reason: 'invalid' };
+            if (challenge.usedAt) return { ok: false, reason: 'used' };
+            if (new Date(challenge.expiresAt) <= at) return { ok: false, reason: 'expired' };
+            if (challenge.attempts >= maxAttempts) return { ok: false, reason: 'locked' };
+            if (challenge.codeHash !== codeHash) { challenge.attempts += 1; return { ok: false, reason: challenge.attempts >= maxAttempts ? 'locked' : 'invalid' }; }
+            challenge.usedAt = at;
+            return { ok: true };
+        }
+        const consumed = await OtpChallenge.findOneAndUpdate(
+            { challengeId, subjectHash, purpose, codeHash, expiresAt: { $gt: at }, usedAt: null, attempts: { $lt: maxAttempts } },
+            { $set: { usedAt: at } }, { returnDocument: 'after', lean: true }
+        );
+        if (consumed) return { ok: true };
+        const failed = await OtpChallenge.findOneAndUpdate(
+            { challengeId, subjectHash, purpose, codeHash: { $ne: codeHash }, expiresAt: { $gt: at }, usedAt: null, attempts: { $lt: maxAttempts } },
+            { $inc: { attempts: 1 } }, { returnDocument: 'after', lean: true }
+        );
+        if (failed) return { ok: false, reason: failed.attempts >= maxAttempts ? 'locked' : 'invalid' };
+        const current = await OtpChallenge.findOne({ challengeId, subjectHash, purpose }, { expiresAt: 1, usedAt: 1, attempts: 1 }).lean();
+        if (!current) return { ok: false, reason: 'invalid' };
+        if (current.usedAt) return { ok: false, reason: 'used' };
+        if (current.expiresAt <= at) return { ok: false, reason: 'expired' };
+        if (current.attempts >= maxAttempts) return { ok: false, reason: 'locked' };
+        return { ok: false, reason: 'invalid' };
     },
     updateSaleRecord: async (orderId, updates) => {
         if (useMock()) {
@@ -1763,6 +1880,24 @@ module.exports = {
         _saveMockSales(mockDb.sales);
         return sale;
     },
+    atomicRequestRefund: async (orderId, { requestId, requesterHash, reason, now }) => {
+        if (!useMock()) return atomicRequestRefund(orderId, { requestId, requesterHash, reason, now: new Date(now) });
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'paid' && item.ticketId && (item.refundStatus || 'none') === 'none' && !['cancelled', 'refunded'].includes(item.status));
+        if (!sale) return null;
+        Object.assign(sale, { refundStatus: 'requested', refundRequestId: requestId, refundRequesterHash: requesterHash, refundReason: reason, refundRequestedAt: now, updatedAt: now });
+        sale.refundHistory = [...(sale.refundHistory || []), { from: 'none', to: 'requested', actor: 'customer_verified_otp', reason, at: now }];
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicDecideRefund: async (orderId, { decision, actor, reason, now }) => {
+        if (!useMock()) return atomicDecideRefund(orderId, { decision, actor, reason, now: new Date(now) });
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.refundStatus === 'requested');
+        if (!sale || !['approved', 'rejected'].includes(decision)) return null;
+        Object.assign(sale, { refundStatus: decision, refundDecidedAt: now, refundDecidedBy: actor, refundDecisionReason: reason || '', updatedAt: now });
+        sale.refundHistory = [...(sale.refundHistory || []), { from: 'requested', to: decision, actor, reason: reason || '', at: now }];
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
 
     // User Helpers
     getAllUsers: async () => {
@@ -2047,7 +2182,7 @@ module.exports = {
 
     // Atomic scan: only transitions ticket from paid/generated/emailed state to scanned.
     // Returns updated sale or null if precondition failed (already scanned — race condition guard).
-    atomicScanTicket: async (ticketId, scannedBy, scannedAtStr) => {
+    atomicScanTicket: async (ticketId, scannedBy, scannedAtStr, admissionCount = 1) => {
         if (useMock()) {
             const idx = mockDb.sales.findIndex(s =>
                 s.ticketId === ticketId &&
@@ -2057,6 +2192,7 @@ module.exports = {
             mockDb.sales[idx].status = 'scanned';
             mockDb.sales[idx].scannedBy = scannedBy;
             mockDb.sales[idx].scannedAt = scannedAtStr;
+            mockDb.sales[idx].scannedAdmissionCount = admissionCount;
             delete mockDb.sales[idx].reactivatedAt;
             mockDb.sales[idx].updatedAt = new Date().toISOString();
             return mockDb.sales[idx];
@@ -2071,6 +2207,7 @@ module.exports = {
                     status: 'scanned',
                     scannedBy,
                     scannedAt: scannedAtStr,
+                    scannedAdmissionCount: admissionCount,
                     updatedAt: new Date().toISOString()
                 },
                 $unset: { reactivatedAt: 1 }

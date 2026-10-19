@@ -50,7 +50,7 @@ Phase 3 booking/payment reliability must address concurrency, inventory reservat
 
 ## Phase 3 execution checkpoint — 2026-10-19
 
-Phase 3 implementation is underway on the existing Phase 2 foundation. Local changes add 15-minute inventory holds for public and PR online checkout, individual-admission inventory arithmetic, payment/provider reconciliation, checkout and webhook idempotency, retryable ticket generation, and regression tests. This does not close Phase 2: event editor/reporting/staff assignment, dynamic event ticket templates, and migration evidence remain open. Group scanning, OTP delivery, refund request/decision APIs, notification retry workers, and production index migration also remain open. See `docs/BOOKING_PAYMENT_AUDIT.md` for approved choices and owner questions.
+Phase 3 continuation implements 15-minute inventory holds, individual-admission inventory arithmetic, secure OTP challenge storage primitives, one-scan whole-group admission reporting, and full-refund request/admin decision state transitions. Customer OTP recovery and refund submission remain unavailable pending verified OTP delivery. Payment gateway integration is deferred in this continuation; existing provider code/configuration is preserved without edits. Late captures after reservation expiry require manual review, without automatic ticket issuance, oversell, or refund. This does not close Phase 2: event editor/reporting/staff assignment, dynamic event ticket templates, and migration evidence remain open. Notification retry workers and production index verification also remain open. See `docs/BOOKING_PAYMENT_AUDIT.md`.
 
 ## Dependencies and migration safeguards
 
