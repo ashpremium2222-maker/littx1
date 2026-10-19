@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 
 interface Sale {
   orderId: string
   name?: string
   email?: string
   event: string
+  eventId?: string
   amount: number
   customerTotal?: number
   quantity?: number
@@ -21,39 +23,10 @@ interface Props {
   onNavigateToTickets?: () => void
 }
 
-const CANONICAL_EVENT_NAME = 'Dholida Garba Royale 2026'
-const CANONICAL_EVENT_KEY = eventKey(CANONICAL_EVENT_NAME)
-
-const EVENT_META: Record<string, { gradient: string; icon: string; tagline: string; isVip?: boolean }> = {
-  [CANONICAL_EVENT_NAME]: {
-    gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
-    icon: '🎟️',
-    tagline: 'Pethkar Ground, Kothrud, Pune · 17th October',
-  }
-}
-
-const LINEUPS: Record<string, { time: string; name: string; stage: string; status: string; badge: string }[]> = {
-  [CANONICAL_EVENT_NAME]: [
-    { time: '4:00 PM', name: 'Gates Open', stage: 'Main Entrance', status: 'Confirmed', badge: 'green' },
-    { time: '4:00 PM onwards', name: 'Garba & Performances', stage: 'Main Stage', status: 'Confirmed', badge: 'green' },
-    { time: 'VIP', name: 'VIP Zone Access', stage: 'VIP Section', status: 'VIP Pass', badge: 'amber' },
-  ]
-}
-
 const PAID_STATUSES = ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned']
 
-function eventKey(value: string) {
-  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-}
-
-function isDholidaName(value: string) {
-  const key = eventKey(value)
-  return key.includes('dholidagarbaroyale') || key.includes('dholidagarba')
-}
-
 function eventNameForSale(sale: Sale) {
-  const raw = String(sale.event || CANONICAL_EVENT_NAME).trim() || CANONICAL_EVENT_NAME
-  return isDholidaName(raw) ? CANONICAL_EVENT_NAME : raw
+  return String(sale.event || 'Unassigned event').trim() || 'Unassigned event'
 }
 
 function amountForSale(sale: Sale) {
@@ -62,33 +35,78 @@ function amountForSale(sale: Sale) {
 }
 
 function metaForEvent(name: string) {
-  const fallback = EVENT_META[CANONICAL_EVENT_NAME]
-  return EVENT_META[name] || {
-    ...fallback,
-    icon: '🎟',
-    tagline: 'Event dashboard',
-  }
+  return { gradient: 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)', icon: '🎟', tagline: name || 'Event dashboard' }
 }
 
 function lineupForEvent(name: string) {
-  return LINEUPS[name] || [
-    { time: 'Live', name, stage: 'Main Event', status: 'Active', badge: 'green' },
-  ]
+  return [{ time: 'Event details', name, stage: 'Venue managed by organizer', status: 'Configured', badge: 'green' }]
 }
 
-export default function Events({ sales = [], onNavigateToTickets }: Props) {
+interface DashboardEvent { id: string; name: string; status?: string; city?: string; venue?: string; date?: string; startsAt?: string; category?: string }
+
+export default function Events({ sales = [], adminKey, onNavigateToTickets }: Props) {
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
+  const [catalogEvents, setCatalogEvents] = useState<DashboardEvent[]>([])
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [createError, setCreateError] = useState('')
+  const [createBusy, setCreateBusy] = useState(false)
+  const [draft, setDraft] = useState({ name: '', companyId: '', city: '', venue: '', category: '', ticketName: '', price: '' })
+
+  const authHeaders = () => ({
+    'x-auth-token': sessionStorage.getItem('littx_token') || '',
+    ...(adminKey ? { 'x-admin-key': adminKey } : {}),
+  })
+
+  useEffect(() => {
+    fetch('/api/admin/events', { headers: authHeaders() })
+      .then(response => response.json())
+      .then(data => { if (data.success && Array.isArray(data.events)) setCatalogEvents(data.events) })
+      .catch(() => {})
+  }, [])
+
+  async function createEvent(event: FormEvent) {
+    event.preventDefault()
+    setCreateBusy(true); setCreateError('')
+    try {
+      const response = await fetch('/api/admin/events', {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: draft.name, companyId: draft.companyId, city: draft.city, venue: draft.venue, category: draft.category,
+          ticketCategories: draft.ticketName ? [{ name: draft.ticketName, price: Number(draft.price) }] : []
+        })
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Event could not be created.')
+      setCatalogEvents(current => [...current, data.event])
+      setDraft({ name: '', companyId: '', city: '', venue: '', category: '', ticketName: '', price: '' })
+      setShowCreateForm(false)
+    } catch (reason) { setCreateError(reason instanceof Error ? reason.message : 'Event could not be created.') }
+    finally { setCreateBusy(false) }
+  }
+
+  async function transitionEvent(record: DashboardEvent, status: string) {
+    try {
+      const response = await fetch(`/api/admin/events/${encodeURIComponent(record.id)}/transition`, {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Event status could not be changed.')
+      setCatalogEvents(current => current.map(item => item.id === record.id ? data.event : item))
+    } catch (reason) { setCreateError(reason instanceof Error ? reason.message : 'Event status could not be changed.') }
+  }
+
+  const currentRole = (() => { try { return JSON.parse(sessionStorage.getItem('littx_user') || '{}').role || '' } catch { return '' } })()
 
   // Build event data map
   const eventMap = new Map<string, {
     name: string; totalRevenue: number; ticketsSold: number; scanned: number; firstSale: string; lastSale: string
   }>()
 
-  const eventNames = new Set<string>([CANONICAL_EVENT_NAME])
+  const eventNames = new Set<string>(catalogEvents.map(event => event.name).filter(Boolean))
   sales.forEach((sale) => {
     const name = eventNameForSale(sale)
-    if (eventKey(name) === CANONICAL_EVENT_KEY) eventNames.add(name)
+    eventNames.add(name)
   })
 
   eventNames.forEach(name => {
@@ -97,7 +115,6 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
 
   sales.forEach((s) => {
     const name = eventNameForSale(s)
-    if (eventKey(name) !== CANONICAL_EVENT_KEY) return
     const isPaid = PAID_STATUSES.includes(s.status)
 
     const entry = eventMap.get(name) || { name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' }
@@ -125,6 +142,8 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
     const evtData = eventMap.get(selectedEvent) || { name: selectedEvent, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' }
     const meta = metaForEvent(selectedEvent)
     const lineup = lineupForEvent(selectedEvent)
+    const selectedRecord = catalogEvents.find(event => event.name === selectedEvent)
+    meta.tagline = [selectedRecord?.venue, selectedRecord?.city, selectedRecord?.startsAt || selectedRecord?.date].filter(Boolean).join(' · ') || 'Historical sales event'
     const scanPct = evtData.ticketsSold > 0 ? Math.round((evtData.scanned / evtData.ticketsSold) * 100) : 0
 
     return (
@@ -161,7 +180,7 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
             }} />
             <div style={{ position: 'absolute', top: '16px', right: '16px', display: 'flex', gap: '8px' }}>
               <span className="badge" style={{ background: 'rgba(61,220,132,0.25)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}>
-                <span className="badge-dot" style={{ background: '#3DDC84' }} /> LIVE
+                <span className="badge-dot" style={{ background: selectedRecord?.status === 'published' ? '#3DDC84' : '#F5B942' }} /> {selectedRecord?.status || 'historical'}
               </span>
             </div>
             <div>
@@ -193,6 +212,18 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
             ))}
           </div>
         </div>
+
+        {selectedRecord && <div className="card" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          {selectedRecord.status === 'draft' && <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'pending_review')}>Submit for review</button>}
+          {selectedRecord.status === 'pending_review' && currentRole === 'master_admin' && <button className="btn-primary" onClick={() => transitionEvent(selectedRecord, 'published')}>Publish event</button>}
+          {selectedRecord.status === 'published' && <>
+            <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'postponed')}>Postpone</button>
+            <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'cancelled')}>Cancel event</button>
+            <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'completed')}>Archive as completed</button>
+          </>}
+          {selectedRecord.status === 'postponed' && currentRole === 'master_admin' && <button className="btn-primary" onClick={() => transitionEvent(selectedRecord, 'published')}>Republish event</button>}
+        </div>}
+        {createError && <div role="alert" style={{ color: '#ff7777' }}>{createError}</div>}
 
         {/* Split Content */}
         <div className="main-row">
@@ -331,6 +362,21 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
   // ── Events Grid View ────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gutter)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div><h2 style={{ margin: 0 }}>Event management</h2><p className="muted-sm">Create organizer-owned drafts and review event status.</p></div>
+        <button className="btn-primary" onClick={() => { setCreateError(''); setShowCreateForm(value => !value) }}>{showCreateForm ? 'Close form' : 'Create event'}</button>
+      </div>
+      {showCreateForm && <form className="card" onSubmit={createEvent} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 12 }}>
+        <input required placeholder="Event title" value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} />
+        <input placeholder="City" value={draft.city} onChange={event => setDraft({ ...draft, city: event.target.value })} />
+        <input placeholder="Venue" value={draft.venue} onChange={event => setDraft({ ...draft, venue: event.target.value })} />
+        <input placeholder="Category" value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })} />
+        {currentRole === 'master_admin' && <input required placeholder="Organizer company ID" value={draft.companyId} onChange={event => setDraft({ ...draft, companyId: event.target.value })} />}
+        <input placeholder="First ticket category" value={draft.ticketName} onChange={event => setDraft({ ...draft, ticketName: event.target.value })} />
+        <input type="number" min="0" step="0.01" placeholder="Ticket price" value={draft.price} onChange={event => setDraft({ ...draft, price: event.target.value })} />
+        <button className="btn-primary" disabled={createBusy}>{createBusy ? 'Saving…' : 'Save draft'}</button>
+      </form>}
+      {createError && <div role="alert" style={{ color: '#ff7777' }}>{createError}</div>}
       {/* KPI Row */}
       <div className="kpi-row">
         <div className="tile tile-teal">
@@ -363,6 +409,8 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--gutter)' }}>
         {events.map((event) => {
           const meta = metaForEvent(event.name)
+          const eventRecord = catalogEvents.find(record => record.name === event.name)
+          meta.tagline = [eventRecord?.venue, eventRecord?.city, eventRecord?.startsAt || eventRecord?.date].filter(Boolean).join(' · ') || 'Historical sales event'
           const scanPct = event.ticketsSold > 0 ? Math.round((event.scanned / event.ticketsSold) * 100) : 0
           const isHov = hovered === event.name
 
@@ -403,13 +451,8 @@ export default function Events({ sales = [], onNavigateToTickets }: Props) {
 
                 <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '6px' }}>
                   <span className="badge" style={{ background: 'rgba(61,220,132,0.25)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', fontSize: '10px' }}>
-                    <span className="badge-dot" style={{ background: '#3DDC84' }} /> LIVE
+                    <span className="badge-dot" style={{ background: eventRecord?.status === 'published' ? '#3DDC84' : '#F5B942' }} /> {eventRecord?.status || 'historical'}
                   </span>
-                  {meta.isVip && (
-                    <span className="badge" style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', fontSize: '10px' }}>
-                      VIP
-                    </span>
-                  )}
                 </div>
 
                 <div>

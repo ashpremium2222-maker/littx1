@@ -24,6 +24,30 @@ This roadmap is ordered by risk and dependency. Acceptance criteria stay open un
 5. Review old database accounts and plan a reversible password-hash/session migration; do not rewrite existing rows until backup and rollback steps are verified.
 6. Add focused API tests for authentication, role scope, event/company isolation, repeated webhooks, and duplicate scans before starting Phase 2.
 
+## Phase 2 execution checkpoint — 2026-10-19
+
+Phase 2 has started but is **not complete**. `docs/MULTI_EVENT_AUDIT.md` records the repository-wide event-specific findings and the remaining work.
+
+Completed in this foundation increment:
+
+1. Added event slugs, organizer/company ownership, lifecycle/visibility, venue/date/category metadata, and persisted ticket categories with price, currency, inventory, sale windows, per-order limit, status, and group-size fields.
+2. Added authorized draft creation, organizer-scoped event listing/editing, submission for review, master-admin publishing, safe cancel/postpone/complete transitions, and no-delete archival behavior.
+3. Replaced the Dholida-only public API filter and pricing fallback with exact event-reference resolution and published/public discovery/detail endpoints. Legacy active events without lifecycle fields remain compatible.
+4. Bound public and PR order creation to selected event/category references and persisted `Sale.eventId` / `Sale.ticketCategoryId` without removing legacy sale fields.
+5. Added the public event catalogue/detail/checkout route and event-driven homepage cards, plus PR event/category selection.
+6. Added multi-event HTTP regressions while retaining Phase 1 security tests.
+
+Remaining Phase 2 acceptance work:
+
+1. Add atomic inventory holds, expiry, release, and settlement behavior before relying on finite inventory during concurrent checkout; current checks validate configured availability but are not a reservation lock.
+2. Finish event detail/category edit UI and admin event-ID reporting across existing dashboards, manual-ticket flows, Shadow, and native seller clients.
+3. Persist staff/scanner assignments by event ID and update scan authorization and analytics.
+4. Render each event's own details and artwork in PDF tickets and generic email/WhatsApp templates; retain explicitly campaign-specific Dholida copy separately.
+5. Review and run the additive link/index migration only against a verified backup, then validate rollback and orphan reports. The migration has not been run.
+6. Implement customer-owned booking retrieval before claiming customer account isolation; the current catalogue/checkout is guest checkout and ticket links remain bearer links.
+
+Phase 3 booking/payment reliability must address concurrency, inventory reservation recovery, payment/webhook idempotency, and reconciliation after this event foundation stabilizes. Do not treat this checkpoint as Phase 2 completion.
+
 ## Dependencies and migration safeguards
 
 - Phase 2 depends on tenant ownership rules from Phase 1.

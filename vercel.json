@@ -84,6 +84,14 @@
       "destination": "/app.html"
     },
     {
+      "source": "/events",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/events/(.*)",
+      "destination": "/app.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

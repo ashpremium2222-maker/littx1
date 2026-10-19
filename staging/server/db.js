@@ -43,8 +43,11 @@ if (process.env.NODE_ENV !== 'test') {
 // ==================== SCHEMAS ====================
 
 const EventSchema = new mongoose.Schema({
-    name: { type: String, required: true, unique: true },
+    name: { type: String, required: true, trim: true },
+    slug: { type: String, trim: true, lowercase: true },
+    legacyNames: [{ type: String }],
     companyId: { type: String, default: 'littlane' },
+    organizerId: { type: String, index: true },
     // Custom string ID (for frontend reference)
     id: { type: String },
     date: { type: String },
@@ -52,6 +55,18 @@ const EventSchema = new mongoose.Schema({
     venue: { type: String },
     stage: { type: String },
     description: { type: String },
+    category: { type: String, trim: true },
+    images: [{ type: String }],
+    city: { type: String, trim: true },
+    address: { type: String, trim: true },
+    timezone: { type: String, default: 'Asia/Kolkata' },
+    startsAt: { type: Date },
+    endsAt: { type: Date },
+    salesStartAt: { type: Date },
+    salesEndAt: { type: Date },
+    status: { type: String, enum: ['draft', 'pending_review', 'published', 'cancelled', 'postponed', 'completed'], default: 'draft', index: true },
+    visibility: { type: String, enum: ['public', 'unlisted', 'private'], default: 'public' },
+    publishedAt: { type: Date },
     tagline: { type: String },
     icon: { type: String, default: '🎉' },
     gradient: { type: String },
@@ -67,9 +82,35 @@ const EventSchema = new mongoose.Schema({
         description: { type: String }
     }],
     ticketTypes: [{
+        id: { type: String },
         name: { type: String }, // e.g. "Male Pass", "Female Pass"
         price: { type: Number },
-        gender: { type: String } // "male", "female", "unisex"
+        gender: { type: String }, // "male", "female", "unisex"
+        description: { type: String },
+        currency: { type: String, default: 'INR' },
+        totalInventory: { type: Number, default: null },
+        remainingAvailability: { type: Number, default: null },
+        salesStartAt: { type: Date },
+        salesEndAt: { type: Date },
+        maxPerCustomer: { type: Number, default: 20 },
+        status: { type: String, enum: ['active', 'paused', 'sold_out'], default: 'active' },
+        groupSize: { type: Number, default: 1 },
+        inclusions: [{ type: String }]
+    }],
+    ticketCategories: [{
+        id: { type: String, required: true },
+        name: { type: String, required: true },
+        description: { type: String, default: '' },
+        price: { type: Number, required: true, min: 0 },
+        currency: { type: String, default: 'INR' },
+        totalInventory: { type: Number, default: null, min: 0 },
+        remainingAvailability: { type: Number, default: null, min: 0 },
+        salesStartAt: { type: Date },
+        salesEndAt: { type: Date },
+        maxPerCustomer: { type: Number, default: 20, min: 1, max: 20 },
+        status: { type: String, enum: ['active', 'paused', 'sold_out'], default: 'active' },
+        groupSize: { type: Number, default: 1, min: 1 },
+        inclusions: [{ type: String }]
     }],
     overrides: {
         razorpayEnabled: { type: Boolean, default: null }, // null = inherit company default
@@ -81,6 +122,9 @@ const EventSchema = new mongoose.Schema({
     },
     createdAt: { type: String }
 });
+EventSchema.index({ slug: 1 }, { unique: true, sparse: true });
+EventSchema.index({ companyId: 1, status: 1, active: 1 });
+EventSchema.index({ organizerId: 1, createdAt: -1 });
 
 const UserSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
@@ -141,6 +185,11 @@ const SaleSchema = new mongoose.Schema({
     orderId: { type: String, required: true, unique: true },
     companyId: { type: String, default: 'littlane' },
     event: { type: String },
+    // Additive canonical references. Keep `event` as the immutable legacy label
+    // so historical ticket links and reports remain readable during migration.
+    eventId: { type: String, index: true },
+    ticketCategoryId: { type: String },
+    inventoryReserved: { type: Boolean, default: false },
     name: { type: String },
     email: { type: String },
     phone: { type: String },
@@ -441,7 +490,12 @@ async function seedDefaultEvents() {
         const defaultEvents = [
             {
                 name: 'Dholida Garba Royale 2026',
+                slug: 'dholida-garba-royale-2026',
+                legacyNames: ['DHOLIDA GARBA ROYALE'],
                 companyId: 'littlane',
+                organizerId: 'littlane',
+                status: 'published',
+                visibility: 'public',
                 date: '2026-10-17',
                 time: '04:00 PM',
                 venue: 'Pethkar Ground, Kothrud, Pune',
@@ -463,6 +517,14 @@ async function seedDefaultEvents() {
                     { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
                     { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
                     { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
+                ],
+                ticketCategories: [
+                    { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 1 },
+                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 5 },
+                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 10 },
+                    { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 1 },
+                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 5 },
+                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 10 }
                 ],
                 overrides: { razorpayEnabled: null, manualPaymentEnabled: null, prSalesEnabled: null },
                 gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
@@ -653,6 +715,10 @@ async function getEventById(id) {
 
 async function getEventByName(name) {
     return await Event.findOne({ name }).lean();
+}
+
+async function getEventBySlug(slug) {
+    return await Event.findOne({ slug: String(slug || '').toLowerCase() }).lean();
 }
 
 async function createEvent(eventData) {
@@ -916,6 +982,7 @@ const _tmpSalesFile = path.join(os.tmpdir(), 'littx_mock_sales.json');
 const _localSalesFile = path.join(__dirname, 'mock_sales.json');
 
 function _pickSalesFile() {
+    if (process.env.LITTX_MOCK_SALES_FILE) return process.env.LITTX_MOCK_SALES_FILE;
     // If local path is writable, use it (local dev). Otherwise use /tmp (Vercel).
     try {
         fs.accessSync(path.dirname(_localSalesFile), fs.constants.W_OK);
@@ -1396,6 +1463,11 @@ module.exports = {
         }
         return await getEventByName(name);
     },
+    getEventBySlug: async (slug) => {
+        const normalized = String(slug || '').toLowerCase();
+        if (useMock()) return Array.from(new Set(_mockEvents.values())).find(event => event.slug === normalized) || null;
+        return await getEventBySlug(normalized);
+    },
     createEvent: async (eventData) => {
         if (useMock()) {
             const event = { ...eventData, _id: new mongoose.Types.ObjectId().toString(), createdAt: new Date().toISOString() };
@@ -1777,24 +1849,31 @@ module.exports = {
         return unique;
     },
     saveEvent: async (eventData) => {
+        const { _id: mongoId, ...eventFields } = eventData;
         const id = eventData.id || `event_${Date.now()}`;
         const name = (eventData.name || 'Untitled Event').trim();
         const doc = {
-            ...eventData, id, name,
+            ...eventFields, id, name,
             companyId: eventData.companyId || 'littlane',
+            organizerId: eventData.organizerId || eventData.companyId || 'littlane',
             active: eventData.active !== undefined ? eventData.active : true,
             tiers: eventData.tiers || [],
+            ticketCategories: eventData.ticketCategories || eventData.tiers || eventData.ticketTypes || [],
             gradient: eventData.gradient || 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',
             icon: eventData.icon || '🎉',
             tagline: eventData.tagline || eventData.venue || 'Live Event',
+            createdAt: eventData.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
         _mockEvents.set(name, doc);
         _mockEvents.set(id, doc);
         if (!useMock()) {
             try {
+                const selector = mongoId && mongoose.Types.ObjectId.isValid(String(mongoId))
+                    ? { _id: new mongoose.Types.ObjectId(String(mongoId)) }
+                    : { id };
                 await Event.findOneAndUpdate(
-                    { $or: [{ id }, { name }] },
+                    selector,
                     { $set: doc },
                     { upsert: true, new: true, lean: true }
                 );
@@ -1851,6 +1930,7 @@ module.exports = {
 const _mockEvents = new Map([
     ['Dholida Garba Royale 2026', {
         id: 'event_dholida_2026', name: 'Dholida Garba Royale 2026', companyId: 'littlane',
+        slug: 'dholida-garba-royale-2026', legacyNames: ['DHOLIDA GARBA ROYALE'], organizerId: 'littlane', status: 'published', visibility: 'public',
         date: '2026-10-17', time: '04:00 PM', venue: 'Pethkar Ground, Kothrud, Pune',
         tagline: 'Pethkar Ground, Kothrud, Pune · 17th October',
         gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',

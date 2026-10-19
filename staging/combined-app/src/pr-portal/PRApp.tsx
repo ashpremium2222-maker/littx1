@@ -21,8 +21,10 @@ interface Sale {
   prUserId?: string
 }
 
-const PRICING = { female: 799, male: 499 }
 const API = ''
+
+interface PRTicketCategory { id: string; name: string; price: number; currency: string; status: string; remainingAvailability: number | null }
+interface PREvent { id: string; name: string; slug: string; ticketCategories: PRTicketCategory[] }
 
 function prAuthHeaders(json = false): HeadersInit {
   const token = sessionStorage.getItem('pr_token') || ''
@@ -115,17 +117,35 @@ function SellTicketModal({
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
-  const [gender, setGender] = useState<'male' | 'female'>('male')
+  const [events, setEvents] = useState<PREvent[]>([])
+  const [eventId, setEventId] = useState('')
+  const [ticketCategoryId, setTicketCategoryId] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'cash'>('razorpay')
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState<'form' | 'pending' | 'done'>('form')
   const [message, setMessage] = useState('')
 
-  const amount = PRICING[gender]
+  useEffect(() => {
+    fetch(`${API}/api/pr/events`, { headers: prAuthHeaders() })
+      .then(async response => {
+        const data = await response.json()
+        if (!response.ok || !data.success) throw new Error(data.message || 'Assigned events could not be loaded.')
+        setEvents(data.events || [])
+        const firstEvent = data.events?.[0]
+        setEventId(firstEvent?.id || '')
+        setTicketCategoryId(firstEvent?.ticketCategories?.[0]?.id || '')
+      })
+      .catch(error => setMessage(error instanceof Error ? error.message : 'Assigned events could not be loaded.'))
+  }, [])
+
+  const selectedEvent = events.find(item => item.id === eventId)
+  const selectedTicket = selectedEvent?.ticketCategories.find(item => item.id === ticketCategoryId)
+  const amount = Number(selectedTicket?.price || 0)
+  const gender = selectedTicket?.name || 'Ticket'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name || !email || !phone) return
+    if (!name || !email || !phone || !selectedEvent || !selectedTicket) return
     setLoading(true)
 
     try {
@@ -133,7 +153,7 @@ function SellTicketModal({
         const res = await fetch(`${API}/api/pr/create-order`, {
           method: 'POST',
           headers: prAuthHeaders(true),
-          body: JSON.stringify({ name, email, phone, gender, quantity: 1, prUserId: prUser.id }),
+          body: JSON.stringify({ name, email, phone, eventId, ticketCategoryId, ticketType: selectedTicket.name, quantity: 1 }),
         })
         const data = await res.json()
         if (!data.success) throw new Error(data.message || 'Failed to create order')
@@ -143,7 +163,7 @@ function SellTicketModal({
           amount: data.amount * 100,
           currency: data.currency,
           name: 'LITTX',
-          description: `${gender === 'male' ? 'General Access' : 'VIP'} Pass — Dholida Garba Royale`,
+          description: `${selectedTicket.name} — ${selectedEvent.name}`,
           order_id: data.orderId,
           prefill: { name, email, contact: phone },
           theme: { color: '#7C5CFA' },
@@ -176,7 +196,7 @@ function SellTicketModal({
         const res = await fetch(`${API}/api/pr/cash-request`, {
           method: 'POST',
           headers: prAuthHeaders(true),
-          body: JSON.stringify({ name, email, phone, gender, quantity: 1, prUserId: prUser.id, prName: prUser.displayName }),
+          body: JSON.stringify({ name, email, phone, eventId, ticketCategoryId, ticketType: selectedTicket.name, quantity: 1 }),
         })
         const data = await res.json()
         if (!data.success) throw new Error(data.message || 'Failed')
@@ -225,24 +245,31 @@ function SellTicketModal({
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>PASS TYPE</label>
-              <select value={gender} onChange={e => setGender(e.target.value as any)} style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }}>
-                <option value="male">General Access (₹{PRICING.male})</option>
-                <option value="female">VIP (₹{PRICING.female})</option>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>EVENT</label>
+              <select value={eventId} onChange={e => { const next = events.find(item => item.id === e.target.value); setEventId(e.target.value); setTicketCategoryId(next?.ticketCategories?.[0]?.id || '') }} required style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }}>
+                <option value="">Select event</option>
+                {events.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>PAYMENT</label>
-              <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as any)} style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }}>
-                <option value="razorpay">Razorpay (Online)</option>
-                <option value="cash">Cash (Needs Approval)</option>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>TICKET CATEGORY</label>
+              <select value={ticketCategoryId} onChange={e => setTicketCategoryId(e.target.value)} required disabled={!selectedEvent} style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }}>
+                <option value="">Select ticket</option>
+                {selectedEvent?.ticketCategories.map(item => <option key={item.id} value={item.id} disabled={item.status !== 'active' || item.remainingAvailability === 0}>{item.name} · {item.currency} {Number(item.price).toLocaleString()}</option>)}
               </select>
             </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>PAYMENT</label>
+            <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as any)} style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }}>
+              <option value="razorpay">Razorpay (Online)</option>
+              <option value="cash">Cash (Needs Approval)</option>
+            </select>
           </div>
 
           <div style={{ background: 'var(--panel-3)', padding: '16px', borderRadius: '12px', border: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
             <span style={{ fontSize: '0.9rem', color: 'var(--ink-soft)' }}>Total to collect</span>
-            <span style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent)' }}>₹{amount}</span>
+            <span style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent)' }}>{selectedTicket?.currency || 'INR'} {amount.toLocaleString()}</span>
           </div>
 
           {paymentMethod === 'cash' && (
@@ -251,8 +278,8 @@ function SellTicketModal({
             </div>
           )}
 
-          <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', padding: '14px', marginTop: '8px', fontSize: '1rem' }}>
-            {loading ? 'Processing…' : paymentMethod === 'razorpay' ? `Pay ₹${amount} via Razorpay` : 'Submit for Approval'}
+          <button type="submit" className="btn btn-primary" disabled={loading || !selectedTicket || events.length === 0} style={{ width: '100%', padding: '14px', marginTop: '8px', fontSize: '1rem' }}>
+            {loading ? 'Processing…' : paymentMethod === 'razorpay' ? `Pay ${selectedTicket?.currency || 'INR'} ${amount.toLocaleString()} via Razorpay` : 'Submit for Approval'}
           </button>
         </form>
       </div>

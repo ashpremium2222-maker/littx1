@@ -9,6 +9,7 @@ import SellerPortalApp from './seller-portal/SellerPortalApp'
 import ShadowPanelApp from './shadow/ShadowPanelApp'
 import LoginPage from './components/LoginPage'
 import SolverByDevashtu from './admin-dash/pages/SolverByDevashtu'
+import EventMarketplace from './components/EventMarketplace'
 
 interface UserSession {
   userId: string
@@ -52,6 +53,8 @@ function MainAppShell() {
   if (window.location.hostname === 'ashtudev.vercel.app') {
     return <ShadowPanelApp />
   }
+
+  if (path === '/events' || path.startsWith('/events/')) return <EventMarketplace />
 
   const handleLoginRedirect = (session: UserSession) => {
     setUserSession(session)

@@ -658,31 +658,14 @@
     <div class="container-xl">
       <div class="sec-head reveal">
         <div>
-          <span class="tag">Featured event</span>
-          <h2 class="mt-2">Dholida Garba Royale</h2>
+          <span class="tag">Published events</span>
+          <h2 class="mt-2">Events to explore</h2>
         </div>
-        <p>Celebrate an unforgettable Garba night with a special live lineup in Pune.</p>
+        <p>Browse public events and choose tickets configured by each organizer.</p>
       </div>
 
       <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4" id="categories">
-        <div class="col">
-          <div class="card reveal" data-accent="magenta">
-            <div class="card-art dholida-art">
-              <div class="card-hot"><i></i>Get your tickets now</div>
-              <img src="dholida-garba-royale.png" alt="Dholida Garba Royale lineup">
-            </div>
-            <div class="card-body">
-              <div class="card-cat">Garba festival</div>
-              <div class="card-title">Dholida Garba Royale 2026</div>
-              <div class="card-venue">Pethkar Ground, Kothrud, Pune</div>
-            </div>
-            <div class="card-perf"><i class="l"></i><i class="r"></i></div>
-            <div class="card-foot">
-              <div class="card-date">SAT, 17 OCT<span>4 PM onwards</span></div>
-              <a class="card-go" href="https://wa.me/message/UN4TBCP7PH6NL1" target="_blank" rel="noopener">Get Pass</a>
-            </div>
-          </div>
-        </div>
+        <p class="col-12" id="eventCatalogueState" role="status">Loading published events…</p>
       </div>
     </div>
   </section>
@@ -815,13 +798,62 @@
       document.body.style.overflow = '';
     };
     if(dholidaModal){
-      dholidaModal.classList.add('is-open');
-      dholidaModal.setAttribute('aria-hidden', 'false');
-      document.body.style.overflow = 'hidden';
       dholidaModal.querySelector('[data-close-dholida]').addEventListener('click', closeDholidaModal);
       dholidaModal.addEventListener('click', (event)=>{ if(event.target === dholidaModal) closeDholidaModal(); });
       document.addEventListener('keydown', (event)=>{ if(event.key === 'Escape' && dholidaModal.classList.contains('is-open')) closeDholidaModal(); });
     }
+
+    const catalogue = document.getElementById('categories');
+    const state = document.getElementById('eventCatalogueState');
+    const searchInput = document.getElementById('eventSearch');
+    const cityInput = document.getElementById('citySelect');
+    let publishedEvents = [];
+    const renderEvents = ()=>{
+      catalogue.replaceChildren();
+      const query = (searchInput?.value || '').trim().toLowerCase();
+      const city = (cityInput?.value || '').trim().toLowerCase();
+      const filtered = publishedEvents.filter(event =>
+        (!query || `${event.name} ${event.description || ''} ${event.venue || ''}`.toLowerCase().includes(query)) &&
+        (!city || String(event.city || '').toLowerCase().includes(city))
+      );
+      if(!filtered.length){
+        const empty = document.createElement('p'); empty.className = 'col-12';
+        empty.textContent = publishedEvents.length ? 'No published events match your search.' : 'There are no published events yet.';
+        catalogue.appendChild(empty); return;
+      }
+      filtered.forEach(event => {
+        const column = document.createElement('div'); column.className = 'col';
+        const card = document.createElement('article'); card.className = 'card reveal'; card.dataset.accent = 'magenta';
+        const art = document.createElement('div'); art.className = 'card-art';
+        if(event.images?.[0]) { const image = document.createElement('img'); image.src = event.images[0]; image.alt = ''; image.loading = 'lazy'; art.appendChild(image); }
+        else { art.style.background = 'linear-gradient(135deg,#26174d,#111827)'; }
+        const hot = document.createElement('div'); hot.className = 'card-hot'; hot.textContent = 'Published event'; art.appendChild(hot);
+        const body = document.createElement('div'); body.className = 'card-body';
+        const cat = document.createElement('div'); cat.className = 'card-cat'; cat.textContent = event.category || 'Event';
+        const title = document.createElement('div'); title.className = 'card-title'; title.textContent = event.name;
+        const venue = document.createElement('div'); venue.className = 'card-venue'; venue.textContent = [event.venue,event.city].filter(Boolean).join(' · ') || 'Venue to be announced';
+        body.append(cat,title,venue);
+        const perf = document.createElement('div'); perf.className = 'card-perf';
+        const left = document.createElement('i'); left.className = 'l'; const right = document.createElement('i'); right.className = 'r'; perf.append(left,right);
+        const foot = document.createElement('div'); foot.className = 'card-foot';
+        const date = document.createElement('div'); date.className = 'card-date';
+        const start = event.startsAt || event.date;
+        date.textContent = start ? new Date(start).toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'}) : 'DATE TBA';
+        if(event.time){const time = document.createElement('span'); time.textContent = event.time; date.appendChild(time);}
+        const link = document.createElement('a'); link.className = 'card-go'; link.href = `/events?event=${encodeURIComponent(event.slug || event.id)}`; link.textContent = 'View tickets';
+        foot.append(date,link); card.append(art,body,perf,foot); column.appendChild(card); catalogue.appendChild(column);
+        card.classList.add('in');
+      });
+    };
+    fetch('/api/events').then(async response => {
+      const data = await response.json();
+      if(!response.ok || !data.success) throw new Error(data.message || 'Events could not be loaded.');
+      publishedEvents = Array.isArray(data.events) ? data.events : [];
+      state?.remove(); renderEvents();
+    }).catch(()=>{ if(state) state.textContent = 'Published events are temporarily unavailable. Please try again later.'; });
+    searchInput?.addEventListener('input', renderEvents);
+    cityInput?.addEventListener('input', renderEvents);
+    document.getElementById('searchBtn')?.addEventListener('click', event => { event.preventDefault(); renderEvents(); document.getElementById('events')?.scrollIntoView({behavior:'smooth'}); });
   });
 
   document.getElementById('searchBtn').addEventListener('click', (e)=>{

@@ -17,8 +17,8 @@
 - Mongo models and helpers cover event/company records, ticket sales, session records, QR scan logs, and audit history. A Dholida event/catalog seed and Dholida compatibility logic are present.
 - Razorpay order creation, client-return signature verification, a Razorpay webhook route with HMAC verification, and atomic sale-state claims are implemented. These are code-path findings only; gateway credentials and live webhook delivery were not verified.
 - PDF ticket creation, QR generation, email and WhatsApp integrations, ticket retrieval/resend, seller WebAuthn/passkey flows, scanner token validation, and several admin/partner portals exist.
-- Admin/master-admin middleware and role-specific guards exist. The continuation review inventories all 83 active API route declarations in docs/API_AUTHORIZATION_MATRIX.md, plus public SPA/static surfaces and sensitive database transitions.
-- The frontend and Android projects have no unified automated integration test suite. The server test command was initially a failing placeholder; it now runs 13 HTTP security regression tests. These do not yet cover the larger payment, tenant isolation, booking, refund, and scan-race matrix.
+- Admin/master-admin middleware and role-specific guards exist. The Phase 1 continuation inventory is expanded in docs/API_AUTHORIZATION_MATRIX.md; Phase 2 adds event management, public catalogue/detail, and PR event-list routes, whose ownership scope is documented there.
+- The frontend and Android projects have no unified automated integration test suite. The server test command now runs 15 HTTP security regression tests, including initial multi-event coverage. These do not yet cover the larger payment, tenant isolation, booking, refund, concurrency, and scan-race matrix.
 
 ## Confirmed Findings and Changes Made in This Audit
 
@@ -44,11 +44,18 @@ The follow-up review found and addressed these additional issues:
 6. **Payment and ticket integrity:** Production no longer enters simulated-payment mode when gateway credentials are absent. Test simulation requires NODE_ENV=development plus PAYMENT_TEST_MODE=true (or NODE_ENV=test). Client verification binds the signed Razorpay order ID to the stored order. Webhook signatures use captured raw request bytes and timing-safe comparison. Public order claims and PR cash approval are atomic. New ticket IDs use full UUID entropy, public ticket lookup no longer mutates sale records or returns contact email/phone, and static public PDF serving was removed.
 7. **Presentation access and HTTP policy:** Presentation credentials are restricted to the sales presentation endpoint and responses omit contact details. CORS uses configured origins, JSON parsing is capped at 256 KiB, security headers are set, and production uncaught errors are generic.
 
+## Phase 2 — Multi-Event Foundation (in progress)
+
+- Added event slugs, organizer/company ownership, lifecycle and visibility fields, event location/dates, and persisted ticket-category configuration. Sales keep their legacy event label and gain optional event/category references.
+- Added company-scoped event administration, review and publish transitions, public event discovery/detail endpoints, event-specific public and PR pricing, and a customer `/events` catalogue.
+- Added a dry-run-first migration that only links records on unique exact matches and reports ambiguous or orphaned records. It has not been run against production.
+- Phase 2 is not complete. Atomic inventory reservations, full event/category editing, event-ID reporting and staff/scanner assignments, dynamic ticket/notification templates, and customer-owned booking retrieval remain open. See docs/MULTI_EVENT_AUDIT.md for locations, impact, and migration constraints.
+
 ## Remaining High-Risk or Unverified Areas
 
 - **Customer ownership:** There is no authenticated customer account/booking-owner system; the customer login/register UI calls endpoints that are not implemented by this server, so customer booking APIs do not enforce ownership. Customer UI tokens, if a separate service returns them, are stored in sessionStorage. Ticket links remain bearer credentials. Newly issued IDs have 122-bit UUID entropy, but old eight-hex-character ticket IDs remain weaker and need a customer-safe rotation/migration to fully address historical link enumeration.
 - **Rate-limit distribution:** Login/checkout/ticket throttling is in-memory per process and does not coordinate across Vercel instances. Add shared edge or store-based rate limiting before high-volume public deployment.
-- **Event assignment:** Scanner assignment is configured by exact event names and company ID; sellers have company checks on manual issue and scanning. Per-user/per-device event assignments are not modeled across every legacy seller endpoint. Do not begin Phase 2 until a first-class assignment design and matrix review are complete.
+- **Event assignment:** Scanner assignment is configured by exact event names and company ID; sellers have company checks on manual issue and scanning. Per-user/per-device event assignments are not modeled across every legacy seller endpoint. Phase 2 adds event ownership and PR company filtering, but first-class staff/scanner assignments remain open.
 - **Legacy cash approval:** PR cash approval/rejection now atomically claims pending state, but provider delivery recovery, audit consistency, and failure retry behavior still need dedicated integration tests.
 - **Payment/provider verification:** Invalid webhook signature and duplicate atomic claim are tested locally. No live Razorpay webhook, payment, refund, or notification provider was exercised. Refund/settlement API routes are not declared; UI/model refund fields do not establish gateway refund behavior.
 - **Existing database cleanup:** Existing company records may retain the old fake gateway defaults, and old plaintext seller password rows are not rewritten. A targeted reviewed migration should clear only known fake gateway values and migrate legacy seller credentials; rotate any corresponding credential that was actually deployed. No production migration or rotation was run.
@@ -58,6 +65,6 @@ The follow-up review found and addressed these additional issues:
 
 - Git started on `main` tracking `origin/main`; it was not clean. Existing changes were recorded above and left intact.
 - There are no repository `AGENTS.md` files in the scanned project tree.
-- After the continuation fixes, `npm test` in `staging/server` passed 13 tests; syntax checks for `server.js`, `db.js`, `ticket.js`, and `test/security.test.js` passed; `npm run build` in `staging/combined-app` passed with a Vite large-chunk warning; and `git diff --check` passed.
+- After the Phase 2 foundation changes, `npm test` in `staging/server` passed 15 tests; syntax checks for `server.js`, `db.js`, the new migration, and `test/security.test.js` passed; `npm run build` in `staging/combined-app` passed with a Vite large-chunk warning; and `git diff --check` passed. These are local checks against isolated mock sales, not production verification.
 - Native Android compilation was not run because this checkout has no configured local Android SDK properties/environment. No production database or payment/refund/notification provider was accessed. The automated source scan emitted only path/line categories, not credential values; no secret value was included in the report.
 - No migrations or production data changes were performed.

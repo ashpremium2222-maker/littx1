@@ -67,6 +67,21 @@ Complete Phase 1 route-by-route authorization and login abuse protection, remove
 - `npm run build` in `staging/combined-app` passed; Vite reports the existing large JavaScript chunk warning.
 - `git diff --check` passed. Android builds, live providers, production database, payments/refunds, and provider-backed webhook replay were not run.
 
+## Phase 2 — Multi-Event Foundation (2026-10-19, in progress)
+
+### Confirmed changes
+
+- Added event slug, organizer/company ownership, lifecycle/visibility, location/date metadata, and event-owned ticket categories. Existing sale labels remain; optional `eventId` and `ticketCategoryId` references are additive.
+- Added organizer-scoped event list/create/edit operations, review/publish and safe lifecycle transitions, public published-event discovery/detail, and company-filtered PR event discovery.
+- Bound public and PR checkout to a selected event/category and server-resolved price. Added a customer catalogue at `/events` and data-driven homepage event cards.
+- Added a dry-run-first migration that links only unique exact legacy matches and reports ambiguous/orphaned records. It has not been applied to production.
+
+### Verification and remaining work
+
+- `npm test` in `staging/server`: 15 passed, 0 failed. The two new tests cover organizer ownership/lifecycle/public filtering and event-specific checkout pricing/category/inventory/order references.
+- Node syntax checks passed for `server.js`, `db.js`, `migrations/20261019_multi_event_foundation.js`, and `test/security.test.js`. `npm run build` in `staging/combined-app` passed with a large-chunk warning. `git diff --check` passed.
+- Phase 2 remains incomplete: atomic inventory reservations, complete event/category editor UI, event-ID reporting and staff/scanner assignment, dynamic PDF and generic notification templates, migration rollback evidence, and customer-owned booking retrieval remain open.
+
 ### Required operations and remaining risk
 
 - Configure `CORS_ORIGINS`, `BASE_URL`, `SCANNER_EVENT_NAMES`, and `SCANNER_COMPANY_ID`. Use `PAYMENT_TEST_MODE=true` only outside production. Configure live Razorpay credentials and webhook secret for production payments.

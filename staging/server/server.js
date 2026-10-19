@@ -548,56 +548,106 @@ app.post('/api/master/seller-access/:partnerId', requireMasterAdmin, async (req,
 
 // ==================== EVENT & PRICING ====================
 const EVENT = { name: EVENT_NAME };
-const CANONICAL_EVENT_NAME = 'Dholida Garba Royale 2026';
-const CANONICAL_EVENT_GRADIENT = 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)';
-
-function normalizeEventKey(value) {
-    return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-const CANONICAL_EVENT_KEY = normalizeEventKey(CANONICAL_EVENT_NAME);
-
-function isDholidaEventName(value) {
-    const key = normalizeEventKey(value);
-    return key.includes('dholidagarbaroyale') || key.includes('dholidagarba');
-}
-
-function isCanonicalDashboardEvent(event) {
-    return normalizeEventKey(event?.name) === CANONICAL_EVENT_KEY;
-}
+const CANONICAL_EVENT_GRADIENT = 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)';
 
 function visibleDashboardEvents(events) {
-    return (events || []).filter(isCanonicalDashboardEvent);
+    return (events || []).filter(event => !event.archived && event.status !== 'archived');
 }
 
-function pickCanonicalEvent(events, requestedEventName = CANONICAL_EVENT_NAME) {
-    const list = events || [];
-    const requestedKey = normalizeEventKey(requestedEventName);
-    const exact = list.find(item => normalizeEventKey(item.name) === requestedKey);
-    const canonical = list.find(isCanonicalDashboardEvent);
-    if (canonical && (!exact || isDholidaEventName(requestedEventName) || isDholidaEventName(exact.name))) {
-        return canonical;
+function eventRef(event) {
+    return String(event?.id || event?._id || '');
+}
+
+function pickCanonicalEvent(events, requestedEventRef) {
+    if (!requestedEventRef) return null;
+    const ref = String(requestedEventRef).trim();
+    const lower = ref.toLowerCase();
+    return (events || []).find(item =>
+        [item.id, item._id, item.slug, item.name, ...(Array.isArray(item.legacyNames) ? item.legacyNames : [])]
+            .some(value => String(value || '').toLowerCase() === lower)
+    ) || null;
+}
+
+function eventIsPublic(event) {
+    if (!event || event.archived || event.active === false || event.visibility === 'private' || event.visibility === 'unlisted') return false;
+    // Legacy active event documents predate lifecycle fields. Keep them visible
+    // until an operator explicitly migrates their status; new records default to draft.
+    return event.status === 'published' || (!event.status && event.active !== false);
+}
+
+function slugifyEvent(value) {
+    return String(value || '').trim().toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+}
+
+function publicEventPayload(event, pricing) {
+    return {
+        id: eventRef(event), slug: event.slug || slugifyEvent(event.name), name: event.name,
+        description: event.description || '', category: event.category || '', images: event.images || [],
+        city: event.city || '', venue: event.venue || '', address: event.address || '',
+        date: event.date || event.startsAt || null, time: event.time || null, startsAt: event.startsAt || null,
+        endsAt: event.endsAt || null, timezone: event.timezone || 'Asia/Kolkata',
+        ticketCategories: (pricing?.passes || []).map(pass => ({
+            id: pass.id, name: pass.name, description: pass.description || '', price: pass.price,
+            currency: pass.currency || 'INR', remainingAvailability: pass.remainingAvailability,
+            maxPerCustomer: pass.maxPerCustomer, status: pass.status || 'active', groupSize: pass.groupSize || 1,
+            inclusions: pass.inclusions || []
+        })),
+        // Legacy admin summary widgets still consume `tiers`; retain this
+        // read-only projection while new customer surfaces use ticketCategories.
+        tiers: (pricing?.passes || []).map(pass => ({ id: pass.id, name: pass.name, price: pass.price, gender: pass.gender }))
+    };
+}
+
+function canManageEvent(req, event) {
+    if (req.adminSession?.role === 'master_admin') return true;
+    const owner = event?.organizerId || event?.companyId;
+    return req.adminSession?.role === 'company_admin' && Boolean(owner) && owner === req.adminSession.companyId;
+}
+
+function normalizeTicketCategories(input) {
+    if (!Array.isArray(input) || input.length > 100) return { error: 'Ticket categories must be a list with at most 100 entries.' };
+    const categories = [];
+    const usedIds = new Set();
+    for (const [index, raw] of input.entries()) {
+        const name = String(raw?.name || '').trim();
+        const id = slugifyPassId(raw?.id || name, `ticket-${index + 1}`);
+        const price = raw?.price === '' || raw?.price === null || raw?.price === undefined ? null : normalizePrice(raw?.price);
+        const inventory = raw?.totalInventory === null || raw?.totalInventory === undefined || raw?.totalInventory === ''
+            ? null : Number(raw.totalInventory);
+        const maxPerCustomer = raw?.maxPerCustomer === undefined ? 20 : Number(raw.maxPerCustomer);
+        const groupSize = raw?.groupSize === undefined ? 1 : Number(raw.groupSize);
+        const validDate = value => value === null || value === undefined || value === '' || Number.isFinite(new Date(value).getTime());
+        if (!name || name.length > 100 || price === null || !Number.isFinite(price) || price > 100000000 ||
+            (inventory !== null && (!Number.isInteger(inventory) || inventory < 0 || inventory > 100000000)) ||
+            !Number.isInteger(maxPerCustomer) || maxPerCustomer < 1 || maxPerCustomer > 20 ||
+            !Number.isInteger(groupSize) || groupSize < 1 || groupSize > 100 ||
+            !['active', 'paused', 'sold_out'].includes(raw?.status || 'active') ||
+            !validDate(raw?.salesStartAt) || !validDate(raw?.salesEndAt)) {
+            return { error: `Ticket category ${index + 1} has invalid name, price, inventory, limits, status, or sale dates.` };
+        }
+        if (usedIds.has(id) || categories.some(category => category.name.toLowerCase() === name.toLowerCase())) {
+            return { error: 'Ticket category IDs and names must be unique within an event.' };
+        }
+        usedIds.add(id);
+        categories.push({
+            id, name, price, currency: String(raw?.currency || 'INR').toUpperCase(),
+            description: String(raw?.description || '').slice(0, 2000),
+            totalInventory: inventory,
+            remainingAvailability: inventory === null ? null : Math.max(0, Math.min(inventory, Number.isInteger(raw?.remainingAvailability) ? raw.remainingAvailability : inventory)),
+            salesStartAt: raw?.salesStartAt ? new Date(raw.salesStartAt) : null,
+            salesEndAt: raw?.salesEndAt ? new Date(raw.salesEndAt) : null,
+            maxPerCustomer, status: raw?.status || 'active', groupSize,
+            inclusions: Array.isArray(raw?.inclusions) ? raw.inclusions.map(item => String(item).slice(0, 300)).slice(0, 50) : []
+        });
     }
-    return exact || canonical || list.find(item => isDholidaEventName(item.name)) || list.find(item => item.active);
+    return { categories };
 }
 
-// Prices issued by the seller portal are server-owned. Never trust an amount
-// supplied by the browser for a paid ticket.
-const DEFAULT_SELLER_PASS_PRICES = {
-    'GA Single': 499,
-    'GA Group of 5': 2249,
-    'GA Group of 10': 3999,
-    'VIP Single': 799,
-    'VIP Group of 5': 3749,
-    'VIP Group of 10': 6999,
-};
-
-// Legacy migration seed only: on first pricing read for an event with no tiers,
-// these values are persisted into that event document. All subsequent reads and
-// ticket calculations use the database record, never this fallback.
-const LEGACY_EVENT_TIER_SEED = Object.entries(DEFAULT_SELLER_PASS_PRICES).map(([name, price]) => ({
-    id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, price, gender: 'unisex'
-}));
+function lifecycleStatus(event) {
+    if (event?.status) return event.status;
+    return event?.active === false || event?.archived ? 'draft' : 'published';
+}
 
 // Native seller apps fetch this additive, authenticated configuration. Keeping it
 // in Git means a normal backend deployment can update content without a new APK.
@@ -663,39 +713,22 @@ async function getEventPricing(eventName) {
     const events = await db.getAllEvents();
     let event = pickCanonicalEvent(events, eventName);
     if (!event) return null;
-    let sourcePasses = [...(event.tiers || []), ...(event.ticketTypes || [])];
-    const passNames = new Set(sourcePasses.map(pass => String(pass.name || '').toLowerCase()));
-    const isLegacyDholidaCatalog = String(event.name || '').toLowerCase().includes('dholida')
-        && passNames.size === 2
-        && passNames.has('male pass')
-        && passNames.has('female pass');
-    if (!sourcePasses.length || isLegacyDholidaCatalog) {
-        event = await db.saveEvent({ ...event, tiers: LEGACY_EVENT_TIER_SEED, ticketTypes: LEGACY_EVENT_TIER_SEED });
-        sourcePasses = LEGACY_EVENT_TIER_SEED;
-    } else if (isCanonicalDashboardEvent(event)) {
-        const previousPrices = { 'GA Single': 399, 'GA Group of 5': 1699, 'GA Group of 10': 2999, 'VIP Single': 599, 'VIP Group of 5': 2799, 'VIP Group of 10': 4999 };
-        const hasLegacyPrices = sourcePasses.some(pass => previousPrices[pass.name] === Number(pass.price));
-        if (hasLegacyPrices) {
-            const migratePasses = passes => (passes || []).map(pass => ({
-                ...pass,
-                price: previousPrices[pass.name] === Number(pass.price)
-                    ? DEFAULT_SELLER_PASS_PRICES[pass.name]
-                    : pass.price
-            }));
-            event = await db.saveEvent({
-                ...event,
-                tiers: migratePasses(event.tiers),
-                ticketTypes: migratePasses(event.ticketTypes),
-            });
-            sourcePasses = [...(event.tiers || []), ...(event.ticketTypes || [])];
-        }
-    }
+    let sourcePasses = Array.isArray(event.ticketCategories) && event.ticketCategories.length
+        ? event.ticketCategories
+        : [...(event.tiers || []), ...(event.ticketTypes || [])];
     const passes = sourcePasses
         .map(pass => ({
             id: pass.id || pass.name,
             name: pass.name,
             price: normalizePrice(pass.price),
-            gender: pass.gender || 'unisex'
+            gender: pass.gender || 'unisex', description: pass.description || '',
+            currency: pass.currency || 'INR',
+            totalInventory: pass.totalInventory === undefined ? null : pass.totalInventory,
+            remainingAvailability: pass.remainingAvailability === undefined ? null : pass.remainingAvailability,
+            salesStartAt: pass.salesStartAt || null, salesEndAt: pass.salesEndAt || null,
+            maxPerCustomer: Number(pass.maxPerCustomer) || 20,
+            status: pass.status || 'active', groupSize: Number(pass.groupSize) || 1,
+            inclusions: Array.isArray(pass.inclusions) ? pass.inclusions : []
         }))
         .filter(pass => pass.name && pass.price !== null)
         .filter((pass, index, all) => all.findIndex(item => item.id === pass.id || item.name === pass.name) === index);
@@ -705,10 +738,20 @@ async function getEventPricing(eventName) {
 async function resolveTicketAmount(eventName, ticketType, quantity) {
     const pricing = await getEventPricing(eventName);
     if (!pricing) return null;
-    const pass = pricing.passes.find(item => item.name === ticketType || item.id === ticketType);
-    if (!pass) return null;
-    const qty = Math.max(1, Math.min(20, parseInt(quantity, 10) || 1));
-    return { amount: Math.round(pass.price * qty * 100) / 100, qty, ticketType: pass.name, event: pricing.event.name };
+    if (!eventIsPublic(pricing.event)) return null;
+    const pass = pricing.passes.find(item => item.name === ticketType || item.id === ticketType || item.gender === ticketType);
+    if (!pass || pass.status !== 'active') return null;
+    const now = Date.now();
+    if (pass.salesStartAt && new Date(pass.salesStartAt).getTime() > now) return null;
+    if (pass.salesEndAt && new Date(pass.salesEndAt).getTime() < now) return null;
+    const qty = Number(quantity === undefined || quantity === null || quantity === '' ? 1 : quantity);
+    if (!Number.isInteger(qty) || qty < 1 || qty > Math.min(20, pass.maxPerCustomer || 20)) return null;
+    if (pass.remainingAvailability !== null && pass.remainingAvailability !== undefined && pass.remainingAvailability < qty) return null;
+    return {
+        amount: Math.round(pass.price * qty * 100) / 100, qty,
+        ticketType: pass.name, ticketCategoryId: pass.id,
+        event: pricing.event.name, eventId: eventRef(pricing.event), currency: pass.currency || 'INR'
+    };
 }
 
 // ==================== RAZORPAY SETUP ====================
@@ -934,23 +977,6 @@ console.log(`Static dir: ${_staticDir} (exists: ${fs2.existsSync(path.join(_stat
 app.use(express.static(_staticDir));
 
 // ==================== HELPERS ====================
-async function computeAmount(gender, quantity, eventName = EVENT.name) {
-    const pricing = await getEventPricing(eventName);
-    if (!pricing) return null;
-    const normalizedGender = String(gender || '').toLowerCase();
-    const legacyPassName = normalizedGender === 'male' || normalizedGender === 'ga'
-        ? 'ga single'
-        : normalizedGender === 'female' || normalizedGender === 'vip'
-            ? 'vip single'
-            : normalizedGender;
-    const pass = pricing.passes.find(item => item.gender.toLowerCase() === normalizedGender)
-        || pricing.passes.find(item => item.name.toLowerCase().includes(normalizedGender))
-        || pricing.passes.find(item => item.name.toLowerCase() === legacyPassName);
-    if (!pass) return null;
-    const qty = Math.max(1, Math.min(20, parseInt(quantity, 10) || 1));
-    return { amount: Math.round(pass.price * qty * 100) / 100, qty, ticketType: pass.name, event: pricing.event.name };
-}
-
 // In-memory token store for unified auth sessions (populated by /api/auth/login)
 const solverRevealAttempts = new Map();
 
@@ -1157,19 +1183,21 @@ async function requirePR(req, res, next) {
 // ==================== 1. CREATE ORDER (start of checkout) ====================
 app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
     if (!TEST_MODE && !PAYMENT_CREDENTIALS_CONFIGURED) return res.status(503).json({ success: false, message: 'Online payments are not configured.' });
-    const { name, email, phone, gender, quantity } = req.body || {};
+    const { name, email, phone, gender, quantity, eventId, eventSlug, event, ticketCategoryId, ticketType } = req.body || {};
 
-    if (!name || !email || !phone || !gender) {
-        return res.status(400).json({ success: false, message: 'Name, email, phone and gender are all required.' });
+    if (!name || !email || !phone || !(eventId || eventSlug || event) || !(ticketCategoryId || ticketType || gender)) {
+        return res.status(400).json({ success: false, message: 'Name, email, phone, event and ticket category are all required.' });
     }
-    const computed = await computeAmount(gender, quantity);
+    const requestedEvent = eventId || eventSlug || event;
+    const requestedCategory = ticketCategoryId || ticketType || gender;
+    const computed = await resolveTicketAmount(requestedEvent, requestedCategory, quantity);
     if (!computed) {
-        return res.status(400).json({ success: false, message: 'Invalid ticket type. Choose a currently available pass.' });
+        return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable. Check the event, sale window, quantity and inventory.' });
     }
-    const { amount, qty } = computed;
+    const { amount, qty, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
 
     try {
-        let orderId, currency = 'INR';
+        let orderId;
 
         if (TEST_MODE) {
             orderId = `order_test_${crypto.randomBytes(8).toString('hex')}`;
@@ -1184,8 +1212,11 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
 
         await db.createSaleRecord({
             orderId,
-            event: EVENT.name,
-            name, email, phone, gender,
+            event: eventName,
+            eventId: canonicalEventId,
+            ticketCategoryId: canonicalCategoryId,
+            name, email, phone, gender: gender || categoryName,
+            ticketType: categoryName,
             quantity: qty,
             amount,
             currency,
@@ -1207,7 +1238,10 @@ app.post('/api/create-order', checkoutRateLimit, async (req, res) => {
             amount,
             currency,
             keyId: RZP_KEY_ID || null,
-            event: EVENT.name
+            event: eventName,
+            eventId: canonicalEventId,
+            ticketCategoryId: canonicalCategoryId,
+            ticketType: categoryName
         });
     } catch (err) {
         const details = err.error?.description || err.message || JSON.stringify(err);
@@ -2064,17 +2098,17 @@ app.delete('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) 
     }
 });
 
-app.get('/api/admin/pricing', requirePartnerAdmin, async (_req, res) => {
+app.get('/api/admin/pricing', requireAdmin, async (req, res) => {
     const allEvents = await db.getAllEvents();
-    const events = visibleDashboardEvents(allEvents);
+    const events = visibleDashboardEvents(allEvents).filter(event => canManageEvent(req, event));
     const pricedEvents = await Promise.all(events.map(async event => {
-        const pricing = await getEventPricing(event.name);
+        const pricing = await getEventPricing(eventRef(event));
         return { id: pricing?.event.id || pricing?.event._id || event.id || event._id, name: pricing?.event.name || event.name, tiers: pricing?.passes || [] };
     }));
     res.json({ success: true, events: pricedEvents });
 });
 
-app.patch('/api/admin/pricing/:eventId', requirePartnerAdmin, async (req, res) => {
+app.patch('/api/admin/pricing/:eventId', requireAdmin, async (req, res) => {
     const { tiers } = req.body || {};
     if (!Array.isArray(tiers) || !tiers.length || tiers.some(tier => !String(tier.name || '').trim() || normalizePrice(tier.price) === null)) {
         return res.status(400).json({ success: false, message: 'Every ticket type needs a valid non-negative price.' });
@@ -2103,11 +2137,12 @@ app.patch('/api/admin/pricing/:eventId', requirePartnerAdmin, async (req, res) =
     });
 
     const events = await db.getAllEvents();
-    const event = events.find(item => String(item.id || item._id) === req.params.eventId);
+    const event = pickCanonicalEvent(events, req.params.eventId);
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
-    if (!isCanonicalDashboardEvent(event)) return res.status(404).json({ success: false, message: 'Event not found.' });
-    const updated = await db.saveEvent({ ...event, tiers: tiersWithUniqueIds, ticketTypes: tiersWithUniqueIds });
-    res.json({ success: true, event: { id: updated.id || updated._id, name: updated.name, tiers: updated.tiers } });
+    if (!canManageEvent(req, event)) return res.status(403).json({ success: false, message: 'You cannot manage this event.' });
+    const categories = tiersWithUniqueIds.map(tier => ({ ...tier, currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 1 }));
+    const updated = await db.saveEvent({ ...event, ticketCategories: categories, tiers: tiersWithUniqueIds, ticketTypes: tiersWithUniqueIds });
+    res.json({ success: true, event: { id: updated.id || updated._id, name: updated.name, tiers: updated.tiers, ticketCategories: updated.ticketCategories } });
 });
 
 app.get('/api/seller/pricing', requireSeller, async (req, res) => {
@@ -3071,33 +3106,163 @@ app.get('/api/test-email', requireMasterAdmin, async (req, res) => {
     }
 });
 
+// ==================== MULTI-EVENT MANAGEMENT ====================
+app.get('/api/admin/events', requireAdmin, async (req, res) => {
+    const events = (await db.getAllEvents()).filter(event => canManageEvent(req, event));
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, events });
+});
+
+app.post('/api/admin/events', requireAdmin, async (req, res) => {
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    if (!name || name.length > 160) return res.status(400).json({ success: false, message: 'Event title is required and must be at most 160 characters.' });
+    const companyId = req.adminSession.role === 'company_admin' ? req.adminSession.companyId : String(body.companyId || '').trim();
+    if (!companyId || !(await db.getCompanyById(companyId))) return res.status(400).json({ success: false, message: 'Select a valid organizer company.' });
+    const normalized = normalizeTicketCategories(body.ticketCategories === undefined ? [] : body.ticketCategories);
+    if (normalized.error) return res.status(400).json({ success: false, message: normalized.error });
+    const events = await db.getAllEvents();
+    const slug = slugifyEvent(body.slug || name);
+    if (!slug) return res.status(400).json({ success: false, message: 'Provide a valid public slug.' });
+    if (events.some(item => String(item.slug || slugifyEvent(item.name)).toLowerCase() === slug)) return res.status(409).json({ success: false, message: 'That public event slug is already in use.' });
+    const now = new Date().toISOString();
+    const record = {
+        id: `event_${crypto.randomUUID()}`, slug, name, companyId, organizerId: companyId,
+        description: String(body.description || '').slice(0, 10000), category: String(body.category || '').trim().slice(0, 100),
+        images: Array.isArray(body.images) ? body.images.map(value => String(value).slice(0, 2000)).slice(0, 20) : [],
+        venue: String(body.venue || '').slice(0, 300), city: String(body.city || '').slice(0, 100), address: String(body.address || '').slice(0, 1000),
+        timezone: String(body.timezone || 'Asia/Kolkata').slice(0, 80),
+        startsAt: body.startsAt ? new Date(body.startsAt) : null, endsAt: body.endsAt ? new Date(body.endsAt) : null,
+        salesStartAt: body.salesStartAt ? new Date(body.salesStartAt) : null, salesEndAt: body.salesEndAt ? new Date(body.salesEndAt) : null,
+        ticketCategories: normalized.categories, status: 'draft', visibility: ['private', 'unlisted'].includes(body.visibility) ? body.visibility : 'public',
+        active: false, archived: false, createdAt: now, updatedAt: now
+    };
+    for (const field of ['startsAt', 'endsAt', 'salesStartAt', 'salesEndAt']) {
+        if (record[field] && !Number.isFinite(record[field].getTime())) return res.status(400).json({ success: false, message: `Invalid ${field} date.` });
+    }
+    if (record.startsAt && record.endsAt && record.endsAt < record.startsAt) return res.status(400).json({ success: false, message: 'Event end must be after its start.' });
+    if (record.salesStartAt && record.salesEndAt && record.salesEndAt < record.salesStartAt) return res.status(400).json({ success: false, message: 'Ticket sales end must be after sales start.' });
+    const created = await db.saveEvent(record);
+    await db.createAuditLog({ companyId, eventId: record.id, category: 'EVENT_CREATED', actor: req.adminSession.userId, message: `Created event ${name}` });
+    return res.status(201).json({ success: true, event: created });
+});
+
+app.patch('/api/admin/events/:eventRef', requireAdmin, async (req, res) => {
+    const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    if (!canManageEvent(req, event)) return res.status(403).json({ success: false, message: 'You cannot manage this event.' });
+    const body = req.body || {};
+    const allowed = ['name', 'slug', 'description', 'category', 'images', 'venue', 'city', 'address', 'timezone', 'startsAt', 'endsAt', 'salesStartAt', 'salesEndAt', 'visibility', 'ticketCategories'];
+    const updates = {};
+    for (const field of allowed) if (Object.prototype.hasOwnProperty.call(body, field)) updates[field] = body[field];
+    if (updates.name !== undefined) {
+        updates.name = String(updates.name).trim();
+        if (!updates.name || updates.name.length > 160) return res.status(400).json({ success: false, message: 'Event title must be between 1 and 160 characters.' });
+    }
+    if (updates.slug !== undefined) {
+        updates.slug = slugifyEvent(updates.slug || updates.name || event.name);
+        if (!updates.slug) return res.status(400).json({ success: false, message: 'Invalid public slug.' });
+        if ((await db.getAllEvents()).some(item => eventRef(item) !== eventRef(event) && String(item.slug || slugifyEvent(item.name)).toLowerCase() === updates.slug)) return res.status(409).json({ success: false, message: 'That public event slug is already in use.' });
+    }
+    if (updates.ticketCategories !== undefined) {
+        const normalized = normalizeTicketCategories(updates.ticketCategories);
+        if (normalized.error) return res.status(400).json({ success: false, message: normalized.error });
+        const sales = await db.getAll();
+        const referencedSales = sales.filter(sale => sale.eventId === eventRef(event) || (!sale.eventId && String(sale.event || '').toLowerCase() === String(event.name || '').toLowerCase()));
+        const oldCategories = event.ticketCategories?.length ? event.ticketCategories : [...(event.tiers || []), ...(event.ticketTypes || [])];
+        const removedInUse = oldCategories.some(category => {
+            const inUse = referencedSales.some(sale => sale.ticketCategoryId === category.id || (!sale.ticketCategoryId && [sale.ticketType, sale.gender].some(value => String(value || '').toLowerCase() === String(category.name || '').toLowerCase())));
+            const remains = normalized.categories.some(next => next.id === category.id || next.name.toLowerCase() === String(category.name || '').toLowerCase());
+            return inUse && !remains;
+        });
+        if (removedInUse) return res.status(409).json({ success: false, message: 'A ticket category with existing orders cannot be removed.' });
+        const existingCategories = new Map(oldCategories.map(category => [category.id || slugifyPassId(category.name), category]));
+        const capacityChanged = normalized.categories.some(category => {
+            const previous = existingCategories.get(category.id);
+            const existingOrders = previous && referencedSales.some(sale => sale.ticketCategoryId === category.id || (!sale.ticketCategoryId && String(sale.ticketType || sale.gender || '').toLowerCase() === String(previous.name || '').toLowerCase()));
+            return existingOrders && (previous.totalInventory ?? null) !== category.totalInventory;
+        });
+        if (capacityChanged) return res.status(409).json({ success: false, message: 'Inventory capacity cannot be changed after orders exist for that category.' });
+        updates.ticketCategories = normalized.categories.map(category => {
+            const previous = existingCategories.get(category.id);
+            if (!previous) return category;
+            if ((previous.totalInventory ?? null) === category.totalInventory && category.totalInventory !== null) {
+                return { ...category, remainingAvailability: previous.remainingAvailability ?? previous.totalInventory };
+            }
+            return category;
+        });
+    }
+    for (const field of ['startsAt', 'endsAt', 'salesStartAt', 'salesEndAt']) {
+        if (updates[field] !== undefined) {
+            updates[field] = updates[field] ? new Date(updates[field]) : null;
+            if (updates[field] && !Number.isFinite(updates[field].getTime())) return res.status(400).json({ success: false, message: `Invalid ${field} date.` });
+        }
+    }
+    if (updates.visibility !== undefined && !['public', 'unlisted', 'private'].includes(updates.visibility)) return res.status(400).json({ success: false, message: 'Invalid event visibility.' });
+    const merged = { ...event, ...updates };
+    if (merged.startsAt && merged.endsAt && merged.endsAt < merged.startsAt) return res.status(400).json({ success: false, message: 'Event end must be after its start.' });
+    if (merged.salesStartAt && merged.salesEndAt && merged.salesEndAt < merged.salesStartAt) return res.status(400).json({ success: false, message: 'Ticket sales end must be after sales start.' });
+    const updated = await db.saveEvent({ ...merged, id: event.id || event._id, _id: event._id });
+    await db.createAuditLog({ companyId: event.companyId, eventId: eventRef(event), category: 'EVENT_UPDATED', actor: req.adminSession.userId, message: `Updated event ${event.name}` });
+    return res.json({ success: true, event: updated });
+});
+
+app.post('/api/admin/events/:eventRef/transition', requireAdmin, async (req, res) => {
+    const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+    if (!canManageEvent(req, event)) return res.status(403).json({ success: false, message: 'You cannot manage this event.' });
+    const target = String(req.body?.status || '').toLowerCase();
+    const current = lifecycleStatus(event);
+    const transitions = { draft: ['pending_review'], pending_review: ['draft', 'published'], published: ['cancelled', 'postponed', 'completed'], postponed: ['published', 'cancelled', 'completed'] };
+    if (!transitions[current]?.includes(target)) return res.status(409).json({ success: false, message: `Cannot transition event from ${current} to ${target}.` });
+    if (target === 'published' && req.adminSession.role !== 'master_admin') return res.status(403).json({ success: false, message: 'Only a master administrator can publish an event.' });
+    const now = new Date().toISOString();
+    const updated = await db.saveEvent({ ...event, id: event.id || event._id, _id: event._id, status: target, active: target === 'published', archived: target === 'completed', publishedAt: target === 'published' ? (event.publishedAt || now) : event.publishedAt, updatedAt: now });
+    await db.createAuditLog({ companyId: event.companyId, eventId: eventRef(event), category: 'EVENT_STATUS_CHANGED', actor: req.adminSession.userId, message: `Changed event ${event.name} from ${current} to ${target}` });
+    return res.json({ success: true, event: updated });
+});
+
 // ==================== HEALTH ====================
 app.get('/api/health', (req, res) => res.json({ success: true, event: EVENT.name }));
 
-// ==================== EVENTS LIST ====================
-// GET /api/events — returns the active event list for the dashboard event breakdown UI
+// Public discovery is deliberately separate from the authenticated admin list.
 app.get('/api/events', async (req, res) => {
     try {
         const allEvents = await db.getAllEvents();
-        const events = visibleDashboardEvents(allEvents);
-        const eventsWithPricing = await Promise.all(events.map(async event => {
-            const pricing = await getEventPricing(event.name);
-            return {
-                id: pricing?.event.id || pricing?.event._id || event.id || event._id,
-                name: pricing?.event.name || event.name,
-                gradient: event.gradient || CANONICAL_EVENT_GRADIENT,
-                icon: event.icon || '🎟️',
-                tagline: event.tagline || 'Pethkar Ground, Kothrud, Pune · 17th October',
-                tiers: pricing?.passes || []
-            };
-        }));
-        res.json({
-            success: true,
-            events: eventsWithPricing
-        });
+        const search = String(req.query.search || '').trim().toLowerCase();
+        const city = String(req.query.city || '').trim().toLowerCase();
+        const category = String(req.query.category || '').trim().toLowerCase();
+        const from = req.query.from ? new Date(String(req.query.from)).getTime() : null;
+        const to = req.query.to ? new Date(String(req.query.to)).getTime() : null;
+        const events = allEvents.filter(event => eventIsPublic(event) && event.visibility !== 'unlisted' && event.visibility !== 'private')
+            .filter(event => !search || `${event.name} ${event.description || ''} ${event.venue || ''}`.toLowerCase().includes(search))
+            .filter(event => !city || String(event.city || '').toLowerCase() === city)
+            .filter(event => !category || String(event.category || '').toLowerCase() === category)
+            .filter(event => {
+                const eventTime = new Date(event.startsAt || event.date || 0).getTime();
+                return (!from || (Number.isFinite(eventTime) && eventTime >= from)) && (!to || (Number.isFinite(eventTime) && eventTime <= to));
+            });
+        const payload = await Promise.all(events.map(async event => publicEventPayload(event, await getEventPricing(eventRef(event)))));
+        res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
+        res.json({ success: true, events: payload });
     } catch (err) {
         res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
+});
+
+app.get('/api/events/:eventRef', async (req, res) => {
+    const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
+    if (!event || !eventIsPublic(event) || event.visibility === 'unlisted' || event.visibility === 'private') return res.status(404).json({ success: false, message: 'Event not found.' });
+    const pricing = await getEventPricing(eventRef(event));
+    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
+    return res.json({ success: true, event: publicEventPayload(event, pricing) });
+});
+
+app.get('/api/pr/events', requirePR, async (req, res) => {
+    const events = (await db.getAllEvents()).filter(event => eventIsPublic(event) && event.visibility === 'public' && event.companyId === req.prSession.companyId);
+    const payload = await Promise.all(events.map(async event => publicEventPayload(event, await getEventPricing(eventRef(event)))));
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, events: payload });
 });
 
 // GET /api/admin/sellers — dynamic seller list derived from sales records
@@ -3221,7 +3386,7 @@ app.get('/api/master/companies/:id/control-center', requireMasterAdmin, async (r
 
         const effectiveConfig = await db.getEffectiveConfig(id).catch(() => ({ effective: company }));
         const allEvents = await db.getAllEvents();
-        const events = allEvents.filter(e => e.companyId === id && isCanonicalDashboardEvent(e));
+        const events = allEvents.filter(e => (e.organizerId || e.companyId) === id && !e.archived);
         const auditLogs = await db.getAuditLogs(id);
 
         res.json({
@@ -4048,22 +4213,25 @@ app.get('/api/pr/sales', requirePR, async (req, res) => {
 // POST /api/pr/create-order — PR partner initiates a Razorpay payment for a customer
 app.post('/api/pr/create-order', requirePR, checkoutRateLimit, async (req, res) => {
     if (!TEST_MODE && (!PAYMENT_CREDENTIALS_CONFIGURED || !razorpay)) return res.status(503).json({ success: false, message: 'Online payments are not configured.' });
-    const { name, email, phone, gender, quantity } = req.body || {};
-    if (!name || !email || !phone || !gender)
+    const { name, email, phone, gender, quantity, eventId, eventSlug, event, ticketCategoryId, ticketType } = req.body || {};
+    const requestedEvent = eventId || eventSlug || event;
+    if (!name || !email || !phone || !requestedEvent || !(ticketCategoryId || ticketType || gender))
         return res.status(400).json({ success: false, message: 'Missing required fields.' });
 
-    const computed = await computeAmount(gender, quantity);
-    if (!computed) return res.status(400).json({ success: false, message: 'Invalid ticket type.' });
-    const { amount, qty } = computed;
+    const computed = await resolveTicketAmount(requestedEvent, ticketCategoryId || ticketType || gender, quantity);
+    if (!computed) return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable.' });
+    const pricingEvent = pickCanonicalEvent(await db.getAllEvents(), requestedEvent);
+    if (!pricingEvent || pricingEvent.companyId !== req.prSession.companyId) return res.status(403).json({ success: false, message: 'PR partner is not assigned to this event.' });
+    const { amount, qty, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
 
     try {
-        let orderId, currency = 'INR';
+        let orderId;
         if (TEST_MODE) {
             orderId = `order_pr_test_${crypto.randomBytes(8).toString('hex')}`;
         } else {
             const order = await razorpay.orders.create({
                 amount: amount * 100,
-                currency: 'INR',
+                currency,
                 receipt: `pr_${Date.now()}`,
             });
             orderId = order.id;
@@ -4072,8 +4240,11 @@ app.post('/api/pr/create-order', requirePR, checkoutRateLimit, async (req, res) 
         const ticketId = generateTicketId();
         await db.createSaleRecord({
             orderId,
-            event: EVENT.name,
-            name, email, phone, gender,
+            event: eventName,
+            eventId: canonicalEventId,
+            ticketCategoryId: canonicalCategoryId,
+            name, email, phone, gender: gender || categoryName,
+            ticketType: categoryName,
             quantity: qty,
             amount,
             currency,
@@ -4096,13 +4267,16 @@ app.post('/api/pr/create-order', requirePR, checkoutRateLimit, async (req, res) 
 
 // POST /api/pr/cash-request — PR partner submits a cash sale for admin approval
 app.post('/api/pr/cash-request', requirePR, async (req, res) => {
-    const { name, email, phone, gender, quantity } = req.body || {};
-    if (!name || !email || !phone || !gender)
+    const { name, email, phone, gender, quantity, eventId, eventSlug, event, ticketCategoryId, ticketType } = req.body || {};
+    const requestedEvent = eventId || eventSlug || event;
+    if (!name || !email || !phone || !requestedEvent || !(ticketCategoryId || ticketType || gender))
         return res.status(400).json({ success: false, message: 'Missing required fields.' });
 
-    const computed = await computeAmount(gender, quantity);
-    if (!computed) return res.status(400).json({ success: false, message: 'Invalid ticket type.' });
-    const { amount, qty } = computed;
+    const computed = await resolveTicketAmount(requestedEvent, ticketCategoryId || ticketType || gender, quantity);
+    if (!computed) return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable.' });
+    const pricingEvent = pickCanonicalEvent(await db.getAllEvents(), requestedEvent);
+    if (!pricingEvent || pricingEvent.companyId !== req.prSession.companyId) return res.status(403).json({ success: false, message: 'PR partner is not assigned to this event.' });
+    const { amount, qty, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
 
     try {
         const orderId = `order_cash_${crypto.randomBytes(8).toString('hex')}`;
@@ -4110,11 +4284,14 @@ app.post('/api/pr/cash-request', requirePR, async (req, res) => {
 
         await db.createSaleRecord({
             orderId,
-            event: EVENT.name,
-            name, email, phone, gender,
+            event: eventName,
+            eventId: canonicalEventId,
+            ticketCategoryId: canonicalCategoryId,
+            name, email, phone, gender: gender || categoryName,
+            ticketType: categoryName,
             quantity: qty,
             amount,
-            currency: 'INR',
+            currency,
             status: 'pr_cash_pending',
             paymentId: 'cash_pending',
             ticketId,
