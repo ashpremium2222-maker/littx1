@@ -2,6 +2,8 @@
 
 **Purpose:** Prepare a repeatable, non-production environment for validating Phase 11 ticket recovery and Phase 13 secure WhatsApp PDF delivery. This guide does not authorize deployment, production changes, customer communications, or live financial activity.
 
+**Provisioning handoff:** Use [`PHASE15_INFRASTRUCTURE_READINESS.md`](PHASE15_INFRASTRUCTURE_READINESS.md) to distinguish manual staging provisioning from checks that can be run after an isolated target is verified and explicitly authorized. Do not start the application or contact any endpoint/provider until both conditions are met.
+
 ## Environment separation
 
 - Use a separate staging project/environment, hostname, database/cluster, email sender, WhatsApp business sender/account or explicitly approved test number, and secret store. Do not copy production customer records or secrets.
