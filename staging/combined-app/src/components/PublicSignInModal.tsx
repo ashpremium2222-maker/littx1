@@ -29,6 +29,10 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
       if (data.success && data.user) {
         sessionStorage.setItem('littx_user', JSON.stringify(data.user))
         sessionStorage.setItem('littx_token', data.token)
+        if (data.cookieSession) {
+          sessionStorage.removeItem('ft_admin_key')
+          localStorage.removeItem('ft_admin_key')
+        }
         onLoginSuccess(data.user)
       } else {
         setError(data.message || 'Invalid login credentials.')

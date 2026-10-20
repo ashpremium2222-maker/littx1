@@ -333,6 +333,16 @@ const { issueCustomerTicketToken, verifyCustomerTicketToken } = require('./ticke
 const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
 const { sendTicketEmail, sendBookingRecoveryOtp, hasConfiguredEmailDelivery } = require('./mailer');
 const { sendTicketWhatsApp, getWhatsAppConfigurationStatus } = require('./whatsapp-service');
+const {
+    COOKIE_SESSION_MARKER,
+    cookieName: sessionCookieName,
+    csrfCookieName,
+    parseCookies,
+    setSessionCookies,
+    clearSessionCookies,
+    timingSafeEqualText,
+    isMutationMethod,
+} = require('./session-cookie-auth');
 
 const SCANNER_SESSION_TTL_SECONDS = 12 * 60 * 60;
 function scannerAssignments() {
@@ -350,8 +360,21 @@ function signScannerSession(payload) {
     const signature = crypto.createHmac('sha256', scannerSessionSecret()).update(encoded).digest('base64url');
     return `${encoded}.${signature}`;
 }
-function readScannerSession(req) {
+async function readScannerSession(req) {
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (!token || token === COOKIE_SESSION_MARKER) return null;
+    const persisted = await db.getUserSessionByToken(token).catch(() => null);
+    if (persisted?.role === 'scanner' && isValidUserSession(persisted, token)) {
+        const expiresAt = persisted.expiresAt ? new Date(persisted.expiresAt).getTime() : new Date(persisted.loginAt).getTime() + SCANNER_SESSION_TTL_SECONDS * 1000;
+        if (Number.isFinite(expiresAt) && expiresAt > Date.now()) return {
+            role: 'scanner', name: persisted.displayName || 'Gate Staff', companyId: persisted.companyId,
+            eventNames: persisted.eventNames || [], exp: Math.floor(expiresAt / 1000),
+        };
+    }
+    // Existing signed scanner tokens remain valid only until the explicitly
+    // configured overlap cutoff and their original 12-hour expiry.
+    const cutoff = sessionBearerCutoffMs();
+    if (cutoff && Date.now() >= cutoff) return null;
     const [encoded, suppliedSignature, extra] = token.split('.');
     if (!encoded || !suppliedSignature || extra) return null;
     let expectedSignature;
@@ -448,6 +471,148 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '256kb', verify(req, res, buffer) {
     if (req.path === '/api/webhook/razorpay') req.rawBody = Buffer.from(buffer);
 } }));
+
+function sessionCookieModeEnabled() {
+    return process.env.SESSION_COOKIE_AUTH_ENABLED === 'true';
+}
+
+function sessionBearerCutoffMs() {
+    const raw = process.env.SESSION_BEARER_CUTOFF_AT;
+    if (!raw) return null;
+    const parsed = Date.parse(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function secureCookieRequest(req) {
+    return process.env.NODE_ENV === 'production'
+        || req.secure === true
+        || String(req.get('origin') || '').startsWith('https://')
+        || String(req.get('x-forwarded-proto') || '').split(',')[0].trim() === 'https';
+}
+
+function browserSessionLoginGuard(req, res, next) {
+    if (!sessionCookieModeEnabled()) return next();
+    if (!req.get('origin')) {
+        if (req.get('x-stageway-client') === 'native-seller' && ['/api/seller/login-step1', '/api/seller/login-step2'].includes(req.path)) return next();
+        return res.status(403).json({ success: false, message: 'Browser login requires an Origin header.' });
+    }
+    if (!trustedOrigins.has(req.get('origin'))) return res.status(403).json({ success: false, message: 'Request origin is not allowed.' });
+    const cutoff = sessionBearerCutoffMs();
+    if (!cutoff) return res.status(503).json({ success: false, message: 'A valid session compatibility cutoff is required.' });
+    next();
+}
+
+function sessionCookieFamilyForRequest(req, headerName) {
+    const pathname = req.path || '';
+    if (headerName === 'x-seller-token') return 'seller';
+    if (pathname.startsWith('/api/scanner-') || pathname.startsWith('/api/scan-')) return 'scanner';
+    if (pathname.startsWith('/api/shadow-private/')) return 'shadow_private';
+    if (pathname.startsWith('/api/shadow/')) return 'shadow';
+    return 'user';
+}
+
+function issueBrowserSessionCookie(req, res, family, token, loginAt = new Date()) {
+    if (!sessionCookieModeEnabled()) return { cookieSession: false, token };
+    const origin = req.get('origin');
+    if (!origin) return { cookieSession: false, token }; // Native clients do not receive browser cookies.
+    if (!trustedOrigins.has(origin)) return { error: 403, message: 'Request origin is not allowed.' };
+    const cutoff = sessionBearerCutoffMs();
+    if (!cutoff) return { error: 503, message: 'A valid session compatibility cutoff is required.' };
+    const ttl = family === 'scanner' ? SCANNER_SESSION_TTL_SECONDS * 1000 : USER_SESSION_TTL_MS;
+    setSessionCookies(res, family, token, new Date(new Date(loginAt).getTime() + ttl), secureCookieRequest(req));
+    return { cookieSession: true, token: COOKIE_SESSION_MARKER };
+}
+
+function respondWithSession(req, res, family, token, extra = {}, tokenField = 'token', loginAt = new Date()) {
+    const auth = issueBrowserSessionCookie(req, res, family, token, loginAt);
+    if (auth?.error) return res.status(auth.error).json({ success: false, message: auth.message });
+    return res.json({ success: true, ...extra, [tokenField]: auth.token, cookieSession: auth.cookieSession });
+}
+
+async function cookieSessionCompatibilityMiddleware(req, res, next) {
+    const cookies = parseCookies(req.headers.cookie);
+    const isScopedCustomerTicketCapability = /^\/api\/customer\/bookings\/ticket-(view|download|resend)$/.test(req.path || '');
+    const candidates = [
+        ['x-auth-token', 'user'], ['x-seller-token', 'seller'], ['x-shadow-token', null],
+        ['authorization', null], ['x-admin-key', 'user'],
+    ];
+    const supplied = [];
+    for (const [headerName, explicitFamily] of candidates) {
+        const raw = req.headers[headerName];
+        if (typeof raw !== 'string') continue;
+        const value = headerName === 'authorization' ? raw.replace(/^Bearer\s+/i, '') : raw;
+        if (!value || value === COOKIE_SESSION_MARKER) continue;
+        if (headerName === 'authorization' && (req.path.startsWith('/api/customer/bookings/recovery/') || isScopedCustomerTicketCapability)) continue;
+        supplied.push({ headerName, value, family: explicitFamily || sessionCookieFamilyForRequest(req, headerName) });
+    }
+
+    if (isScopedCustomerTicketCapability && ['x-auth-token', 'x-seller-token', 'x-shadow-token', 'x-admin-key'].some(name => typeof req.headers[name] === 'string' && req.headers[name].trim())) {
+        return res.status(401).json({ success: false, message: 'Ticket capability cannot be combined with a panel session credential.' });
+    }
+
+    const isLoginOrRecovery = req.path.endsWith('/login') || req.path.endsWith('/login-step1') || req.path.endsWith('/login-step2') || req.path.startsWith('/api/customer/bookings/recovery/') || isScopedCustomerTicketCapability;
+    const cookieCandidates = isLoginOrRecovery ? [] : supplied.map(item => ({ ...item, cookie: cookies[sessionCookieName(item.family)] })).filter(item => item.cookie);
+    if (cookieCandidates.some(item => !timingSafeEqualText(item.value, item.cookie))) {
+        return res.status(401).json({ success: false, message: 'Conflicting session credentials.' });
+    }
+
+    let familyFromMarker = null;
+    for (const [headerName, configuredFamily] of candidates) {
+        const raw = req.headers[headerName];
+        if (typeof raw !== 'string') continue;
+        const value = headerName === 'authorization' ? raw.replace(/^Bearer\s+/i, '') : raw;
+        if (value !== COOKIE_SESSION_MARKER) continue;
+        if (!sessionCookieModeEnabled()) return res.status(401).json({ success: false, message: 'Cookie authentication is disabled; sign in again.' });
+        const family = configuredFamily || sessionCookieFamilyForRequest(req, headerName);
+        familyFromMarker = family;
+        const cookie = cookies[sessionCookieName(family)];
+        if (!cookie) return res.status(401).json({ success: false, message: 'Cookie session is missing or expired.' });
+        if (headerName === 'authorization') req.headers.authorization = `Bearer ${cookie}`;
+        else req.headers[headerName] = cookie;
+    }
+
+    if (sessionCookieModeEnabled() && !isLoginOrRecovery) {
+        const cookieAuth = familyFromMarker || cookieCandidates[0]?.family || null;
+        if (cookieAuth) {
+            const origin = req.get('origin');
+            if (origin && !trustedOrigins.has(origin)) return res.status(403).json({ success: false, message: 'Request origin is not allowed.' });
+            if (isMutationMethod(req.method)) {
+                const csrf = cookies[csrfCookieName()];
+                const suppliedCsrf = req.get('x-csrf-token');
+                if (!origin || !trustedOrigins.has(origin) || !timingSafeEqualText(csrf, suppliedCsrf)) {
+                    return res.status(403).json({ success: false, message: 'CSRF validation failed.' });
+                }
+            }
+            req.cookieSessionFamily = cookieAuth;
+        }
+
+        const cutoff = sessionBearerCutoffMs();
+        if (!cutoff && supplied.length) return res.status(503).json({ success: false, message: 'Session compatibility cutoff is not configured.' });
+    }
+
+    // Enforce the configured cutoff even if cookie mode is rolled back. This
+    // prevents rollback from restoring an indefinite static/bearer fallback.
+    const cutoff = sessionBearerCutoffMs();
+    if (!isLoginOrRecovery && cutoff && Date.now() >= cutoff && supplied.length) {
+        const clientKind = req.get('x-stageway-client');
+        let nativeSession = false;
+        const scannerCredential = supplied.find(item => item.family === 'scanner');
+        const sellerCredential = supplied.find(item => item.family === 'seller');
+        if (clientKind === 'native-scanner' && scannerCredential) {
+            const token = scannerCredential.value;
+            const scanner = await db.getUserSessionByToken(token).catch(() => null);
+            nativeSession = scanner?.role === 'scanner' && scanner.clientKind === 'native' && isValidUserSession(scanner, token);
+        } else if (clientKind === 'native-seller' && sellerCredential) {
+            const token = sellerCredential.value;
+            const sessions = await db.getAllSellerSessions().catch(() => []);
+            const seller = sessions.find(item => timingSafeEqualText(item.token, token));
+            nativeSession = seller?.clientKind === 'native' && isValidSellerSession(seller, token);
+        }
+        if (!nativeSession) return res.status(401).json({ success: false, message: 'Legacy browser authentication has expired. Sign in again.' });
+    }
+    next();
+}
+app.use((req, res, next) => cookieSessionCompatibilityMiddleware(req, res, next).catch(next));
 
 // A malformed Meta payload should still be acknowledged promptly. This handler
 // is deliberately limited to the WhatsApp endpoint so existing API error
@@ -3053,7 +3218,7 @@ async function requireShadowAuth(req, res, next) {
 }
 
 // POST /api/shadow/login — Password auth for /shadowbyash
-app.post('/api/shadow/login', loginRateLimit, async (req, res) => {
+app.post('/api/shadow/login', loginRateLimit, browserSessionLoginGuard, async (req, res) => {
     const { password } = req.body || {};
     if (!SHADOW_PASSWORD) {
         return res.status(503).json({ success: false, message: 'Shadow authentication is not configured.' });
@@ -3063,15 +3228,16 @@ app.post('/api/shadow/login', loginRateLimit, async (req, res) => {
     }
 
     const shadowToken = `shadow_${crypto.randomBytes(24).toString('hex')}`;
+    const loginAt = new Date().toISOString();
     await db.setUserSession('shadowbyash', {
         token: shadowToken,
         ip: clientIp(req),
-        loginAt: new Date().toISOString(),
+        loginAt,
         role: 'shadow',
         companyId: 'littlane',
         displayName: 'Shadow Panel',
     });
-    res.json({ success: true, shadowToken });
+    return respondWithSession(req, res, 'shadow', shadowToken, {}, 'shadowToken', loginAt);
 });
 
 async function requirePrivateShadowAuth(req, res, next) {
@@ -3086,7 +3252,7 @@ async function requirePrivateShadowAuth(req, res, next) {
     return res.status(401).json({ success: false, message: 'Private Shadow session expired. Please log in again.' });
 }
 
-app.post('/api/shadow-private/login', loginRateLimit, async (req, res) => {
+app.post('/api/shadow-private/login', loginRateLimit, browserSessionLoginGuard, async (req, res) => {
     const { password } = req.body || {};
     if (!SHADOW_PRIVATE_PASSWORD) {
         return res.status(503).json({ success: false, message: 'Private Shadow authentication is not configured.' });
@@ -3096,16 +3262,31 @@ app.post('/api/shadow-private/login', loginRateLimit, async (req, res) => {
     }
 
     const shadowToken = `shadow_private_${crypto.randomBytes(24).toString('hex')}`;
+    const loginAt = new Date().toISOString();
     await db.setUserSession('shadow-private', {
         token: shadowToken,
         ip: clientIp(req),
-        loginAt: new Date().toISOString(),
+        loginAt,
         role: 'shadow_private',
         companyId: 'littlane',
         displayName: 'Private Shadow Panel',
     });
-    res.json({ success: true, shadowToken });
+    return respondWithSession(req, res, 'shadow_private', shadowToken, {}, 'shadowToken', loginAt);
 });
+
+async function logoutShadowSession(req, res, role, family) {
+    const token = req.headers['x-shadow-token'];
+    const session = await db.getUserSessionByToken(token).catch(() => null);
+    if (!token || session?.role !== role || !isValidUserSession(session, token)) {
+        return res.status(401).json({ success: false, message: 'Shadow session expired or invalid.' });
+    }
+    await db.deleteUserSessionByToken(token);
+    clearSessionCookies(res, family, secureCookieRequest(req));
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true });
+}
+app.post('/api/shadow/logout', (req, res) => logoutShadowSession(req, res, 'shadow', 'shadow'));
+app.post('/api/shadow-private/logout', (req, res) => logoutShadowSession(req, res, 'shadow_private', 'shadow_private'));
 
 // The Shadow panels must read the same editable catalogue as Seller. Keep this
 // authenticated so the complete ticket-rate list is not exposed as a public API.
@@ -3464,7 +3645,7 @@ app.delete('/api/admin/delete-ticket', requireMasterAdmin, async (req, res) => {
 });
 
 // ==================== 7. SCAN TICKET ====================
-app.post('/api/scanner-login', loginRateLimit, (req, res) => {
+app.post('/api/scanner-login', loginRateLimit, browserSessionLoginGuard, async (req, res) => {
     const configuredPassword = process.env.SCANNER_PASSWORD;
     if (!configuredPassword || configuredPassword.length < 12) {
         return res.status(503).json({ success: false, message: 'Scanner login is not configured on the server.' });
@@ -3477,9 +3658,14 @@ app.post('/api/scanner-login', loginRateLimit, (req, res) => {
         return res.status(401).json({ success: false, message: 'Invalid scanner password.' });
     }
     try {
-        const now = Math.floor(Date.now() / 1000);
-        const token = signScannerSession({ role: 'scanner', name: 'Gate Staff', ...assignment, iat: now, exp: now + SCANNER_SESSION_TTL_SECONDS });
-        return res.json({ success: true, token, scannerName: 'Gate Staff', expiresAt: (now + SCANNER_SESSION_TTL_SECONDS) * 1000 });
+        const loginAt = new Date();
+        const expiresAt = new Date(loginAt.getTime() + SCANNER_SESSION_TTL_SECONDS * 1000);
+        const token = generateToken();
+        await db.setUserSession(`scanner-${crypto.randomUUID()}`, {
+            token, role: 'scanner', displayName: 'Gate Staff', companyId: assignment.companyId,
+            eventNames: assignment.eventNames, loginAt: loginAt.toISOString(), expiresAt, ip: clientIp(req), clientKind: 'browser',
+        });
+        return respondWithSession(req, res, 'scanner', token, { scannerName: 'Gate Staff', expiresAt: expiresAt.getTime() }, 'token', loginAt);
     } catch (err) {
         console.error('[scanner-login] Configuration error:', err.message);
         return res.status(503).json({ success: false, message: 'Scanner login is not configured on the server.' });
@@ -3489,7 +3675,7 @@ app.post('/api/scanner-login', loginRateLimit, (req, res) => {
 // Passwordless session for the distributed native scanner app. This grants
 // scanner-role access only; existing password-based scanner and seller/admin
 // authentication routes remain unchanged.
-app.post('/api/scanner-app-session', loginRateLimit, (req, res) => {
+app.post('/api/scanner-app-session', loginRateLimit, async (req, res) => {
     // The native app is a distributable client and cannot prove its identity.
     // Require the same server-held credential as the web scanner login.
     const configuredPassword = process.env.SCANNER_PASSWORD;
@@ -3504,18 +3690,23 @@ app.post('/api/scanner-app-session', loginRateLimit, (req, res) => {
         return res.status(401).json({ success: false, message: 'Invalid scanner password.' });
     }
     try {
-        const now = Math.floor(Date.now() / 1000);
-        const token = signScannerSession({ role: 'scanner', name: 'Gate Staff', ...assignment, iat: now, exp: now + SCANNER_SESSION_TTL_SECONDS });
+        const loginAt = new Date();
+        const expiresAt = new Date(loginAt.getTime() + SCANNER_SESSION_TTL_SECONDS * 1000);
+        const token = generateToken();
+        await db.setUserSession(`scanner-${crypto.randomUUID()}`, {
+            token, role: 'scanner', displayName: 'Gate Staff', companyId: assignment.companyId,
+            eventNames: assignment.eventNames, loginAt: loginAt.toISOString(), expiresAt, ip: clientIp(req), clientKind: 'native',
+        });
         res.set('Cache-Control', 'no-store, private');
-        return res.json({ success: true, token, scannerName: 'Gate Staff', expiresAt: (now + SCANNER_SESSION_TTL_SECONDS) * 1000 });
+        return res.json({ success: true, token, scannerName: 'Gate Staff', expiresAt: expiresAt.getTime() });
     } catch (err) {
         console.error('[scanner-app-session] Configuration error:', err.message);
         return res.status(503).json({ success: false, message: 'Scanner sessions are not configured on the server.' });
     }
 });
 
-app.get('/api/scanner-session', (req, res) => {
-    const session = readScannerSession(req);
+app.get('/api/scanner-session', async (req, res) => {
+    const session = await readScannerSession(req);
     if (!session) return res.status(401).json({ success: false, message: 'Scanner session expired. Log in again.' });
     return res.json({ success: true, scannerName: session.name, eventNames: session.eventNames, expiresAt: session.exp * 1000 });
 });
@@ -3524,7 +3715,8 @@ app.get('/api/scanner-session', (req, res) => {
 // and declined totals come from scan attempts so historical ticket state and
 // old test scans cannot be mistaken for today's gate activity.
 app.get('/api/scan-stats', async (req, res) => {
-    if (!readScannerSession(req)) {
+    const scannerSession = await readScannerSession(req);
+    if (!scannerSession) {
         return res.status(401).json({ success: false, message: 'Scanner authentication is required.' });
     }
     try {
@@ -3536,7 +3728,6 @@ app.get('/api/scan-stats', async (req, res) => {
             istNow.getUTCMonth(),
             istNow.getUTCDate()
         ) - IST_OFFSET_MS);
-        const scannerSession = readScannerSession(req);
         const scanStats = await db.getScanStats(scannerSession.companyId, todayStartIst);
         res.json({
             success: true,
@@ -3554,7 +3745,7 @@ app.get('/api/scan-stats', async (req, res) => {
 });
 
 app.post('/api/scan-ticket', async (req, res) => {
-    const scannerSession = readScannerSession(req);
+    const scannerSession = await readScannerSession(req);
     const sellerId = scannerSession ? null : await authenticateSeller(req.headers['x-seller-token']);
     if (!scannerSession && !sellerId) return res.status(401).json({ success: false, message: 'Scanner or seller login required.' });
     const { ticketId } = req.body || {};
@@ -4518,7 +4709,7 @@ const PR_USERS_AUTH = [
     { username: 'partner5', password: process.env.PR5_PASS || '', displayName: 'Partner Five', id: 'pr5' },
 ];
 
-app.post('/api/portal-auth/login', loginRateLimit, async (req, res) => {
+app.post('/api/portal-auth/login', loginRateLimit, browserSessionLoginGuard, async (req, res) => {
     const { portal, password } = req.body || {};
     const isAdmin = portal === 'admin';
     const isDashboard = portal === 'dashboard';
@@ -4541,22 +4732,21 @@ app.post('/api/portal-auth/login', loginRateLimit, async (req, res) => {
     const displayName = isAdmin ? 'Admin' : 'Dashboard';
     const companyId = isAdmin ? 'littx' : 'littlane';
     const token = generateToken();
+    const loginAt = new Date().toISOString();
     await db.setUserSession(userId, {
         token,
         ip: clientIp(req),
-        loginAt: new Date().toISOString(),
+        loginAt,
         role,
         companyId,
         displayName,
     });
-    return res.json({
-        success: true,
-        token,
+    return respondWithSession(req, res, 'user', token, {
         user: { userId, displayName, role, companyId, portalScope: portal },
-    });
+    }, 'token', loginAt);
 });
 
-app.post('/api/auth/login', loginRateLimit, async (req, res) => {
+app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req, res) => {
     const { username, password } = req.body || {};
     if (!username || !password) {
         return res.status(400).json({ success: false, message: 'Username and password are required.' });
@@ -4568,25 +4758,24 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
     );
     if (platformUser) {
         const token = generateToken();
+        const loginAt = new Date().toISOString();
         // Register this token so requireAdmin accepts x-auth-token from the frontend
         await db.setUserSession(platformUser.userId, {
             token,
             ip: clientIp(req),
-            loginAt: new Date().toISOString(),
+            loginAt,
             role: platformUser.role,
             companyId: platformUser.companyId,
             displayName: platformUser.displayName,
         });
-        return res.json({
-            success: true,
-            token,
+        return respondWithSession(req, res, 'user', token, {
             user: {
                 userId: platformUser.userId,
                 displayName: platformUser.displayName,
                 role: platformUser.role,
                 companyId: platformUser.companyId
             }
-        });
+        }, 'token', loginAt);
     }
 
     const managedUser = (await db.getAllUsers()).find(user => user.userId.toLowerCase() === String(username).toLowerCase());
@@ -4594,9 +4783,10 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
         if (managedUser.active === false || managedUser.blocked) return res.status(403).json({ success: false, message: 'Organizer account is inactive. Contact the Master Admin.' });
         if (!verifyPassword(String(password), managedUser.passwordHash)) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
         const token = generateToken();
-        const session = { token, ip: clientIp(req), loginAt: new Date().toISOString(), role: 'organizer', companyId: managedUser.companyId, displayName: managedUser.displayName || managedUser.userId };
+        const loginAt = new Date().toISOString();
+        const session = { token, ip: clientIp(req), loginAt, role: 'organizer', companyId: managedUser.companyId, displayName: managedUser.displayName || managedUser.userId };
         await db.setUserSession(managedUser.userId, session);
-        return res.json({ success: true, token, user: { userId: managedUser.userId, displayName: session.displayName, role: 'organizer', companyId: managedUser.companyId, portalScope: 'organizer' } });
+        return respondWithSession(req, res, 'user', token, { user: { userId: managedUser.userId, displayName: session.displayName, role: 'organizer', companyId: managedUser.companyId, portalScope: 'organizer' } }, 'token', loginAt);
     }
 
     // 2. Check PR partners
@@ -4605,42 +4795,40 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
     );
     if (prUser) {
         const token = generateToken();
+        const loginAt = new Date().toISOString();
         await db.setUserSession(prUser.id, {
             token,
             ip: clientIp(req),
-            loginAt: new Date().toISOString(),
+            loginAt,
             role: 'pr',
             companyId: 'littlane',
             displayName: prUser.displayName,
         });
-        return res.json({
-            success: true,
-            token,
+        return respondWithSession(req, res, 'user', token, {
             user: {
                 userId: prUser.id,
                 displayName: prUser.displayName,
                 role: 'pr',
                 companyId: 'littlane'
             }
-        });
+        }, 'token', loginAt);
     }
 
     // 3. Check sellers
     const sid = username.toUpperCase();
     if (SELLER_ACCOUNTS[sid] && safeStringEqual(SELLER_ACCOUNTS[sid], password)) {
         const token = generateToken();
-        sellerSessions[sid] = { token, loginAt: new Date().toISOString() };
+        const loginAt = new Date().toISOString();
+        sellerSessions[sid] = { token, loginAt, clientKind: req.get('origin') ? 'browser' : 'native' };
         await db.setSellerSession(sid, sellerSessions[sid]);
-        return res.json({
-            success: true,
-            token,
+        return respondWithSession(req, res, 'seller', token, {
             user: {
                 userId: sid,
                 displayName: `Seller ${sid}`,
                 role: 'seller',
                 companyId: 'littlane'
             }
-        });
+        }, 'token', loginAt);
     }
 
     return res.status(401).json({ success: false, message: 'Invalid credentials.' });
@@ -4652,6 +4840,30 @@ app.post('/api/auth/logout', async (req, res) => {
     const session = await db.getUserSessionByToken(token).catch(() => null);
     if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
     await db.deleteUserSessionByToken(token);
+    if (req.cookieSessionFamily === 'user') clearSessionCookies(res, 'user', secureCookieRequest(req));
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true });
+});
+
+app.post('/api/seller/logout', async (req, res) => {
+    const token = req.headers['x-seller-token'];
+    const sellerId = await authenticateSeller(token);
+    if (!sellerId) return res.status(401).json({ success: false, message: 'Seller session expired or invalid.' });
+    delete sellerSessions[sellerId];
+    await db.deleteSellerSession(sellerId);
+    clearSessionCookies(res, 'seller', secureCookieRequest(req));
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true });
+});
+
+app.post('/api/scanner-logout', async (req, res) => {
+    const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const session = await db.getUserSessionByToken(token).catch(() => null);
+    if (!session || session.role !== 'scanner' || !isValidUserSession(session, token)) {
+        return res.status(401).json({ success: false, message: 'Scanner session expired or invalid.' });
+    }
+    await db.deleteUserSessionByToken(token);
+    clearSessionCookies(res, 'scanner', secureCookieRequest(req));
     res.set('Cache-Control', 'no-store');
     return res.json({ success: true });
 });
@@ -4660,7 +4872,7 @@ app.post('/api/auth/logout', async (req, res) => {
 
 
 // ==================== SELLER PORTAL WEBAUTHN ROUTES ====================
-app.post('/api/seller/login-step1', loginRateLimit, async (req, res) => {
+app.post('/api/seller/login-step1', loginRateLimit, browserSessionLoginGuard, async (req, res) => {
     try {
         const { partnerId: requestedPartnerId, password } = req.body || {};
         if (!password) return res.status(400).json({ success: false, message: 'Enter your seller password.' });
@@ -4731,7 +4943,7 @@ app.post('/api/seller/login-step1', loginRateLimit, async (req, res) => {
     }
 });
 
-app.post('/api/seller/login-step2', loginRateLimit, async (req, res) => {
+app.post('/api/seller/login-step2', loginRateLimit, browserSessionLoginGuard, async (req, res) => {
     try {
         const { partnerId, loginId, response } = req.body || {};
         if (!partnerId || !loginId || !response) return res.status(400).json({ success: false, message: 'Missing fields' });
@@ -4822,21 +5034,20 @@ app.post('/api/seller/login-step2', loginRateLimit, async (req, res) => {
         if (verification && verification.verified) {
             const token = generateToken();
             const ip = clientIp(req);
-            sellerSessions[partnerId] = { token, loginAt: new Date().toISOString(), ip };
+            const loginAt = new Date().toISOString();
+            sellerSessions[partnerId] = { token, loginAt, ip, clientKind: req.get('origin') ? 'browser' : 'native' };
             savePersisted(SESSIONS_FILE, sellerSessions);
             await db.setSellerSession(partnerId, sellerSessions[partnerId]);
             await db.savePartnerLock(partnerId, { boundIp: ip, boundAt: partnerLock?.boundAt || new Date().toISOString(), lastSeenAt: new Date().toISOString() });
             console.log(`[Seller Login] ${partnerId} logged in via WebAuthn from ${ip}`);
 
-            return res.json({
-                success: true,
-                token,
+            return respondWithSession(req, res, 'seller', token, {
                 partner: {
                     id: partnerId,
                     name: partner.name,
                     boundIp: ip
                 }
-            });
+            }, 'token', loginAt);
         }
 
         return res.status(400).json({ success: false, message: 'WebAuthn cryptographic verification failed' });

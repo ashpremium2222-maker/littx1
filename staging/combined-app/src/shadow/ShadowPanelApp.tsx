@@ -205,6 +205,7 @@ export default function ShadowPanelApp({
   }
 
   const handleLogout = () => {
+    void fetch(`${apiPrefix}/logout`, { method: 'POST', headers: { 'x-shadow-token': sessionStorage.getItem(sessionKey) || '' } }).catch(() => {})
     sessionStorage.removeItem(sessionKey)
     setShadowToken(null)
   }

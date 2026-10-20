@@ -370,16 +370,28 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     if (!trimmed) return
     setAuthChecking(true)
     setAuthError('')
-    const ok = await fetchSales(trimmed)
-    if (ok) {
-      sessionStorage.setItem('ft_admin_key', trimmed)
-      sessionStorage.setItem('ft_admin_key', trimmed)
-      localStorage.removeItem('ft_admin_key')
-      setAdminKey(trimmed)
+    try {
+      const response = await fetch('/api/portal-auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portal: 'admin', password: trimmed }) })
+      const data = await response.json()
+      if (!response.ok || !data.success || !data.token) throw new Error(data.message || 'Administrator sign in failed.')
+      sessionStorage.setItem('littx_token', data.token)
+      if (data.user) sessionStorage.setItem('littx_user', JSON.stringify(data.user))
+      sessionStorage.removeItem('ft_admin_key'); localStorage.removeItem('ft_admin_key')
+      setKeyInput('')
+      setAdminKey(data.token)
+    } catch (error) {
+      setAuthChecking(false)
+      setAuthError(error instanceof Error ? error.message : 'Administrator sign in failed.')
     }
   }
 
   const handleLogout = (errMsg = '') => {
+    const token = sessionStorage.getItem('littx_token') || adminKey
+    void fetch('/api/auth/logout', { method: 'POST', headers: token ? { 'x-auth-token': token } : {} }).catch(() => {})
+    sessionStorage.removeItem('littx_token')
+    sessionStorage.removeItem('littx_user')
+    localStorage.removeItem('littx_token')
+    localStorage.removeItem('littx_user')
     sessionStorage.removeItem('ft_admin_key')
     localStorage.removeItem('ft_admin_key')
     setAdminKey('')
@@ -708,6 +720,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             </svg>
             New ticket
           </button>
+          {!isPresentation && <button className="tb-icon-btn" onClick={() => handleLogout()} title="Sign out" aria-label="Sign out">Sign out</button>}
         </div>
       </header>
 

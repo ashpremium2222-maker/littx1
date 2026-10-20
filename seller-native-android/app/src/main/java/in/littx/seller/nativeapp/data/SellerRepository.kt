@@ -16,7 +16,9 @@ class SellerRepository(private val store: SecureSessionStore) {
         val configured = BuildConfig.SELLER_API_BASE_URL
         require(configured.startsWith("https://")) { "A production seller API must be configured with an HTTPS URL." }
         val logger = HttpLoggingInterceptor().apply { level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE }
-        val client = OkHttpClient.Builder().addInterceptor(logger).connectTimeout(15, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).build()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            chain.proceed(chain.request().newBuilder().header("X-Stageway-Client", "native-seller").build())
+        }.addInterceptor(logger).connectTimeout(15, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS).build()
         Retrofit.Builder().baseUrl("${configured.trimEnd('/')}/").client(client).addConverterFactory(GsonConverterFactory.create()).build().create(SellerApi::class.java)
     }
     suspend fun beginLogin(password: String) = api.loginStepOne(LoginStepOneRequest(password))

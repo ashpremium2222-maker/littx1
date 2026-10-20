@@ -388,6 +388,26 @@ export default function SellerPortalApp() {
   }
   void handleEventChange
 
+  const handleLogout = async () => {
+    const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
+    try {
+      await fetch('/api/seller/logout', {
+        method: 'POST',
+        headers: activeToken ? { 'x-seller-token': activeToken } : {},
+      })
+    } catch {
+      // Always clear local UI state; the server session remains bounded by its
+      // existing 12-hour expiry if the device cannot reach the API to revoke it.
+    } finally {
+      localStorage.removeItem('littx_seller_token')
+      sessionStorage.removeItem('littx_seller_token')
+      localStorage.removeItem('littx_seller_partner')
+      sessionStorage.removeItem('littx_seller_partner')
+      setToken(null)
+      setAuthenticatedPartner(null)
+    }
+  }
+
   const handleGenerateTicket = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name || !email) {
@@ -545,7 +565,7 @@ export default function SellerPortalApp() {
     )
   }
 
-  // AUTHENTICATED SELLER PORTAL — NO LOGOUT BUTTON ANYWHERE (PER SPEC)
+  // AUTHENTICATED SELLER PORTAL
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* Header */}
@@ -569,6 +589,9 @@ export default function SellerPortalApp() {
               <span className="font-mono text-violet-400">{authenticatedPartner.registeredDeviceId || 'Passkey Device'}</span>
             </div>
           )}
+          <button type="button" onClick={handleLogout} className="text-xs font-semibold text-slate-300 hover:text-white border border-slate-700 rounded-lg px-3 py-2">
+            Sign out
+          </button>
         </div>
       </header>
 

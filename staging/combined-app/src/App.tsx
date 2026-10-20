@@ -189,9 +189,30 @@ function DirectScannerGate() {
     }
   }
 
+  async function handleLogout() {
+    const token = sessionStorage.getItem('littx_scanner_token') || ''
+    try {
+      await fetch('/api/scanner-logout', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+    } catch {
+      // Local access is cleared even when revocation cannot reach the server;
+      // the server-side scanner session still expires within 12 hours.
+    } finally {
+      sessionStorage.removeItem('littx_scanner_token')
+      setAuth(false)
+    }
+  }
+
   if (checking) return <div style={{ minHeight: '100vh', background: '#0D0D0D' }} />
   if (auth) {
-    return <LittixApp forceScanner={true} />
+    return <>
+      <button type="button" onClick={handleLogout} style={{ position: 'fixed', right: 14, top: 12, zIndex: 1000, padding: '8px 12px', borderRadius: 8, border: '1px solid #444', color: '#fff', background: '#171717', fontWeight: 700 }}>
+        Sign out
+      </button>
+      <LittixApp forceScanner={true} />
+    </>
   }
 
   return (
@@ -246,6 +267,10 @@ function PasswordGateApp() {
       sessionStorage.setItem('littx_token', data.token)
       sessionStorage.setItem('littx_user', JSON.stringify(data.user))
       sessionStorage.setItem('tickets_auth', 'true')
+      if (data.cookieSession) {
+        sessionStorage.removeItem('ft_admin_key')
+        localStorage.removeItem('ft_admin_key')
+      }
       setAuth(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in.')

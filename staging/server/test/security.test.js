@@ -8,12 +8,16 @@ const { TICKETS_DIR } = require('../ticket');
 const { issueCustomerTicketToken } = require('../ticket-access');
 
 process.env.NODE_ENV = 'test';
+// Keep this isolated suite independent from any developer/staging auth flags.
+process.env.SESSION_COOKIE_AUTH_ENABLED = 'false';
+process.env.SESSION_BEARER_CUTOFF_AT = '';
 process.env.SCANNER_SESSION_SECRET = 'test-only-session-secret-with-more-than-32-characters';
 process.env.SCANNER_PASSWORD = 'test-scanner-password-123';
 process.env.SCANNER_EVENT_NAMES = 'DHOLIDA GARBA ROYALE';
 process.env.SCANNER_COMPANY_ID = 'littlane';
 process.env.RAZORPAY_WEBHOOK_SECRET = 'test-webhook-secret';
 process.env.PRESENTATION_KEY = 'test-presentation-secret';
+process.env.ADMIN_KEY = 'test-legacy-admin-key';
 process.env.LITTX_MOCK_SALES_FILE = path.join(os.tmpdir(), `littx-security-test-sales-${process.pid}-${crypto.randomUUID()}.json`);
 
 const db = require('../db');
@@ -163,6 +167,8 @@ test('verified ticket PDF access requires an unexpired token bound to ticket and
 test('OTP recovery ticket view and resend reject missing, wrong-purpose, wrong-ticket, and expired tokens', async () => {
     const secret = process.env.BOOKING_OTP_SECRET || 'test-only-booking-otp-secret-with-more-than-32-characters';
     process.env.BOOKING_OTP_SECRET = secret;
+    const priorCookieMode = process.env.SESSION_COOKIE_AUTH_ENABLED;
+    const priorCutoff = process.env.SESSION_BEARER_CUTOFF_AT;
     const orderId = `security-ticket-scopes-${Date.now()}`;
     const ticketId = `DGR-${crypto.randomUUID()}`;
     const email = 'scoped-customer@example.test';
@@ -189,14 +195,23 @@ test('OTP recovery ticket view and resend reject missing, wrong-purpose, wrong-t
         const expiredResponse = await fetch(`${baseUrl}/api/customer/bookings/ticket-view`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${expired}` }, body: JSON.stringify({ ticketId }) });
         assert.equal(expiredResponse.status, 401);
 
+        process.env.SESSION_COOKIE_AUTH_ENABLED = 'true';
+        process.env.SESSION_BEARER_CUTOFF_AT = new Date(Date.now() + 60 * 60 * 1000).toISOString();
         const viewToken = issueCustomerTicketToken({ ticketId, email, secret, purpose: 'customer_ticket_view' });
-        const viewed = await fetch(`${baseUrl}/api/customer/bookings/ticket-view`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${viewToken}` }, body: JSON.stringify({ ticketId }) });
+        const viewed = await fetch(`${baseUrl}/api/customer/bookings/ticket-view`, {
+            method: 'POST', headers: {
+                'Content-Type': 'application/json', Authorization: `Bearer ${viewToken}`,
+                Cookie: 'stageway_user_session=unrelated-session; stageway_csrf=unrelated-csrf',
+            }, body: JSON.stringify({ ticketId }),
+        });
         assert.equal(viewed.status, 200);
         const body = await viewed.json();
         assert.equal(body.ticket.quantity, 3);
         assert.equal(body.ticket.ticketId, ticketId);
         assert.match(viewed.headers.get('cache-control') || '', /no-store/);
     } finally {
+        if (priorCookieMode === undefined) delete process.env.SESSION_COOKIE_AUTH_ENABLED; else process.env.SESSION_COOKIE_AUTH_ENABLED = priorCookieMode;
+        if (priorCutoff === undefined) delete process.env.SESSION_BEARER_CUTOFF_AT; else process.env.SESSION_BEARER_CUTOFF_AT = priorCutoff;
         await db.deleteSaleRecord(orderId);
     }
 });
@@ -320,6 +335,195 @@ test('master routes reject insufficient roles and expired persisted sessions', a
     const expired = await fetch(`${baseUrl}/api/master/companies`, { headers: { 'x-auth-token': expiredToken } });
     assert.equal(expired.status, 401);
     await db.deleteUserSession('test-expired-admin');
+});
+
+test('browser cookie login rotates the single active session, enforces CSRF, and logout revokes it', async () => {
+    const old = {
+        enabled: process.env.SESSION_COOKIE_AUTH_ENABLED,
+        cutoff: process.env.SESSION_BEARER_CUTOFF_AT,
+        adminKey: process.env.PORTAL_ADMIN_KEY,
+    };
+    process.env.SESSION_COOKIE_AUTH_ENABLED = 'true';
+    process.env.SESSION_BEARER_CUTOFF_AT = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    process.env.PORTAL_ADMIN_KEY = 'test-cookie-admin-key';
+    const origin = 'http://localhost:5173';
+    const login = async () => fetch(`${baseUrl}/api/portal-auth/login`, {
+        method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ portal: 'admin', password: process.env.PORTAL_ADMIN_KEY }),
+    });
+    const cookiePairs = response => (response.headers.getSetCookie?.() || [response.headers.get('set-cookie') || ''])
+        .filter(Boolean).map(value => value.split(';', 1)[0]);
+    const cookieValue = (pairs, name) => pairs.find(value => value.startsWith(`${name}=`))?.slice(name.length + 1);
+    try {
+        const first = await login();
+        assert.equal(first.status, 200);
+        const firstBody = await first.json();
+        assert.equal(firstBody.cookieSession, true);
+        assert.equal(firstBody.token, 'stageway-cookie-session');
+        const firstPairs = cookiePairs(first);
+        const firstAuth = cookieValue(firstPairs, 'stageway_user_session');
+        const firstCsrf = cookieValue(firstPairs, 'stageway_csrf');
+        assert.ok(firstAuth);
+        assert.ok(firstCsrf);
+        const firstCookie = `stageway_user_session=${firstAuth}; stageway_csrf=${firstCsrf}`;
+
+        const allowed = await fetch(`${baseUrl}/api/master/companies`, {
+            headers: { Cookie: firstCookie, 'x-auth-token': firstBody.token },
+        });
+        assert.equal(allowed.status, 200);
+
+        const second = await login();
+        assert.equal(second.status, 200);
+        const secondBody = await second.json();
+        const secondPairs = cookiePairs(second);
+        const secondAuth = cookieValue(secondPairs, 'stageway_user_session');
+        const secondCsrf = cookieValue(secondPairs, 'stageway_csrf');
+        assert.ok(secondAuth);
+        assert.notEqual(secondAuth, firstAuth);
+
+        const activeSession = await db.getUserSession('portal-admin-key');
+        const conflicting = await fetch(`${baseUrl}/api/master/companies`, {
+            headers: { Cookie: firstCookie, 'x-auth-token': activeSession.token },
+        });
+        assert.equal(conflicting.status, 401);
+
+        const stale = await fetch(`${baseUrl}/api/master/companies`, {
+            headers: { Cookie: firstCookie, 'x-auth-token': firstBody.token },
+        });
+        assert.equal(stale.status, 401);
+
+        const secondCookie = `stageway_user_session=${secondAuth}; stageway_csrf=${secondCsrf}`;
+        const currentSession = await db.getUserSession('portal-admin-key');
+        await db.setUserSession('portal-admin-key', { ...currentSession, loginAt: new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString() });
+        const expired = await fetch(`${baseUrl}/api/master/companies`, {
+            headers: { Cookie: secondCookie, 'x-auth-token': secondBody.token },
+        });
+        assert.equal(expired.status, 401);
+        await db.setUserSession('portal-admin-key', currentSession);
+
+        const csrfDenied = await fetch(`${baseUrl}/api/auth/logout`, {
+            method: 'POST', headers: { Origin: origin, Cookie: secondCookie, 'x-auth-token': secondBody.token },
+        });
+        assert.equal(csrfDenied.status, 403);
+
+        const loggedOut = await fetch(`${baseUrl}/api/auth/logout`, {
+            method: 'POST', headers: { Origin: origin, Cookie: secondCookie, 'x-auth-token': secondBody.token, 'x-csrf-token': secondCsrf },
+        });
+        assert.equal(loggedOut.status, 200);
+        const revoked = await fetch(`${baseUrl}/api/master/companies`, {
+            headers: { Cookie: secondCookie, 'x-auth-token': secondBody.token },
+        });
+        assert.equal(revoked.status, 401);
+    } finally {
+        await db.deleteUserSession('portal-admin-key');
+        if (old.enabled === undefined) delete process.env.SESSION_COOKIE_AUTH_ENABLED; else process.env.SESSION_COOKIE_AUTH_ENABLED = old.enabled;
+        if (old.cutoff === undefined) delete process.env.SESSION_BEARER_CUTOFF_AT; else process.env.SESSION_BEARER_CUTOFF_AT = old.cutoff;
+        if (old.adminKey === undefined) delete process.env.PORTAL_ADMIN_KEY; else process.env.PORTAL_ADMIN_KEY = old.adminKey;
+    }
+});
+
+test('native scanner sessions remain revocable and expire independently after the browser bearer cutoff', async () => {
+    const old = {
+        enabled: process.env.SESSION_COOKIE_AUTH_ENABLED,
+        cutoff: process.env.SESSION_BEARER_CUTOFF_AT,
+        portalAdmin: process.env.PORTAL_ADMIN_KEY,
+    };
+    process.env.SESSION_COOKIE_AUTH_ENABLED = 'true';
+    process.env.SESSION_BEARER_CUTOFF_AT = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    let scannerUserId;
+    const previousSellerSession = await db.getSellerSession('littlane');
+    const nativeSellerToken = `test-native-seller-${crypto.randomUUID()}`;
+    try {
+        const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Stageway-Client': 'native-scanner' },
+            body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
+        });
+        assert.equal(login.status, 200);
+        const { token } = await login.json();
+        assert.ok(token);
+        const session = await db.getUserSessionByToken(token);
+        scannerUserId = session.userId;
+        assert.equal(session.clientKind, 'native');
+        assert.ok(new Date(session.expiresAt).getTime() <= Date.now() + 12 * 60 * 60 * 1000);
+
+        process.env.SESSION_BEARER_CUTOFF_AT = new Date(Date.now() - 1_000).toISOString();
+        const stats = await fetch(`${baseUrl}/api/scan-stats`, {
+            headers: { Authorization: `Bearer ${token}`, 'X-Stageway-Client': 'native-scanner' },
+        });
+        assert.equal(stats.status, 200);
+
+        await db.setSellerSession('littlane', { token: nativeSellerToken, loginAt: new Date().toISOString(), clientKind: 'native' });
+        const nativeSellerVerified = await fetch(`${baseUrl}/api/seller/verify`, {
+            headers: { 'x-seller-token': nativeSellerToken, 'X-Stageway-Client': 'native-seller' },
+        });
+        assert.equal(nativeSellerVerified.status, 200);
+        const nativeSellerLogout = await fetch(`${baseUrl}/api/seller/logout`, {
+            method: 'POST', headers: { 'x-seller-token': nativeSellerToken, 'X-Stageway-Client': 'native-seller' },
+        });
+        assert.equal(nativeSellerLogout.status, 200);
+
+        const adminKeyDenied = await fetch(`${baseUrl}/api/master/companies`, { headers: { 'x-admin-key': process.env.ADMIN_KEY } });
+        assert.equal(adminKeyDenied.status, 401);
+
+        process.env.PORTAL_ADMIN_KEY = 'test-post-cutoff-cookie-login';
+        const freshBrowserLogin = await fetch(`${baseUrl}/api/portal-auth/login`, {
+            method: 'POST', headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ portal: 'admin', password: process.env.PORTAL_ADMIN_KEY }),
+        });
+        assert.equal(freshBrowserLogin.status, 200);
+        const freshBrowserBody = await freshBrowserLogin.json();
+        assert.equal(freshBrowserBody.cookieSession, true);
+        const freshCookieParts = (freshBrowserLogin.headers.getSetCookie?.() || [freshBrowserLogin.headers.get('set-cookie') || ''])
+            .filter(Boolean).map(value => value.split(';', 1)[0]);
+        const freshCookie = freshCookieParts.join('; ');
+        process.env.SESSION_COOKIE_AUTH_ENABLED = 'false';
+        const rollbackMarkerDenied = await fetch(`${baseUrl}/api/master/companies`, {
+            headers: { Cookie: freshCookie, 'x-auth-token': freshBrowserBody.token },
+        });
+        assert.equal(rollbackMarkerDenied.status, 401);
+        const rollbackAdminKeyDenied = await fetch(`${baseUrl}/api/master/companies`, { headers: { 'x-admin-key': process.env.ADMIN_KEY } });
+        assert.equal(rollbackAdminKeyDenied.status, 401);
+
+        const loggedOut = await fetch(`${baseUrl}/api/scanner-logout`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'X-Stageway-Client': 'native-scanner' },
+        });
+        assert.equal(loggedOut.status, 200);
+        const revoked = await fetch(`${baseUrl}/api/scan-stats`, {
+            headers: { Authorization: `Bearer ${token}`, 'X-Stageway-Client': 'native-scanner' },
+        });
+        assert.equal(revoked.status, 401);
+    } finally {
+        if (scannerUserId) await db.deleteUserSession(scannerUserId);
+        if (previousSellerSession) await db.setSellerSession('littlane', previousSellerSession);
+        else await db.deleteSellerSession('littlane');
+        if (old.enabled === undefined) delete process.env.SESSION_COOKIE_AUTH_ENABLED; else process.env.SESSION_COOKIE_AUTH_ENABLED = old.enabled;
+        if (old.cutoff === undefined) delete process.env.SESSION_BEARER_CUTOFF_AT; else process.env.SESSION_BEARER_CUTOFF_AT = old.cutoff;
+        await db.deleteUserSession('portal-admin-key');
+        if (old.portalAdmin === undefined) delete process.env.PORTAL_ADMIN_KEY; else process.env.PORTAL_ADMIN_KEY = old.portalAdmin;
+    }
+});
+
+test('cookie attributes are host-only and production-safe', () => {
+    const auth = require('../session-cookie-auth');
+    const previousMode = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+        const response = { headers: {}, getHeader(name) { return this.headers[name]; }, setHeader(name, value) { this.headers[name] = value; }, set() {} };
+        auth.setSessionCookies(response, 'user', 'opaque-session-secret', new Date(Date.now() + 60_000));
+        const values = response.headers['Set-Cookie'];
+        assert.equal(values.length, 2);
+        assert.match(values[0], /^__Host-stageway_user_session=/);
+        assert.match(values[0], /; Path=\//);
+        assert.match(values[0], /; HttpOnly/);
+        assert.match(values[0], /; Secure/);
+        assert.match(values[0], /; SameSite=Lax/);
+        assert.doesNotMatch(values[0], /; Domain=/i);
+        assert.match(values[1], /^__Host-stageway_csrf=/);
+        assert.doesNotMatch(values[1], /; HttpOnly/);
+        assert.match(values[1], /; Secure/);
+    } finally {
+        process.env.NODE_ENV = previousMode;
+    }
 });
 
 test('master overview reports verified channel and admission totals without exposing audit values', async () => {
@@ -635,10 +839,13 @@ test('cancelled tickets are rejected by the scanner without changing their statu
         const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
         });
+        assert.equal(login.status, 200);
         const { token } = await login.json();
+        assert.ok(token);
         const response = await fetch(`${baseUrl}/api/scan-ticket`, {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ticketId }),
         });
+        assert.equal(response.status, 200, await response.clone().text());
         const result = await response.json();
         assert.equal(result.result, 'rejected');
         assert.equal(result.ticket.status, 'cancelled');
@@ -657,11 +864,14 @@ test('unissued offline order requires manual review and remains unchanged when s
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
         });
+        assert.equal(login.status, 200);
         const { token } = await login.json();
+        assert.ok(token);
         const response = await fetch(`${baseUrl}/api/scan-ticket`, {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ ticketId }),
         });
+        assert.equal(response.status, 200, await response.clone().text());
         const result = await response.json();
         assert.equal(result.result, 'manual_review');
         assert.match(result.message, /manual review/i);

@@ -648,6 +648,8 @@ export default function PRApp() {
   })
 
   function handleLogout() {
+    const token = sessionStorage.getItem('pr_token') || ''
+    void fetch('/api/auth/logout', { method: 'POST', headers: { 'x-auth-token': token } }).catch(() => {})
     sessionStorage.removeItem('pr_user')
     sessionStorage.removeItem('pr_token')
     setPrUser(null)

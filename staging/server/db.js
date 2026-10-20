@@ -162,7 +162,8 @@ const SellerSessionSchema = new mongoose.Schema({
     sellerId: { type: String, required: true, unique: true },
     token: { type: String, required: true },
     loginAt: { type: String },
-    ip: { type: String }
+    ip: { type: String },
+    clientKind: { type: String, enum: ['browser', 'native'] }
 });
 
 // ==================== SCAN LOG SCHEMA ====================
@@ -196,7 +197,10 @@ const UserSessionSchema = new mongoose.Schema({
     loginAt: { type: String },
     role: { type: String },
     companyId: { type: String },
-    displayName: { type: String }
+    displayName: { type: String },
+    eventNames: [{ type: String }],
+    expiresAt: { type: Date },
+    clientKind: { type: String, enum: ['browser', 'native'] }
 });
 
 const SaleSchema = new mongoose.Schema({

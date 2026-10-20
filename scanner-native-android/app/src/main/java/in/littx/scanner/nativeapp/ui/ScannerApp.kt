@@ -95,12 +95,12 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
         val latest = model.state.latest
         when {
             latest != null -> ResultScreen(latest, model.state.error, onNext = { model.clearLatest(); screen = Screen.SCAN }, onDetails = { selected = latest; model.clearLatest(); screen = Screen.DETAIL })
-            screen == Screen.HOME -> HomeScreen(model.state, onScan = { screen = Screen.SCAN }, onHistory = { screen = Screen.HISTORY })
+            screen == Screen.HOME -> HomeScreen(model.state, onScan = { screen = Screen.SCAN }, onHistory = { screen = Screen.HISTORY }, onLogout = model::logout)
             screen == Screen.SCAN -> ScanScreen(model.state.loading, onBack = { screen = Screen.HOME }, onManual = { screen = Screen.MANUAL }, onCode = model::scan)
             screen == Screen.MANUAL -> ManualScreen(onBack = { screen = Screen.SCAN }, onCode = model::scan, loading = model.state.loading)
             screen == Screen.HISTORY -> HistoryScreen(model.state.history, onBack = { screen = Screen.HOME }) { selected = it; screen = Screen.DETAIL }
             screen == Screen.DETAIL && selected != null -> DetailScreen(selected!!, onBack = { screen = Screen.HISTORY })
-            else -> HomeScreen(model.state, onScan = { screen = Screen.SCAN }, onHistory = { screen = Screen.HISTORY })
+            else -> HomeScreen(model.state, onScan = { screen = Screen.SCAN }, onHistory = { screen = Screen.HISTORY }, onLogout = model::logout)
         }
     }
 }
@@ -132,7 +132,7 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
     }
 }
 
-@Composable private fun HomeScreen(state: ScannerState, onScan: () -> Unit, onHistory: () -> Unit) {
+@Composable private fun HomeScreen(state: ScannerState, onScan: () -> Unit, onHistory: () -> Unit, onLogout: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFFF8F8FF), Color(0xFFF1F5FF), canvas)))) {
         LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             item {
@@ -141,6 +141,7 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
                         Text("LITTX", color = ink, fontSize = 29.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                         Text("EVENT SCANNER", color = muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.8.sp)
                     }
+                    TextButton(onClick = onLogout) { Text("Sign out", color = blue, fontWeight = FontWeight.Bold) }
                     Row(Modifier.clip(CircleShape).background(Color.White.copy(.8f)).border(1.dp, Color.White, CircleShape).padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(7.dp).background(green, CircleShape)); Text("GATE ACTIVE", color = ink, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp, modifier = Modifier.padding(start = 7.dp))
                     }

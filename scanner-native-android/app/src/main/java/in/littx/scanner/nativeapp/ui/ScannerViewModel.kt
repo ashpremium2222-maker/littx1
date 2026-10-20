@@ -148,6 +148,12 @@ class ScannerViewModel(context: Context) : ViewModel() {
             state = state.copy(statsLoading = false, statsError = true)
         }
     }
+    fun logout() = viewModelScope.launch {
+        val token = prefs.getString("token", null)
+        if (!token.isNullOrBlank()) runCatching { repository.logout(token) }
+        prefs.edit().remove("token").apply()
+        state = state.copy(authenticated = false, latest = null, error = null)
+    }
     fun setScannerName(name: String) { if (name.isNotBlank()) { prefs.edit().putString("name", name.trim()).apply(); state = state.copy(scannerName = name.trim()) } }
     fun clearLatest() { state = state.copy(latest = null, error = null) }
     fun dismissUpdate() { state = state.copy(update = null) }

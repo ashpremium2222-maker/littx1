@@ -46,6 +46,10 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
       localStorage.removeItem('littx_token')
       sessionStorage.setItem('littx_user', JSON.stringify(session))
       sessionStorage.setItem('littx_token', data.token)
+      if (data.cookieSession) {
+        sessionStorage.removeItem('ft_admin_key')
+        localStorage.removeItem('ft_admin_key')
+      }
       setPassword('')
       onLoginSuccess(session)
     } catch (err: any) {
