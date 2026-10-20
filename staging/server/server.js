@@ -5,7 +5,11 @@ const os = require('os');
 const crypto = require('crypto');
 const { toMinorUnits, fromMinorUnits, expectedSaleAmountMinor, verifyRazorpaySignature, reconcileCapturedPayment, normalizePaymentStatus } = require('./booking-payment');
 const { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } = require('@simplewebauthn/server');
-require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
+// Test runs are bootstrapped with an explicit isolated environment. Never load
+// a developer's server .env while NODE_ENV=test.
+if (process.env.NODE_ENV !== 'test') {
+    require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
+}
 
 // WebAuthn state for Sellers
 const rpName = 'Littx Seller Portal';
@@ -476,6 +480,13 @@ function sessionCookieModeEnabled() {
     return process.env.SESSION_COOKIE_AUTH_ENABLED === 'true';
 }
 
+function sessionBearerCutoffEnforcementState() {
+    const configured = process.env.SESSION_BEARER_CUTOFF_ENFORCED;
+    if (configured === undefined || configured === 'false') return false;
+    if (configured === 'true') return true;
+    return null;
+}
+
 function sessionBearerCutoffMs() {
     const raw = process.env.SESSION_BEARER_CUTOFF_AT;
     if (!raw) return null;
@@ -504,9 +515,21 @@ function secureCookieRequest(req) {
 }
 
 function browserSessionLoginGuard(req, res, next) {
-    if (!sessionCookieModeEnabled()) return next();
+    const nativeSellerLogin = req.get('x-stageway-client') === 'native-seller'
+        && ['/api/seller/login-step1', '/api/seller/login-step2'].includes(req.path);
+    if (nativeSellerLogin) return next();
+
+    const cookieMode = sessionCookieModeEnabled();
+    const cutoffEnforced = sessionBearerCutoffEnforcementState();
+    if (cutoffEnforced === null || (cookieMode && !cutoffEnforced)) {
+        return res.status(503).json({ success: false, message: 'Authentication rollout configuration is invalid.' });
+    }
+    if (cutoffEnforced) {
+        if (!sessionBearerCutoffMs()) return res.status(503).json({ success: false, message: 'A valid session compatibility cutoff is required.' });
+        if (!cookieMode) return res.status(503).json({ success: false, message: 'Browser sign-in requires cookie authentication after rollout activation.' });
+    }
+    if (!cookieMode) return next();
     if (!req.get('origin')) {
-        if (req.get('x-stageway-client') === 'native-seller' && ['/api/seller/login-step1', '/api/seller/login-step2'].includes(req.path)) return next();
         return res.status(403).json({ success: false, message: 'Browser login requires an Origin header.' });
     }
     if (!trustedOrigins.has(req.get('origin'))) return res.status(403).json({ success: false, message: 'Request origin is not allowed.' });
@@ -598,30 +621,40 @@ async function cookieSessionCompatibilityMiddleware(req, res, next) {
             }
             req.cookieSessionFamily = cookieAuth;
         }
-
-        const cutoff = sessionBearerCutoffMs();
-        if (!cutoff && supplied.length) return res.status(503).json({ success: false, message: 'Session compatibility cutoff is not configured.' });
     }
 
-    // Enforce the configured cutoff even if cookie mode is rolled back. This
-    // prevents rollback from restoring an indefinite static/bearer fallback.
+    const cookieAuth = familyFromMarker || cookieCandidates[0]?.family || null;
+    const hasPanelCredential = supplied.length > 0 || Boolean(cookieAuth);
+    const cookieMode = sessionCookieModeEnabled();
+    const cutoffEnforced = sessionBearerCutoffEnforcementState();
     const cutoff = sessionBearerCutoffMs();
-    if (!isLoginOrRecovery && cutoff && Date.now() >= cutoff && supplied.length) {
+
+    // Cookie mode cannot be enabled without an explicit rollout latch. The
+    // latch survives feature-flag rollback; a future timestamp alone does not
+    // activate the cutoff policy.
+    if (!isLoginOrRecovery && hasPanelCredential
+        && (cutoffEnforced === null || (cookieMode && !cutoffEnforced))) {
+        return res.status(503).json({ success: false, message: 'Authentication rollout configuration is invalid.' });
+    }
+
+    let nativeSession = false;
+    if (!isLoginOrRecovery && hasPanelCredential && cutoffEnforced === true) {
         const clientKind = req.get('x-stageway-client');
-        let nativeSession = false;
-        const scannerCredential = supplied.find(item => item.family === 'scanner');
-        const sellerCredential = supplied.find(item => item.family === 'seller');
-        if (clientKind === 'native-scanner' && scannerCredential) {
-            const token = scannerCredential.value;
+        const singleCredential = supplied.length === 1 && !cookieAuth ? supplied[0] : null;
+        if (clientKind === 'native-scanner' && singleCredential?.family === 'scanner') {
+            const token = singleCredential.value;
             const scanner = await db.getUserSessionByToken(token).catch(() => null);
             nativeSession = scanner?.role === 'scanner' && scanner.clientKind === 'native' && isValidUserSession(scanner, token);
-        } else if (clientKind === 'native-seller' && sellerCredential) {
-            const token = sellerCredential.value;
+        } else if (clientKind === 'native-seller' && singleCredential?.family === 'seller') {
+            const token = singleCredential.value;
             const sessions = await db.getAllSellerSessions().catch(() => []);
             const seller = sessions.find(item => timingSafeEqualText(item.token, token));
             nativeSession = seller?.clientKind === 'native' && isValidSellerSession(seller, token);
         }
-        if (!nativeSession) return res.status(401).json({ success: false, message: 'Legacy browser authentication has expired. Sign in again.' });
+        if (!cutoff && !nativeSession) return res.status(503).json({ success: false, message: 'Session cutoff is missing or invalid.' });
+        if (cutoff && Date.now() >= cutoff && supplied.length && !nativeSession) {
+            return res.status(401).json({ success: false, message: 'Legacy browser authentication has expired. Sign in again.' });
+        }
     }
     next();
 }

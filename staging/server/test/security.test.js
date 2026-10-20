@@ -11,6 +11,7 @@ process.env.NODE_ENV = 'test';
 // Keep this isolated suite independent from any developer/staging auth flags.
 process.env.SESSION_COOKIE_AUTH_ENABLED = 'false';
 process.env.SESSION_BEARER_CUTOFF_AT = '';
+process.env.SESSION_BEARER_CUTOFF_ENFORCED = 'false';
 process.env.SCANNER_SESSION_SECRET = 'test-only-session-secret-with-more-than-32-characters';
 process.env.SCANNER_PASSWORD = 'test-scanner-password-123';
 process.env.SCANNER_EVENT_NAMES = 'DHOLIDA GARBA ROYALE';
@@ -24,8 +25,17 @@ const db = require('../db');
 const app = require('../server');
 let server;
 let baseUrl;
+let scannerTestIp = 1;
+
+function scannerAppLogin(password = process.env.SCANNER_PASSWORD, clientKind = null) {
+    const headers = { 'Content-Type': 'application/json', 'X-Forwarded-For': `192.0.2.${scannerTestIp++}` };
+    if (clientKind) headers['X-Stageway-Client'] = clientKind;
+    return fetch(`${baseUrl}/api/scanner-app-session`, { method: 'POST', headers, body: JSON.stringify({ password }) });
+}
 
 before(async () => {
+    // Give each synthetic scanner login an isolated rate-limit identity.
+    app.set('trust proxy', 1);
     server = app.listen(0);
     await new Promise(resolve => server.once('listening', resolve));
     baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -40,9 +50,7 @@ test('native scanner session fails closed when scanner password is not configure
     const configured = process.env.SCANNER_PASSWORD;
     delete process.env.SCANNER_PASSWORD;
     try {
-        const response = await fetch(`${baseUrl}/api/scanner-app-session`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: configured }),
-        });
+        const response = await scannerAppLogin(configured);
         assert.equal(response.status, 503);
         assert.equal((await response.json()).success, false);
     } finally {
@@ -51,17 +59,13 @@ test('native scanner session fails closed when scanner password is not configure
 });
 
 test('native scanner requires the configured password and valid session for scan totals', async () => {
-    const denied = await fetch(`${baseUrl}/api/scanner-app-session`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'wrong-password' }),
-    });
+    const denied = await scannerAppLogin('wrong-password');
     assert.equal(denied.status, 401);
 
     const unauthenticatedStats = await fetch(`${baseUrl}/api/scan-stats`);
     assert.equal(unauthenticatedStats.status, 401);
 
-    const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
-    });
+    const login = await scannerAppLogin();
     assert.equal(login.status, 200);
     const session = await login.json();
     assert.equal(session.success, true);
@@ -169,6 +173,7 @@ test('OTP recovery ticket view and resend reject missing, wrong-purpose, wrong-t
     process.env.BOOKING_OTP_SECRET = secret;
     const priorCookieMode = process.env.SESSION_COOKIE_AUTH_ENABLED;
     const priorCutoff = process.env.SESSION_BEARER_CUTOFF_AT;
+    const priorCutoffEnforced = process.env.SESSION_BEARER_CUTOFF_ENFORCED;
     const orderId = `security-ticket-scopes-${Date.now()}`;
     const ticketId = `DGR-${crypto.randomUUID()}`;
     const email = 'scoped-customer@example.test';
@@ -196,7 +201,8 @@ test('OTP recovery ticket view and resend reject missing, wrong-purpose, wrong-t
         assert.equal(expiredResponse.status, 401);
 
         process.env.SESSION_COOKIE_AUTH_ENABLED = 'true';
-        process.env.SESSION_BEARER_CUTOFF_AT = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        process.env.SESSION_BEARER_CUTOFF_AT = new Date(Date.now() - 1_000).toISOString();
+        process.env.SESSION_BEARER_CUTOFF_ENFORCED = 'true';
         const viewToken = issueCustomerTicketToken({ ticketId, email, secret, purpose: 'customer_ticket_view' });
         const viewed = await fetch(`${baseUrl}/api/customer/bookings/ticket-view`, {
             method: 'POST', headers: {
@@ -212,6 +218,7 @@ test('OTP recovery ticket view and resend reject missing, wrong-purpose, wrong-t
     } finally {
         if (priorCookieMode === undefined) delete process.env.SESSION_COOKIE_AUTH_ENABLED; else process.env.SESSION_COOKIE_AUTH_ENABLED = priorCookieMode;
         if (priorCutoff === undefined) delete process.env.SESSION_BEARER_CUTOFF_AT; else process.env.SESSION_BEARER_CUTOFF_AT = priorCutoff;
+        if (priorCutoffEnforced === undefined) delete process.env.SESSION_BEARER_CUTOFF_ENFORCED; else process.env.SESSION_BEARER_CUTOFF_ENFORCED = priorCutoffEnforced;
         await db.deleteSaleRecord(orderId);
     }
 });
@@ -341,10 +348,12 @@ test('browser cookie login rotates the single active session, enforces CSRF, and
     const old = {
         enabled: process.env.SESSION_COOKIE_AUTH_ENABLED,
         cutoff: process.env.SESSION_BEARER_CUTOFF_AT,
+        cutoffEnforced: process.env.SESSION_BEARER_CUTOFF_ENFORCED,
         adminKey: process.env.PORTAL_ADMIN_KEY,
     };
     process.env.SESSION_COOKIE_AUTH_ENABLED = 'true';
     process.env.SESSION_BEARER_CUTOFF_AT = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    process.env.SESSION_BEARER_CUTOFF_ENFORCED = 'true';
     process.env.PORTAL_ADMIN_KEY = 'test-cookie-admin-key';
     const origin = 'http://localhost:5173';
     const login = async () => fetch(`${baseUrl}/api/portal-auth/login`, {
@@ -433,7 +442,93 @@ test('browser cookie login rotates the single active session, enforces CSRF, and
         await db.deleteUserSession('portal-admin-key');
         if (old.enabled === undefined) delete process.env.SESSION_COOKIE_AUTH_ENABLED; else process.env.SESSION_COOKIE_AUTH_ENABLED = old.enabled;
         if (old.cutoff === undefined) delete process.env.SESSION_BEARER_CUTOFF_AT; else process.env.SESSION_BEARER_CUTOFF_AT = old.cutoff;
+        if (old.cutoffEnforced === undefined) delete process.env.SESSION_BEARER_CUTOFF_ENFORCED; else process.env.SESSION_BEARER_CUTOFF_ENFORCED = old.cutoffEnforced;
         if (old.adminKey === undefined) delete process.env.PORTAL_ADMIN_KEY; else process.env.PORTAL_ADMIN_KEY = old.adminKey;
+    }
+});
+
+test('browser bearer and static admin-key cutoff requires an explicit latch and fails closed when active policy is invalid', async () => {
+    const old = {
+        enabled: process.env.SESSION_COOKIE_AUTH_ENABLED,
+        cutoff: process.env.SESSION_BEARER_CUTOFF_AT,
+        enforced: process.env.SESSION_BEARER_CUTOFF_ENFORCED,
+    };
+    const userId = `cutoff-policy-${crypto.randomUUID()}`;
+    const bearer = `test-browser-bearer-${crypto.randomUUID()}`;
+    const adminKey = process.env.ADMIN_KEY;
+    await db.setUserSession(userId, { token: bearer, role: 'master_admin', companyId: 'littx', loginAt: new Date().toISOString() });
+    const requestCredential = (header, value, cutoff) => {
+        process.env.SESSION_BEARER_CUTOFF_AT = cutoff;
+        return fetch(`${baseUrl}/api/master/companies`, { headers: { [header]: value } });
+    };
+    try {
+        const unactivatedCutoffs = [
+            ['', 'missing'],
+            ['not-a-date', 'malformed'],
+            [new Date(Date.now() + 60 * 60 * 1000).toISOString(), 'future'],
+            [new Date(Date.now() - 1_000).toISOString(), 'elapsed'],
+        ];
+
+        // A timestamp alone cannot infer rollout activation. Both legacy paths
+        // retain their existing behavior while the explicit latch is off.
+        process.env.SESSION_COOKIE_AUTH_ENABLED = 'false';
+        process.env.SESSION_BEARER_CUTOFF_ENFORCED = 'false';
+        for (const [cutoff, label] of unactivatedCutoffs) {
+            for (const [header, value] of [['x-auth-token', bearer], ['x-admin-key', adminKey]]) {
+                const response = await requestCredential(header, value, cutoff);
+                assert.equal(response.status, 200, `${label} cutoff without activation: ${header}`);
+            }
+        }
+
+        // Cookie mode cannot start without the explicit latch, regardless of
+        // whether its proposed timestamp is missing, malformed, or in future.
+        process.env.SESSION_COOKIE_AUTH_ENABLED = 'true';
+        process.env.SESSION_BEARER_CUTOFF_ENFORCED = 'false';
+        for (const [cutoff, label] of unactivatedCutoffs) {
+            for (const [header, value] of [['x-auth-token', bearer], ['x-admin-key', adminKey]]) {
+                const response = await requestCredential(header, value, cutoff);
+                assert.equal(response.status, 503, `cookie mode without latch, ${label}: ${header}`);
+            }
+        }
+
+        process.env.SESSION_BEARER_CUTOFF_ENFORCED = 'true';
+        const elapsed = new Date(Date.now() - 1_000).toISOString();
+        for (const cookieMode of ['false', 'true']) {
+            process.env.SESSION_COOKIE_AUTH_ENABLED = cookieMode;
+            for (const [cutoff, label, expectedStatus] of [
+                ['', 'missing', 503],
+                ['not-a-date', 'malformed', 503],
+                [new Date(Date.now() + 60 * 60 * 1000).toISOString(), 'future', 200],
+                [elapsed, 'elapsed', 401],
+            ]) {
+                for (const [header, value] of [['x-auth-token', bearer], ['x-admin-key', adminKey]]) {
+                    const response = await requestCredential(header, value, cutoff);
+                    assert.equal(response.status, expectedStatus, `active policy, cookie mode ${cookieMode}, ${label} cutoff: ${header}`);
+                }
+            }
+        }
+
+        // A valid cookie session remains authorized after cutoff. The cookie
+        // value is deliberately test-only and never returned to the client.
+        const cookieToken = `test-cookie-session-${crypto.randomUUID()}`;
+        await db.setUserSession(userId, { token: cookieToken, role: 'master_admin', companyId: 'littx', loginAt: new Date().toISOString() });
+        process.env.SESSION_COOKIE_AUTH_ENABLED = 'true';
+        process.env.SESSION_BEARER_CUTOFF_AT = elapsed;
+        const cookieAfterCutoff = await fetch(`${baseUrl}/api/master/companies`, {
+            headers: { Cookie: `stageway_user_session=${cookieToken}`, 'x-auth-token': 'stageway-cookie-session' },
+        });
+        assert.equal(cookieAfterCutoff.status, 200);
+
+        // An invalid latch value is a configuration error, never an implicit
+        // activation or a permissive fallback.
+        process.env.SESSION_BEARER_CUTOFF_ENFORCED = 'yes';
+        const invalidLatch = await requestCredential('x-admin-key', adminKey, elapsed);
+        assert.equal(invalidLatch.status, 503);
+    } finally {
+        await db.deleteUserSession(userId);
+        if (old.enabled === undefined) delete process.env.SESSION_COOKIE_AUTH_ENABLED; else process.env.SESSION_COOKIE_AUTH_ENABLED = old.enabled;
+        if (old.cutoff === undefined) delete process.env.SESSION_BEARER_CUTOFF_AT; else process.env.SESSION_BEARER_CUTOFF_AT = old.cutoff;
+        if (old.enforced === undefined) delete process.env.SESSION_BEARER_CUTOFF_ENFORCED; else process.env.SESSION_BEARER_CUTOFF_ENFORCED = old.enforced;
     }
 });
 
@@ -441,18 +536,17 @@ test('native scanner sessions remain revocable and expire independently after th
     const old = {
         enabled: process.env.SESSION_COOKIE_AUTH_ENABLED,
         cutoff: process.env.SESSION_BEARER_CUTOFF_AT,
+        cutoffEnforced: process.env.SESSION_BEARER_CUTOFF_ENFORCED,
         portalAdmin: process.env.PORTAL_ADMIN_KEY,
     };
     process.env.SESSION_COOKIE_AUTH_ENABLED = 'true';
     process.env.SESSION_BEARER_CUTOFF_AT = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    process.env.SESSION_BEARER_CUTOFF_ENFORCED = 'true';
     let scannerUserId;
     const previousSellerSession = await db.getSellerSession('littlane');
     const nativeSellerToken = `test-native-seller-${crypto.randomUUID()}`;
     try {
-        const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Stageway-Client': 'native-scanner' },
-            body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
-        });
+        const login = await scannerAppLogin(process.env.SCANNER_PASSWORD, 'native-scanner');
         assert.equal(login.status, 200);
         const { token } = await login.json();
         assert.ok(token);
@@ -467,16 +561,28 @@ test('native scanner sessions remain revocable and expire independently after th
         });
         assert.equal(stats.status, 200);
 
+        process.env.SESSION_BEARER_CUTOFF_AT = 'malformed-active-cutoff';
+        const statsWithInvalidBrowserCutoff = await fetch(`${baseUrl}/api/scan-stats`, {
+            headers: { Authorization: `Bearer ${token}`, 'X-Stageway-Client': 'native-scanner' },
+        });
+        assert.equal(statsWithInvalidBrowserCutoff.status, 200);
+
         await db.setSellerSession('littlane', { token: nativeSellerToken, loginAt: new Date().toISOString(), clientKind: 'native' });
         const nativeSellerVerified = await fetch(`${baseUrl}/api/seller/verify`, {
             headers: { 'x-seller-token': nativeSellerToken, 'X-Stageway-Client': 'native-seller' },
         });
         assert.equal(nativeSellerVerified.status, 200);
+        process.env.SESSION_BEARER_CUTOFF_AT = 'malformed-active-cutoff';
+        const nativeSellerWithInvalidBrowserCutoff = await fetch(`${baseUrl}/api/seller/verify`, {
+            headers: { 'x-seller-token': nativeSellerToken, 'X-Stageway-Client': 'native-seller' },
+        });
+        assert.equal(nativeSellerWithInvalidBrowserCutoff.status, 200);
         const nativeSellerLogout = await fetch(`${baseUrl}/api/seller/logout`, {
             method: 'POST', headers: { 'x-seller-token': nativeSellerToken, 'X-Stageway-Client': 'native-seller' },
         });
         assert.equal(nativeSellerLogout.status, 200);
 
+        process.env.SESSION_BEARER_CUTOFF_AT = new Date(Date.now() - 1_000).toISOString();
         const adminKeyDenied = await fetch(`${baseUrl}/api/master/companies`, { headers: { 'x-admin-key': process.env.ADMIN_KEY } });
         assert.equal(adminKeyDenied.status, 401);
         const legacyBearerDenied = await fetch(`${baseUrl}/api/master/companies`, { headers: { 'x-auth-token': 'test-legacy-browser-bearer' } });
@@ -515,6 +621,7 @@ test('native scanner sessions remain revocable and expire independently after th
         else await db.deleteSellerSession('littlane');
         if (old.enabled === undefined) delete process.env.SESSION_COOKIE_AUTH_ENABLED; else process.env.SESSION_COOKIE_AUTH_ENABLED = old.enabled;
         if (old.cutoff === undefined) delete process.env.SESSION_BEARER_CUTOFF_AT; else process.env.SESSION_BEARER_CUTOFF_AT = old.cutoff;
+        if (old.cutoffEnforced === undefined) delete process.env.SESSION_BEARER_CUTOFF_ENFORCED; else process.env.SESSION_BEARER_CUTOFF_ENFORCED = old.cutoffEnforced;
         await db.deleteUserSession('portal-admin-key');
         if (old.portalAdmin === undefined) delete process.env.PORTAL_ADMIN_KEY; else process.env.PORTAL_ADMIN_KEY = old.portalAdmin;
     }
@@ -557,8 +664,10 @@ test('cookie mode fails closed when the bearer cutoff is missing or malformed', 
     const previous = {
         enabled: process.env.SESSION_COOKIE_AUTH_ENABLED,
         cutoff: process.env.SESSION_BEARER_CUTOFF_AT,
+        cutoffEnforced: process.env.SESSION_BEARER_CUTOFF_ENFORCED,
     };
     process.env.SESSION_COOKIE_AUTH_ENABLED = 'true';
+    process.env.SESSION_BEARER_CUTOFF_ENFORCED = 'true';
     try {
         for (const cutoff of ['', 'not-a-date', '2026-10-21', '2026-02-30T12:00:00Z', '2026-10-21T12:00:00+25:00']) {
             process.env.SESSION_BEARER_CUTOFF_AT = cutoff;
@@ -570,6 +679,7 @@ test('cookie mode fails closed when the bearer cutoff is missing or malformed', 
     } finally {
         if (previous.enabled === undefined) delete process.env.SESSION_COOKIE_AUTH_ENABLED; else process.env.SESSION_COOKIE_AUTH_ENABLED = previous.enabled;
         if (previous.cutoff === undefined) delete process.env.SESSION_BEARER_CUTOFF_AT; else process.env.SESSION_BEARER_CUTOFF_AT = previous.cutoff;
+        if (previous.cutoffEnforced === undefined) delete process.env.SESSION_BEARER_CUTOFF_ENFORCED; else process.env.SESSION_BEARER_CUTOFF_ENFORCED = previous.cutoffEnforced;
     }
 });
 
@@ -830,9 +940,7 @@ test('scanner cannot scan an event outside its configured company and event assi
     const ticketId = `DGR-TEST-${Date.now()}`;
     await db.createSaleRecord({ orderId, ticketId, event: 'Unassigned Event', companyId: 'littlane', status: 'paid', name: 'Test Attendee' });
     try {
-        const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
-        });
+        const login = await scannerAppLogin();
         const { token } = await login.json();
         const denied = await fetch(`${baseUrl}/api/scan-ticket`, {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ticketId }),
@@ -853,10 +961,7 @@ test('group ticket scan admits its full admission count once and rejects concurr
         status: 'ticket_generated', name: 'Group Contact', quantity: 1, admissionCount: 5,
     });
     try {
-        const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
-        });
+        const login = await scannerAppLogin();
         const { token } = await login.json();
         const scan = () => fetch(`${baseUrl}/api/scan-ticket`, {
             method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -883,9 +988,7 @@ test('cancelled tickets are rejected by the scanner without changing their statu
     const ticketId = `DGR-CANCELLED-${Date.now()}`;
     await db.createSaleRecord({ orderId, ticketId, event: 'DHOLIDA GARBA ROYALE', companyId: 'littlane', status: 'cancelled', admissionCount: 2, quantity: 1, name: 'Cancelled Buyer' });
     try {
-        const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
-        });
+        const login = await scannerAppLogin();
         assert.equal(login.status, 200);
         const { token } = await login.json();
         assert.ok(token);
@@ -907,10 +1010,7 @@ test('unissued offline order requires manual review and remains unchanged when s
     const since = new Date(Date.now() - 10_000);
     await db.createSaleRecord({ orderId, ticketId, event: 'DHOLIDA GARBA ROYALE', companyId: 'littlane', status: 'pr_cash_pending', paymentStatus: 'pending', admissionCount: 5, quantity: 1, name: 'Pending Buyer' });
     try {
-        const login = await fetch(`${baseUrl}/api/scanner-app-session`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: process.env.SCANNER_PASSWORD }),
-        });
+        const login = await scannerAppLogin();
         assert.equal(login.status, 200);
         const { token } = await login.json();
         assert.ok(token);
