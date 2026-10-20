@@ -27,8 +27,8 @@ export default function PublicWebsite({ onLoginSuccess }: PublicWebsiteProps) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/logo.png" alt="LITTX" style={{ height: '28px', width: 'auto' }} />
-          <span style={{ fontWeight: 900, fontSize: '1.2rem', letterSpacing: '0.05em', color: 'var(--ink)' }}>LITTX</span>
+          <img src="/logo.png" alt="Stageway" style={{ height: '28px', width: 'auto' }} />
+          <span style={{ fontWeight: 900, fontSize: '1.2rem', letterSpacing: '0.05em', color: 'var(--ink)' }}>Stageway</span>
           <span className="badge-pro">PLATFORM</span>
         </div>
 

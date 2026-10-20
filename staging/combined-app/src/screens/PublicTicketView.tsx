@@ -191,7 +191,7 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
                 {/* Top Section */}
                 <div className="ticket-paper__top px-5 sm:px-6 pt-7 pb-6 flex flex-col items-center">
                   <div className="ticket-paper__aurora" aria-hidden="true" />
-                  <div className="ticket-paper__eyebrow">LITTX · ADMIT ONE</div>
+                  <div className="ticket-paper__eyebrow">STAGEWAY · ADMIT ONE</div>
                   <h2 className="text-white text-[clamp(1.35rem,6vw,1.65rem)] font-black text-center leading-[1.08] mb-2 tracking-[-0.045em]">
                     {ticket.event}
                   </h2>

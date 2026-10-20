@@ -177,7 +177,7 @@ export default function TicketCard({ dark, ticket, onBack }: Props) {
               >
                 <QRCode value={`LITTIX:${ticket.id}`} size={144} />
               </motion.div>
-              <p className={`text-xs font-black tracking-wider ${dark ? 'text-white' : 'text-black'}`}>LITTX</p>
+              <p className={`text-xs font-black tracking-wider ${dark ? 'text-white' : 'text-black'}`}>Stageway</p>
             </div>
           </motion.div>
         </motion.div>

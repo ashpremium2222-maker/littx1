@@ -86,7 +86,7 @@ export default function CustomerLogin({ onLoginSuccess, onGoToRegister }: Custom
         {/* Logo + header */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <a href="/" style={{ display: 'inline-block', marginBottom: 20 }}>
-            <img src="/logo.png" alt="LITTX" style={{ height: 38, width: 'auto' }} />
+            <img src="/logo.png" alt="Stageway" style={{ height: 38, width: 'auto' }} />
           </a>
           <h1 style={{
             margin: '0 0 8px',
@@ -287,7 +287,7 @@ export default function CustomerLogin({ onLoginSuccess, onGoToRegister }: Custom
             href="/"
             style={{ color: '#5C5A6A', fontSize: 12, textDecoration: 'none', fontWeight: 600, letterSpacing: '0.04em' }}
           >
-            ← Back to LITTX
+            ← Back to Stageway
           </a>
         </div>
       </div>

@@ -1318,7 +1318,12 @@ test('multi-event API publishes, scopes and resolves organizer events without na
     assert.equal(publish.status, 200);
     const detail = await fetch(`${baseUrl}/api/events/${encodeURIComponent(created.slug)}`);
     assert.equal(detail.status, 200);
-    assert.equal((await detail.json()).event.id, created.id);
+    const detailEvent = (await detail.json()).event;
+    assert.equal(detailEvent.id, created.id);
+    assert.equal(detailEvent.ticketCategories.some(category => category.name === 'General' && category.price === 1250), true);
+    for (const privateField of ['companyId', 'organizerId', 'organizerUserIds', 'adminNotes', 'internalNotes']) {
+        assert.equal(Object.hasOwn(detailEvent, privateField), false, `public event must omit ${privateField}`);
+    }
     const byId = await fetch(`${baseUrl}/api/events/${encodeURIComponent(created.id)}`);
     assert.equal(byId.status, 200);
 
@@ -1327,10 +1332,24 @@ test('multi-event API publishes, scopes and resolves organizer events without na
 
     const publicList = await fetch(`${baseUrl}/api/events?city=Pune&category=Music`);
     const publicEvents = (await publicList.json()).events;
-    assert.ok(publicEvents.some(event => event.id === created.id));
+    const homepageEvent = publicEvents.find(event => event.id === created.id);
+    assert.ok(homepageEvent, 'newly published event is returned by the homepage data source');
+    assert.equal(homepageEvent.slug, 'phase2-organizer-a-event');
+    assert.equal(homepageEvent.ticketCategories.some(category => category.name === 'General' && category.price === 1250), true);
+    for (const privateField of ['companyId', 'organizerId', 'organizerUserIds', 'adminNotes', 'internalNotes']) {
+        assert.equal(Object.hasOwn(homepageEvent, privateField), false, `public event must omit ${privateField}`);
+    }
     assert.equal(publicEvents.some(event => event.id === otherEvent.id), false, 'draft event must not be public');
     assert.equal(publicEvents.some(event => event.id === 'phase2-private-event'), false, 'private event must not be public');
     assert.equal(publicEvents.some(event => event.id === 'phase2-cancelled-event'), false, 'cancelled event must not be public');
+    const cancelPublished = await fetch(`${baseUrl}/api/admin/events/${encodeURIComponent(created.id)}/transition`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': masterToken }, body: JSON.stringify({ status: 'cancelled' })
+    });
+    assert.equal(cancelPublished.status, 200, 'authorized master admin can cancel a published event');
+    const afterCancellation = await fetch(`${baseUrl}/api/events/${encodeURIComponent(created.id)}`);
+    assert.equal(afterCancellation.status, 404, 'cancelled events stop appearing at the public detail route');
+    const catalogueAfterCancellation = await fetch(`${baseUrl}/api/events?city=Pune&category=Music`);
+    assert.equal((await catalogueAfterCancellation.json()).events.some(event => event.id === created.id), false, 'cancelled event is removed from the public catalogue');
     await db.deleteUserSession('phase2-organizer-a');
     await db.deleteUserSession('phase2-master');
 });

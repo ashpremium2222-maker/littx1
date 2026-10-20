@@ -499,7 +499,7 @@ async function seedDefaultUsers() {
         console.log('🌱 Seeding configured multi-tenant platform users...');
 
         const configuredUsers = [
-            { userId: 'superadmin@littx.in', secret: process.env.MASTER_PASS, displayName: 'LITTX Super Admin', role: 'master_admin', companyId: 'all' },
+            { userId: 'superadmin@littx.in', secret: process.env.MASTER_PASS, displayName: 'Stageway Super Admin', role: 'master_admin', companyId: 'all' },
             { userId: 'admin@littlane.in', secret: process.env.COMPANY_ADMIN_PASS, displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
             { userId: 'SELLER-A', secret: process.env.SELLER_A_PASS, displayName: 'Seller Alpha', role: 'seller', companyId: 'littlane' },
             { userId: 'SELLER-B', secret: process.env.SELLER_B_PASS, displayName: 'Seller Beta', role: 'seller', companyId: 'littlane' },

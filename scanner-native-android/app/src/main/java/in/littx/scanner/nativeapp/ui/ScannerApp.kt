@@ -90,7 +90,7 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
             return@MaterialTheme
         }
         model.state.update?.let { update ->
-            AlertDialog(onDismissRequest = model::dismissUpdate, title = { Text("Scanner update available") }, text = { Text("Version ${update.version} is ready from the official LITTX release.") }, confirmButton = { TextButton(onClick = { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl))); model.dismissUpdate() }) { Text("Download") } }, dismissButton = { TextButton(onClick = model::dismissUpdate) { Text("Later") } })
+            AlertDialog(onDismissRequest = model::dismissUpdate, title = { Text("Scanner update available") }, text = { Text("Version ${update.version} is ready from the official Stageway release.") }, confirmButton = { TextButton(onClick = { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl))); model.dismissUpdate() }) { Text("Download") } }, dismissButton = { TextButton(onClick = model::dismissUpdate) { Text("Later") } })
         }
         val latest = model.state.latest
         when {
@@ -110,7 +110,7 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
     val isConnecting = loading || errorMessage == null
     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(night, Color(0xFF14284B), Color(0xFF10172A)))), contentAlignment = Alignment.Center) {
         Column(Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            androidx.compose.foundation.Image(painter = painterResource(com.littx.scanner.nativeapp.R.drawable.scanner_logo), contentDescription = "LITTX Scanner", modifier = Modifier.size(136.dp).clip(RoundedCornerShape(24.dp)))
+            androidx.compose.foundation.Image(painter = painterResource(com.littx.scanner.nativeapp.R.drawable.scanner_logo), contentDescription = "Stageway Scanner", modifier = Modifier.size(136.dp).clip(RoundedCornerShape(24.dp)))
             Text("EVENT SCANNER", color = cyan, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp, modifier = Modifier.padding(top = 22.dp))
             Text(if (isConnecting) "Secure scanner sign in" else "Scanner sign in", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 9.dp))
             Text(errorMessage ?: "Enter the scanner password provided by your event administrator.", color = Color.White.copy(.72f), fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
@@ -138,7 +138,7 @@ private enum class Screen { HOME, SCAN, HISTORY, MANUAL, DETAIL }
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("LITTX", color = ink, fontSize = 29.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                        Text("Stageway", color = ink, fontSize = 29.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                         Text("EVENT SCANNER", color = muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.8.sp)
                     }
                     TextButton(onClick = onLogout) { Text("Sign out", color = blue, fontWeight = FontWeight.Bold) }
@@ -249,7 +249,7 @@ private fun ScannerState.statsValue(value: Int): String = if (statsAvailable) va
         }
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color.Black.copy(.48f), Color.Transparent, Color.Black.copy(.58f)))) )
         IconButton(onClick = onBack, modifier = Modifier.padding(start = 18.dp, top = 18.dp).size(46.dp).background(Color.Black.copy(.42f), CircleShape)) { Icon(Icons.Default.Close, "Back", tint = Color.White) }
-        Column(Modifier.align(Alignment.TopCenter).padding(top = 30.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("LITTX", color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 2.sp, fontSize = 18.sp); Text(if (loading) "VALIDATING" else "READY TO SCAN", color = cyan, fontSize = 9.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 3.dp)) }
+        Column(Modifier.align(Alignment.TopCenter).padding(top = 30.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("Stageway", color = Color.White, fontWeight = FontWeight.Black, letterSpacing = 2.sp, fontSize = 18.sp); Text(if (loading) "VALIDATING" else "READY TO SCAN", color = cyan, fontSize = 9.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 3.dp)) }
         Box(Modifier.align(Alignment.Center).size(286.dp).scale(.985f + pulse * .015f)) {
             val scanLine by rememberInfiniteTransition(label = "scan line").animateFloat(0f, 1f, infiniteRepeatable(tween(1900), RepeatMode.Reverse), label = "scan line position")
             Canvas(Modifier.matchParentSize()) {
@@ -325,13 +325,13 @@ private fun ScannerState.statsValue(value: Int): String = if (statsAvailable) va
     var code by rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxSize().background(canvas).padding(22.dp)) {
         IconButton(onClick = onBack, modifier = Modifier.background(Color.White, CircleShape)) { Icon(Icons.Default.ArrowBack, "Back", tint = ink) }
-        Text("LITTX", color = blue, fontWeight = FontWeight.Black, letterSpacing = 2.sp, fontSize = 12.sp, modifier = Modifier.padding(top = 42.dp))
+        Text("Stageway", color = blue, fontWeight = FontWeight.Black, letterSpacing = 2.sp, fontSize = 12.sp, modifier = Modifier.padding(top = 42.dp))
         Text("Enter ticket code", color = ink, fontSize = 29.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
         Text("Type the ticket code manually to validate.", color = muted, modifier = Modifier.padding(top = 8.dp))
         OutlinedTextField(value = code, onValueChange = { code = it.uppercase() }, modifier = Modifier.fillMaxWidth().padding(top = 27.dp), placeholder = { Text("e.g. NX-84921-X92") }, singleLine = true, shape = RoundedCornerShape(19.dp), keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done), leadingIcon = { Icon(Icons.Default.ConfirmationNumber, null, tint = blue) })
         Button(onClick = { onCode(code.trim()) }, enabled = code.isNotBlank() && !loading, modifier = Modifier.fillMaxWidth().padding(top = 13.dp).height(57.dp), shape = RoundedCornerShape(18.dp), colors = ButtonDefaults.buttonColors(containerColor = ink)) { if (loading) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp) else Text("Validate ticket", fontWeight = FontWeight.Bold) }
         Spacer(Modifier.weight(1f))
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(17.dp)).background(Color.White).padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.VerifiedUser, null, tint = green); Text("Validation is confirmed securely by LITTX.", color = muted, fontSize = 12.sp, modifier = Modifier.padding(start = 10.dp)) }
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(17.dp)).background(Color.White).padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.VerifiedUser, null, tint = green); Text("Validation is confirmed securely by Stageway.", color = muted, fontSize = 12.sp, modifier = Modifier.padding(start = 10.dp)) }
     }
 }
 
@@ -344,7 +344,7 @@ private fun ScannerState.statsValue(value: Int): String = if (statsAvailable) va
     val scale by animateFloatAsState(if (approved) 1f else .96f, tween(320), label = "result")
     Box(Modifier.fillMaxSize().background(if (approved) Brush.linearGradient(listOf(Color(0xFF061D1C), Color(0xFF092B2C), Color(0xFF061D1C))) else Brush.linearGradient(listOf(Color(0xFF1E101A), Color(0xFF35141E), Color(0xFF1E101A))))) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 22.dp, vertical = 20.dp).padding(bottom = 120.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("LITTX", color = Color.White.copy(.75f), fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+            Text("Stageway", color = Color.White.copy(.75f), fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
             Box(Modifier.padding(top = 26.dp).size(108.dp).scale(scale).clip(CircleShape).background(color.copy(.13f)).border(2.dp, color.copy(.7f), CircleShape), contentAlignment = Alignment.Center) { Icon(if (approved) Icons.Default.Check else Icons.Default.Close, null, tint = color, modifier = Modifier.size(60.dp)) }
             Text(title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = .5.sp, modifier = Modifier.padding(top = 20.dp))
             Text(subtitle, color = Color.White.copy(.73f), fontSize = 14.sp, modifier = Modifier.padding(top = 7.dp))
@@ -417,7 +417,7 @@ private fun displayTicketType(rawType: String?): String {
     var filter by rememberSaveable { mutableStateOf("All") }
     val visible = history.filter { filter == "All" || if (filter == "Approved") it.outcome == ScanOutcome.APPROVED else it.outcome != ScanOutcome.APPROVED }
     Column(Modifier.fillMaxSize().background(canvas)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back", tint = ink) }; Column(Modifier.padding(start = 4.dp)) { Text("LITTX", color = blue, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp); Text("Ticket history", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("Scans saved on this device", color = muted, fontSize = 12.sp) } }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back", tint = ink) }; Column(Modifier.padding(start = 4.dp)) { Text("Stageway", color = blue, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp); Text("Ticket history", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold); Text("Scans saved on this device", color = muted, fontSize = 12.sp) } }
         Row(Modifier.padding(horizontal = 20.dp).clip(RoundedCornerShape(15.dp)).background(Color(0xFFE8ECF4)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             listOf("All", "Approved", "Failed").forEach { choice ->
                 val selected = filter == choice
@@ -449,7 +449,7 @@ private fun displayTicketType(rawType: String?): String {
 @Composable private fun DetailScreen(entry: ScanEntry, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(canvas).padding(22.dp)) {
         IconButton(onClick = onBack, modifier = Modifier.background(Color.White, CircleShape)) { Icon(Icons.Default.ArrowBack, "Back", tint = ink) }
-        Text("LITTX · SCAN RECORD", color = blue, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp, modifier = Modifier.padding(top = 34.dp))
+        Text("STAGEWAY · SCAN RECORD", color = blue, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.6.sp, modifier = Modifier.padding(top = 34.dp))
         Text("Ticket details", color = ink, fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
         TicketDetail(entry)
     }

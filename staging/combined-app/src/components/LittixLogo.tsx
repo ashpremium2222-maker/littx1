@@ -19,7 +19,7 @@ export default function LittixLogo({ dark = true, size = 'md', animated = true }
     >
       <img
         src="/logo.png"
-        alt="LITTX"
+        alt="Stageway"
         style={{
           height: h,
           width: 'auto',

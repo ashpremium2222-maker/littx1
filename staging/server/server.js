@@ -12,7 +12,7 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 // WebAuthn state for Sellers
-const rpName = 'Littx Seller Portal';
+const rpName = 'Stageway Seller Portal';
 
 const PARTNER_PASSWORDS = {
     'littlane': process.env.SELLER_LITTLANE_PASS,

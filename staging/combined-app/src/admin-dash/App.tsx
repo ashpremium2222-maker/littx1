@@ -448,8 +448,8 @@ export default function App({ isPresentation = false }: AppProps) {
         {/* Left Art Panel */}
         <div className="login-art">
           <div className="brand">
-            <div className="mark"><img src="/logo.png" alt="LITTX" style={{ height: 24, width: 'auto', filter: 'brightness(0) invert(1)' }} /></div>
-            <span style={{ fontSize: '15px', fontWeight: 800 }}>LITTX</span>
+            <div className="mark"><img src="/logo.png" alt="Stageway" style={{ height: 24, width: 'auto', filter: 'brightness(0) invert(1)' }} /></div>
+            <span style={{ fontSize: '15px', fontWeight: 800 }}>Stageway</span>
           </div>
 
           <div style={{ margin: 'auto 0' }}>

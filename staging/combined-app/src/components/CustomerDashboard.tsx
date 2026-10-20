@@ -466,8 +466,8 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
       {/* Top Header */}
       <header className="dash-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <img src="/logo.png" alt="LITTX Logo" style={{ height: 32, width: 'auto' }} />
-          <span className="logo-text">LITTX</span>
+          <img src="/logo.png" alt="Stageway logo" style={{ height: 32, width: 'auto' }} />
+          <span className="logo-text">Stageway</span>
           <span className="logo-badge-pill">Customer</span>
         </div>
 

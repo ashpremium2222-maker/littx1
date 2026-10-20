@@ -6,7 +6,7 @@
         android:fullBackupContent="false"
         android:icon="@drawable/app_logo"
         android:roundIcon="@drawable/app_logo"
-        android:label="LITTX Seller"
+        android:label="Stageway Seller"
         android:supportsRtl="true"
         android:theme="@style/Theme.LittxSeller"
         android:usesCleartextTraffic="false">

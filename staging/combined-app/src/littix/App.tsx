@@ -176,7 +176,7 @@ function DirectScannerExperience({
           >
             <div className="flex items-center justify-between mb-16">
               <div className="w-12 h-12" />
-              <img src="/logo.png" alt="LITTX" className="h-8 w-auto" />
+              <img src="/logo.png" alt="Stageway" className="h-8 w-auto" />
               <button className="w-12 h-12 rounded-full border border-white/10 bg-white/5 backdrop-blur-2xl flex items-center justify-center text-white/70 active:scale-95 transition-transform" aria-label="Search history">
                 <span className="material-symbols-outlined">search</span>
               </button>
@@ -302,7 +302,7 @@ function DirectScannerExperience({
             transition={{ duration: 0.22 }}
           >
             <div className="flex items-center justify-center mb-16">
-              <img src="/logo.png" alt="LITTX" className="h-8 w-auto" />
+              <img src="/logo.png" alt="Stageway" className="h-8 w-auto" />
             </div>
             <h1 className="text-[42px] leading-none font-black tracking-tight mb-8">Profile</h1>
             <div className="rounded-3xl border border-white/10 p-6" style={glass}>
@@ -522,7 +522,7 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <motion.img
             src="/logo.png"
-            alt="LITTX"
+            alt="Stageway"
             style={{ height: 44, width: 'auto', margin: '0 auto', display: 'block' }}
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -633,7 +633,7 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
 
       {/* Footer */}
       <div style={{ marginTop: 20, color: '#444', fontSize: 11, letterSpacing: '1px', textTransform: 'uppercase' }}>
-        LITTX · Gate Staff System
+        Stageway · Gate Staff System
       </div>
     </div>
   )

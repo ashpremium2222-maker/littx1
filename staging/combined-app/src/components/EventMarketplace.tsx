@@ -177,7 +177,7 @@ export default function EventMarketplace() {
   const input: CSSProperties = { width: '100%', padding: '12px 14px', background: '#0c0b13', color: 'inherit', border: '1px solid #393548', borderRadius: 10, boxSizing: 'border-box' }
 
   return <main style={page}>
-    <nav style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}><a href="/" style={{ color: '#d8ff3f', textDecoration: 'none', fontWeight: 700 }}>← LITTX</a><a href="/bookings" style={{ color: '#d8ff3f', textDecoration: 'none', fontWeight: 700 }}>My bookings</a></nav>
+    <nav style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}><a href="/" style={{ color: '#d8ff3f', textDecoration: 'none', fontWeight: 700 }}>← Stageway</a><a href="/bookings" style={{ color: '#d8ff3f', textDecoration: 'none', fontWeight: 700 }}>My bookings</a></nav>
     <div style={{ maxWidth: 1100, margin: '28px auto' }}>
       {loading ? <p role="status">Loading event information…</p> : error && requested && !selected ? <p role="alert" style={{ ...panel, color: '#ff7777' }}>{error}</p> : confirmation ? <section style={{ ...panel, textAlign: 'center', padding: 36 }}>
         <h1>Booking confirmed</h1><p>{confirmation.event}</p>

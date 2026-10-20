@@ -70,7 +70,7 @@ export default function MasterGlobalSearch() {
         </div>
 
         {loading ? (
-          <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>Searching LITTX platform database…</div>
+          <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>Searching Stageway platform database…</div>
         ) : results.length === 0 ? (
           <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>
             {query.length < 2 ? 'Type at least 2 characters to search across all companies and events.' : 'No matching entities found.'}

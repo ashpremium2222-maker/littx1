@@ -114,7 +114,7 @@ export default function CustomerRegister({ onRegisterSuccess, onGoToLogin }: Cus
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <a href="/" style={{ display: 'inline-block', marginBottom: 18 }}>
-            <img src="/logo.png" alt="LITTX" style={{ height: 36, width: 'auto' }} />
+            <img src="/logo.png" alt="Stageway" style={{ height: 36, width: 'auto' }} />
           </a>
           <h1 style={{
             margin: '0 0 8px',
@@ -126,7 +126,7 @@ export default function CustomerRegister({ onRegisterSuccess, onGoToLogin }: Cus
             letterSpacing: '-0.03em',
           }}>Create Account</h1>
           <p style={{ margin: 0, color: '#9896A8', fontSize: 13 }}>
-            Join LITTX to book events instantly
+            Join Stageway to book events
           </p>
         </div>
 
@@ -297,7 +297,7 @@ export default function CustomerRegister({ onRegisterSuccess, onGoToLogin }: Cus
         </div>
 
         <div style={{ textAlign: 'center', marginTop: 20 }}>
-          <a href="/" style={{ color: '#5C5A6A', fontSize: 12, textDecoration: 'none', fontWeight: 600 }}>← Back to LITTX</a>
+          <a href="/" style={{ color: '#5C5A6A', fontSize: 12, textDecoration: 'none', fontWeight: 600 }}>← Back to Stageway</a>
         </div>
       </div>
 

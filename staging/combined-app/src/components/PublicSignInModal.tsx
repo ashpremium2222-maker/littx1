@@ -78,9 +78,9 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
         {/* Header */}
         <div style={{ padding: '20px 24px', background: 'var(--panel-2)', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img src="/logo.png" alt="LITTX" style={{ height: '24px', width: 'auto' }} />
+            <img src="/logo.png" alt="Stageway" style={{ height: '24px', width: 'auto' }} />
             <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--ink)' }}>
-              {loginType === 'select' ? 'SIGN IN TO LITTX' : loginType === 'company' ? 'Event Company Portal' : 'PR Partner Portal'}
+              {loginType === 'select' ? 'SIGN IN TO STAGEWAY' : loginType === 'company' ? 'Event Company Portal' : 'PR Partner Portal'}
             </h3>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--ink-faint)', cursor: 'pointer', fontSize: '1.3rem' }}>✕</button>

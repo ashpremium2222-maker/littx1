@@ -111,7 +111,7 @@ async function sendTicketEmail({ to, name, ticketId, gender, quantity, amount, p
     try {
         const { subject, html, text, eventTitle } = renderTicketEmailContent({ name, ticketId, event });
         let envEmail = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'events@littx.com';
-        let envName = process.env.EMAIL_FROM_NAME || 'LITTX Events';
+        let envName = process.env.EMAIL_FROM_NAME || 'Stageway Events';
 
         if (envEmail.includes('<') && envEmail.includes('>')) {
             const match = envEmail.match(/^(?:"?([^"]*)"?\s)?<([^>]+)>$/);

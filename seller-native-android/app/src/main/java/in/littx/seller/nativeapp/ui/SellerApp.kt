@@ -50,7 +50,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 @Composable fun SellerApp(activity: ComponentActivity) {
     val model = remember { SellerViewModel(activity) }
     MaterialTheme(colorScheme = darkColorScheme(primary = lilac, surface = panel, background = midnight)) {
-        model.state.update?.let { update -> AlertDialog(onDismissRequest = model::dismissUpdate, title = { Text("Signed update available") }, text = { Text("Version ${update.version} is ready from the official LITTX release.") }, confirmButton = { TextButton(onClick = { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl))); model.dismissUpdate() }) { Text("Download") } }, dismissButton = { TextButton(onClick = model::dismissUpdate) { Text("Later") } }) }
+        model.state.update?.let { update -> AlertDialog(onDismissRequest = model::dismissUpdate, title = { Text("Signed update available") }, text = { Text("Version ${update.version} is ready from the official Stageway release.") }, confirmButton = { TextButton(onClick = { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl))); model.dismissUpdate() }) { Text("Download") } }, dismissButton = { TextButton(onClick = model::dismissUpdate) { Text("Later") } }) }
         when { model.state.loading && model.state.partner == null -> LoadingScreen(); model.state.partner == null -> LoginScreen(model); else -> SellerHome(model) }
     }
 }
@@ -109,7 +109,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
         SellerBrandMark(Modifier.padding(end = 10.dp))
         Column(Modifier.padding(start = 8.dp).weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("LITTX SELLER", color = Color.White, letterSpacing = .5.sp, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("STAGEWAY SELLER", color = Color.White, letterSpacing = .5.sp, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text("APP BY ASHTU", color = Color(0xFF9D8DB8), letterSpacing = .8.sp, fontSize = 7.sp, modifier = Modifier.padding(start = 7.dp, top = 2.dp))
             }
             Text(partnerName, color = softText, fontSize = 13.sp)
@@ -287,7 +287,7 @@ private fun formatPercent(value: Double) = if (value % 1.0 == 0.0) value.toInt()
             Spacer(Modifier.height(12.dp)); Text(event.displayName.ifBlank { event.name }.uppercase(), color = Color.White, fontWeight = FontWeight.Black, fontSize = 23.sp, lineHeight = 26.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(8.dp)); Text("MUSIC  •  CULTURE  •  PEOPLE  •  TOGETHER", color = Color(0xFFD6CCEA), fontSize = 8.sp, letterSpacing = 2.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text("LITTX", Modifier.align(Alignment.TopEnd).padding(18.dp), color = Color(0xFFCFB9FF), style = labelStyle())
+        Text("Stageway", Modifier.align(Alignment.TopEnd).padding(18.dp), color = Color(0xFFCFB9FF), style = labelStyle())
     }
 }
 

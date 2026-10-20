@@ -225,7 +225,7 @@ function DirectScannerGate() {
         width: '100%', maxWidth: '380px', textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
       }}>
         <div style={{ fontSize: '24px', fontWeight: 'black', marginBottom: '8px', letterSpacing: '1px' }}>
-          <img src="/logo.png" alt="LITTX" style={{ height: 32, width: 'auto', display: 'block', margin: '0 auto' }} />
+          <img src="/logo.png" alt="Stageway" style={{ height: 32, width: 'auto', display: 'block', margin: '0 auto' }} />
         </div>
         <div style={{ fontSize: '12px', color: '#A0A0A0', marginBottom: '24px', textTransform: 'uppercase', letterSpacing: '1px' }}>
           Direct Scanner Access
@@ -309,7 +309,7 @@ function PasswordGateApp() {
           marginBottom: '8px',
           letterSpacing: '1px'
         }}>
-          <img src="/logo.png" alt="LITTX" style={{ height: 32, width: 'auto', display: 'block', margin: '0 auto' }} />
+          <img src="/logo.png" alt="Stageway" style={{ height: 32, width: 'auto', display: 'block', margin: '0 auto' }} />
         </div>
         <div style={{
           fontSize: '12px',

@@ -142,7 +142,7 @@ export default function CompanyControlCenter() {
     checkDiff('Manual Approval Workflow', 'PAYMENT', company.manualPaymentConfig?.approvalWorkflow, draftConfig.manualPaymentConfig?.approvalWorkflow, 'Changes approval requirement for cash ticket issuance')
     checkDiff('PR Portal Feature', 'FEATURES', company.features?.prPortal?.enabled, draftConfig.features?.prPortal?.enabled, 'Toggles PR login portal access')
     checkDiff('PR Ticket Sales', 'FEATURES', company.features?.prSales?.enabled, draftConfig.features?.prSales?.enabled, 'Blocks PR partners from issuing tickets')
-    checkDiff('Platform Fee Type', 'COMMERCIALS', company.commercials?.feeType, draftConfig.commercials?.feeType, 'Changes LITTX platform commission calculation')
+    checkDiff('Platform Fee Type', 'COMMERCIALS', company.commercials?.feeType, draftConfig.commercials?.feeType, 'Changes Stageway platform commission calculation')
     checkDiff('Percentage Fee %', 'COMMERCIALS', company.commercials?.percentageFee, draftConfig.commercials?.percentageFee, 'Updates percentage split on gross sales')
     checkDiff('Fixed Fee ₹', 'COMMERCIALS', company.commercials?.fixedFeePerTicket, draftConfig.commercials?.fixedFeePerTicket, 'Updates fixed per-ticket platform charge')
 
@@ -175,7 +175,7 @@ export default function CompanyControlCenter() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           updates,
-          adminUser: 'LITTX Master Admin',
+          adminUser: 'Stageway Master Admin',
           reason: changeReason || 'Configuration update via Control Center'
         })
       })
@@ -204,7 +204,7 @@ export default function CompanyControlCenter() {
         body: JSON.stringify({
           action,
           statusReason: `Emergency override triggered: ${label}`,
-          adminUser: 'LITTX Master Admin'
+          adminUser: 'Stageway Master Admin'
         })
       })
       const data = await res.json()
@@ -232,7 +232,7 @@ export default function CompanyControlCenter() {
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span className="badge-pro" style={{ background: 'var(--volt)', color: '#0A0912', fontWeight: 900 }}>LITTX MASTER ADMIN</span>
+                <span className="badge-pro" style={{ background: 'var(--volt)', color: '#0A0912', fontWeight: 900 }}>STAGEWAY MASTER ADMIN</span>
                 <span style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>Platform Governance Center</span>
               </div>
               <h2 style={{ margin: '4px 0 0', fontSize: '1.4rem', color: 'var(--ink)' }}>Company Control & Override Console</h2>
@@ -451,7 +451,7 @@ export default function CompanyControlCenter() {
                 >
                   <option value="AUTO">Automatic Approval (Instant Pass Generation)</option>
                   <option value="COMPANY_APPROVAL">Company Admin Approval Required</option>
-                  <option value="MASTER_APPROVAL">LITTX Master Admin Approval Required</option>
+                  <option value="MASTER_APPROVAL">Stageway Master Admin Approval Required</option>
                 </select>
               </div>
             </div>
@@ -658,7 +658,7 @@ export default function CompanyControlCenter() {
           {activeTab === 'commercials' && (
             <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div className="card-head">
-                <h3>LITTX Platform Commercials & Fee Calculator</h3>
+                <h3>Stageway Platform Commercials & Fee Calculator</h3>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
@@ -711,7 +711,7 @@ export default function CompanyControlCenter() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '13px', color: 'var(--volt)', fontWeight: 800 }}>
-                      LITTX Platform Fee: ₹{company.stats.platformFee.toLocaleString()}
+                      Stageway Platform Fee: ₹{company.stats.platformFee.toLocaleString()}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--ink-faint)', marginTop: '2px' }}>
                       Company Net: ₹{company.stats.netCompanyRevenue.toLocaleString()}

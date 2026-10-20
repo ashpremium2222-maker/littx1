@@ -9,7 +9,7 @@ export default function MasterSystemSettings() {
   const [maintenanceMode, setMaintenanceMode] = useState(false)
 
   const handleSaveSystemDefaults = () => {
-    alert('✅ Global LITTX System Defaults saved successfully!')
+    alert('✅ Global Stageway system defaults saved successfully!')
   }
 
   return (
@@ -18,7 +18,7 @@ export default function MasterSystemSettings() {
         <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--volt)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           GLOBAL SYSTEM CONFIGURATION
         </div>
-        <h2 style={{ margin: '4px 0 0', fontSize: '1.4rem', color: 'var(--ink)' }}>LITTX Platform System Defaults & Security Settings</h2>
+        <h2 style={{ margin: '4px 0 0', fontSize: '1.4rem', color: 'var(--ink)' }}>Stageway Platform System Defaults & Security Settings</h2>
       </div>
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>

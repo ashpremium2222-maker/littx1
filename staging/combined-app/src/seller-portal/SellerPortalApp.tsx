@@ -480,7 +480,7 @@ export default function SellerPortalApp() {
         )}
         <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl">
           <div className="flex items-center justify-center gap-3 mb-6">
-            <img src="/logo.png" alt="LITTX Logo" className="h-8 w-auto brightness-200" />
+            <img src="/logo.png" alt="Stageway logo" className="h-8 w-auto brightness-200" />
             <span className="text-xl font-extrabold tracking-wider text-violet-400">SELLER PORTAL</span>
           </div>
 
@@ -571,7 +571,7 @@ export default function SellerPortalApp() {
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="LITTX Logo" className="h-6 w-auto brightness-200" />
+          <img src="/logo.png" alt="Stageway logo" className="h-6 w-auto brightness-200" />
           <span className="font-black text-sm tracking-wider text-violet-400">SELLER PORTAL</span>
         </div>
 

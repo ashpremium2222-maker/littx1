@@ -623,7 +623,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                 </div>
                 <div className="field" style={{ gridColumn: 'span 2' }}>
                   <label>Bio / Role</label>
-                  <textarea rows={3} defaultValue="Lead Admin & Operations Lead for LITTX." />
+                  <textarea rows={3} defaultValue="Lead Admin & Operations Lead for Stageway." />
                 </div>
               </div>
             </div>
@@ -638,7 +638,7 @@ export default function Settings({ adminKey }: SettingsProps) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                 <div className="field">
                   <label>Workspace Name</label>
-                  <input defaultValue="LITTX Pune Operations" />
+                  <input defaultValue="Stageway Pune Operations" />
                 </div>
                 <div className="field">
                   <label>Timezone</label>

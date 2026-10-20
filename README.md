@@ -1,4 +1,4 @@
-# LITTX
+# Stageway
 
 A full-stack event ticketing application with role-based access for Sellers, Partners, and Admins.
 
@@ -20,7 +20,7 @@ A full-stack event ticketing application with role-based access for Sellers, Par
 1. Clone the repository and navigate to the project directory:
    ```bash
    git clone <your-repo-url>
-   cd LITTX
+   cd littx1
    ```
 
 2. Setup the Server:

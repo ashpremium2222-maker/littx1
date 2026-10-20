@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'in.littx.seller',
-  appName: 'LITTX Seller',
+  appName: 'Stageway Seller',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

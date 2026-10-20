@@ -25,11 +25,11 @@ async function sendTicket(email, ticketFilePath) {
         console.log(`Sending ticket to ${email}...`);
         
         const info = await transporter.sendMail({
-            from: '"LITTX Events" <events@littx.com>',
+            from: '"Stageway Events" <events@littx.com>',
             to: email,
-            subject: 'Your LITTX Event Ticket',
-            text: 'Thank you for booking with LITTX! Please find your ticket attached.',
-            html: '<b>Thank you for booking with LITTX!</b><br>Please find your ticket attached.',
+            subject: 'Your Stageway event ticket',
+            text: 'Thank you for booking with Stageway! Please find your ticket attached.',
+            html: '<b>Thank you for booking with Stageway!</b><br>Please find your ticket attached.',
             attachments: [
                 {
                     filename: path.basename(ticketFilePath),
@@ -66,6 +66,6 @@ function promptUser() {
     });
 }
 
-console.log('LITTX Manual Ticket Sender');
+console.log('Stageway manual ticket sender');
 console.log('-----------------------------');
 promptUser();

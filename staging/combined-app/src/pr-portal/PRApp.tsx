@@ -52,7 +52,7 @@ function LoginPage({ onLogin }: { onLogin: (user: PRUser) => void }) {
       <div className="card" style={{ width: '100%', maxWidth: '400px', padding: '32px' }}>
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <div style={{ fontSize: '1.2rem', fontWeight: 900, letterSpacing: '2px' }}>
-            LITTX <span style={{ color: 'var(--accent)' }}>●</span>
+            Stageway <span style={{ color: 'var(--accent)' }}>●</span>
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--ink-faint)', marginTop: '8px' }}>Partner Portal</div>
         </div>

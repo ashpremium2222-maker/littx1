@@ -154,13 +154,13 @@ export default function ScanRejected({ dark, ticket, notFoundId, onBack, onScanN
             <>
               <p className={`text-xs ${subText}`}>
                 {ticket!.status === 'cancelled' ? (
-                  <span>Status set by <span className={`font-semibold ${text}`}>{isDisabled ? 'LITTX Solver' : 'Admin'}</span></span>
+                  <span>Status set by <span className={`font-semibold ${text}`}>{isDisabled ? 'Stageway Solver' : 'Admin'}</span></span>
                 ) : (
                   <span>First scanned by <span className={`font-semibold ${text}`}>{ticket!.scannedBy}</span> at <span className={`font-semibold ${text}`}>{ticket!.scannedAt}</span></span>
                 )}
               </p>
               <p className={`text-xs mt-1 ${subText}`}>
-                {isDisabled ? 'This ticket has been disabled by a LITTX administrator.' : ticket!.status === 'cancelled' ? 'This ticket has been cancelled by an administrator and is void.' : 'This ticket has already been used for entry.'}
+                {isDisabled ? 'This ticket has been disabled by a Stageway administrator.' : ticket!.status === 'cancelled' ? 'This ticket has been cancelled by an administrator and is void.' : 'This ticket has already been used for entry.'}
               </p>
             </>
           )}

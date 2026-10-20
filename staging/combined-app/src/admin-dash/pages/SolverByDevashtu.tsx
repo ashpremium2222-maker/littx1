@@ -114,7 +114,7 @@ export default function SolverByDevashtu({ onSessionExpired }: { onSessionExpire
 
   return <main className="solver-page">
     <header className="solver-header">
-      <div><div className="solver-brand">LITTX <span>MASTER CONTROL</span></div><p className="solver-eyebrow">Solver by Devashtu</p><h1>Central Ticket Control</h1><p className="solver-subtitle">Manage and control tickets generated across the entire LITTX system.</p></div>
+      <div><div className="solver-brand">Stageway <span>MASTER CONTROL</span></div><p className="solver-eyebrow">Solver by Devashtu</p><h1>Central Ticket Control</h1><p className="solver-subtitle">Manage and control tickets generated across the entire Stageway system.</p></div>
       <div className="solver-header-actions"><button className="solver-button quiet" onClick={() => fetchTickets(page)}>↻ <span>Refresh</span></button><button className="solver-button primary" onClick={() => setPasswordOpen(true)}>⌑ <span>{revealToken ? 'Generator Revealed' : 'Reveal Ticket Generator'}</span></button></div>
     </header>
 
