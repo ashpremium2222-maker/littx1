@@ -7,8 +7,7 @@ const { sendTicketWhatsApp } = require('../whatsapp-service');
 
 const envKeys = [
     'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_TEMPLATE_NAME',
-    'WHATSAPP_TEMPLATE_LANG', 'WHATSAPP_ATTACH_PDF', 'RICHAUTOMATE_API_KEY',
-    'RICHAUTOMATE_TEMPLATE_NAME', 'RICHAUTOMATE_TEMPLATE_LANG', 'RICHAUTOMATE_ATTACH_PDF'
+    'WHATSAPP_TEMPLATE_LANG', 'WHATSAPP_ATTACH_PDF', 'PUBLIC_TICKET_ORIGIN'
 ];
 
 async function withFixture(callback) {
@@ -16,6 +15,7 @@ async function withFixture(callback) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'stageway-whatsapp-'));
     const pdfPath = path.join(dir, 'test-ticket.pdf');
     await fs.writeFile(pdfPath, Buffer.from('%PDF-1.4 test fixture'));
+    process.env.PUBLIC_TICKET_ORIGIN = 'https://stageway.example.test';
     try { await callback(pdfPath); }
     finally {
         for (const key of envKeys) {
@@ -64,28 +64,24 @@ test('Meta PDF attachment uploads the PDF with authentication and sends only its
     assert.equal(requests[1].options.headers.Authorization, 'Bearer test-token');
 }));
 
-test('RichAutomate PDF attachment uses its authenticated media upload and header_media_id', async () => withFixture(async pdfPath => {
-    process.env.RICHAUTOMATE_API_KEY = 'rich-test-key';
-    process.env.RICHAUTOMATE_TEMPLATE_NAME = 'ticket_template';
-    process.env.RICHAUTOMATE_ATTACH_PDF = 'true';
-    const requests = [];
-    const fetchImpl = async (url, options) => {
-        requests.push({ url, options });
-        return requests.length === 1 ? ok({ media_id: 'rich-media-456' }) : ok({ message_id: 'rich-msg' });
-    };
+test('WhatsApp is unavailable without the retained direct provider configuration', async () => withFixture(async pdfPath => {
+    let calls = 0;
+    const result = await sendTicketWhatsApp(ticketArgs(pdfPath, async () => { calls += 1; return ok({}); }));
+    assert.equal(result.success, false);
+    assert.equal(result.reason, 'provider_unavailable');
+    assert.equal(calls, 0);
+}));
 
-    const result = await sendTicketWhatsApp(ticketArgs(pdfPath, fetchImpl));
-    assert.equal(result.success, true);
-    assert.equal(result.provider, 'richautomate');
-    assert.equal(requests[0].url, 'https://richautomate.in/api/v1/public/media');
-    assert.equal(requests[0].options.headers.Authorization, 'Bearer rich-test-key');
-    assert.equal(requests[0].options.body.get('file').type, 'application/pdf');
-    assert.equal(requests[1].url, 'https://richautomate.in/api/v1/send-template');
-    const message = JSON.parse(requests[1].options.body);
-    assert.equal(message.phone, '919876543210');
-    assert.equal(message.header_media_type, 'document');
-    assert.equal(message.header_media_id, 'rich-media-456');
-    assert.equal('header_media_url' in message, false);
+test('WhatsApp fails closed without a configured public booking origin', async () => withFixture(async pdfPath => {
+    process.env.WHATSAPP_PHONE_NUMBER_ID = 'phone-number-test';
+    process.env.WHATSAPP_ACCESS_TOKEN = 'test-token';
+    process.env.WHATSAPP_TEMPLATE_NAME = 'ticket_template';
+    delete process.env.PUBLIC_TICKET_ORIGIN;
+    let calls = 0;
+    const result = await sendTicketWhatsApp(ticketArgs(pdfPath, async () => { calls += 1; return ok({}); }));
+    assert.equal(result.success, false);
+    assert.equal(result.reason, 'public_origin_unconfigured');
+    assert.equal(calls, 0);
 }));
 
 test('media upload failure stops before sending a template and never falls back to a legacy ticket URL', async () => withFixture(async pdfPath => {

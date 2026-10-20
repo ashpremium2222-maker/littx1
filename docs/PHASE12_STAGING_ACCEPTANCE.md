@@ -1,5 +1,7 @@
 # Stageway Phase 12 — Staging Acceptance and Legacy-Link Migration Readiness
 
+> **Historical snapshot:** Provider and event references in this Phase 12 report describe the earlier repository state. The RichAutomate path was removed in Phase 21; this report remains as evidence of the staging blockers recorded at that time. See `PHASE21_HARDCODED_EVENT_AND_RICHAUTOMATE_REMOVAL.md` for current implementation status.
+
 **Assessment date:** 2026-10-20  
 **Recommendation:** **NO-GO for production.** Staging resources and credentials were not available in this workspace. No staging deployment, customer communication, production access, production configuration change, migration, or legacy-link cutoff was attempted.  
 **Compatibility:** Legacy ticket routes remain enabled; no ticket ID, QR identity, quantity, pricing, refund rule, inventory behavior, or payment integration was changed in this phase.
@@ -94,3 +96,4 @@ Before any cutoff, require: all protected replacement workflows verified in stag
 ## Phase 12 changes and customer impact
 
 This phase adds this acceptance record only. No executable behavior changed, no customer communication was sent, no customer data was accessed, and existing access remains as before. No commit, push, deployment, production migration/configuration change, payment integration change, or live financial operation was performed.
+# Historical snapshot notice

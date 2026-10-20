@@ -16,6 +16,11 @@ interface TicketData {
   qty: number
   status: string
   scannedAt?: string
+  bannerUrl?: string
+  organizer?: string
+  description?: string
+  category?: string
+  images?: string[]
 }
 
 interface PublicTicketViewProps {
@@ -49,13 +54,13 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
           const t = data.ticket
           setTicket({
             id: t.ticketId || t.id,
-            event: t.event || 'FRESHERS TAKEOVER',
+            event: t.event || 'Event details unavailable',
             attendee: t.name || t.attendee,
             email: t.email,
             phone: t.phone,
-            dateLabel: t.dateLabel || '17th October, Sat · 4:00 PM',
-            venue: t.venue || 'Pethkar Ground, Kothrud, Pune',
-            ticketType: t.ticketType || (t.gender === 'female' ? 'VIP Single' : 'GA Single'),
+            dateLabel: t.dateLabel || [t.date, t.time].filter(Boolean).join(' · '),
+            venue: t.venue || '',
+            ticketType: t.ticketType || t.gender || 'Ticket',
             // `0` is a valid Free / Chai Pani ticket amount; avoid treating it
             // as a missing value and falling back to the old ₹499 default.
             price: Number.isFinite(Number(t.amount))
@@ -116,39 +121,17 @@ export default function PublicTicketView({ ticketId }: PublicTicketViewProps) {
     )
   }
 
-  // Determine design color palette based on event
-  const isAura = ticket.event.toUpperCase().includes('AURA')
-  const eventTheme = isAura 
-    ? {
-        gradient: 'radial-gradient(circle at top, rgba(80,40,40,0.4) 0%, #111111 60%)',
-        accentColor: '#EF4444',
-        btnBg: 'bg-red-600 hover:bg-red-700',
-        badgeBg: 'bg-red-500/20 text-red-400 border-red-500/30',
-        bannerUrl: '/aura-ticket-banner.jpg',
-        host: 'Aura Events Team',
-        desc: 'Experience the dawn of a new sound. An exclusive gathering featuring premium visual production, deep immersive beats, and high energy connection in Pune\'s finest venue.',
-        tags: ['Aura', 'Music Festival', 'Night Out', 'Immersive'],
-        gallery: [
-          'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=300&q=80',
-          'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=300&q=80',
-          'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=300&q=80'
-        ]
-      }
-    : {
-        gradient: 'radial-gradient(circle at top, rgba(80,40,120,0.3) 0%, #111111 60%)',
-        accentColor: '#A855F7',
-        btnBg: 'bg-purple-600 hover:bg-purple-700',
-        badgeBg: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-        bannerUrl: '/images/freshers-takeover-banner.png',
-        host: 'Littlane Entertainment',
-        desc: 'Get ready for an unforgettable evening of music, dance, culture, and celebration at Dholida Garba Royale! Experience the vibrant spirit of Garba with live music, live singers, live dhol, celebrity hosts, group competitions, exciting games, food counters, and a grand award ceremony.',
-        tags: ['Live Music', 'Live Dhol', 'Celebrity Hosts', 'Garba Competitions', 'Games & Food', 'Grand Awards'],
-        gallery: [
-          'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&w=300&q=80',
-          'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=300&q=80',
-          'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=300&q=80'
-        ]
-      }
+  const eventTheme = {
+    gradient: 'radial-gradient(circle at top, rgba(80,40,120,0.3) 0%, #111111 60%)',
+    accentColor: '#A855F7',
+    btnBg: 'bg-purple-600 hover:bg-purple-700',
+    badgeBg: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+    bannerUrl: ticket.bannerUrl || '/logo.png',
+    host: ticket.organizer || 'Event organizer',
+    desc: ticket.description || 'Event details are provided by the organizer.',
+    tags: ticket.category ? [ticket.category] : [],
+    gallery: ticket.images || []
+  }
 
   const isScanned = ticket.status === 'scanned'
 

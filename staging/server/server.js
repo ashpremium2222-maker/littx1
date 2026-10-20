@@ -334,8 +334,8 @@ const { whatsappWebhook } = require('./whatsapp-webhook');
 const db = require('./db');
 const { issueOtp, verifyOtp } = require('./booking-otp');
 const { issueCustomerTicketToken, verifyCustomerTicketToken } = require('./ticket-access');
-const { EVENT_NAME, EVENT_DETAILS, generateTicketId, buildTicketPdf, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
-const { sendTicketEmail, sendBookingRecoveryOtp, hasConfiguredEmailDelivery } = require('./mailer');
+const { generateTicketId, buildTicketPdf: buildTicketPdfRaw, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
+const { sendTicketEmail: sendTicketEmailRaw, sendBookingRecoveryOtp, hasConfiguredEmailDelivery } = require('./mailer');
 const { sendTicketWhatsApp, getWhatsAppConfigurationStatus } = require('./whatsapp-service');
 const {
     COOKIE_SESSION_MARKER,
@@ -400,10 +400,10 @@ async function readScannerSession(req) {
 async function sendAndRecordTicketWhatsApp({ orderId, phone, name, ticketId, event, ticketType, pdfPath }) {
     if (!phone) return { success: false, reason: 'phone_missing' };
 
-    // WhatsApp ticket links must always use the public canonical domain.
-    // Keep this independent from BASE_URL so an internal or legacy base URL
-    // can never be sent to attendees.
-    const ticketPublicOrigin = (process.env.PUBLIC_TICKET_ORIGIN || 'https://www.littx.in').replace(/\/+$/, '');
+    // Never guess a customer-facing origin: missing staging configuration must
+    // not silently send customers to a production host.
+    const ticketPublicOrigin = String(process.env.PUBLIC_TICKET_ORIGIN || '').trim().replace(/\/+$/, '');
+    if (!ticketPublicOrigin) return { success: false, reason: 'public_origin_unconfigured' };
 
     try {
         const result = await sendTicketWhatsApp({
@@ -781,7 +781,6 @@ app.post('/api/master/seller-access/:partnerId', requireMasterAdmin, async (req,
 });
 
 // ==================== EVENT & PRICING ====================
-const EVENT = { name: EVENT_NAME };
 const CANONICAL_EVENT_GRADIENT = 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)';
 
 function visibleDashboardEvents(events) {
@@ -800,6 +799,25 @@ function pickCanonicalEvent(events, requestedEventRef) {
         [item.id, item._id, item.slug, item.name, ...(Array.isArray(item.legacyNames) ? item.legacyNames : [])]
             .some(value => String(value || '').toLowerCase() === lower)
     ) || null;
+}
+
+async function eventDetailsForSale(sale) {
+    try {
+        const events = await db.getAllEvents();
+        return pickCanonicalEvent(events, sale?.eventId || sale?.event) || (sale?.event ? { name: sale.event } : null);
+    } catch (_) {
+        return sale?.event ? { name: sale.event } : null;
+    }
+}
+
+async function buildTicketPdf(ticketData) {
+    const eventRecord = await eventDetailsForSale({ eventId: ticketData.eventId, event: ticketData.event });
+    return buildTicketPdfRaw({ ...ticketData, event: eventRecord || ticketData.event });
+}
+
+async function sendTicketEmail(emailData) {
+    const eventRecord = await eventDetailsForSale({ eventId: emailData.eventId, event: emailData.event });
+    return sendTicketEmailRaw({ ...emailData, event: eventRecord || emailData.event });
 }
 
 function eventIsPublic(event) {
@@ -909,10 +927,7 @@ function lifecycleStatus(event) {
 const SELLER_MOBILE_CONFIG_FILE = path.join(__dirname, 'config', 'seller-mobile.json');
 function getSellerMobileConfig() {
     const parsed = JSON.parse(fs.readFileSync(SELLER_MOBILE_CONFIG_FILE, 'utf8'));
-    if (!parsed?.event?.name || !Array.isArray(parsed?.passes) || !parsed.passes.length ||
-        !parsed.passes.every(pass => typeof pass.id === 'string' && pass.id && typeof pass.label === 'string' && Number.isFinite(pass.price) && pass.price >= 0)) {
-        throw new Error('Invalid seller mobile configuration');
-    }
+    if (!Number.isInteger(parsed?.version) || !parsed?.features || typeof parsed.features !== 'object') throw new Error('Invalid seller mobile configuration');
     return parsed;
 }
 function normalizePrice(value) {
@@ -1177,7 +1192,7 @@ async function ensureTicketGenerated(sale) {
                 await buildTicketPdf({
                     ticketId, name: current.name, email: current.email, gender: current.gender,
                     quantity: current.quantity, amount: current.amount, createdAt: generatedAt,
-                    event: current.event || 'DHOLIDA GARBA ROYALE'
+                    event: current.event || ''
                 });
                 const assigned = await db.atomicAssignGeneratedTicket(current.orderId, ticketId, generatedAt);
                 if (!assigned) {
@@ -1199,7 +1214,7 @@ async function ensureTicketGenerated(sale) {
             await buildTicketPdf({
                 ticketId: current.ticketId, name: current.name, email: current.email, gender: current.gender,
                 quantity: current.quantity, amount: current.amount, createdAt: current.generatedAt || current.paidAt,
-                event: current.event || 'DHOLIDA GARBA ROYALE'
+                event: await eventDetailsForSale(current)
             });
         } catch (error) {
             console.error('[ticket] Existing ticket PDF could not be rebuilt:', error.message);
@@ -1636,7 +1651,7 @@ function solverTicketPayload(sale, reveal) {
         ? storedUnitPrice
         : (Number(sale.amount ?? sale.customerTotal) || 0) / quantity;
     return {
-        ticketId: sale.ticketId, event: sale.event || EVENT.name, attendee: sale.name || '—', phone: sale.phone || '', email: sale.email || '',
+        ticketId: sale.ticketId, event: sale.event || '', attendee: sale.name || '—', phone: sale.phone || '', email: sale.email || '',
         tier: ticketTypeForSale(sale), quantity, price: unitPrice,
         amount: Number(sale.amount) || 0, createdAt: sale.createdAt || sale.generatedAt || sale.paidAt || null,
         status: solverStatus(sale), generatedBy: reveal ? (sale.generatedBy || sale.prName || (sale.issuedByAdmin ? 'Admin' : 'Unknown')) : null,
@@ -2050,7 +2065,7 @@ app.post('/api/verify-payment', checkoutRateLimit, async (req, res) => {
             pdfPath,
             qrBuffer,
             downloadUrl,
-            event: sale.event || 'DHOLIDA GARBA ROYALE'
+            event: sale.event || ''
         });
 
         if (emailResult.success) {
@@ -2068,7 +2083,7 @@ app.post('/api/verify-payment', checkoutRateLimit, async (req, res) => {
 
         const whatsappResult = process.env.NODE_ENV === 'test' ? { success: false, reason: 'Notification delivery is disabled in tests.' } : await sendAndRecordTicketWhatsApp({
             orderId, phone: sale.phone, name: sale.name, ticketId,
-            event: sale.event || EVENT.name, ticketType: ticketTypeForSale(sale), pdfPath
+            event: sale.event || '', ticketType: ticketTypeForSale(sale), pdfPath
         });
 
         res.json({
@@ -2079,14 +2094,14 @@ app.post('/api/verify-payment', checkoutRateLimit, async (req, res) => {
             emailSent: emailResult.success,
             emailError: emailResult.success ? null : emailResult.error,
             whatsappSent: whatsappResult.success,
-            event: EVENT.name,
+            event: '',
             name: sale.name,
             email: sale.email,
             gender: sale.gender,
             quantity: sale.quantity,
             amount: sale.amount,
             generatedAt,
-            details: EVENT_DETAILS
+            details: null
         });
     } catch (err) {
         console.error('[verify-payment] Error:', err.message);
@@ -2164,7 +2179,7 @@ app.post('/api/webhook/razorpay', async (req, res) => {
             const emailResult = process.env.NODE_ENV === 'test' ? { success: false, error: 'Notification delivery is disabled in tests.' } : await sendTicketEmail({
                 to: currentSale.email, name: currentSale.name, ticketId: issued.ticketId, gender: currentSale.gender,
                 quantity: currentSale.quantity, amount: currentSale.amount, pdfPath: issued.pdfPath, qrBuffer: issued.qrBuffer,
-                downloadUrl, event: currentSale.event || 'DHOLIDA GARBA ROYALE'
+                downloadUrl, event: await eventDetailsForSale(currentSale)
             });
             await db.updateSaleRecord(orderId, emailResult.success
                 ? { status: 'emailed', emailStatus: 'sent', emailError: null, emailPreviewUrl: emailResult.previewUrl || null }
@@ -2173,7 +2188,7 @@ app.post('/api/webhook/razorpay', async (req, res) => {
         if (currentSale.whatsappStatus !== 'sent') {
             if (process.env.NODE_ENV !== 'test') await sendAndRecordTicketWhatsApp({
                 orderId, phone: currentSale.phone, name: currentSale.name, ticketId: issued.ticketId,
-                event: currentSale.event || EVENT.name, ticketType: ticketTypeForSale(currentSale), pdfPath: issued.pdfPath
+                event: currentSale.event || '', ticketType: ticketTypeForSale(currentSale), pdfPath: issued.pdfPath
             });
         }
         await db.recordRazorpayEvent(orderId, providerEventId);
@@ -2189,8 +2204,7 @@ function ticketTypeForSale(sale) {
     const storedType = String(sale?.ticketType || '').trim();
     if (storedType) return storedType;
     const legacyGender = String(sale?.gender || '').trim();
-    const legacyLabels = { male: 'GA Single', female: 'VIP Single', aura: 'Dholida Garba Royale', exclusive: 'VIP Single' };
-    return legacyLabels[legacyGender] || legacyGender || 'General';
+    return legacyGender || 'Ticket';
 }
 
 async function publicTicketAmount(sale) {
@@ -2230,11 +2244,9 @@ app.get('/api/ticket/:ticketId', rateLimit({ limit: 30, windowMs: 15 * 60 * 1000
     if (!isCountableTicketSale(sale)) return res.status(410).json({ success: false, message: 'This ticket is no longer active.' });
 
     // Build event details (mirrors ticket.js)
-    const isAura = sale.event && sale.event.toUpperCase().includes('AURA');
-    const dateLabel = isAura
-        ? '17 OCT 2026 · 4:00 PM'
-        : '17 OCT 2026 · 4:00 PM';
-    const venue = 'Pethkar Ground, Kothrud, Pune';
+    const eventRecord = await eventDetailsForSale(sale);
+    const dateLabel = [eventRecord?.date || eventRecord?.startsAt, eventRecord?.time].filter(Boolean).join(' · ');
+    const venue = eventRecord?.venue || eventRecord?.address || '';
     const amount = await publicTicketAmount(sale);
     const quantity = Math.max(1, Number.parseInt(sale.quantity, 10) || 1);
     const passUnitPrice = Math.round((amount / quantity) * 100) / 100;
@@ -2243,8 +2255,11 @@ app.get('/api/ticket/:ticketId', rateLimit({ limit: 30, windowMs: 15 * 60 * 1000
     res.set('Cache-Control', 'private, no-store');
     res.set('Pragma', 'no-cache');
     res.json({ success: true, ticket: {
-        ticketId: sale.ticketId, event: sale.event || 'DHOLIDA GARBA ROYALE', name: sale.name,
+        ticketId: sale.ticketId, event: eventRecord?.name || sale.event || '', name: sale.name,
         attendee: sale.name, dateLabel, venue, ticketType: ticketTypeForSale(sale), amount,
+        description: eventRecord?.description || '', category: eventRecord?.category || '',
+        images: Array.isArray(eventRecord?.images) ? eventRecord.images : [],
+        bannerUrl: Array.isArray(eventRecord?.images) ? eventRecord.images[0] || '' : '',
         quantity: sale.quantity || 1, status: sale.scannedAt ? 'scanned' : 'paid',
         scannedAt: sale.scannedAt, generatedAt: sale.generatedAt || sale.createdAt
     } });
@@ -2263,11 +2278,17 @@ app.post('/api/customer/bookings/ticket-view', recoveredTicketViewRateLimit, asy
         }
         if (sale.disabledAt || !canDeliverSale(sale) || !isCountableTicketSale(sale)) return res.status(410).json({ success: false, message: 'This ticket is no longer active.' });
         const amount = await publicTicketAmount(sale);
+        const eventRecord = await eventDetailsForSale(sale);
         res.set('Cache-Control', 'private, no-store');
         res.set('Pragma', 'no-cache');
         return res.json({ success: true, ticket: {
-            ticketId: sale.ticketId, event: sale.event || 'DHOLIDA GARBA ROYALE', name: sale.name,
-            attendee: sale.name, dateLabel: '17 OCT 2026 · 4:00 PM', venue: 'Pethkar Ground, Kothrud, Pune',
+            ticketId: sale.ticketId, event: eventRecord?.name || sale.event || '', name: sale.name,
+            attendee: sale.name,
+            dateLabel: [eventRecord?.date || eventRecord?.startsAt, eventRecord?.time].filter(Boolean).join(' · '),
+            venue: eventRecord?.venue || eventRecord?.address || '',
+            description: eventRecord?.description || '', category: eventRecord?.category || '',
+            images: Array.isArray(eventRecord?.images) ? eventRecord.images : [],
+            bannerUrl: Array.isArray(eventRecord?.images) ? eventRecord.images[0] || '' : '',
             ticketType: ticketTypeForSale(sale), amount, quantity: sale.quantity || 1,
             status: sale.scannedAt ? 'scanned' : 'paid', scannedAt: sale.scannedAt,
             generatedAt: sale.generatedAt || sale.createdAt
@@ -2302,7 +2323,7 @@ app.get('/api/ticket/:ticketId/download', rateLimit({ limit: 30, windowMs: 15 * 
                 quantity: sale.quantity || 1,
                 amount: sale.amount || 0,
                 createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
-                event: sale.event || EVENT.name,
+                event: sale.event || '',
                 timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
             });
         } catch (err) {
@@ -2310,7 +2331,7 @@ app.get('/api/ticket/:ticketId/download', rateLimit({ limit: 30, windowMs: 15 * 
         }
     }
 
-    res.download(filePath, `${EVENT.name.replace(/\s+/g, '-')}-${sale.ticketId}.pdf`, err => {
+    res.download(filePath, `ticket-${sale.ticketId}.pdf`, err => {
         if (err && !res.headersSent) res.status(404).send('Ticket file not found. Please contact support.');
     });
 });
@@ -2343,7 +2364,7 @@ app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res)
                 quantity: sale.quantity || 1,
                 amount: sale.amount || 0,
                 createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
-                event: sale.event || EVENT.name,
+                event: sale.event || '',
                 timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
             });
         } catch (err) {
@@ -2357,7 +2378,7 @@ app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res)
         result = await sendTicketEmail({
             to: sale.email, name: sale.name, ticketId: sale.ticketId,
             gender: ticketTypeForSale(sale), quantity: sale.quantity || 1, amount: sale.amount || 0,
-            pdfPath, downloadUrl, event: sale.event || EVENT.name
+            pdfPath, downloadUrl, event: sale.event || ''
         });
     } catch (err) {
         console.error('[Ticket Resend] Email delivery failed.', { name: err.name || 'Error' });
@@ -2378,7 +2399,7 @@ app.post('/api/ticket/:ticketId/resend', ticketResendRateLimit, async (req, res)
     try {
         whatsappResult = await sendAndRecordTicketWhatsApp({
             orderId: sale.orderId, phone: sale.phone, name: sale.name,
-            ticketId: sale.ticketId, event: sale.event || EVENT.name,
+            ticketId: sale.ticketId, event: sale.event || '',
             ticketType: ticketTypeForSale(sale), pdfPath
         });
     } catch (err) {
@@ -2424,11 +2445,11 @@ async function sendScopedTicketPdf(req, res, scope) {
             ticketId: sale.ticketId, name: sale.name, email: sale.email, gender: ticketTypeForSale(sale),
             quantity: sale.quantity || 1, amount: sale.amount || 0,
             createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
-            event: sale.event || EVENT.name, timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
+            event: sale.event || '', timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
         });
         res.set('Cache-Control', 'private, no-store');
         res.set('Pragma', 'no-cache');
-        return res.download(filePath, `${EVENT.name.replace(/\s+/g, '-')}-${sale.ticketId}.pdf`, error => {
+        return res.download(filePath, `ticket-${sale.ticketId}.pdf`, error => {
             if (error && !res.headersSent) res.status(404).send('Ticket file not found. Please contact support.');
         });
     } catch (_) {
@@ -2447,11 +2468,11 @@ async function resendScopedTicket(req, res, scope) {
             ticketId: sale.ticketId, name: sale.name, email: sale.email, gender: ticketTypeForSale(sale),
             quantity: sale.quantity || 1, amount: sale.amount || 0,
             createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
-            event: sale.event || EVENT.name, timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
+            event: sale.event || '', timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
         });
         const result = await sendTicketEmail({ to: sale.email, name: sale.name, ticketId: sale.ticketId,
             gender: ticketTypeForSale(sale), quantity: sale.quantity || 1, amount: sale.amount || 0,
-            pdfPath: filePath, downloadUrl: `${BASE_URL}/bookings`, event: sale.event || EVENT.name });
+            pdfPath: filePath, downloadUrl: `${BASE_URL}/bookings`, event: sale.event || '' });
         await db.updateSaleRecord(sale.orderId, { emailStatus: result.success ? 'sent' : 'failed', emailError: result.success ? null : result.error, status: result.success ? 'emailed' : 'email_failed' });
         return res.json({ success: Boolean(result.success), message: result.success ? 'Ticket email sent to the stored booking address.' : 'Ticket email could not be sent.' });
     } catch (_) {
@@ -2525,7 +2546,7 @@ app.post('/api/admin/ticket-approvals/:orderId/approve', requireApprovalAdmin, a
                 quantity: claimed.quantity || 1,
                 amount: claimed.amount || 0,
                 createdAt: claimed.generatedAt || claimed.createdAt || approvedAt,
-                event: claimed.event || EVENT.name
+                event: await eventDetailsForSale(claimed)
             });
         }
         const delivery = await deliverManualTicketSale(claimed, { pdfPath: filePath });
@@ -2634,7 +2655,7 @@ app.get('/api/solver/tickets/:ticketId', requireMasterAdmin, async (req, res) =>
         const reveal = solverRevealAllowed(req, res);
         let upgrades = [];
         if (solverTicketPayload(sale, false).solverCanUpgrade) {
-            const pricing = await getSolverEventPricing(sale.event || EVENT.name);
+            const pricing = await getSolverEventPricing(sale.event || '');
             const currentName = ticketTypeForSale(sale);
             const current = pricing?.passes?.find(pass => pass.name === currentName || pass.id === currentName);
             const family = solverTierFamily(currentName);
@@ -2683,7 +2704,7 @@ app.post('/api/solver/tickets/:ticketId/upgrade', requireMasterAdmin, async (req
         if (!sale) return res.status(404).json({ success: false, message: 'Ticket not found.' });
         if (sale.status === 'scanned' || (sale.scannedAt && !sale.reactivatedAt)) return res.status(409).json({ success: false, message: 'This ticket has already been used. Reactivate it first if you want the upgraded ticket to be usable again.' });
         if (sale.disabledAt || sale.status === 'cancelled') return res.status(409).json({ success: false, message: 'Reactivate this ticket before upgrading.' });
-        const pricing = await getSolverEventPricing(sale.event || EVENT.name);
+        const pricing = await getSolverEventPricing(sale.event || '');
         const currentName = ticketTypeForSale(sale);
         const targetName = String(req.body?.tier || '');
         const current = pricing?.passes?.find(pass => pass.name === currentName || pass.id === currentName);
@@ -2753,11 +2774,13 @@ app.get('/api/admin/sales', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/admin/config', requireAdmin, async (req, res) => {
-    if (req.adminSession?.role === 'company_admin' && !(await sellerOwnsEvent(req.adminSession.companyId, EVENT.name))) {
-        return res.status(403).json({ success: false, message: 'Administrator is not assigned to this event.' });
-    }
-    const pricing = await getEventPricing(EVENT.name);
-    res.json({ success: true, event: pricing?.event.name || EVENT.name, pricing: pricing?.passes || [], testMode: TEST_MODE });
+    const eventRefParam = String(req.query.event || '').trim();
+    if (!eventRefParam) return res.status(400).json({ success: false, message: 'Select an event to load its ticket categories.' });
+    const event = pickCanonicalEvent(await db.getAllEvents(), eventRefParam);
+    if (!event || !canManageEvent(req, event)) return res.status(404).json({ success: false, message: 'Event not found or unavailable.' });
+    const pricing = await getEventPricing(eventRef(event));
+    res.json({ success: true, event: pricing?.event.name || event.name, pricing: pricing?.passes || [], testMode: TEST_MODE });
+
 });
 
 // ==================== PRESENTATION CONFIG ====================
@@ -2910,7 +2933,14 @@ app.get('/api/admin/pricing', requireAdmin, async (req, res) => {
     const events = visibleDashboardEvents(allEvents).filter(event => canManageEvent(req, event));
     const pricedEvents = await Promise.all(events.map(async event => {
         const pricing = await getEventPricing(eventRef(event));
-        return { id: pricing?.event.id || pricing?.event._id || event.id || event._id, name: pricing?.event.name || event.name, tiers: pricing?.passes || [] };
+        return {
+            id: pricing?.event.id || pricing?.event._id || event.id || event._id,
+            name: pricing?.event.name || event.name,
+            status: event.status || '', active: event.active !== false,
+            archived: Boolean(event.archived), visibility: event.visibility || 'public',
+            city: event.city || '', venue: event.venue || '', startsAt: event.startsAt || event.date || null,
+            tiers: pricing?.passes || []
+        };
     }));
     res.json({ success: true, events: pricedEvents });
 });
@@ -2969,7 +2999,7 @@ app.get('/api/seller/events', requireSeller, async (req, res) => {
 });
 
 app.get('/api/seller/pricing', requireSeller, async (req, res) => {
-    const requestedEvent = typeof req.query.event === 'string' ? req.query.event : EVENT.name;
+    const requestedEvent = typeof req.query.event === 'string' ? req.query.event.trim() : '';
     if (!(await sellerOwnsEvent(req.sellerId, requestedEvent))) return res.status(403).json({ success: false, message: 'Seller is not assigned to this event.' });
     const pricing = await getEventPricing(requestedEvent);
     if (!pricing) return res.status(404).json({ success: false, message: 'No active event pricing is available.' });
@@ -3006,7 +3036,7 @@ async function deliverManualTicketSale(sale, { pdfPath = null, qrBuffer = null, 
         pdfPath: existingPdfPath,
         qrBuffer,
         downloadUrl,
-        event: sale.event || EVENT.name
+        event: sale.event || ''
     });
 
     const deliveredAt = new Date().toISOString();
@@ -3034,7 +3064,7 @@ async function deliverManualTicketSale(sale, { pdfPath = null, qrBuffer = null, 
         phone: sale.phone,
         name: sale.name,
         ticketId: sale.ticketId,
-        event: sale.event || EVENT.name,
+        event: sale.event || '',
         ticketType,
         pdfPath: existingPdfPath
     });
@@ -3073,7 +3103,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Name and email are required.' });
     }
 
-    const requestedEvent = event || EVENT.name;
+    const requestedEvent = String(event || '').trim();
     const requestedType = ticketType || gender;
     const pricedTicket = await resolveTicketAmount(requestedEvent, requestedType, quantity);
     if (!pricedTicket) {
@@ -3346,7 +3376,7 @@ async function getShadowPricing(req, res) {
                 name: event.name,
                 gradient: event.gradient || CANONICAL_EVENT_GRADIENT,
                 icon: event.icon || '🎟️',
-                tagline: event.tagline || 'Pethkar Ground, Kothrud, Pune · 17th October',
+                tagline: event.tagline || '',
                 tiers: pricing?.passes || []
             };
         }))).filter(event => event.tiers.length > 0);
@@ -3373,7 +3403,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
         return res.status(400).json({ success: false, message: 'Customer Name and Email are required.' });
     }
 
-    const evtName = event || EVENT.name;
+    const evtName = String(event || '').trim();
     const pricedTicket = await resolveTicketAmount(evtName, ticketType || gender, quantity);
     if (!pricedTicket) return res.status(400).json({ success: false, message: 'Select a valid ticket type from the current event pricing.' });
     const { qty, amount: pricedAmount, ticketType: tType, event: pricedEvent } = pricedTicket;
@@ -3984,7 +4014,7 @@ app.get('/api/test-email', requireMasterAdmin, async (req, res) => {
             amount: 699,
             pdfPath: '', // skip attachment path for simple test
             qrBuffer: null,
-            downloadUrl: 'https://littx.in'
+            downloadUrl: ''
         });
         if (result.success) {
             res.json({ success: true, message: 'Test email sent.' });
@@ -4137,13 +4167,13 @@ app.post('/api/admin/events/:eventRef/transition', requireEventManager, async (r
 });
 
 // ==================== HEALTH ====================
-app.get('/api/health', (req, res) => res.json({ success: true, event: EVENT.name }));
+app.get('/api/health', (req, res) => res.json({ success: true, service: 'ticketing' }));
 
 function customerBookingSummary(sale, email) {
     const ticketAvailable = Boolean(sale.ticketId && isCountableTicketSale(sale));
     return {
         orderId: sale.orderId,
-        event: sale.event || EVENT.name,
+        event: sale.event || '',
         ticketCategory: sale.ticketType || sale.gender || null,
         quantity: Math.max(1, Number.parseInt(sale.quantity, 10) || 1),
         admissionCount: Math.max(1, Number.parseInt(sale.admissionCount, 10) || Number.parseInt(sale.quantity, 10) || 1),
@@ -4217,12 +4247,12 @@ app.post('/api/customer/bookings/ticket-download', recoveredTicketDownloadRateLi
                 ticketId: sale.ticketId, name: sale.name, email: sale.email,
                 gender: ticketTypeForSale(sale), quantity: sale.quantity || 1,
                 amount: sale.amount || 0, createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
-                event: sale.event || EVENT.name, timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
+                event: sale.event || '', timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
             });
         }
         res.set('Cache-Control', 'private, no-store');
         res.set('Pragma', 'no-cache');
-        return res.download(filePath, `${EVENT.name.replace(/\s+/g, '-')}-${sale.ticketId}.pdf`, error => {
+        return res.download(filePath, `ticket-${sale.ticketId}.pdf`, error => {
             if (error && !res.headersSent) res.status(404).send('Ticket file not found. Please contact support.');
         });
     } catch (error) {
@@ -4247,11 +4277,11 @@ app.post('/api/customer/bookings/ticket-resend', recoveredTicketResendRateLimit,
             ticketId: sale.ticketId, name: sale.name, email: sale.email, gender: ticketTypeForSale(sale),
             quantity: sale.quantity || 1, amount: sale.amount || 0,
             createdAt: sale.generatedAt || sale.createdAt || new Date().toISOString(),
-            event: sale.event || EVENT.name, timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
+            event: sale.event || '', timeZone: sale.source === 'shadow' ? 'Asia/Kolkata' : undefined
         });
         const result = await sendTicketEmail({ to: sale.email, name: sale.name, ticketId: sale.ticketId,
             gender: ticketTypeForSale(sale), quantity: sale.quantity || 1, amount: sale.amount || 0,
-            pdfPath, downloadUrl: `${BASE_URL}/bookings`, event: sale.event || EVENT.name });
+            pdfPath, downloadUrl: `${BASE_URL}/bookings`, event: sale.event || '' });
         await db.updateSaleRecord(sale.orderId, { emailStatus: result.success ? 'sent' : 'failed', emailError: result.success ? null : result.error, status: result.success ? 'emailed' : 'email_failed' });
         return res.json({ success: Boolean(result.success), message: result.success ? 'Ticket email sent to the booking address.' : 'Ticket email could not be sent.' });
     } catch (_) {
@@ -5153,22 +5183,32 @@ app.get('/api/seller/sales', requireSeller, async (req, res) => {
 app.get('/api/mobile/seller-config', requireSeller, async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store');
-        const staticConfig = getSellerMobileConfig();
-        if (!(await sellerOwnsEvent(req.sellerId, staticConfig.event.name))) return res.status(403).json({ success: false, message: 'Seller is not assigned to this event.' });
-        const pricing = await getEventPricing(staticConfig.event.name);
-        if (!pricing) return res.status(404).json({ success: false, message: 'Seller pricing is unavailable.' });
-        res.json({
-            success: true,
-            config: {
-                ...staticConfig,
-                event: { ...staticConfig.event, name: pricing.event.name },
-                passes: pricing.passes.map(pass => ({ id: pass.id, label: pass.name, price: pass.price }))
-            }
-        });
+        const baseConfig = getSellerMobileConfig();
+        const users = await db.getAllUsers();
+        const seller = users.find(user => user.role === 'seller' && (user.userId === req.sellerId || user.sellerSlot === req.sellerId));
+        const companyId = seller?.companyId || sellerCompanyIdFromValue(req.sellerId);
+        if (!companyId) return res.status(403).json({ success: false, message: 'Seller company is not configured.' });
+        const events = (await db.getAllEvents())
+            .filter(event => event.companyId === companyId && eventIsPublic(event))
+            .map(event => ({ id: eventRef(event), name: event.name, displayName: event.name }));
+        const eventRefParam = String(req.query.event || '').trim();
+        if (!eventRefParam) return res.json({ success: true, config: { ...baseConfig, event: null, events, passes: [] } });
+        const selectedEvent = pickCanonicalEvent(events.map(item => ({ ...item, id: item.id })), eventRefParam);
+        const eventRecord = pickCanonicalEvent(await db.getAllEvents(), eventRefParam);
+        if (!selectedEvent || !eventRecord || eventRecord.companyId !== companyId || !eventIsPublic(eventRecord)) return res.status(404).json({ success: false, message: 'Event is not available to this seller.' });
+        const pricing = await getEventPricing(eventRef(eventRecord));
+        if (!pricing?.passes?.length) return res.status(404).json({ success: false, message: 'Seller pricing is unavailable for this event.' });
+        return res.json({ success: true, config: {
+            ...baseConfig,
+            event: { id: eventRef(eventRecord), name: eventRecord.name, displayName: eventRecord.name },
+            events,
+            passes: pricing.passes.map(pass => ({ id: pass.id, label: pass.name, price: pass.price }))
+        } });
     } catch (err) {
         console.error('[Seller mobile config]', err.message);
         res.status(500).json({ success: false, message: 'Seller configuration is unavailable.' });
     }
+
 });
 
 // Admin-facing device inventory for the /seller portal. Tokens and public keys
@@ -5795,7 +5835,7 @@ app.post('/api/admin/pr-approve', requireApprovalAdmin, async (req, res) => {
 
         if (process.env.NODE_ENV !== 'test') await sendAndRecordTicketWhatsApp({
             orderId, phone: sale.phone, name: sale.name, ticketId: sale.ticketId,
-            event: sale.event || EVENT.name, ticketType: tType, pdfPath
+            event: sale.event || '', ticketType: tType, pdfPath
         });
 
         res.json({ success: true, message: result.success ? 'Approved and ticket emailed!' : 'Approved but email failed.' });
@@ -5851,7 +5891,7 @@ app.get('*splat', (req, res) => {
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
-        console.log(`\n🎟  ${EVENT.name} ticketing server running on port ${PORT}`);
+        console.log(`\n🎟  Stageway ticketing server running on port ${PORT}`);
         console.log(`   Mode: ${TEST_MODE ? 'TEST MODE (no real payments)' : 'LIVE (Razorpay)'}`);
         console.log(`   Admin dashboard: ${BASE_URL}/dashboard  (key required)\n`);
     });

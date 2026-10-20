@@ -1,3 +1,5 @@
+> **Historical audit record:** This document describes provider paths that existed before Phase 21. The alternate provider was removed in Phase 21. Current code supports direct Meta Cloud API only when explicitly configured; otherwise WhatsApp delivery is unavailable. Do not use this historical comparison as setup instructions.
+
 # Stageway Phase 13 — Secure WhatsApp PDF Delivery
 
 **Decision:** Implemented direct authenticated PDF upload for both outbound provider branches already present in the repository. New attachment sends use provider-hosted media IDs, not public ticket URLs. This does not change ticket authorization, IDs, QR payloads, group quantity, legacy routes, payment behavior, or customer communication. Production remains **NO-GO** pending staging acceptance.

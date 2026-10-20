@@ -1,5 +1,7 @@
 # Stageway Phase 14 — Staging Verification Results
 
+> **Historical snapshot:** RichAutomate references below describe the earlier repository state and are superseded by Phase 21 removal. The blocked staging acceptance results remain historical evidence and are not changed by Phase 21. See `PHASE21_HARDCODED_EVENT_AND_RICHAUTOMATE_REMOVAL.md` for current status.
+
 **Assessment date:** 2026-10-20
 **Release recommendation:** **NO-GO. Staging acceptance was not performed.** The checkout has no confirmed staging endpoint, staging database, deployed runtime metadata, or verifiably staging-only provider account. No probes or provider calls were made. The local ignored `.env` contains configured RichAutomate-related keys, but its account/environment cannot be established; its values were not read or used. Do not treat it as staging authorization.
 
@@ -90,3 +92,4 @@ Production GO requires all of the following objective evidence: deployed Node `>
 ## Phase 19 authentication acceptance recheck
 
 The recheck and per-test evidence matrix are in [PHASE19_STAGING_ACCEPTANCE.md](PHASE19_STAGING_ACCEPTANCE.md). No verified staging endpoint, database, or staging-only credentials were available; the existing `staging/server/.env` was not read or used. Staging runtime checks were stopped. All Phase 19 acceptance items remain **BLOCKED** and production remains **NO-GO**.
+# Historical snapshot notice

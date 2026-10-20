@@ -1,5 +1,7 @@
 # Stageway Project Audit
 
+> **Historical audit:** This audit predates the Phase 21 event cleanup. Earlier event seed and compatibility observations below are historical; see `PHASE21_HARDCODED_EVENT_AND_RICHAUTOMATE_REMOVAL.md` for current status.
+
 **Audit date:** 2026-10-19
 **Repository state:** `main` at the current checkout; the working tree already contained edits to the main React app, several portal components, `staging/server/server.js`, `vercel.json`, Android Gradle cache files, and untracked Android app folders before this audit. Those existing edits were preserved.
 **Scope:** Source/configuration inventory, route and auth-flow inspection, database models/seeding, payment and ticket code paths, frontend/native clients, build/test scripts, and deployment files. No production service or database was accessed.
@@ -75,3 +77,4 @@ The follow-up review found and addressed these additional issues:
 - Server tests include mocked inventory reservation/expiry/release, OTP lifecycle, refund decision invariants, and whole-group scan race handling. Latest backend test run passed 29/29.
 - OTP challenge storage and admin refund decision routes are implemented, but customer-facing OTP delivery/recovery and refund submission are not operational. The scanner admits the full group on one QR scan; delivery retry workers, cash/manual inventory handling, and production index verification remain open.
 - Payment gateway integration is deferred for the current continuation. Existing provider code/configuration was left untouched. Late captures after inventory expiry require manual review without automatic ticket issuance, overselling, or automatic refunds. No production or live financial operation was performed.
+# Historical audit notice

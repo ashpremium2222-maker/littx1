@@ -619,7 +619,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                 </div>
                 <div className="field" style={{ gridColumn: 'span 2' }}>
                   <label>Email Address</label>
-                  <input defaultValue="atharva@littx.in" />
+                  <input defaultValue="" placeholder="Configured administrator email" />
                 </div>
                 <div className="field" style={{ gridColumn: 'span 2' }}>
                   <label>Bio / Role</label>

@@ -15,13 +15,7 @@ function fmtIST(date: Date | string | null | undefined): string {
   return `${months[ist.getUTCMonth()]} ${ist.getUTCDate()}, ${h12}:${m} ${ampm}`
 }
 
-export type TicketType =
-  | 'GA Single'
-  | 'GA Group of 5'
-  | 'GA Group of 10'
-  | 'VIP Single'
-  | 'VIP Group of 5'
-  | 'VIP Group of 10'
+export type TicketType = string
 export type TicketStatus = 'pending' | 'scanned' | 'cancelled'
 
 export interface Ticket {
@@ -96,13 +90,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const isScanned = sale.status === 'scanned' || !!sale.scannedAt
             return {
               id: sale.ticketId || sale.orderId,
-              event: sale.event || 'DHOLIDA GARBA ROYALE',
+              event: sale.event || 'Event details unavailable',
               attendee: sale.name,
               email: sale.email,
               phone: sale.phone || '',
               dateLabel: fmtIST(sale.generatedAt),
-              venue: 'Pethkar Ground, Kothrud, Pune',
-              ticketType: (sale.ticketType as any) || 'GA Single',
+              venue: sale.venue || '',
+              ticketType: (sale.ticketType as any) || 'Ticket',
               price: `₹${sale.amount}`,
               qty: sale.quantity || 1,
               generatedBy: 'Admin',
@@ -174,7 +168,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         attendee: data.ticket.attendee,
         email: data.ticket.email,
         dateLabel: new Date(data.ticket.generatedAt).toLocaleString(),
-        venue: 'Pethkar Ground, Kothrud, Pune',
+        venue: data.ticket.venue || '',
         ticketType: data.ticket.ticketType,
         price: `₹${data.ticket.price}`,
         qty: data.ticket.qty,
@@ -216,13 +210,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // Build a fully-resolved ticket directly from server response
           const resolvedTicket: Ticket = {
             id: t.id,
-            event: t.event || 'DHOLIDA GARBA ROYALE',
+            event: t.event || 'Event details unavailable',
             attendee: t.attendee || t.name || '—',
             email: t.email || '—',
             phone: t.phone || 'N/A',
             dateLabel: t.generatedAt ? new Date(t.generatedAt).toLocaleString() : 'TBA',
-            venue: 'Pethkar Ground, Kothrud, Pune',
-            ticketType: (t.ticketType as TicketType) || 'GA Single',
+            venue: t.venue || '',
+            ticketType: (t.ticketType as TicketType) || 'Ticket',
             price: `₹${t.amount || '—'}`,
             qty: t.quantity || 1,
             admissionCount: t.admissionCount || t.scannedAdmissionCount || 1,
@@ -239,13 +233,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // Server sends name as attendee field; map all fields correctly
           const matchedTicket: Ticket = {
             id: t.id || t.ticketId || cleanId,
-            event: t.event || 'DHOLIDA GARBA ROYALE',
+            event: t.event || 'Event details unavailable',
             attendee: t.attendee || t.name || '—',
             email: t.email || '—',
             phone: t.phone || 'N/A',
             dateLabel: fmtIST(t.generatedAt),
-            venue: 'Pethkar Ground, Kothrud, Pune',
-            ticketType: (t.ticketType as TicketType) || 'GA Single',
+            venue: t.venue || '',
+            ticketType: (t.ticketType as TicketType) || 'Ticket',
             price: `₹${t.amount || '—'}`,
             qty: t.quantity || 1,
             generatedBy: t.generatedBy || 'LITTX',

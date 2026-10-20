@@ -1,6 +1,4 @@
-// Generates a unique ticket ID, a QR code, and a downloadable "Littix"-style
-// PDF pass for DHOLIDA GARBA ROYALE — mirrors the reference ticket design
-// (banner artwork, NOT SCANNED / ACTIVE badges, info pills, QR, Littix mark).
+// Generates a stable ticket ID, QR identity, and event-derived PDF pass.
 
 const fs = require('fs');
 const path = require('path');
@@ -31,37 +29,6 @@ const TICKETS_DIR = (() => {
     }
 })();
 
-const BANNER_PATH = path.join(__dirname, 'ticket-banner.png');
-const AURA_BANNER_PATH = path.join(__dirname, 'aura-ticket-banner.jpg');
-const INVITE_BANNER_PATH = path.join(__dirname, 'invite-banner.png');
-
-const EVENT_NAME = 'DHOLIDA GARBA ROYALE';
-
-// ---- Edit these to match your actual event details ----
-const EVENT_DETAILS = {
-    brand: 'DHOLIDA GARBA ROYALE',
-    stage: 'Main Stage',
-    admission: 'General Admission',
-    date: '17 OCT 2026',
-    time: '4:00 PM onwards',
-    venue: 'Pethkar Ground, Kothrud, Pune',
-    generatedBy: 'LITTX Events'
-};
-
-// Ticket type display labels — maps internal gender/type value to display string
-const GENDER_LABEL = {
-    // Legacy gendered passes (kept for backward compat)
-    female: 'VIP Single',
-    male: 'GA Single',
-    // New GA / VIP pass types
-    'GA Single': 'GA Single',
-    'GA Group of 5': 'GA Group of 5',
-    'GA Group of 10': 'GA Group of 10',
-    'VIP Single': 'VIP Single',
-    'VIP Group of 5': 'VIP Group of 5',
-    'VIP Group of 10': 'VIP Group of 10',
-};
-
 function generateTicketId() {
     // The ticket URL is a bearer credential, so use the full 122-bit UUID
     // entropy rather than the old eight-hex-character (~32-bit) suffix.
@@ -87,88 +54,54 @@ function pill(doc, { x, y, w, h, bg, textColor, label, fontSize = 8 }) {
 
 
 /**
- * Renders the "Littix"-style ticket PDF: banner artwork with NOT SCANNED /
- * ACTIVE badges, then a white details panel with pills, ticket type/qty/
- * price, ticket ID, QR code, and the Littix wordmark.
+ * Renders a ticket using the selected event's stored details. Missing legacy
+ * event fields stay blank instead of being replaced with another event.
  */
-async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount, createdAt, event, timeZone }) {
+async function buildTicketPdf({ ticketId, name, email, gender, ticketType, quantity, amount, createdAt, event, date, time, venue, timeZone }) {
     const filePath = path.join(TICKETS_DIR, `${ticketId}.pdf`);
     const qrPngBuffer = await buildQrBuffer(ticketId);
-    const ticketType = String(gender || 'General Admission');
-
-    const isAura = event && event.toUpperCase().includes('AURA');
-    const brandName = isAura ? 'DHOLIDA GARBA ROYALE' : EVENT_DETAILS.brand;
-    const eventDate = isAura ? '17 OCT 2026' : EVENT_DETAILS.date;
-    const bannerFile = isAura ? AURA_BANNER_PATH : BANNER_PATH;
+    const selectedType = String(ticketType || gender || 'Ticket');
+    const eventRecord = event && typeof event === 'object' ? event : null;
+    const eventName = String(eventRecord?.name || event || '').trim() || 'Event details unavailable';
+    const eventDate = date || eventRecord?.date || eventRecord?.startsAt || '';
+    const eventTime = time || eventRecord?.time || '';
+    const eventVenue = venue || eventRecord?.venue || eventRecord?.address || '';
 
     const W = 380;
-    const BANNER_ASPECT_RATIO = 1350 / 1080;
-    const BANNER_H = W * BANNER_ASPECT_RATIO;
-    const PAGE_H = 1000;
+    const PAGE_H = 760;
 
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({ size: [W, PAGE_H], margin: 0 });
         const stream = fs.createWriteStream(filePath);
         doc.pipe(stream);
 
-        let bannerToUse = BANNER_PATH;
-        if (event && event.toUpperCase().includes('AURA') && fs.existsSync(AURA_BANNER_PATH)) {
-            bannerToUse = AURA_BANNER_PATH;
-        } else if (gender && gender.toUpperCase().includes('EXCLUSIVE') && fs.existsSync(INVITE_BANNER_PATH)) {
-            bannerToUse = INVITE_BANNER_PATH;
-        }
-
-        // ---- Banner artwork ----
-        if (fs.existsSync(bannerToUse)) {
-            doc.image(bannerToUse, 0, 0, { width: W, height: BANNER_H });
-        } else {
-            doc.rect(0, 0, W, BANNER_H).fill('#0d0d0f');
-        }
-
-        // Badges over the banner
-        pill(doc, { x: 16, y: 16, w: 96, h: 22, bg: 'rgba(255,255,255,0.85)', textColor: '#333333', label: 'NOT SCANNED' });
-        pill(doc, { x: W - 16 - 64, y: 16, w: 64, h: 22, bg: '#22c55e', textColor: '#ffffff', label: 'ACTIVE' });
-
-        // ---- White details panel ----
-        let y = BANNER_H + 22;
-        doc.rect(0, BANNER_H, W, PAGE_H - BANNER_H).fill('#ffffff');
-
-        doc.font('Helvetica-Bold').fontSize(20).fillColor('#0d0d0f').text(brandName, 24, y);
-        y += 28;
-        const passLabel = GENDER_LABEL[ticketType] || ticketType;
-        doc.font('Helvetica-Bold').fontSize(11).fillColor('#A855F7')
-            .text(passLabel.toUpperCase(), 24, y);
-        y += 22;
+        doc.rect(0, 0, W, PAGE_H).fill('#ffffff');
+        doc.rect(0, 0, W, 112).fill('#111827');
+        doc.font('Helvetica-Bold').fontSize(19).fillColor('#ffffff').text(eventName, 24, 24, { width: W - 48 });
+        doc.font('Helvetica').fontSize(10).fillColor('#cbd5e1').text('Admission ticket', 24, 78);
+        let y = 136;
+        doc.font('Helvetica-Bold').fontSize(11).fillColor('#7c3aed').text(selectedType.toUpperCase(), 24, y);
+        y += 26;
         
         doc.font('Helvetica-Bold').fontSize(12).fillColor('#111111').text(`Attendee: ${name}`, 24, y);
         y += 22;
 
-        // Info pills: date / time / venue (Dholida Garba Royale: date only)
-        const pillY = y;
-        const pillH = 26;
-        const infoPills = isAura ? [eventDate] : [eventDate, EVENT_DETAILS.time, EVENT_DETAILS.venue];
-        let px = 24;
-        infoPills.forEach(text => {
-            const w = 30 + text.length * 6.5;
-            pill(doc, { x: px, y: pillY, w, h: pillH, bg: '#f2f2f5', textColor: '#333333', label: text, fontSize: 9 });
-            px += w + 8;
-        });
-        y = pillY + pillH + 20;
+        const eventLines = [eventDate, eventTime, eventVenue].filter(Boolean).map(String);
+        for (const line of eventLines) {
+            doc.font('Helvetica').fontSize(9).fillColor('#475569').text(line, 24, y, { width: W - 48 });
+            y += 16;
+        }
+        y += 12;
 
         doc.moveTo(24, y).lineTo(W - 24, y).strokeColor('#e5e5e8').lineWidth(1).stroke();
         y += 20;
 
         // Ticket type / qty / price row
-        const isExclusive = ticketType.toUpperCase().includes('EXCLUSIVE');
         const colW = (W - 48) / 3;
-        const cols = isExclusive ? [
-            { label: 'TICKET TYPE', value: 'Exclusive Pass', align: 'left' },
-            { label: 'QTY', value: String(quantity), align: 'center' },
-            { label: 'ACCESS', value: 'Complimentary', align: 'right' }
-        ] : [
-            { label: 'TICKET TYPE', value: GENDER_LABEL[ticketType] || ticketType, align: 'left' },
-            { label: 'QTY', value: String(quantity), align: 'center' },
-            { label: 'PRICE', value: `Rs. ${amount}`, align: 'right' }
+        const cols = [
+            { label: 'TICKET TYPE', value: selectedType, align: 'left' },
+            { label: 'ADMISSIONS', value: String(quantity), align: 'center' },
+            { label: 'AMOUNT', value: `${amount ?? ''}`, align: 'right' }
         ];
         cols.forEach((c, i) => {
             const x = 24 + i * colW;
@@ -184,7 +117,7 @@ async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount,
         doc.font('Helvetica-Bold').fontSize(14).fillColor('#0d0d0f').text(ticketId, 24, y + 13);
         y += 36;
         doc.font('Helvetica').fontSize(8).fillColor('#9a9a9a')
-            .text(`Generated by nexoracult on ${new Date(createdAt).toLocaleString('en-IN', timeZone ? { timeZone } : undefined)}`, 24, y);
+            .text(`Generated by LITTX on ${new Date(createdAt).toLocaleString('en-IN', timeZone ? { timeZone } : undefined)}`, 24, y);
         y += 30;
 
         // QR code, centered
@@ -193,8 +126,8 @@ async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount,
         y += qrSize + 25;
 
         // Brand signature — LITTX centered
-        doc.font('Helvetica-Bold').fontSize(11).fillColor('#000000')
-            .text('LITTX', 0, y, { width: W, align: 'center' });
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#64748b')
+            .text('Keep this ticket available for entry.', 24, y, { width: W - 48, align: 'center' });
 
         doc.end();
         stream.on('finish', () => resolve(filePath));
@@ -203,15 +136,9 @@ async function buildTicketPdf({ ticketId, name, email, gender, quantity, amount,
 }
 
 module.exports = {
-    EVENT_NAME,
-    EVENT_DETAILS,
-    GENDER_LABEL,
     generateTicketId,
     buildQrDataUrl,
     buildQrBuffer,
     buildTicketPdf,
-    TICKETS_DIR,
-    BANNER_PATH,
-    AURA_BANNER_PATH,
-    INVITE_BANNER_PATH
+    TICKETS_DIR
 };

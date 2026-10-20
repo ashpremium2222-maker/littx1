@@ -76,9 +76,7 @@ export default function Tickets({
   const baseTicketSales = sales.filter((s) => {
     if (!isCountableTicketSale(s)) return false
 
-    const category = 'dholida garba royale'
-
-    if (eventFilter !== 'all' && category !== eventFilter)
+    if (eventFilter !== 'all' && s.event !== eventFilter)
       return false
 
     return true
@@ -170,8 +168,8 @@ export default function Tickets({
       buyer: s.name,
       email: s.email,
       phone: s.phone || '—',
-      event: s.event || 'DHOLIDA GARBA ROYALE',
-      type: s.ticketType || 'GA Single',
+      event: s.event || 'Event details unavailable',
+      type: s.ticketType || 'Ticket',
       qty: Math.max(1, Number(s.quantity) || 1),
       price: s.amount || 0,
       generated: s.generatedAt ? new Date(s.generatedAt).toLocaleString('en-IN') : '—',
@@ -262,7 +260,7 @@ export default function Tickets({
 
         <select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)}>
           <option value="all">All events</option>
-          <option value="dholida garba royale">DHOLIDA GARBA ROYALE</option>
+          {Array.from(new Set(sales.map(sale => sale.event).filter(Boolean))).map(eventName => <option key={eventName} value={eventName}>{eventName}</option>)}
         </select>
 
         <button

@@ -14,7 +14,7 @@ process.env.SESSION_BEARER_CUTOFF_AT = '';
 process.env.SESSION_BEARER_CUTOFF_ENFORCED = 'false';
 process.env.SCANNER_SESSION_SECRET = 'test-only-session-secret-with-more-than-32-characters';
 process.env.SCANNER_PASSWORD = 'test-scanner-password-123';
-process.env.SCANNER_EVENT_NAMES = 'DHOLIDA GARBA ROYALE';
+process.env.SCANNER_EVENT_NAMES = 'Phase 21 Synthetic Event';
 process.env.SCANNER_COMPANY_ID = 'littlane';
 process.env.RAZORPAY_WEBHOOK_SECRET = 'test-webhook-secret';
 process.env.PRESENTATION_KEY = 'test-presentation-secret';
@@ -44,6 +44,15 @@ before(async () => {
 after(async () => {
     if (server) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     try { fs.unlinkSync(process.env.LITTX_MOCK_SALES_FILE); } catch (_) {}
+});
+
+test('empty event database produces an empty public catalogue without a fallback event', async () => {
+    assert.deepEqual(await db.getAllEvents(), []);
+    const response = await fetch(`${baseUrl}/api/events`);
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.success, true);
+    assert.deepEqual(result.events, []);
 });
 
 test('native scanner session fails closed when scanner password is not configured', async () => {
@@ -177,7 +186,9 @@ test('OTP recovery ticket view and resend reject missing, wrong-purpose, wrong-t
     const orderId = `security-ticket-scopes-${Date.now()}`;
     const ticketId = `DGR-${crypto.randomUUID()}`;
     const email = 'scoped-customer@example.test';
-    await db.createSaleRecord({ orderId, ticketId, email, name: 'Scoped Customer', event: 'Test Event', ticketType: 'General', status: 'emailed', emailStatus: 'sent', paymentStatus: 'paid', quantity: 3, admissionCount: 3, amount: 369, createdAt: new Date().toISOString() });
+    const eventId = `security-ticket-event-${Date.now()}`;
+    await db.saveEvent({ id: eventId, name: 'Phase 21 Ticket Event', date: '2030-05-06', time: '18:00', venue: 'Synthetic Hall', description: 'Synthetic event description', category: 'Synthetic category', images: ['https://stageway.example.test/event-poster.png'], status: 'published', visibility: 'public' });
+    await db.createSaleRecord({ orderId, ticketId, email, name: 'Scoped Customer', eventId, event: eventId, ticketType: 'General', status: 'emailed', emailStatus: 'sent', paymentStatus: 'paid', quantity: 3, admissionCount: 3, amount: 369, createdAt: new Date().toISOString() });
     try {
         for (const [route, method] of [['ticket-view', 'POST'], ['ticket-download', 'POST'], ['ticket-resend', 'POST']]) {
             const denied = await fetch(`${baseUrl}/api/customer/bookings/${route}`, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketId }) });
@@ -214,12 +225,16 @@ test('OTP recovery ticket view and resend reject missing, wrong-purpose, wrong-t
         const body = await viewed.json();
         assert.equal(body.ticket.quantity, 3);
         assert.equal(body.ticket.ticketId, ticketId);
+        assert.equal(body.ticket.event, 'Phase 21 Ticket Event');
+        assert.equal(body.ticket.venue, 'Synthetic Hall');
+        assert.deepEqual(body.ticket.images, ['https://stageway.example.test/event-poster.png']);
         assert.match(viewed.headers.get('cache-control') || '', /no-store/);
     } finally {
         if (priorCookieMode === undefined) delete process.env.SESSION_COOKIE_AUTH_ENABLED; else process.env.SESSION_COOKIE_AUTH_ENABLED = priorCookieMode;
         if (priorCutoff === undefined) delete process.env.SESSION_BEARER_CUTOFF_AT; else process.env.SESSION_BEARER_CUTOFF_AT = priorCutoff;
         if (priorCutoffEnforced === undefined) delete process.env.SESSION_BEARER_CUTOFF_ENFORCED; else process.env.SESSION_BEARER_CUTOFF_ENFORCED = priorCutoffEnforced;
         await db.deleteSaleRecord(orderId);
+        await db.deleteEvent(eventId);
     }
 });
 
@@ -957,7 +972,7 @@ test('group ticket scan admits its full admission count once and rejects concurr
     const orderId = `test-group-scan-${Date.now()}`;
     const ticketId = `DGR-GROUP-${Date.now()}`;
     await db.createSaleRecord({
-        orderId, ticketId, event: 'DHOLIDA GARBA ROYALE', companyId: 'littlane',
+        orderId, ticketId, event: 'Phase 21 Synthetic Event', companyId: 'littlane',
         status: 'ticket_generated', name: 'Group Contact', quantity: 1, admissionCount: 5,
     });
     try {
@@ -986,7 +1001,7 @@ test('cancelled tickets are rejected by the scanner without changing their statu
     const db = require('../db');
     const orderId = `test-cancelled-scan-${Date.now()}`;
     const ticketId = `DGR-CANCELLED-${Date.now()}`;
-    await db.createSaleRecord({ orderId, ticketId, event: 'DHOLIDA GARBA ROYALE', companyId: 'littlane', status: 'cancelled', admissionCount: 2, quantity: 1, name: 'Cancelled Buyer' });
+    await db.createSaleRecord({ orderId, ticketId, event: 'Phase 21 Synthetic Event', companyId: 'littlane', status: 'cancelled', admissionCount: 2, quantity: 1, name: 'Cancelled Buyer' });
     try {
         const login = await scannerAppLogin();
         assert.equal(login.status, 200);
@@ -1008,7 +1023,7 @@ test('unissued offline order requires manual review and remains unchanged when s
     const orderId = `test-manual-review-${Date.now()}`;
     const ticketId = `DGR-REVIEW-${Date.now()}`;
     const since = new Date(Date.now() - 10_000);
-    await db.createSaleRecord({ orderId, ticketId, event: 'DHOLIDA GARBA ROYALE', companyId: 'littlane', status: 'pr_cash_pending', paymentStatus: 'pending', admissionCount: 5, quantity: 1, name: 'Pending Buyer' });
+    await db.createSaleRecord({ orderId, ticketId, event: 'Phase 21 Synthetic Event', companyId: 'littlane', status: 'pr_cash_pending', paymentStatus: 'pending', admissionCount: 5, quantity: 1, name: 'Pending Buyer' });
     try {
         const login = await scannerAppLogin();
         assert.equal(login.status, 200);
@@ -1199,7 +1214,7 @@ test('online and offline sales share event inventory and group admissions', asyn
 test('presentation key is limited to sanitized presentation sales', async () => {
     const db = require('../db');
     const orderId = `test-presentation-${Date.now()}`;
-    await db.createSaleRecord({ orderId, ticketId: `DGR-PRES-${Date.now()}`, name: 'Presenter Guest', email: 'private@example.test', phone: '9999999999', event: 'Dholida Garba Royale', status: 'paid', amount: 100, companyId: 'littlane', showInPres: true });
+    await db.createSaleRecord({ orderId, ticketId: `DGR-PRES-${Date.now()}`, name: 'Presenter Guest', email: 'private@example.test', phone: '9999999999', event: 'Phase 21 Synthetic Event', status: 'paid', amount: 100, companyId: 'littlane', showInPres: true });
     try {
         const response = await fetch(`${baseUrl}/api/admin/sales?pres=true`, { headers: { 'x-admin-key': process.env.PRESENTATION_KEY, 'x-presentation': 'true' } });
         assert.equal(response.status, 200);
@@ -1332,6 +1347,22 @@ test('checkout prices the selected event category and rejects cross-event and un
             { id: 'sold-out', name: 'Sold Out', price: 500, currency: 'INR', remainingAvailability: 0, totalInventory: 1, maxPerCustomer: 1, status: 'active', groupSize: 1 }
         ]
     });
+    const secondEventId = `${eventId}-second`;
+    await db.saveEvent({
+        id: secondEventId, slug: `${slug}-second`, name: 'Phase 21 Second Synthetic Event', companyId: 'littlane', organizerId: 'littlane',
+        status: 'published', active: true, visibility: 'public',
+        ticketCategories: [{ id: 'second-event-only-category', name: 'Second Event Category', price: 275, currency: 'INR', remainingAvailability: 4, totalInventory: 4, maxPerCustomer: 2, status: 'active', groupSize: 1 }]
+    });
+    const crossEventCategory = await fetch(`${baseUrl}/api/create-order`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `phase21-cross-category-${Date.now()}` },
+        body: JSON.stringify({ name: 'Test Buyer', email: 'buyer@example.test', phone: '1234567890', eventId, ticketCategoryId: 'second-event-only-category', quantity: 1 })
+    });
+    assert.equal(crossEventCategory.status, 400, 'a category configured on another event cannot be substituted');
+
+    const publicCatalog = await fetch(`${baseUrl}/api/events`);
+    const catalogData = await publicCatalog.json();
+    assert.ok(catalogData.events.some(item => item.id === eventId && item.ticketCategories.some(category => category.name === 'Premium Early' && category.price === 1299)));
+    assert.ok(catalogData.events.some(item => item.id === secondEventId && item.ticketCategories.some(category => category.name === 'Second Event Category' && category.price === 275)));
     const badCategory = await fetch(`${baseUrl}/api/create-order`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Test Buyer', email: 'buyer@example.test', phone: '1234567890', eventId, ticketCategoryId: 'missing', quantity: 1, amount: 1 })

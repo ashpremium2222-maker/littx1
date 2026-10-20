@@ -1,4 +1,4 @@
-// Outbound ticket delivery — Meta Cloud API when configured, otherwise RichAutomate.
+// Outbound ticket delivery through the explicitly configured Meta Cloud API.
 // Uses only Node built-ins so no extra npm install is needed.
 const https = require('https');
 const fs = require('fs');
@@ -54,19 +54,6 @@ async function uploadMetaPdf({ pdfPath, phoneNumberId, accessToken, fetchImpl = 
     return { id: result.id, filename: pdf.filename };
 }
 
-async function uploadRichAutomatePdf({ pdfPath, apiKey, fetchImpl = fetch }) {
-    const pdf = await readTicketPdf(pdfPath);
-    const response = await fetchImpl('https://richautomate.in/api/v1/public/media', {
-        method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
-        body: makePdfForm(pdf), signal: AbortSignal.timeout(15000)
-    });
-    const result = await responseJson(response);
-    if (!response.ok || typeof result?.media_id !== 'string' || !result.media_id) {
-        throw new Error(`RichAutomate WhatsApp media upload failed${response.status ? ` with HTTP ${response.status}` : ''}.`);
-    }
-    return { id: result.media_id, filename: pdf.filename };
-}
-
 async function postJson({ fetchImpl, url, headers, payload, provider }) {
     try {
         const response = await fetchImpl(url, {
@@ -75,24 +62,21 @@ async function postJson({ fetchImpl, url, headers, payload, provider }) {
         });
         const result = await responseJson(response);
         if (!response.ok) {
-            console.error(`[${provider === 'meta' ? 'Meta WhatsApp' : 'RichAutomate'}] Ticket message rejected with HTTP ${response.status}.`);
+            console.error('[Meta WhatsApp] Ticket message rejected with HTTP ' + response.status + '.');
             return { success: false, error: `Provider returned HTTP ${response.status}.`, provider };
         }
-        const messageId = provider === 'meta'
-            ? result?.messages?.[0]?.id
-            : result?.messageId || result?.message_id || result?.id;
-        console.log(`[${provider === 'meta' ? 'Meta WhatsApp' : 'RichAutomate'}] Ticket message accepted by provider.`);
+        const messageId = result?.messages?.[0]?.id;
+        console.log('[Meta WhatsApp] Ticket message accepted by provider.');
         return { success: true, messageId, provider };
     } catch (_) {
-        console.error(`[${provider === 'meta' ? 'Meta WhatsApp' : 'RichAutomate'}] Ticket delivery request failed.`);
+        console.error('[Meta WhatsApp] Ticket delivery request failed.');
         return { success: false, error: 'Provider request failed.', provider };
     }
 }
 
 /**
  * Sends a WhatsApp ticket message to an attendee.
- * Picks RichAutomate if RICHAUTOMATE_API_KEY is set, otherwise falls back to
- * the direct Meta Cloud API.
+ * Uses only the direct Meta Cloud API when its credentials are configured.
  *
  * Template variables (in order): name, event, date, venue, pass type, ticket ID, view URL.
  * Never throws — always resolves with { success, ... }.
@@ -107,20 +91,20 @@ async function sendTicketWhatsApp({ phone, name, ticketId, event, date, venue, t
     let to = String(phone).replace(/[^0-9]/g, '');
     if (to.length === 10) to = `91${to}`;
 
-    const publicOrigin = (process.env.PUBLIC_TICKET_ORIGIN || 'https://www.littx.in').replace(/\/+$/, '');
-    const resolvedViewUrl  = viewUrl  || `${publicOrigin}/bookings`;
+    const publicOrigin = String(process.env.PUBLIC_TICKET_ORIGIN || '').trim().replace(/\/+$/, '');
+    const resolvedViewUrl = viewUrl || (publicOrigin ? `${publicOrigin}/bookings` : '');
+    if (!resolvedViewUrl) return { success: false, reason: 'public_origin_unconfigured' };
     const resolvedName     = name      || 'Guest';
-    const resolvedEvent    = event     || 'Dholida Garba Royale';
-    const resolvedDate     = date      || '17 OCT 2026 · 4:00 PM';
-    const resolvedVenue    = venue     || 'Pethkar Ground, Kothrud, Pune';
-    const resolvedType     = ticketType || 'Pass';
+    const resolvedEvent = typeof event === 'string' ? event.trim() : String(event?.name || '').trim();
+    if (!resolvedEvent) return { success: false, reason: 'event_details_missing' };
+    const resolvedDate = date || '';
+    const resolvedVenue = venue || '';
+    const resolvedType = ticketType || 'Ticket';
 
     // Variables match the 7 body placeholders in the approved template:
     // {{1}} name  {{2}} event  {{3}} date  {{4}} venue  {{5}} type  {{6}} ticketId  {{7}} link
     const variables = [resolvedName, resolvedEvent, resolvedDate, resolvedVenue, resolvedType, String(ticketId), resolvedViewUrl];
 
-    // Prefer the configured Meta Cloud API when available. This avoids routing
-    // production tickets through a RichAutomate account without API access.
     if (process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN) {
         try { return await sendViaMetaCloudApi({ to, ticketId, variables, pdfPath, fetchImpl }); }
         catch (_) {
@@ -129,47 +113,12 @@ async function sendTicketWhatsApp({ phone, name, ticketId, event, date, venue, t
         }
     }
 
-    if (process.env.RICHAUTOMATE_API_KEY) {
-        try { return await sendViaRichAutomate({ to, ticketId, variables, pdfPath, fetchImpl }); }
-        catch (_) {
-            console.error('[RichAutomate] Secure ticket delivery failed.');
-            return { success: false, reason: 'secure_document_delivery_failed', provider: 'richautomate' };
-        }
-    }
-
-    console.warn('[WhatsApp] Skipped: set RICHAUTOMATE_API_KEY or WHATSAPP_PHONE_NUMBER_ID + WHATSAPP_ACCESS_TOKEN.');
-    return { success: false, reason: 'credentials_missing' };
+    console.warn('[WhatsApp] Skipped: no supported WhatsApp provider is configured.');
+    return { success: false, reason: 'provider_unavailable' };
 }
 
 // ---------------------------------------------------------------------------
-// Provider A: RichAutomate  (https://richautomate.in)
-// ---------------------------------------------------------------------------
-async function sendViaRichAutomate({ to, ticketId, variables, pdfPath, fetchImpl }) {
-    const apiKey       = process.env.RICHAUTOMATE_API_KEY;
-    const templateName = process.env.RICHAUTOMATE_TEMPLATE_NAME;
-    const langCode     = process.env.RICHAUTOMATE_TEMPLATE_LANG || 'en_US';
-
-    if (!templateName) {
-        console.warn('[RichAutomate] Skipped: RICHAUTOMATE_TEMPLATE_NAME is not set.');
-        return { success: false, reason: 'template_name_missing' };
-    }
-
-    const body = { phone: to, template: templateName, language: langCode, variables };
-
-    if (process.env.RICHAUTOMATE_ATTACH_PDF === 'true') {
-        const media = await uploadRichAutomatePdf({ pdfPath, apiKey, fetchImpl });
-        body.header_media_type = 'document';
-        body.header_media_id = media.id;
-        body.filename = `Ticket-${ticketId}.pdf`;
-    }
-
-    return postJson({ fetchImpl, url: 'https://richautomate.in/api/v1/send-template',
-        headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
-        payload: body, provider: 'richautomate' });
-}
-
-// ---------------------------------------------------------------------------
-// Provider B: Meta Cloud API  (direct)
+// Meta Cloud API  (direct)
 // ---------------------------------------------------------------------------
 async function sendViaMetaCloudApi({ to, ticketId, variables, pdfPath, fetchImpl }) {
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -202,25 +151,13 @@ async function sendViaMetaCloudApi({ to, ticketId, variables, pdfPath, fetchImpl
 // Diagnostic: called by the private panel to check config without sending.
 // ---------------------------------------------------------------------------
 async function getWhatsAppConfigurationStatus() {
-    if (process.env.RICHAUTOMATE_API_KEY) {
-        const templateName = process.env.RICHAUTOMATE_TEMPLATE_NAME;
-        const langCode     = process.env.RICHAUTOMATE_TEMPLATE_LANG;
-        return {
-            success: true,
-            provider: 'richautomate',
-            templateConfigured: Boolean(templateName),
-            templateName: templateName || null,
-            langCode: langCode || null
-        };
-    }
-
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN;
 
     if (!phoneNumberId || !accessToken) {
         return {
             success: false,
-            reason: 'credentials_missing',
+            reason: 'provider_unavailable',
             phoneNumberIdConfigured: Boolean(phoneNumberId),
             accessTokenConfigured: Boolean(accessToken)
         };

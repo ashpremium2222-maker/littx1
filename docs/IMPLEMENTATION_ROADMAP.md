@@ -1,5 +1,7 @@
 # Stageway Implementation Roadmap
 
+> **Historical roadmap:** Earlier-phase event-specific examples below describe the prior implementation baseline, not current runtime defaults. See `PHASE21_HARDCODED_EVENT_AND_RICHAUTOMATE_REMOVAL.md` for current status.
+
 This roadmap is ordered by risk and dependency. Acceptance criteria stay open until verified by tests or operational evidence; a successful build alone is not sufficient.
 
 | Phase | Priority | Scope and dependencies | Acceptance criteria | Required verification |
@@ -61,3 +63,4 @@ The scanner audit and shared online/offline inventory integration are recorded i
 - Phases 3–4 depend on stable event IDs, sale/order states, and inventory invariants.
 - Phases 6–7 depend on event ownership, role permissions, and verified financial records.
 - Production data migrations require a reviewed before/after plan, backup evidence, and rollback path. No such migration is included in the current change set.
+# Historical roadmap notice

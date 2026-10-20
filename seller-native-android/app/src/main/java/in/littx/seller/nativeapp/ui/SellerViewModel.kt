@@ -62,15 +62,14 @@ class SellerViewModel(activity: ComponentActivity) : ViewModel() {
         try { val response = repository.sales(); state = state.copy(loading = false, sales = response.sales, error = if (response.success) null else response.message) }
         catch (e: Exception) { handleRequestError(e, "Could not load history.") }
     }
-    fun loadConfig() = viewModelScope.launch {
+    fun loadConfig(eventId: String? = state.config?.event?.id) = viewModelScope.launch {
         try {
-            val response = repository.config()
+            val response = repository.config(eventId)
             if (!response.success || response.config == null) {
                 state = state.copy(error = response.message ?: "Seller configuration is unavailable.")
                 return@launch
             }
-            val pricing = repository.pricing(response.config.event.name)
-            state = state.copy(config = response.config, pricing = pricing.takeIf { it.success }, error = if (pricing.success) null else pricing.message)
+            state = state.copy(config = response.config, pricing = null, error = null)
         } catch (e: Exception) { handleRequestError(e, "Could not refresh seller configuration.") }
     }
     fun checkForUpdate() = viewModelScope.launch {

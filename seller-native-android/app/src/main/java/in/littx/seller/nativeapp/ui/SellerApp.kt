@@ -36,11 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.littx.seller.nativeapp.BuildConfig
-import com.littx.seller.nativeapp.R
 import com.littx.seller.nativeapp.data.model.*
 
 private val midnight = Color(0xFF07070D)
@@ -69,17 +67,6 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
             item { Spacer(Modifier.height(0.dp)) }
             item { Row(verticalAlignment = Alignment.CenterVertically) { Surface(shape = RoundedCornerShape(50), color = Color(0xFF1E1932).copy(alpha = .8f), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF5B3A85))) { Text("S E L L E R", Modifier.padding(horizontal = 16.dp, vertical = 7.dp), color = Color(0xFFD3BEFF), fontSize = 11.sp, letterSpacing = 4.sp) }; Text("APP BY ASHTU", color = Color(0xFF9B8DB5), fontSize = 8.sp, letterSpacing = 1.sp, modifier = Modifier.padding(start = 10.dp)) } }
             item { Text("Access\nMore Than\nEvents", color = Color(0xFFF3F0F9), fontSize = 45.sp, lineHeight = 48.sp, fontWeight = FontWeight.Light); Spacer(Modifier.height(16.dp)); Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.width(26.dp).height(1.dp).background(lilac)); Spacer(Modifier.width(9.dp)); Text("NATIVE DEVICE-BOUND\nSELLER ACCESS", style = labelStyle(), color = Color(0xFFC8C2D5)) } }
-            item {
-                Image(
-                    painter = painterResource(R.drawable.dholida_seller_banner),
-                    contentDescription = "Dholida Garba Royale event artwork",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth()
-                        .aspectRatio(1.78f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .border(1.dp, Color(0xFF51485E), RoundedCornerShape(16.dp))
-                )
-            }
             item { Spacer(Modifier.height(10.dp)) }
             item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Seller password", color = Color(0xFFD9D5E2), fontSize = 15.sp, fontWeight = FontWeight.Medium); Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Lock, null, tint = softText, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(7.dp)); Text("Secure Access", color = softText, fontSize = 13.sp) } } }
             item { OutlinedTextField(value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Enter your seller password", color = Color(0xFF777381)) }, singleLine = true, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Show password", tint = softText) } }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = lilac, unfocusedBorderColor = Color(0xFF4A4657), focusedContainerColor = Color(0xFF12121E).copy(alpha = .9f), unfocusedContainerColor = Color(0xFF12121E).copy(alpha = .9f)), shape = RoundedCornerShape(16.dp)) }
@@ -184,7 +171,16 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(color = lilac); Spacer(Modifier.height(12.dp)); Text("Loading seller configuration…", color = softText); TextButton(model::loadConfig) { Text("Retry") } } }
         return
     }
-    if (config.passes.isEmpty()) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No ticket types are currently available.", color = softText) }; return }
+    if (config.event == null) {
+        LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { Text("Select an event", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            if (config.events.isEmpty()) item { Text("No published events are currently available to this seller.", color = softText) }
+            items(config.events) { event -> OutlinedButton(onClick = { model.loadConfig(event.id) }, modifier = Modifier.fillMaxWidth()) { Text(event.displayName.ifBlank { event.name }, color = Color.White) } }
+        }
+        return
+    }
+    if (config.passes.isEmpty()) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No ticket categories are currently available for this event.", color = softText) }; return }
+    val selectedEvent = requireNotNull(config.event)
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
@@ -217,7 +213,8 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
     val commissionAmount = if (commissionInvalid) 0.0 else customerTotal * commissionPercentage / 100
     val rateAfterCommission = customerTotal - commissionAmount
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { EventHero(config.event) }
+        item { EventPicker(config.events, selectedEvent.id) { eventId -> model.loadConfig(eventId); Unit } }
+        item { EventHero(selectedEvent) }
         item { Column(Modifier.padding(top = 8.dp)) { Text("G E N E R A T E  T I C K E T", style = labelStyle(), color = Color(0xFFC6A9FF)); Spacer(Modifier.height(8.dp)); Text("Attendee Details", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold); Text("Enter attendee information to generate a partner ticket", color = softText, fontSize = 14.sp) } }
         item { SellerTextField(name, { name = it }, "Attendee full name", Icons.Default.Person) }
         item { SellerTextField(email, { email = it }, "Attendee email", Icons.Default.Email) }
@@ -255,7 +252,7 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
                 }
             }
         }
-        item { Button(onClick = { model.submitTicket(name, email, phone, pass.label, quantity, commissionPercentage, config.event.name, nickname) }, enabled = name.isNotBlank() && email.isNotBlank() && phone.isNotBlank() && !model.state.loading && !commissionInvalid, modifier = Modifier.fillMaxWidth().height(62.dp), shape = RoundedCornerShape(20.dp), colors = ButtonDefaults.buttonColors(containerColor = lilac, contentColor = Color(0xFF120B1D), disabledContainerColor = Color(0xFF332B43))) { if (model.state.loading) CircularProgressIndicator(Modifier.size(23.dp), color = Color.White, strokeWidth = 2.dp) else { Icon(Icons.Default.ConfirmationNumber, null); Spacer(Modifier.width(12.dp)); Text("Generate Partner Ticket", fontSize = 17.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(8.dp)); Icon(Icons.Default.ArrowForward, null) } } }
+        item { Button(onClick = { model.submitTicket(name, email, phone, pass.label, quantity, commissionPercentage, selectedEvent.name, nickname) }, enabled = name.isNotBlank() && email.isNotBlank() && phone.isNotBlank() && !model.state.loading && !commissionInvalid, modifier = Modifier.fillMaxWidth().height(62.dp), shape = RoundedCornerShape(20.dp), colors = ButtonDefaults.buttonColors(containerColor = lilac, contentColor = Color(0xFF120B1D), disabledContainerColor = Color(0xFF332B43))) { if (model.state.loading) CircularProgressIndicator(Modifier.size(23.dp), color = Color.White, strokeWidth = 2.dp) else { Icon(Icons.Default.ConfirmationNumber, null); Spacer(Modifier.width(12.dp)); Text("Generate Partner Ticket", fontSize = 17.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(8.dp)); Icon(Icons.Default.ArrowForward, null) } } }
     }
 }
 
@@ -268,6 +265,17 @@ private fun labelStyle() = TextStyle(fontSize = 10.sp, letterSpacing = 3.sp, fon
 
 private fun formatRupees(value: Double) = "₹" + String.format(java.util.Locale("en", "IN"), "%,.2f", value)
 private fun formatPercent(value: Double) = if (value % 1.0 == 0.0) value.toInt().toString() else String.format(java.util.Locale.US, "%.2f", value)
+
+@Composable private fun EventPicker(events: List<SellerEvent>, selectedId: String, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = events.firstOrNull { it.id == selectedId }
+    Box {
+        OutlinedButton(onClick = { expanded = true }, enabled = events.isNotEmpty()) { Text(selected?.displayName?.ifBlank { selected.name } ?: "Select event", color = Color.White) }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            events.forEach { event -> DropdownMenuItem(text = { Text(event.displayName.ifBlank { event.name }) }, onClick = { expanded = false; if (event.id != selectedId) onSelect(event.id) }) }
+        }
+    }
+}
 
 @Composable private fun EventHero(event: SellerEvent) {
     Box(Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(23.dp)).border(1.dp, Color(0xFF4A3D60), RoundedCornerShape(23.dp)).background(Color(0xFF11111A))) {

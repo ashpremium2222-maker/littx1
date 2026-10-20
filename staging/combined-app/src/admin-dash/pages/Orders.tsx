@@ -317,9 +317,9 @@ export default function Orders({
         const tType =
           s.ticketType ||
           (s.gender === 'male'
-            ? 'GA Single'
+            ? 'Ticket'
             : s.gender === 'female'
-            ? 'VIP Single'
+            ? 'Ticket'
             : String(s.gender || '').toLowerCase().includes('exclusive')
             ? 'Exclusive VIP'
             : 'General')
@@ -329,7 +329,7 @@ export default function Orders({
           buyer: s.name,
           email: s.email,
           phone: s.phone,
-          event: s.event || 'DHOLIDA GARBA ROYALE',
+          event: s.event || 'Event details unavailable',
           ticketType: tType,
           qty: s.quantity || 1,
           admissions: Math.max(0, Number(s.admissionCount) || Number(s.quantity) || 1),

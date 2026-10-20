@@ -303,10 +303,12 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [manualName, setManualName] = useState('')
   const [manualEmail, setManualEmail] = useState('')
   const [manualPhone, setManualPhone] = useState('')
-  const [manualGender, setManualGender] = useState('GA Single')
+  const [manualGender, setManualGender] = useState('')
   const [manualQty, setManualQty] = useState('1')
-  const [manualAmount, setManualAmount] = useState(() => localStorage.getItem('ft_price_ga_single_v2') || '499')
-  const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
+  const [manualAmount, setManualAmount] = useState('')
+  const [manualEvent, setManualEvent] = useState('')
+  const [manualEvents, setManualEvents] = useState<any[]>([])
+  const [manualPasses, setManualPasses] = useState<any[]>([])
   const [manualPartner, setManualPartner] = useState('littlane')
 
   const fetchSales = async (overrideKey?: string) => {
@@ -365,6 +367,39 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    const token = sessionStorage.getItem('littx_token') || ''
+    fetch('/api/admin/pricing', { headers: token ? { 'x-auth-token': token } : {}, cache: 'no-store' })
+      .then(response => response.json())
+      .then(data => {
+        const events = data.success && Array.isArray(data.events) ? data.events.filter((item: any) =>
+          item.id && item.name && !item.archived && item.active !== false && !['private', 'unlisted'].includes(item.visibility) && (item.status === 'published' || !item.status)
+        ) : []
+        setManualEvents(events)
+        if (!events.some((item: any) => String(item.id) === manualEvent)) {
+          setManualEvent('')
+          setManualPasses([])
+          setManualGender('')
+          setManualAmount('')
+        }
+      })
+      .catch(() => setManualEvents([]))
+  }, [])
+
+  useEffect(() => {
+    const token = sessionStorage.getItem('littx_token') || ''
+    if (!manualEvent) { setManualPasses([]); setManualGender(''); setManualAmount(''); return }
+    fetch(`/api/admin/config?event=${encodeURIComponent(manualEvent)}`, { headers: token ? { 'x-auth-token': token } : {}, cache: 'no-store' })
+      .then(response => response.json())
+      .then(data => {
+        const passes = data.success && Array.isArray(data.pricing) ? data.pricing : []
+        setManualPasses(passes)
+        setManualGender(current => passes.some((pass: any) => pass.name === current) ? current : '')
+        setManualAmount('')
+      })
+      .catch(() => { setManualPasses([]); setManualGender(''); setManualAmount('') })
+  }, [manualEvent])
+
   const handleLogin = async () => {
     const trimmed = keyInput.trim()
     if (!trimmed) return
@@ -420,18 +455,10 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       alert('Name and Email are required')
       return
     }
-    const isAura = manualEvent === 'DHOLIDA GARBA ROYALE'
-    const isInvite = manualEvent === 'DHOLIDA GARBA ROYALE'
-    const finalEvent = isInvite ? 'DHOLIDA GARBA ROYALE' : manualEvent
-    const finalGender = isInvite ? 'Exclusive' : (isAura ? 'aura' : manualGender)
-    const finalAmount = isInvite ? 0 : manualAmount
-    const finalTicketType = isInvite
-      ? 'Exclusive VIP Pass'
-      : isAura
-      ? 'DHOLIDA GARBA ROYALE'
-      : manualGender === 'female'
-      ? 'VIP Single'
-      : 'GA Single'
+    if (!manualEvent || !manualGender || !manualPasses.some(pass => pass.name === manualGender)) {
+      alert('Select an event and one of its configured ticket categories')
+      return
+    }
 
     // Partner password validation check
     const partnerNameMap: Record<string, string> = {
@@ -453,11 +480,11 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
           name: manualName,
           email: manualEmail,
           phone: manualPhone,
-          gender: finalGender,
-          ticketType: finalTicketType,
+          gender: manualGender,
+          ticketType: manualGender,
           quantity: manualQty,
-          amount: finalAmount,
-          event: finalEvent,
+          amount: manualAmount,
+          event: manualEvent,
           generatedBy: partnerNameMap[manualPartner],
           partnerId: manualPartner
         }),
@@ -471,13 +498,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
         setTimeout(() => {
           setManualSuccessMsg(null)
         }, 3000)
-        if (manualEvent === 'DHOLIDA GARBA ROYALE') {
-          setManualAmount(localStorage.getItem('ft_price_aura') || '350')
-        } else if (manualGender === 'female') {
-          setManualAmount(localStorage.getItem('ft_price_vip_single_v2') || '799')
-        } else {
-          setManualAmount(localStorage.getItem('ft_price_ga_single_v2') || '499')
-        }
+        setManualAmount('')
         fetchSales()
       } else {
         alert(`Failed: ${data.message}`)
@@ -488,19 +509,6 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       setIsManualSubmitting(false)
     }
   }
-
-  const handleManualGenderChange = (val: string) => {
-    setManualGender(val)
-    if (manualEvent === 'DHOLIDA GARBA ROYALE') {
-      const saved = localStorage.getItem('ft_price_ga_single_v2') || '499'
-      setManualAmount(saved)
-    } else {
-      const saved = localStorage.getItem('ft_price_vip_single_v2') || '799'
-      setManualAmount(saved)
-    }
-  }
-
-
 
   function renderPage(page: Page) {
     const ticketedSales = sales.filter((s: any) => !isApprovalOnlySale(s))
@@ -777,21 +785,10 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                 <label>SELECT EVENT</label>
                 <select
                   value={manualEvent}
-                  onChange={(e) => {
-                    const evt = e.target.value
-                    setManualEvent(evt)
-                    if (evt === 'DHOLIDA GARBA ROYALE') {
-                      setManualGender('aura')
-                      setManualAmount(localStorage.getItem('ft_price_aura') || '350')
-                    } else if (manualGender === 'aura') {
-                      setManualGender('male')
-                      setManualAmount(localStorage.getItem('ft_price_ga_single_v2') || '499')
-                    }
-                  }}
+                  onChange={(e) => { setManualEvent(e.target.value); setManualGender(''); setManualAmount('') }}
                 >
-                  <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
-                  
-                  
+                  <option value="">Select an event</option>
+                  {manualEvents.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}
                 </select>
               </div>
 
@@ -817,8 +814,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                 />
               </div>
 
-              {manualEvent !== 'DHOLIDA GARBA ROYALE' && (
-                <div className="field">
+              <div className="field">
                   <label>ATTENDEE PHONE</label>
                   <input
                     type="text"
@@ -827,70 +823,24 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                     onChange={(e) => setManualPhone(e.target.value)}
                   />
                 </div>
-              )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: manualEvent === 'DHOLIDA GARBA ROYALE' ? '1fr' : '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div className="field">
                   <label>PASS TYPE</label>
-                  {manualEvent === 'DHOLIDA GARBA ROYALE' ? (
-                    <div
-                      style={{
-                        padding: '10px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid #7C5CFA',
-                        backgroundColor: 'rgba(124,92,250,0.12)',
-                        color: '#7C5CFA',
-                        fontWeight: 700,
-                        fontSize: '12px',
-                      }}
-                    >
-                      ✨ Exclusive VIP Invite (Free)
-                    </div>
-                  ) : manualEvent === 'DHOLIDA GARBA ROYALE' ? (
-                    <div
-                      style={{
-                        padding: '10px',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid #F5B942',
-                        backgroundColor: 'rgba(245,185,66,0.12)',
-                        color: '#F5B942',
-                        fontWeight: 700,
-                        fontSize: '12px',
-                      }}
-                    >
-                      ✨ Aura Genesis Pass
-                    </div>
-                  ) : (
-                    <select
-                      value={manualGender}
-                      onChange={(e) => handleManualGenderChange(e.target.value)}
-                    >
-                      <option value="male">General Access (₹499)</option>
-                      <option value="female">VIP (₹799)</option>
-                    </select>
-                  )}
+                  <select value={manualGender} onChange={e => {
+                    const pass = manualPasses.find(item => item.name === e.target.value)
+                    setManualGender(e.target.value)
+                    setManualAmount(pass ? String(pass.price) : '')
+                  }}>
+                    <option value="">Select a category</option>
+                    {manualPasses.map(pass => <option key={pass.id || pass.name} value={pass.name}>{pass.name} — {pass.price}</option>)}
+                  </select>
                 </div>
 
-                {manualEvent !== 'DHOLIDA GARBA ROYALE' && (
                   <div className="field">
                     <label>PRICE (₹)</label>
-                    <input
-                      type="number"
-                      value={manualAmount}
-                      onChange={(e) => {
-                        const val = e.target.value
-                        setManualAmount(val)
-                        const key =
-                          manualEvent === 'DHOLIDA GARBA ROYALE'
-                            ? 'ft_price_aura'
-                            : manualGender === 'female'
-                            ? 'ft_price_vip_single_v2'
-                            : 'ft_price_ga_single_v2'
-                        localStorage.setItem(key, val)
-                      }}
-                    />
+                    <input type="number" value={manualAmount} readOnly aria-readonly="true" />
                   </div>
-                )}
               </div>
 
               {manualSuccessMsg && (

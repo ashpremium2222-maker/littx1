@@ -4,37 +4,17 @@ import {
 } from 'recharts'
 import { customerTotal, isConfirmedSale } from '../reporting'
 
+function formatINR(value: number) {
+  const amount = Number(value)
+  return `₹${(Number.isFinite(amount) ? amount : 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+}
+
 interface DashboardProps {
   sales: any[]
   summary: any
   testMode: boolean
   onManualGenerate: () => void
   adminKey?: string
-}
-
-const PASS_SECTIONS = [
-  { id: 'ga-single', label: 'GA Single', color: '#7C5CFA', background: 'linear-gradient(135deg, rgba(124, 92, 250, 0.12) 0%, rgba(59, 99, 232, 0.03) 100%)' },
-  { id: 'ga-group-5', label: 'GA Group of 5', color: '#38D9C4', background: 'linear-gradient(135deg, rgba(56, 217, 196, 0.12) 0%, rgba(59, 130, 246, 0.03) 100%)' },
-  { id: 'ga-group-10', label: 'GA Group of 10', color: '#F5B942', background: 'linear-gradient(135deg, rgba(245, 185, 66, 0.12) 0%, rgba(245, 133, 77, 0.03) 100%)' },
-  { id: 'vip-single', label: 'VIP Single', color: '#EC4899', background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(244, 63, 94, 0.03) 100%)' },
-  { id: 'vip-group-5', label: 'VIP Group of 5', color: '#F97316', background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.12) 0%, rgba(245, 133, 77, 0.03) 100%)' },
-  { id: 'vip-group-10', label: 'VIP Group of 10', color: '#60A5FA', background: 'linear-gradient(135deg, rgba(96, 165, 250, 0.12) 0%, rgba(59, 99, 232, 0.03) 100%)' },
-] as const
-
-function getPassSectionId(sale: any) {
-  const pass = String(sale.ticketType || sale.gender || '').toLowerCase()
-  if (pass.includes('ga group of 10')) return 'ga-group-10'
-  if (pass.includes('ga group of 5')) return 'ga-group-5'
-  if (pass.includes('vip group of 10')) return 'vip-group-10'
-  if (pass.includes('vip group of 5')) return 'vip-group-5'
-  if (pass.includes('vip single') || pass === 'female') return 'vip-single'
-  if (pass.includes('ga single') || pass === 'male') return 'ga-single'
-  return null
-}
-
-function formatINR(value: number) {
-  const amount = Number(value)
-  return `₹${(Number.isFinite(amount) ? amount : 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 }
 
 export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, adminKey = '' }: DashboardProps) {
@@ -70,14 +50,19 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   const emailFailures = sales.filter(s => s.emailStatus === 'failed').length
   const ticketFailures = sales.filter(s => s.status === 'ticket_generation_failed').length
 
-  const sectionTicketTotal = Math.max(1, paidSales
-    .filter(s => getPassSectionId(s))
-    .reduce((total, sale) => total + (sale.quantity || 1), 0))
-  const ticketSections = PASS_SECTIONS.map(section => {
-    const sectionSales = paidSales.filter(s => getPassSectionId(s) === section.id)
-    const count = sectionSales.reduce((total, sale) => total + (sale.quantity || 1), 0)
-    return { ...section, count, pct: Math.round((count / sectionTicketTotal) * 100), sales: sectionSales }
-  })
+  const ticketSections = (() => {
+    const grouped = new Map<string, any[]>()
+    paidSales.forEach(sale => {
+      const label = String(sale.ticketType || sale.gender || 'Ticket')
+      grouped.set(label, [...(grouped.get(label) || []), sale])
+    })
+    const total = paidSales.reduce((sum, sale) => sum + (sale.quantity || 1), 0) || 1
+    const colors = ['var(--grad-violet)', 'var(--grad-teal)', 'var(--grad-gold)', 'var(--grad-orange)']
+    return Array.from(grouped, ([label, rows], index) => {
+      const count = rows.reduce((sum, sale) => sum + (sale.quantity || 1), 0)
+      return { id: label, label, color: colors[index % colors.length], background: colors[index % colors.length], count, pct: Math.round(count * 100 / total), sales: rows }
+    })
+  })()
   const activePopupSection = popupEvent ? ticketSections.find(section => section.id === popupEvent.name) : null
 
   // ==================== SELLER BREAKDOWN ====================
@@ -184,7 +169,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         id: `created-${sale.orderId}`,
         type: 'purchase',
         title: `${sale.name || 'Attendee'} booked a pass`,
-        sub: `${sale.event || 'DHOLIDA GARBA ROYALE'} · ₹${sale.amount || 0}`,
+        sub: `${sale.event || 'Event details unavailable'} · ₹${sale.amount || 0}`,
         time: timeLabel,
         badge: <span className="badge badge-blue"><span className="badge-dot" />New</span>,
       })
@@ -543,7 +528,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               >
                 <div>
                   <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>{section.label}</h4>
-                  <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Dholida Garba Royale</p>
+                  <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Event activity</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '20px', fontWeight: 800, color: section.color, fontFamily: 'monospace' }}>{section.count}</div>

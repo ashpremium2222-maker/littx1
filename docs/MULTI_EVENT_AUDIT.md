@@ -1,5 +1,7 @@
 # Stageway Multi-Event Audit
 
+> **Historical audit:** This audit predates Phase 21. Statements below describe the earlier implementation and are not current-state claims. See `PHASE21_HARDCODED_EVENT_AND_RICHAUTOMATE_REMOVAL.md` for current event-driven behavior and compatibility constants.
+
 **Audit date:** 2026-10-19  
 **Phase:** 2 foundation in progress; completion criteria are not yet met.  
 **Data access:** Local mock-backed HTTP tests only. No production database, payments, or notification provider was accessed.
@@ -52,3 +54,4 @@
 ## Phase 3 carry-over update — 2026-10-19
 
 The Phase 3 working tree now implements concurrency-safe inventory reservations and expiry/release for public and PR online checkout, with reservations counted in individual admissions. This closes the inventory-reservation item for those online paths only; PR cash requests remain pending admin approval without a hold, and manual/seller issuance paths still need separate inventory policy and integration. Event editor/reporting/staff assignment, event-specific ticket templates, native client updates, customer-owned booking retrieval, and migration validation remain open as previously listed. Full Phase 2 acceptance is therefore still not met.
+# Historical audit notice

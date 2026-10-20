@@ -15,7 +15,7 @@ test('backend test bootstrap uses test-only credentials and does not load server
 
     for (const key of [
         'MONGODB_URI', 'BASE_URL', 'CORS_ORIGINS', 'RAZORPAY_KEY_ID',
-        'RAZORPAY_KEY_SECRET', 'WHATSAPP_ACCESS_TOKEN', 'RICHAUTOMATE_API_KEY',
+        'RAZORPAY_KEY_SECRET', 'WHATSAPP_ACCESS_TOKEN',
         'SMTP_PASS', 'MAILGUN_API_KEY',
     ]) {
         assert.equal(process.env[key], undefined, key + ' must not be inherited or loaded from .env');

@@ -18,26 +18,6 @@ interface DashboardProps {
   }
 }
 
-const PASS_SECTIONS = [
-  { id: 'ga-single', label: 'GA Single', color: '#7C5CFA', background: 'linear-gradient(135deg, rgba(124, 92, 250, 0.12) 0%, rgba(59, 99, 232, 0.03) 100%)' },
-  { id: 'ga-group-5', label: 'GA Group of 5', color: '#38D9C4', background: 'linear-gradient(135deg, rgba(56, 217, 196, 0.12) 0%, rgba(59, 130, 246, 0.03) 100%)' },
-  { id: 'ga-group-10', label: 'GA Group of 10', color: '#F5B942', background: 'linear-gradient(135deg, rgba(245, 185, 66, 0.12) 0%, rgba(245, 133, 77, 0.03) 100%)' },
-  { id: 'vip-single', label: 'VIP Single', color: '#EC4899', background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(244, 63, 94, 0.03) 100%)' },
-  { id: 'vip-group-5', label: 'VIP Group of 5', color: '#F97316', background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.12) 0%, rgba(245, 133, 77, 0.03) 100%)' },
-  { id: 'vip-group-10', label: 'VIP Group of 10', color: '#60A5FA', background: 'linear-gradient(135deg, rgba(96, 165, 250, 0.12) 0%, rgba(59, 99, 232, 0.03) 100%)' },
-] as const
-
-function getPassSectionId(sale: any) {
-  const pass = String(sale.ticketType || sale.gender || '').toLowerCase()
-  if (pass.includes('ga group of 10')) return 'ga-group-10'
-  if (pass.includes('ga group of 5')) return 'ga-group-5'
-  if (pass.includes('vip group of 10')) return 'vip-group-10'
-  if (pass.includes('vip group of 5')) return 'vip-group-5'
-  if (pass.includes('vip single') || pass === 'female') return 'vip-single'
-  if (pass.includes('ga single') || pass === 'male') return 'ga-single'
-  return null
-}
-
 export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, adminKey = '', scanStats }: DashboardProps) {
   void [summary, testMode, onManualGenerate]
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
@@ -107,24 +87,20 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
     return () => clearInterval(timer)
   }, [])
 
-  const freshersMale = useMemo(() => paidSales.filter(s => (s.event || '').toUpperCase().includes('FRESHERS') && (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male'))), [paidSales])
-  const freshersFemale = useMemo(() => paidSales.filter(s => (s.event || '').toUpperCase().includes('FRESHERS') && (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female'))), [paidSales])
-  const auraGenesis = useMemo(() => paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA')), [paidSales])
-  const ftInvite = useMemo(() => paidSales.filter(s => (s.gender || '').toLowerCase().includes('exclusive') || (s.ticketType || '').toLowerCase().includes('exclusive')), [paidSales])
-
-  const maleCount = useMemo(() => freshersMale.reduce((acc, s) => acc + (s.quantity || 1), 0), [freshersMale])
-  const femaleCount = useMemo(() => freshersFemale.reduce((acc, s) => acc + (s.quantity || 1), 0), [freshersFemale])
-  const auraCount = useMemo(() => auraGenesis.reduce((acc, s) => acc + (s.quantity || 1), 0), [auraGenesis])
-  const inviteCount = useMemo(() => ftInvite.reduce((acc, s) => acc + (s.quantity || 1), 0), [ftInvite])
   const grandTotal = Math.max(1, totalTickets)
-  const sectionTicketTotal = Math.max(1, paidSales
-    .filter(s => getPassSectionId(s))
-    .reduce((total, sale) => total + (sale.quantity || 1), 0))
-  const ticketSections = useMemo(() => PASS_SECTIONS.map(section => {
-    const sectionSales = paidSales.filter(s => getPassSectionId(s) === section.id)
-    const count = sectionSales.reduce((total, sale) => total + (sale.quantity || 1), 0)
-    return { ...section, count, pct: Math.round((count / sectionTicketTotal) * 100), sales: sectionSales }
-  }), [paidSales, sectionTicketTotal])
+  const ticketSections = useMemo(() => {
+    const map = new Map<string, any[]>()
+    for (const sale of paidSales) {
+      const label = String(sale.ticketType || sale.gender || 'Ticket')
+      map.set(label, [...(map.get(label) || []), sale])
+    }
+    const total = paidSales.reduce((sum, sale) => sum + (sale.quantity || 1), 0) || 1
+    const colors = ['#7C5CFA', '#38D9C4', '#F5B942', '#EC4899', '#F97316', '#60A5FA']
+    return Array.from(map, ([label, sectionSales], index) => {
+      const count = sectionSales.reduce((sum, sale) => sum + (sale.quantity || 1), 0)
+      return { id: label, label, color: colors[index % colors.length], background: 'linear-gradient(135deg, rgba(124, 92, 250, 0.12), rgba(59, 99, 232, 0.03))', count, pct: Math.round(count / total * 100), sales: sectionSales }
+    })
+  }, [paidSales])
   const activePopupSection = popupEvent ? ticketSections.find(section => section.id === popupEvent.name) : null
 
   // Dynamic Event Breakdown based on master admin /api/events
@@ -158,7 +134,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       }
     })
   }, [dynamicEvents, paidSales, grandTotal])
-  void [maleCount, femaleCount, auraCount, inviteCount, eventBreakdown]
+  void eventBreakdown
 
   // ==================== SELLER BREAKDOWN ====================
   const sellerSummary = useMemo(() => {
@@ -278,7 +254,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         id: `created-${sale.orderId}`,
         type: 'purchase',
         title: `${sale.name || 'Attendee'} booked a pass`,
-        sub: `${sale.event || 'DHOLIDA GARBA ROYALE'} · ₹${sale.amount || 0}`,
+        sub: `${sale.event || 'Event details unavailable'} · ₹${sale.amount || 0}`,
         time: timeLabel,
         badge: <span className="badge badge-blue"><span className="badge-dot" />New</span>,
       })
@@ -712,7 +688,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
               >
                 <div>
                   <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: 'var(--ink)' }}>{section.label}</h4>
-                  <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Dholida Garba Royale</p>
+                  <p style={{ margin: '3px 0 0', fontSize: '11px', color: 'var(--ink-soft)' }}>Event activity</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '20px', fontWeight: 800, color: section.color, fontFamily: 'monospace' }}>{section.count}</div>

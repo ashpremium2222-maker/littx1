@@ -6,7 +6,7 @@
 
 ## Purpose and current evidence
 
-This document turns the Phase 12–14 staging requirements into a provisioning handoff. Phase 14 found no confirmed staging endpoint, deployed runtime, isolated MongoDB database, controlled email account, Meta test account, or RichAutomate staging account. A local ignored `staging/server/.env` had some configured names, but its values were not read and its account identity was unknown; it is not evidence of staging readiness and must not be used. No endpoints or providers were contacted. See [Phase 14 results](PHASE14_STAGING_RESULTS.md) for the acceptance matrix and prior evidence.
+This document turns the Phase 12–14 staging requirements into a provisioning handoff. Phase 14 found no confirmed staging endpoint, deployed runtime, isolated MongoDB database, controlled email account, or Meta test account. A local ignored `staging/server/.env` had some configured names, but its values were not read and its account identity was unknown; it is not evidence of staging readiness and must not be used. No endpoints or providers were contacted. See [Phase 14 results](PHASE14_STAGING_RESULTS.md) for the acceptance matrix and prior evidence.
 
 The Phase 13 setup guide remains the source for implementation-specific environment names and detailed acceptance commands. This plan adds the provisioning order, isolation checks, authorization gates, test-data controls, and evidence checklist. Previously passed local tests are not repeated here.
 
@@ -20,7 +20,7 @@ Provision the smallest isolated set that can exercise the required acceptance ma
 | MongoDB | Disposable, isolated database and staging-only database principal. The deployment must support the transactions/replica capabilities required by the application. | Database owner confirms cluster/project and database labels in the DB console. The principal must be scoped to this staging database. Verify the configured URI's host/database identity in memory or by redacted metadata only; never print the URI. |
 | Secret storage | Encrypted staging secret store with least-privilege access and separate values from production. | Platform owner confirms the secret-store project/environment and references. Names or local `.env` presence do not establish environment identity. |
 | Email | One chosen staging email integration, verified staging sender/domain, and controlled test mailbox. | Messaging owner confirms account, sender domain, and recipient mailbox are test-owned/approved. Restrict delivery to an allowlist where supported. |
-| WhatsApp | For the selected acceptance path, a dedicated Meta test sender/account or a confirmed RichAutomate staging account, staging template with document header, and controlled opted-in test device. Do not provision both paths unless each needs testing. | Provider account owner confirms business/account and sender IDs, template, and environment using provider administration. A key in a file is not proof. RichAutomate must confirm that this account's upload API returns the `media_id` contract the code requires. |
+| WhatsApp | For the selected acceptance path, a dedicated Meta test sender/account, staging template with document header, and controlled opted-in test device. Do not provision both paths unless each needs testing. | Provider account owner confirms business/account and sender IDs, template, and environment using provider administration. A key in a file is not proof. Confirm the Meta staging upload response includes the media ID required by the direct integration. |
 | Synthetic fixtures and operators | QA principals for required roles, a synthetic event and ticket fixtures, designated mailbox/device owners, and a cleanup owner. | Use test-only labels and identities; verify principals belong to the staging tenant and test recipients are controlled/consenting. No production customer records or copied data. |
 
 Do not add a payment provider, gateway credentials, or payment processing to satisfy this plan. Payment integration remains explicitly deferred. If a test requires a payment-dependent state, stop and record it blocked rather than fabricate a successful payment.
@@ -58,7 +58,7 @@ Use one verified staging provider/sender for a given test. The matching sender c
 
 Direct Meta: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANG`, `WHATSAPP_ATTACH_PDF`; `WHATSAPP_VERIFY_TOKEN` only if the staging webhook handshake is explicitly tested.
 
-RichAutomate: `RICHAUTOMATE_API_KEY`, `RICHAUTOMATE_TEMPLATE_NAME`, `RICHAUTOMATE_TEMPLATE_LANG`, `RICHAUTOMATE_ATTACH_PDF`.
+The retired alternate provider is not part of staging provisioning. Current WhatsApp testing uses direct Meta only.
 
 Avoid ambiguous dual-provider configuration unless the test specifically verifies provider selection. Confirm the account/template and upload response contract before enabling attachment delivery.
 

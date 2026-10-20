@@ -566,68 +566,6 @@ async function seedDefaultPartnerLocks() {
     }
 }
 
-async function seedDefaultEvents() {
-    try {
-        const count = await Event.countDocuments();
-        if (count > 0) return;
-
-        console.log('🌱 Seeding Dholida Garba Royale 2026 event...');
-        const now = new Date().toISOString();
-        const defaultEvents = [
-            {
-                name: 'Dholida Garba Royale 2026',
-                slug: 'dholida-garba-royale-2026',
-                legacyNames: ['DHOLIDA GARBA ROYALE'],
-                companyId: 'littlane',
-                organizerId: 'littlane',
-                status: 'published',
-                visibility: 'public',
-                date: '2026-10-17',
-                time: '04:00 PM',
-                venue: 'Pethkar Ground, Kothrud, Pune',
-                stage: 'Main Arena',
-                description: 'Dholida Garba Royale main event.',
-                archived: false,
-                ticketTypes: [
-                    { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
-                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
-                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
-                    { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
-                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
-                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
-                ],
-                tiers: [
-                    { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
-                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
-                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
-                    { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
-                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
-                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
-                ],
-                ticketCategories: [
-                    { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 1 },
-                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 5 },
-                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 10 },
-                    { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 1 },
-                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 5 },
-                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex', currency: 'INR', maxPerCustomer: 20, status: 'active', groupSize: 10 }
-                ],
-                overrides: { razorpayEnabled: null, manualPaymentEnabled: null, prSalesEnabled: null },
-                gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
-                icon: '🎟️',
-                tagline: 'Pethkar Ground, Kothrud, Pune · 17th October',
-                active: true,
-                createdAt: now
-            }
-        ];
-
-        await Event.insertMany(defaultEvents);
-        console.log('✅ Dholida Garba Royale 2026 seeded successfully.');
-    } catch (err) {
-        console.error('❌ Failed to seed default events:', err.message);
-    }
-}
-
 // ==================== SALE HELPERS ====================
 
 async function createSaleRecord(record) {
@@ -1114,7 +1052,6 @@ async function seedDefaultCompanies() {
 // Call seeding during initialization
 mongoose.connection.once('open', async () => {
     await seedDefaultCompanies();
-    await seedDefaultEvents();
     await seedDefaultUsers();
 });
 
@@ -1249,22 +1186,7 @@ async function getEffectiveConfig(companyId = 'littlane', eventNameOrId = null) 
 const mockDb = {
     users: [],
     customers: [],
-    events: [
-        {
-            _id: '64ef8bb11b6d912345678901',
-            name: 'DHOLIDA GARBA ROYALE',
-            companyId: 'littlane',
-            date: '2026-08-25',
-            time: '18:00',
-            venue: 'Club Aura',
-            description: 'The biggest freshers party of the year',
-            ticketTypes: [
-                { name: 'Male Pass', price: 1000, gender: 'male' },
-                { name: 'Female Pass', price: 800, gender: 'female' }
-            ],
-            overrides: { manualPaymentEnabled: true, prSalesEnabled: true }
-        }
-    ],
+    events: [],
     sales: [],
     checkoutRequests: [],
     otpChallenges: [],
@@ -2537,29 +2459,4 @@ module.exports = {
 };
 
 // ==================== IN-MEMORY MOCK EVENTS (fallback) ====================
-const _mockEvents = new Map([
-    ['Dholida Garba Royale 2026', {
-        id: 'event_dholida_2026', name: 'Dholida Garba Royale 2026', companyId: 'littlane',
-        slug: 'dholida-garba-royale-2026', legacyNames: ['DHOLIDA GARBA ROYALE'], organizerId: 'littlane', status: 'published', visibility: 'public',
-        date: '2026-10-17', time: '04:00 PM', venue: 'Pethkar Ground, Kothrud, Pune',
-        tagline: 'Pethkar Ground, Kothrud, Pune · 17th October',
-        gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
-        icon: '🎟️', active: true,
-        tiers: [
-            { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
-            { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
-            { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
-            { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
-            { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
-            { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
-        ],
-        ticketTypes: [
-            { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
-            { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
-            { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
-            { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
-            { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
-            { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
-        ]
-    }]
-]);
+const _mockEvents = new Map();

@@ -502,7 +502,7 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
           <div className="banner-content">
             <h1 className="banner-title">Welcome Back, {user.name.split(' ')[0]}! {"\uD83D\uDC4B"}</h1>
             <p className="banner-subtitle">
-              Your digital hub for bookings and passes to the hottest freshers takeovers and premium events.
+              Your digital hub for bookings and passes to live events and experiences.
             </p>
             
             {/* Quick Metrics */}

@@ -117,7 +117,7 @@ export default function ScanRejected({ dark, ticket, notFoundId, onBack, onScanN
               { label: 'Phone', value: ticket!.phone || 'N/A' },
               { label: 'Gender / Pass', value: ticket!.ticketType.replace(' Pass', '') + ' Pass' },
               { label: 'Event', value: ticket!.event },
-              { label: 'Venue', value: ticket!.venue || 'Pethkar Ground, Pune' },
+              { label: 'Venue', value: ticket!.venue || 'Venue details unavailable' },
               { label: 'Event Date', value: ticket!.dateLabel || 'TBA' },
               { label: 'Quantity', value: String(ticket!.qty) },
               { label: 'Price Paid', value: ticket!.price },

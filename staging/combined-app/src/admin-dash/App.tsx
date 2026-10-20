@@ -35,14 +35,7 @@ interface NavItemDef {
 
 type ManualPass = { id?: string; name: string; price: number; gender?: string }
 
-const DEFAULT_MANUAL_PASSES: ManualPass[] = [
-  { id: 'ga-single', name: 'GA Single', price: 499, gender: 'ga' },
-  { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'group' },
-  { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'group' },
-  { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'vip' },
-  { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'vip' },
-  { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'vip' },
-]
+type ManualEvent = { id: string; name: string; tiers: ManualPass[] }
 
 const navItems: NavItemDef[] = [
   {
@@ -200,11 +193,12 @@ export default function App({ isPresentation = false }: AppProps) {
   const [manualName, setManualName] = useState('')
   const [manualEmail, setManualEmail] = useState('')
   const [manualPhone, setManualPhone] = useState('')
-  const [manualTicketType, setManualTicketType] = useState('GA Single')
+  const [manualTicketType, setManualTicketType] = useState('')
   const [manualQty, setManualQty] = useState('1')
-  const [manualAmount, setManualAmount] = useState('499')
-  const [manualPasses, setManualPasses] = useState<ManualPass[]>(DEFAULT_MANUAL_PASSES)
-  const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
+  const [manualAmount, setManualAmount] = useState('')
+  const [manualPasses, setManualPasses] = useState<ManualPass[]>([])
+  const [manualEvents, setManualEvents] = useState<ManualEvent[]>([])
+  const [manualEvent, setManualEvent] = useState('')
   const [manualPartner, setManualPartner] = useState('littlane')
 
   const fetchSales = async (keyToUse = adminKey) => {
@@ -268,11 +262,11 @@ export default function App({ isPresentation = false }: AppProps) {
     }
   }
 
-  const fetchAdminConfig = async (keyToUse = adminKey) => {
-    if (!keyToUse) return
+  const fetchAdminConfig = async (keyToUse = adminKey, eventId = manualEvent) => {
+    if (!keyToUse || !eventId) { setManualPasses([]); setManualTicketType(''); setManualAmount(''); return }
     try {
       const isToken = keyToUse.length > 40
-      const url = '/api/admin/config'
+      const url = `/api/admin/config?event=${encodeURIComponent(eventId)}`
       const headers: Record<string, string> = { 'x-admin-key': keyToUse }
       if (isToken) headers['x-auth-token'] = keyToUse
       const res = await fetch(url, { headers })
@@ -286,25 +280,33 @@ export default function App({ isPresentation = false }: AppProps) {
           gender: pass.gender || 'unisex'
         }))
         .filter((pass: ManualPass) => pass.name && Number.isFinite(pass.price) && pass.price >= 0)
-      if (!passes.length) return
+      if (!passes.length) { setManualPasses([]); setManualTicketType(''); setManualAmount(''); return }
       setManualPasses(passes)
-      const selected = passes.find((pass: ManualPass) => pass.name === manualTicketType || pass.id === manualTicketType)
-      if (selected) {
-        setManualTicketType(selected.name)
-        setManualAmount(String(selected.price))
-      } else {
-        setManualTicketType(passes[0].name)
-        setManualAmount(String(passes[0].price))
-      }
+      setManualTicketType('')
+      setManualAmount('')
     } catch (err) {
       console.warn('Unable to load admin pricing config', err)
     }
   }
 
+  const fetchAdminEvents = async (keyToUse = adminKey) => {
+    if (!keyToUse) return
+    try {
+      const headers: Record<string, string> = { 'x-admin-key': keyToUse }
+      if (keyToUse.length > 40) headers['x-auth-token'] = keyToUse
+      const response = await fetch('/api/admin/pricing', { headers, cache: 'no-store' })
+      const data = await response.json().catch(() => ({}))
+      const events = Array.isArray(data.events) ? data.events.filter((event: any) => event.id && event.name && !event.archived && event.active !== false && !['private', 'unlisted'].includes(event.visibility) && (event.status === 'published' || !event.status)) : []
+      setManualEvents(events)
+      setManualEvent(current => events.some((event: ManualEvent) => event.id === current) ? current : '')
+      if (!events.some((event: ManualEvent) => event.id === manualEvent)) { setManualPasses([]); setManualTicketType(''); setManualAmount('') }
+    } catch { setManualEvents([]); setManualPasses([]) }
+  }
+
   useEffect(() => {
     if (adminKey) {
       fetchSales(adminKey)
-      fetchAdminConfig(adminKey)
+      fetchAdminEvents(adminKey)
       const interval = setInterval(() => fetchSales(adminKey), 10000)
       return () => clearInterval(interval)
     } else {
@@ -758,9 +760,9 @@ export default function App({ isPresentation = false }: AppProps) {
                 <label>SELECT EVENT</label>
                 <select
                   value={manualEvent}
-                  onChange={(e) => setManualEvent(e.target.value)}
+                  onChange={(e) => { const selectedEvent = e.target.value; setManualEvent(selectedEvent); setManualTicketType(''); setManualAmount(''); setManualPasses([]); void fetchAdminConfig(adminKey, selectedEvent) }}
                 >
-                  <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
+                  <option value="">Select an event</option>{manualEvents.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}
                 </select>
               </div>
 
@@ -803,6 +805,7 @@ export default function App({ isPresentation = false }: AppProps) {
                     value={manualTicketType}
                     onChange={(e) => handleManualTicketTypeChange(e.target.value)}
                   >
+                    <option value="">Select a ticket category</option>
                     {manualPasses.map(pass => (
                       <option key={pass.id || pass.name} value={pass.name}>
                         {pass.name} — ₹{pass.price}
@@ -838,7 +841,7 @@ export default function App({ isPresentation = false }: AppProps) {
               <div style={{ marginTop: '16px' }}>
                 <button
                   type="submit"
-                  disabled={isManualSubmitting}
+                  disabled={isManualSubmitting || !manualEvent || !manualTicketType || !manualPasses.length}
                   className="btn-primary"
                   style={{ width: '100%', padding: '14px', fontSize: '14px' }}
                 >

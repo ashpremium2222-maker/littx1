@@ -69,24 +69,24 @@ export default function ShadowPanelApp({
   const [selectedTierObj, setSelectedTierObj]   = useState<any>(null)
 
   // Ticket creation form state
-  const [event, setEvent]           = useState('DHOLIDA GARBA ROYALE')
-  const [ticketType, setTicketType] = useState('GA Single')
-  const selectedEventNameRef = useRef('DHOLIDA GARBA ROYALE')
-  const ticketTypeRef = useRef('GA Single')
+  const [event, setEvent] = useState('')
+  const [ticketType, setTicketType] = useState('')
+  const selectedEventNameRef = useRef('')
+  const ticketTypeRef = useRef('')
   const quantityRef = useRef('1')
   const [name, setName]             = useState('')
   const [email, setEmail]           = useState('')
   const [phone, setPhone]           = useState('')
-  const [gender, setGender]         = useState('GA Single')
+  const [gender, setGender] = useState('')
   const [quantity, setQuantity]     = useState('1')
   const [paymentStatus, setPaymentStatus] = useState('Paid')
   const paymentStatusRef = useRef('Paid')
   const [commissionChoice, setCommissionChoice] = useState('0')
   const [customCommission, setCustomCommission] = useState('')
-  void [setGender, setCommissionChoice, setCustomCommission]
+  void [setCommissionChoice, setCustomCommission]
   const amountForTicketForm = (unitPrice: number, count: number) =>
     isShadowByAshPanel && paymentStatusRef.current === 'Free / Chai Pani' ? '0' : String(unitPrice * count)
-  const [amount, setAmount]         = useState('499')
+  const [amount, setAmount] = useState('')
 
   const [submitting, setSubmitting] = useState(false)
   const [resendingTicketId, setResendingTicketId] = useState<string | null>(null)
@@ -115,16 +115,15 @@ export default function ShadowPanelApp({
       const data = await res.json()
       if (res.ok && data.success && Array.isArray(data.events) && data.events.length > 0) {
         setEventsList(data.events)
-        const selectedEvent = data.events.find((item: any) => item.name === selectedEventNameRef.current) || data.events[0]
-        selectedEventNameRef.current = selectedEvent.name
-        setSelectedEventObj(selectedEvent)
-        setEvent(selectedEvent.name)
-        if (selectedEvent.tiers?.length > 0) {
-          const selectedTier = selectedEvent.tiers.find((item: any) => item.name === ticketTypeRef.current) || selectedEvent.tiers[0]
-          ticketTypeRef.current = selectedTier.name
-          setSelectedTierObj(selectedTier)
-          setTicketType(selectedTier.name)
-          setAmount(amountForTicketForm(selectedTier.price, parseInt(quantityRef.current, 10) || 1))
+        const selectedEvent = data.events.find((item: any) => item.name === selectedEventNameRef.current)
+        if (selectedEvent) {
+          setSelectedEventObj(selectedEvent)
+          const selectedTier = selectedEvent.tiers?.find((item: any) => item.name === ticketTypeRef.current)
+          if (selectedTier) {
+            setSelectedTierObj(selectedTier)
+            setTicketType(selectedTier.name)
+            setAmount(amountForTicketForm(selectedTier.price, parseInt(quantityRef.current, 10) || 1))
+          }
         }
       }
     } catch (e) {}
@@ -220,13 +219,20 @@ export default function ShadowPanelApp({
         const t = evt.tiers[0]
         ticketTypeRef.current = t.name
         setSelectedTierObj(t); setTicketType(t.name)
+        setGender(t.name)
         setAmount(amountForTicketForm(t.price, parseInt(quantity, 10) || 1))
+      } else {
+        ticketTypeRef.current = ''
+        setSelectedTierObj(null); setTicketType(''); setGender(''); setAmount('')
       }
+    } else {
+      setSelectedEventObj(null); setSelectedTierObj(null); setTicketType(''); setGender(''); setAmount('')
     }
   }
   const handleTierChange = (tierName: string) => {
     ticketTypeRef.current = tierName
     setTicketType(tierName)
+    setGender(tierName)
     const t = selectedEventObj?.tiers?.find((t: any) => t.name === tierName)
     if (t) { setSelectedTierObj(t); setAmount(amountForTicketForm(t.price, parseInt(quantity, 10) || 1)) }
   }
@@ -250,6 +256,10 @@ export default function ShadowPanelApp({
     }
     if (isShadowByAshPanel && commissionInvalid) {
       setFeedback({ type: 'error', msg: 'Enter a valid commission amount up to 20% of the official total.' })
+      return
+    }
+    if (!selectedEventObj || !selectedTierObj || !ticketType) {
+      setFeedback({ type: 'error', msg: 'Select an event and one of its configured ticket categories.' })
       return
     }
 
@@ -693,14 +703,7 @@ export default function ShadowPanelApp({
                           value={event}
                           onChange={(e) => handleEventChange(e.target.value)}
                         >
-                          {eventsList.length > 0 ? (
-                            eventsList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)
-                          ) : (
-                            <>
-                              <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
-                              
-                            </>
-                          )}
+                          <option value="">Select an event</option>{eventsList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)}
                         </select>
                       </div>
 
@@ -711,22 +714,7 @@ export default function ShadowPanelApp({
                           value={ticketType}
                           onChange={(e) => handleTierChange(e.target.value)}
                         >
-                          {selectedEventObj?.tiers?.length > 0 ? (
-                            selectedEventObj.tiers.map((t: any, i: number) => (
-                              <option key={i} value={t.name}>{t.name} {t.price > 0 ? `(₹${t.price})` : '(FREE)'}</option>
-                            ))
-                          ) : (
-                            <>
-                              
-    <option value="GA Single">GA Single (₹499)</option>
-    <option value="GA Group of 5">GA Group of 5 (₹2249)</option>
-    <option value="GA Group of 10">GA Group of 10 (₹3999)</option>
-    <option value="VIP Single">VIP Single (₹799)</option>
-    <option value="VIP Group of 5">VIP Group of 5 (₹3749)</option>
-    <option value="VIP Group of 10">VIP Group of 10 (₹6999)</option>
-  
-                            </>
-                          )}
+                          <option value="">Select a ticket category</option>{selectedEventObj?.tiers?.map((t: any) => <option key={t.id || t.name} value={t.name}>{t.name} ({t.price})</option>)}
                         </select>
                       </div>
 
@@ -850,7 +838,7 @@ export default function ShadowPanelApp({
                                   <div style={{ fontWeight: 600, color: '#f4f4f5' }}>{o.name}</div>
                                   <div style={{ fontSize: '10px', color: '#71717a' }}>{o.email}</div>
                                 </td>
-                                <td style={{ fontWeight: 600 }}>{o.event || 'DHOLIDA GARBA ROYALE'}</td>
+                                <td style={{ fontWeight: 600 }}>{o.event || 'Event details unavailable'}</td>
                                 <td style={{ fontWeight: 800, color: '#ffffff' }}>
                                   ₹{(o.amount || 0).toLocaleString()}
                                 </td>
@@ -942,14 +930,7 @@ export default function ShadowPanelApp({
                       value={event}
                       onChange={(e) => handleEventChange(e.target.value)}
                     >
-                      {eventsList.length > 0 ? (
-                        eventsList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)
-                      ) : (
-                        <>
-                          <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
-                          
-                        </>
-                      )}
+                      <option value="">Select an event</option>{eventsList.map((e: any) => <option key={e.id || e.name} value={e.name}>{e.name}</option>)}
                     </select>
                   </div>
 
@@ -960,22 +941,7 @@ export default function ShadowPanelApp({
                       value={ticketType}
                       onChange={(e) => handleTierChange(e.target.value)}
                     >
-                      {selectedEventObj?.tiers?.length > 0 ? (
-                        selectedEventObj.tiers.map((t: any, i: number) => (
-                          <option key={i} value={t.name}>{t.name} {t.price > 0 ? `(₹${t.price})` : '(FREE)'}</option>
-                        ))
-                      ) : (
-                        <>
-                          
-    <option value="GA Single">GA Single (₹499)</option>
-    <option value="GA Group of 5">GA Group of 5 (₹2249)</option>
-    <option value="GA Group of 10">GA Group of 10 (₹3999)</option>
-    <option value="VIP Single">VIP Single (₹799)</option>
-    <option value="VIP Group of 5">VIP Group of 5 (₹3749)</option>
-    <option value="VIP Group of 10">VIP Group of 10 (₹6999)</option>
-  
-                        </>
-                      )}
+                      <option value="">Select a ticket category</option>{selectedEventObj?.tiers?.map((t: any) => <option key={t.id || t.name} value={t.name}>{t.name} ({t.price})</option>)}
                     </select>
                   </div>
 
@@ -1144,8 +1110,8 @@ export default function ShadowPanelApp({
                               <div style={{ fontSize: '10px', color: '#71717a' }}>{o.email}</div>
                               {o.phone && <div style={{ fontSize: '10px', color: '#71717a' }}>{o.phone}</div>}
                             </td>
-                            <td style={{ fontWeight: 600 }}>{o.event || 'DHOLIDA GARBA ROYALE'}</td>
-                            <td>{o.ticketType || (o.gender === 'female' ? 'VIP Single' : 'GA Single')}</td>
+                            <td style={{ fontWeight: 600 }}>{o.event || 'Event details unavailable'}</td>
+                            <td>{o.ticketType || o.gender || 'Ticket'}</td>
                             <td style={{ fontWeight: 700 }}>{o.quantity || 1}</td>
                             <td style={{ fontWeight: 800, color: '#ffffff' }}>
                               ₹{(o.amount || 0).toLocaleString()}

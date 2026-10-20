@@ -23,7 +23,7 @@ Object.assign(isolatedEnv, {
     SESSION_BEARER_CUTOFF_ENFORCED: 'false',
     SCANNER_SESSION_SECRET: 'test-only-session-secret-with-more-than-32-characters',
     SCANNER_PASSWORD: 'test-scanner-password-123',
-    SCANNER_EVENT_NAMES: 'DHOLIDA GARBA ROYALE',
+    SCANNER_EVENT_NAMES: 'Phase 21 Synthetic Event',
     SCANNER_COMPANY_ID: 'littlane',
     RAZORPAY_WEBHOOK_SECRET: 'test-webhook-secret',
     PRESENTATION_KEY: 'test-presentation-secret',

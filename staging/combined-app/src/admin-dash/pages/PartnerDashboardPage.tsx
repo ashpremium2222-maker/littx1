@@ -68,8 +68,8 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       map.set(label, (map.get(label) || 0) + (Number(sale.quantity) || 1))
     })
     const fallback = [
-      { name: 'GA Single', color: 'var(--grad-violet)' },
-      { name: 'VIP Single', color: 'var(--grad-teal)' },
+      { name: 'Ticket', color: 'var(--grad-violet)' },
+      { name: 'Ticket', color: 'var(--grad-teal)' },
       { name: 'Group Passes', color: 'var(--grad-gold)' },
       { name: 'Invites', color: 'var(--grad-orange)' },
     ]
@@ -195,7 +195,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         id: `created-${sale.orderId}`,
         type: 'purchase',
         title: `${sale.name || 'Attendee'} booked a pass`,
-        sub: `${sale.event || 'DHOLIDA GARBA ROYALE'} · ₹${sale.amount || 0}`,
+        sub: `${sale.event || 'Event details unavailable'} · ₹${sale.amount || 0}`,
         time: timeLabel,
         badge: <span className="badge badge-blue"><span className="badge-dot" />New</span>,
       })
@@ -614,17 +614,11 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--ink)' }}>
-                  {popupEvent.name === 'freshers male' ? '🎉 Dholida Garba Royale (Male)' : popupEvent.name === 'freshers female' ? '👩 Dholida Garba Royale (Female)' : popupEvent.name === 'aura genesis' ? '✨ Aura Genesis' : '⭐ FT Lineup Invite'} — Buyers
+                  {popupEvent.name} — Buyers
                 </h3>
                 <div style={{ fontSize: '11px', color: 'var(--ink-soft)', marginTop: '4px' }}>
                   {(() => {
-                    const list = popupEvent.name === 'freshers male'
-                       ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male')))
-                       : popupEvent.name === 'freshers female'
-                       ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female')))
-                       : popupEvent.name === 'aura genesis'
-                       ? paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
-                       : paidSales.filter(s => (s.gender || '').toLowerCase().includes('exclusive') || (s.ticketType || '').toLowerCase().includes('exclusive'))
+                    const list = paidSales.filter(s => s.event === popupEvent.name)
                     return `${list.length} ticket buyers`
                   })()}
                 </div>
@@ -652,13 +646,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             {/* Buyer List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {(() => {
-                const list = popupEvent.name === 'freshers male'
-                  ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male')))
-                  : popupEvent.name === 'freshers female'
-                  ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female')))
-                  : popupEvent.name === 'aura genesis'
-                  ? paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
-                  : paidSales.filter(s => (s.gender || '').toLowerCase().includes('exclusive') || (s.ticketType || '').toLowerCase().includes('exclusive'))
+                const list = paidSales.filter(s => s.event === popupEvent.name)
 
                 if (list.length === 0) {
                   return (
@@ -686,7 +674,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                         width: '32px',
                         height: '32px',
                         borderRadius: '9px',
-                        background: popupEvent.name === 'freshers male' ? 'var(--grad-violet)' : popupEvent.name === 'freshers female' ? 'linear-gradient(135deg, #EC4899 0%, #F43F5E 100%)' : popupEvent.name === 'aura genesis' ? 'var(--grad-teal)' : 'var(--grad-gold)',
+                        background: 'var(--grad-violet)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',

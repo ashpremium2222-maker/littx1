@@ -54,14 +54,10 @@ export default function TicketCard({ dark, ticket, onBack }: Props) {
           transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
         >
           <div className="relative overflow-hidden">
-            <motion.img
-              src={ticket.event && ticket.event.toUpperCase().includes('AURA') ? "/aura-genesis-banner.jpg" : "/images/freshers-takeover-banner.png"}
-              alt={ticket.event || "Banner"}
-              className="w-full object-cover"
-              style={{ height: 180 }}
-              initial={{ scale: 1.15, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+            <div
+              aria-label={ticket.event || 'Ticket'}
+              className="w-full"
+              style={{ height: 180, background: 'radial-gradient(circle at 75% 15%, rgba(168,85,247,.36), transparent 48%), linear-gradient(135deg, #17121f, #08080c)' }}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <motion.div
@@ -93,19 +89,13 @@ export default function TicketCard({ dark, ticket, onBack }: Props) {
             transition={{ delay: 0.2, duration: 0.5 }}
           >
             <h2 className={`text-lg font-black uppercase tracking-tight ${text}`}>{ticket.event}</h2>
-            <p className="text-sm font-semibold text-[#A855F7] mt-0.5">Main Stage · {ticket.ticketType} Admission</p>
+            <p className="text-sm font-semibold text-[#A855F7] mt-0.5">{ticket.ticketType} Admission</p>
 
             <div className="flex gap-2 mt-3 flex-wrap">
-              {(ticket.event && ticket.event.toUpperCase().includes('AURA')
-                ? [
-                    { icon: '📅', label: ticket.dateLabel.split('·')[0]?.trim() || ticket.dateLabel },
-                  ]
-                : [
-                    { icon: '📅', label: ticket.dateLabel.split('·')[0]?.trim() || ticket.dateLabel },
-                    { icon: '⏰', label: ticket.dateLabel.split('·')[1]?.trim() || '' },
-                    { icon: '📍', label: ticket.venue },
-                  ]
-              ).filter((c) => c.label).map(({ icon, label }, i) => (
+              {[
+                { icon: '📅', label: ticket.dateLabel },
+                { icon: '📍', label: ticket.venue },
+              ].filter((c) => c.label).map(({ icon, label }, i) => (
                 <motion.div
                   key={label}
                   initial={{ opacity: 0, y: 8 }}

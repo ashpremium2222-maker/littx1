@@ -11,6 +11,8 @@ interface Props {
   sellerToken?: string
 }
 
+interface SellerEventOption { id: string; name: string; city?: string; venue?: string; startsAt?: string | null }
+
 function Field({
   label,
   placeholder,
@@ -63,11 +65,12 @@ function Field({
 export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, sellerToken }: Props) {
   const { refreshTickets } = useStore()
   const [event, setEvent] = useState('')
+  const [events, setEvents] = useState<SellerEventOption[]>([])
+  const [passes, setPasses] = useState<Array<{ id: string; name: string; price: number }>>([])
   const [attendee, setAttendee] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
-  const [datetime, setDatetime] = useState('')
-  const [ticketType, setTicketType] = useState<TicketType>('GA Single')
+  const [ticketType, setTicketType] = useState<TicketType>('')
   const [error, setError] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success'>('idle')
 
@@ -75,21 +78,42 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
     setTicketType(t)
   }
 
-  // Load real event config from server
+  // Load event and category configuration from the authenticated source of truth.
   useEffect(() => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (sellerToken) headers['x-seller-token'] = sellerToken
     const adminKey = sessionStorage.getItem('ft_admin_key') || ''
     const authToken = sessionStorage.getItem('littx_token') || ''
-    fetch('/api/admin/config', { headers: { ...(adminKey ? { 'x-admin-key': adminKey } : {}), ...(authToken ? { 'x-auth-token': authToken } : {}) } })
+    const authHeaders = { ...headers, ...(adminKey ? { 'x-admin-key': adminKey } : {}), ...(authToken ? { 'x-auth-token': authToken } : {}) }
+    fetch(sellerToken ? '/api/seller/events' : '/api/admin/pricing', { headers: authHeaders, cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
-        if (data.success && data.event) {
-          setEvent(data.event)
+        if (data.success && Array.isArray(data.events)) {
+          setEvents(data.events.filter((item: any) => sellerToken || (item.status === 'published' || !item.status) && item.active !== false && !item.archived && !['private', 'unlisted'].includes(item.visibility)))
         }
       })
-      .catch(() => {})
-  }, [])
+      .catch(() => setEvents([]))
+  }, [sellerToken])
+
+  useEffect(() => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (sellerToken) headers['x-seller-token'] = sellerToken
+    const adminKey = sessionStorage.getItem('ft_admin_key') || ''
+    const authToken = sessionStorage.getItem('littx_token') || ''
+    const authHeaders = { ...headers, ...(adminKey ? { 'x-admin-key': adminKey } : {}), ...(authToken ? { 'x-auth-token': authToken } : {}) }
+    if (!event) { setPasses([]); setTicketType(''); return }
+    const url = sellerToken
+      ? `/api/seller/pricing?event=${encodeURIComponent(event)}`
+      : `/api/admin/config?event=${encodeURIComponent(event)}`
+    fetch(url, { headers: authHeaders, cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        const loaded = data.success ? (sellerToken ? data.passes : data.pricing) : []
+        setPasses(Array.isArray(loaded) ? loaded : [])
+        setTicketType('')
+      })
+      .catch(() => { setPasses([]); setTicketType('') })
+  }, [event, sellerToken])
 
   const bg = dark ? 'bg-[#0D0D0D]' : 'bg-[#F9F9FB]'
   const navBg = dark ? 'bg-[#0D0D0D] border-[#1E1E1E]' : 'bg-[#F9F9FB] border-[#EBEBEB]'
@@ -101,14 +125,14 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
       setError('Attendee name, email, and WhatsApp number are required')
       return
     }
-    if (!event.trim()) {
-      setError('Event name is required')
+    if (!event || !ticketType || !passes.some(pass => pass.name === ticketType)) {
+      setError('Select an event and one of its configured ticket categories')
       return
     }
     setError('')
     setStatus('loading')
     try {
-      const resolvedEvent = event.trim()
+      const resolvedEvent = event
 
       // Build headers — use seller token if available, otherwise admin key
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -189,36 +213,15 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
       </motion.div>
 
       <div className="flex flex-col gap-4 px-5 pt-4">
-        <Field label="Event Name" placeholder="Event name" dark={dark} value={event} onChange={setEvent} delay={0.08} />
+        <label className={`text-xs font-medium tracking-wide uppercase ${dark ? 'text-[#A0A0A0]' : 'text-[#6B6B6B]'}`}>Event</label>
+        <select value={event} onChange={e => setEvent(e.target.value)} className={`rounded-2xl px-4 py-3.5 text-sm border ${dark ? 'bg-[#1A1A1A] border-[#2A2A2A] text-white' : 'bg-white border-[#E4E4E7] text-[#111]'}`}>
+          <option value="">Select an event</option>
+          {events.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+        {events.find(item => item.id === event) && <p className={`text-xs ${subText}`}>{[events.find(item => item.id === event)?.startsAt, events.find(item => item.id === event)?.venue, events.find(item => item.id === event)?.city].filter(Boolean).join(' · ')}</p>}
         <Field label="Attendee Name" placeholder="Full name" dark={dark} value={attendee} onChange={setAttendee} delay={0.13} />
         <Field label="Attendee Email" placeholder="email@example.com" dark={dark} value={email} onChange={setEmail} type="email" delay={0.18} />
         <Field label="WhatsApp Number" placeholder="10-digit mobile number" dark={dark} value={phone} onChange={setPhone} type="tel" delay={0.21} />
-
-        <motion.div
-          className="flex flex-col gap-1.5"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.23, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <label className={`text-xs font-medium tracking-wide uppercase ${dark ? 'text-[#A0A0A0]' : 'text-[#6B6B6B]'}`}>
-            Date & Time
-          </label>
-          <div
-            className={`flex items-center rounded-2xl px-4 py-3.5 border ${dark ? 'bg-[#1A1A1A] border-[#2A2A2A]' : 'bg-white border-[#E4E4E7]'} gap-3 relative`}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
-              <rect x="1" y="2.5" width="14" height="12.5" rx="2" stroke={dark ? '#555' : '#999'} strokeWidth="1.2" />
-              <path d="M5 1v3M11 1v3M1 6.5h14" stroke={dark ? '#555' : '#999'} strokeWidth="1.2" strokeLinecap="round" />
-            </svg>
-            <input
-              type="datetime-local"
-              value={datetime}
-              onChange={(e) => setDatetime(e.target.value)}
-              className={`text-sm bg-transparent outline-none w-full ${dark ? 'text-white' : 'text-[#111]'}`}
-              style={{ colorScheme: dark ? 'dark' : 'light' }}
-            />
-          </div>
-        </motion.div>
 
         <motion.div
           className="flex flex-col gap-1.5"
@@ -230,7 +233,9 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
             Ticket Type
           </label>
           <div className="flex gap-2 flex-wrap">
-            {(['GA Single', 'GA Group of 5', 'GA Group of 10', 'VIP Single', 'VIP Group of 5', 'VIP Group of 10'] as TicketType[]).map((t) => (
+            {passes.map((pass) => {
+              const t = pass.name
+              return (
               <motion.button
                 key={t}
                 onClick={() => handleTicketTypeChange(t)}
@@ -250,9 +255,11 @@ export default function GenerateTicket({ dark, onBack, onGenerated, sellerId, se
                     transition={{ type: 'spring', stiffness: 500, damping: 35 }}
                   />
                 )}
-                <span className="relative">{t}</span>
+                <span className="relative">{t} · {pass.price}</span>
               </motion.button>
-            ))}
+              )
+            })}
+            {!passes.length && <p className={subText}>{event ? 'No active ticket categories are configured for this event.' : 'Select an event to load its ticket categories.'}</p>}
           </div>
         </motion.div>
 

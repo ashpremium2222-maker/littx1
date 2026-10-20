@@ -100,7 +100,7 @@ export default function SellerPortalApp() {
   const [webauthnStatus, setWebauthnStatus] = useState<string | null>(null)
 
   // Ticket generation form state
-  const [event, setEvent] = useState('DHOLIDA GARBA ROYALE')
+  const [event, setEvent] = useState('Event details unavailable')
   const [sellerEvents, setSellerEvents] = useState<SellerEventOption[]>([])
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
