@@ -479,6 +479,19 @@ function sessionCookieModeEnabled() {
 function sessionBearerCutoffMs() {
     const raw = process.env.SESSION_BEARER_CUTOFF_AT;
     if (!raw) return null;
+    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/i.exec(raw);
+    if (!match) return null;
+    const [, year, month, day, hour, minute, second, zone] = match;
+    const yearNumber = Number(year);
+    const monthNumber = Number(month);
+    const dayNumber = Number(day);
+    if (monthNumber < 1 || monthNumber > 12
+        || dayNumber < 1 || dayNumber > new Date(Date.UTC(yearNumber, monthNumber, 0)).getUTCDate()
+        || Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59) return null;
+    if (zone.toUpperCase() !== 'Z') {
+        const [, , zoneHour, zoneMinute] = /([+-])(\d{2}):(\d{2})$/.exec(zone) || [];
+        if (zoneHour === undefined || Number(zoneHour) > 23 || Number(zoneMinute) > 59) return null;
+    }
     const parsed = Date.parse(raw);
     return Number.isFinite(parsed) ? parsed : null;
 }

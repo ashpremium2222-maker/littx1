@@ -406,6 +406,21 @@ test('browser cookie login rotates the single active session, enforces CSRF, and
         });
         assert.equal(csrfDenied.status, 403);
 
+        const invalidCsrfDenied = await fetch(`${baseUrl}/api/auth/logout`, {
+            method: 'POST', headers: { Origin: origin, Cookie: secondCookie, 'x-auth-token': secondBody.token, 'x-csrf-token': 'incorrect-test-csrf' },
+        });
+        assert.equal(invalidCsrfDenied.status, 403);
+
+        const missingOriginDenied = await fetch(`${baseUrl}/api/auth/logout`, {
+            method: 'POST', headers: { Cookie: secondCookie, 'x-auth-token': secondBody.token, 'x-csrf-token': secondCsrf },
+        });
+        assert.equal(missingOriginDenied.status, 403);
+
+        const untrustedOriginDenied = await fetch(`${baseUrl}/api/auth/logout`, {
+            method: 'POST', headers: { Origin: 'https://attacker.example', Cookie: secondCookie, 'x-auth-token': secondBody.token, 'x-csrf-token': secondCsrf },
+        });
+        assert.equal(untrustedOriginDenied.status, 403);
+
         const loggedOut = await fetch(`${baseUrl}/api/auth/logout`, {
             method: 'POST', headers: { Origin: origin, Cookie: secondCookie, 'x-auth-token': secondBody.token, 'x-csrf-token': secondCsrf },
         });
@@ -464,6 +479,8 @@ test('native scanner sessions remain revocable and expire independently after th
 
         const adminKeyDenied = await fetch(`${baseUrl}/api/master/companies`, { headers: { 'x-admin-key': process.env.ADMIN_KEY } });
         assert.equal(adminKeyDenied.status, 401);
+        const legacyBearerDenied = await fetch(`${baseUrl}/api/master/companies`, { headers: { 'x-auth-token': 'test-legacy-browser-bearer' } });
+        assert.equal(legacyBearerDenied.status, 401);
 
         process.env.PORTAL_ADMIN_KEY = 'test-post-cutoff-cookie-login';
         const freshBrowserLogin = await fetch(`${baseUrl}/api/portal-auth/login`, {
@@ -519,10 +536,40 @@ test('cookie attributes are host-only and production-safe', () => {
         assert.match(values[0], /; SameSite=Lax/);
         assert.doesNotMatch(values[0], /; Domain=/i);
         assert.match(values[1], /^__Host-stageway_csrf=/);
+        assert.match(values[1], /; Path=\//);
+        assert.match(values[1], /; SameSite=Lax/);
         assert.doesNotMatch(values[1], /; HttpOnly/);
         assert.match(values[1], /; Secure/);
+        assert.doesNotMatch(values[1], /; Domain=/i);
+
+        process.env.NODE_ENV = 'test';
+        const httpsResponse = { headers: {}, getHeader(name) { return this.headers[name]; }, setHeader(name, value) { this.headers[name] = value; }, set() {} };
+        auth.setSessionCookies(httpsResponse, 'seller', 'https-test-session', new Date(Date.now() + 60_000), true);
+        assert.equal(httpsResponse.headers['Set-Cookie'].length, 2);
+        assert.ok(httpsResponse.headers['Set-Cookie'].every(value => /; Secure/.test(value)));
+        assert.ok(httpsResponse.headers['Set-Cookie'].every(value => !/; Domain=/i.test(value)));
     } finally {
         process.env.NODE_ENV = previousMode;
+    }
+});
+
+test('cookie mode fails closed when the bearer cutoff is missing or malformed', async () => {
+    const previous = {
+        enabled: process.env.SESSION_COOKIE_AUTH_ENABLED,
+        cutoff: process.env.SESSION_BEARER_CUTOFF_AT,
+    };
+    process.env.SESSION_COOKIE_AUTH_ENABLED = 'true';
+    try {
+        for (const cutoff of ['', 'not-a-date', '2026-10-21', '2026-02-30T12:00:00Z', '2026-10-21T12:00:00+25:00']) {
+            process.env.SESSION_BEARER_CUTOFF_AT = cutoff;
+            const response = await fetch(`${baseUrl}/api/master/companies`, {
+                headers: { 'x-auth-token': 'test-legacy-session' },
+            });
+            assert.equal(response.status, 503, `cutoff ${JSON.stringify(cutoff)} must fail closed`);
+        }
+    } finally {
+        if (previous.enabled === undefined) delete process.env.SESSION_COOKIE_AUTH_ENABLED; else process.env.SESSION_COOKIE_AUTH_ENABLED = previous.enabled;
+        if (previous.cutoff === undefined) delete process.env.SESSION_BEARER_CUTOFF_AT; else process.env.SESSION_BEARER_CUTOFF_AT = previous.cutoff;
     }
 });
 
