@@ -28,6 +28,12 @@ function redirectFor(urlPath, hostname) {
     });
 }
 
+function redirectLocation(urlPath, hostname, search = '') {
+    const redirect = redirectFor(urlPath, hostname);
+    if (!redirect) return null;
+    return `${redirect.destination}${redirect.preserveQueryParams ? search : ''}`;
+}
+
 function runtimeSourceText(directory) {
     return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
         const filePath = path.join(directory, entry.name);
@@ -56,6 +62,9 @@ test('the root public homepage remains static and only the organiser host opens 
     const organizerRedirect = redirectFor('/', 'organiser.littx.in');
     assert.equal(organizerRedirect?.destination, '/organizer');
     assert.equal(organizerRedirect?.permanent, false);
+    assert.equal(organizerRedirect?.preserveQueryParams, true);
+    assert.equal(redirectLocation('/', 'organiser.littx.in', '?campaign=spring%2026&event=sample'), '/organizer?campaign=spring%2026&event=sample');
+    assert.equal(redirectLocation('/organizer', 'organiser.littx.in'), null, 'direct panel routes must not be redirected again');
     for (const hostname of ['littx.in', 'admin.littx.in', 'organizer.littx.in', 'seller.littx.in', 'pr.littx.in', 'scan.littx.in', 'my.littx.in', 'unknown.example.test']) {
         assert.equal(redirectFor('/', hostname), undefined, `${hostname} must not be redirected to the organizer panel`);
     }

@@ -12,7 +12,8 @@
         }
       ],
       "destination": "/organizer",
-      "permanent": false
+      "permanent": false,
+      "preserveQueryParams": true
     }
   ],
   "rewrites": [
