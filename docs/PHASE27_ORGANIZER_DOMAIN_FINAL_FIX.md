@@ -61,3 +61,7 @@ The current repository commit containing the redirect must be promoted through t
 6. `https://littx.in/` continues to serve the public marketplace (including its canonical redirect to `www` if that remains the configured behavior).
 
 Phase 19 records all staging acceptance rows as **BLOCKED**, because no isolated staging endpoint, database, verified staging identities, or authorized test devices were available. Production deployment is therefore withheld. The next required action is to provision and execute the isolated staging acceptance recorded in `docs/PHASE19_STAGING_ACCEPTANCE.md`; after it passes, promote the current reviewed repository revision and verify the live redirect and authorization flows. No production DNS or settings are to be changed as part of this report.
+
+## Later deployment failure evidence (Phase 30)
+
+The earlier assessment explained the then-current live homepage response but preceded the newer failed deployments. Vercel deployment details for commit `764a2b3` now show a configuration validation failure: `redirects[0]` contains an unsupported `preserveQueryParams` property. That option was added to the earlier organizer redirect and caused later deployments to fail before the app build. Phase 30 removes the property from organizer/admin/PR redirect entries; Vercel forwards query parameters by default. This new evidence supersedes the earlier statement that no redirect configuration issue was present. No deployment has been initiated by Codex.

@@ -1,6 +1,10 @@
 # Phase 26 — Organizer Redirect Diagnosis and Fix
 
-**Status: Phase 25 redirect is committed in current `HEAD`; Phase 26 makes query preservation explicit in the working tree. Production remains NO-GO.** No deployment, DNS change, Vercel setting, production database, credential, or payment configuration was changed.
+**Status: Historical Phase 26 assessment, superseded by the Phase 30 deployment-log diagnosis below. Production remains NO-GO.**
+
+## Subsequent deployment failure (Phase 30 correction)
+
+The Vercel dashboard later reported that `redirects[0]` had the unsupported `preserveQueryParams` property. The property had been added in this phase; it is not accepted on `vercel.json` redirect entries by the project's deployment validator. It has now been removed from the organizer, admin, and PR rules. Vercel's knowledge-base guidance says source query strings are forwarded by default. See [Vercel query-string redirect behavior](https://vercel.com/kb/guide/how-do-i-perform-vercel-redirects-based-on-query-strings).
 
 ## Proven root cause
 
@@ -24,11 +28,11 @@ Each response included a Vercel request ID; values are intentionally omitted. No
 
 ## Change
 
-The host redirect already exists in current `HEAD` from Phase 25; Phase 26 explicitly sets query preservation and adds regression coverage:
+The host redirect already existed in `HEAD` from Phase 25; Phase 26 regression coverage checked query forwarding:
 
 - Exact host `organiser.littx.in`, root path only → `/organizer`.
 - Temporary redirect (`permanent: false`, Vercel 307) avoids a browser-cached permanent decision during rollout.
-- Query parameters are explicitly preserved with `preserveQueryParams: true`.
+- Query parameters are forwarded by Vercel's default redirect behavior; the unsupported `preserveQueryParams` property is not used.
 - Direct `/organizer` and `/organizer/...` paths continue to use existing SPA rewrites, avoiding a root redirect loop and preserving deep-link refresh.
 - `littx.in` is not matched by this rule; its existing apex-to-`www` behavior and public homepage remain unchanged. No other panel hostname is enabled.
 - No React, API, session, cookie, CSRF, Origin, bearer cutoff, organizer authorization, event, payment, or database behavior was changed.
@@ -41,7 +45,7 @@ Vercel's documentation confirms host matching for rewrites/redirects and the que
 
 - Exact `organiser.littx.in` host matches; `littx.in`, `organizer.littx.in`, other panel hosts, and an unknown host do not.
 - Root redirects to `/organizer`; direct `/organizer` does not redirect again.
-- Query string preservation is enabled and modeled with encoded parameters.
+- Query string forwarding is modeled using Vercel's default behavior; no unsupported bulk-redirect property is included.
 - The public root still resolves to `index.html` and organizer path/deep-link requests resolve to `app.html`.
 - The existing React organizer route gates the dashboard UI on the expected organizer session role/scope.
 
@@ -59,7 +63,7 @@ Existing API tests continue to verify anonymous organizer overview rejection and
 
 ## Deployment and staging steps
 
-1. No production deployment was initiated. The commit to deploy must include the Phase 25 host redirect and Phase 26 `preserveQueryParams` update. Confirm the Vercel project is connected to this repository and its Root Directory/build settings consume the repository-root `vercel.json`.
+1. No production deployment was initiated. Deploy only a revision that includes the Phase 30 removal of `preserveQueryParams` from redirect rules. Confirm the Vercel project is connected to this repository and its Root Directory/build settings consume the repository-root `vercel.json`.
 2. First deploy to an isolated staging project/host and verify the exact 307 plus `Location: /organizer` for `organiser` root, including a harmless query string. Confirm `/organizer` and nested path refreshes load the organizer login/dashboard shell.
 3. Verify organizer login, logout, expiry, CSRF/Origin and cookie behavior with cookie mode enabled only in staging as intended; verify assigned/unassigned event access and anonymous API denial. Do not widen cookie Domain or weaken the bearer cutoff.
 4. Confirm `littx.in`/`www.littx.in` still serve the public marketplace and that other panel hostnames remain unrouted.

@@ -24,9 +24,9 @@ In the repository, `vercel.json` had path rewrites for `/organizer` and `/organi
 
 ## Local code change
 
-`vercel.json` now has one exact-host, root-only temporary redirect:
+`vercel.json` has one exact-host, root-only temporary redirect:
 
-- `organiser.littx.in/` → `/organizer` (HTTP 307 / non-permanent redirect).
+- `organiser.littx.in/` → `/organizer` (HTTP 307 / non-permanent redirect; query strings pass through by Vercel's default behavior).
 - `/organizer` and its existing deep-link paths continue to use the SPA rewrite to `app.html`.
 - `littx.in/` remains the static public homepage.
 - No other panel hostname has a host rule. The similar spelling `organizer.littx.in` is intentionally not matched; the requested host is `organiser.littx.in`.

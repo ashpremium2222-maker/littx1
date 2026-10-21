@@ -1,6 +1,6 @@
 # Phase 30 — Admin and PR Host Routing
 
-**Status:** Implemented locally; not deployed or verified on staging. Production remains NO-GO.
+**Status:** Implemented locally; Vercel failure diagnosed from deployment details. The corrected configuration has not been redeployed or verified on staging. Production remains NO-GO.
 
 ## Change
 
@@ -11,13 +11,26 @@ The shared Vercel project serves the public marketing page at `/` and the React 
 - `https://admin.littx.in/` → `/admin`
 - `https://pr.littx.in/` → `/pr`
 
-Both preserve query parameters. Existing `/admin` and `/pr` paths and their SPA rewrites remain in place for direct navigation and refresh. The public root continues to serve `index.html`. No other panel host was enabled.
+Vercel carries source query parameters through redirects by default. The `preserveQueryParams` option was removed: Vercel's deployment validator rejected that property on `vercel.json` redirect objects (it applies to bulk redirect definitions instead). Existing `/admin` and `/pr` paths and their SPA rewrites remain in place for direct navigation and refresh. The public root continues to serve `index.html`. No other panel host was enabled.
 
 The existing app continues to gate the admin UI on a master-admin session and PR APIs on a PR session. Backend role, company, and event-assignment checks were not changed. The redirects do not grant access. Host-only cookies, CSRF, Origin, session expiry, and bearer cutoff behavior were not changed.
 
+## Vercel deployment failure diagnosis
+
+The Vercel dashboard reported: `The vercel.json schema validation failed ... redirects[0] should NOT have additional property preserveQueryParams`. This applied to the organizer rule added in Phase 25, so later deployments also failed before the app build. The same unsupported property had been copied into the admin and PR rules. The fix removes it from all three rules while retaining temporary redirects and default query forwarding. This root cause was confirmed from the deployment details for commit `764a2b3`.
+
 ## Verification
 
-Automated routing regression tests cover exact host matching, query preservation, no redirect loop on existing panel paths, admin/PR deep-link SPA rewrites, the public homepage route, and the existing UI/API role gates. Local test/build results are recorded in the completion report for this change. They do not establish that the deployed domains, TLS, cookie configuration, or panel logins work.
+Automated routing regression tests cover exact host matching, Vercel's default query forwarding, absence of the rejected property, no redirect loop on existing panel paths, admin/PR deep-link SPA rewrites, the public homepage route, and the existing UI/API role gates.
+
+- Isolated backend tests (`npm test`, `staging/server`): **84/84 passed**.
+- Frontend build (`npm run build`, `staging/combined-app`): **passed**; existing >500 KB bundle advisory remains.
+- TypeScript (`npx tsc --noEmit`): **passed**.
+- `node --check staging/server/test/panel-routing.test.js`: **passed**.
+- `vercel.json` JSON parse: **passed**.
+- `git diff --check`: **passed**; Git reported line-ending conversion notices only.
+
+These checks do not establish that the corrected configuration has passed Vercel's remote deployment validator, nor that deployed domains, TLS, cookie configuration, or panel logins work. No deployment was triggered.
 
 ## Deployment and staging checks
 

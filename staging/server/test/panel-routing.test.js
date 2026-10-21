@@ -31,7 +31,8 @@ function redirectFor(urlPath, hostname) {
 function redirectLocation(urlPath, hostname, search = '') {
     const redirect = redirectFor(urlPath, hostname);
     if (!redirect) return null;
-    return `${redirect.destination}${redirect.preserveQueryParams ? search : ''}`;
+    // Vercel's vercel.json redirect behavior preserves query strings by default.
+    return `${redirect.destination}${redirect.preserveQueryParams === false ? '' : search}`;
 }
 
 function runtimeSourceText(directory) {
@@ -62,7 +63,7 @@ test('the public homepage remains static and exact panel hosts open their matchi
     const organizerRedirect = redirectFor('/', 'organiser.littx.in');
     assert.equal(organizerRedirect?.destination, '/organizer');
     assert.equal(organizerRedirect?.permanent, false);
-    assert.equal(organizerRedirect?.preserveQueryParams, true);
+    assert.equal(organizerRedirect?.preserveQueryParams, undefined, 'vercel.json redirects do not use the bulk-redirect preserveQueryParams option');
     assert.equal(redirectLocation('/', 'organiser.littx.in', '?campaign=spring%2026&event=sample'), '/organizer?campaign=spring%2026&event=sample');
     assert.equal(redirectLocation('/organizer', 'organiser.littx.in'), null, 'direct panel routes must not be redirected again');
     assert.equal(redirectLocation('/', 'admin.littx.in', '?tab=events'), '/admin?tab=events');
@@ -72,6 +73,7 @@ test('the public homepage remains static and exact panel hosts open their matchi
     for (const hostname of ['littx.in', 'www.littx.in', 'organizer.littx.in', 'seller.littx.in', 'scan.littx.in', 'my.littx.in', 'unknown.example.test', 'notadmin.littx.in', 'notpr.littx.in']) {
         assert.equal(redirectFor('/', hostname), undefined, `${hostname} must not be redirected to a panel`);
     }
+    assert.ok(vercelConfig.redirects.every(item => !Object.hasOwn(item, 'preserveQueryParams')));
     assert.equal(rewriteFor('/'), '/index.html', 'public root remains the marketing homepage');
     for (const route of ['/admin', '/admin/events', '/admin/settings', '/pr', '/pr/sales', '/pr/requests']) {
         assert.equal(rewriteFor(route), '/app.html', `${route} must support direct navigation and refresh`);

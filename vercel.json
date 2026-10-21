@@ -12,22 +12,19 @@
         }
       ],
       "destination": "/organizer",
-      "permanent": false,
-      "preserveQueryParams": true
+      "permanent": false
     },
     {
       "source": "/",
       "has": [{ "type": "host", "value": "admin.littx.in" }],
       "destination": "/admin",
-      "permanent": false,
-      "preserveQueryParams": true
+      "permanent": false
     },
     {
       "source": "/",
       "has": [{ "type": "host", "value": "pr.littx.in" }],
       "destination": "/pr",
-      "permanent": false,
-      "preserveQueryParams": true
+      "permanent": false
     }
   ],
   "rewrites": [
