@@ -167,7 +167,7 @@ function MainAppShell() {
     return <SellerPortalApp />
   }
 
-  const isAdminRoute = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/dashhboard') || path.startsWith('/company');
+  const isAdminRoute = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/company');
   
   if (isAdminRoute && !userSession) {
     window.location.href = '/admin-login'
@@ -178,7 +178,7 @@ function MainAppShell() {
     return <DevAdminApp isPresentation={false} />
   }
 
-  if (path.startsWith('/dashboard') || path.startsWith('/dashhboard')) {
+  if (path.startsWith('/dashboard')) {
     return <PartnerDashboardApp isPresentation={false} />
   }
 

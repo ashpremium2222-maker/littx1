@@ -529,7 +529,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       case 'global-search':
         return <MasterGlobalSearch />
       case 'company-portal':
-        return <CompanyPortal companyId={selectedCompanyId} companyName={selectedCompanyName} />
+        return <CompanyPortal companyId={selectedCompanyId} companyName={selectedCompanyName} adminKey={adminKey} />
       case 'dashboard':
         return (
           <Dashboard

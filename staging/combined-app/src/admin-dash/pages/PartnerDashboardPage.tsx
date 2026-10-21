@@ -20,7 +20,6 @@ interface DashboardProps {
 export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, scanStats }: DashboardProps) {
   void [summary, testMode, onManualGenerate]
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
-  const [chartMode, setChartMode] = useState<'actual' | 'forecast'>('actual')
   const [popupEvent, setPopupEvent] = useState<{ name: string; top: number; left: number } | null>(null)
 
   const paidSales = sales.filter(isConfirmedSale)
@@ -67,12 +66,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       const label = sale.ticketType || sale.gender || 'Pass'
       map.set(label, (map.get(label) || 0) + (Number(sale.quantity) || 1))
     })
-    const fallback = [
-      { name: 'Ticket', color: 'var(--grad-violet)' },
-      { name: 'Ticket', color: 'var(--grad-teal)' },
-      { name: 'Group Passes', color: 'var(--grad-gold)' },
-      { name: 'Invites', color: 'var(--grad-orange)' },
-    ]
     const colors = ['var(--grad-violet)', 'var(--grad-teal)', 'var(--grad-gold)', 'var(--grad-orange)']
     const rows = Array.from(map.entries()).map(([name, count], index) => ({
       name,
@@ -80,18 +73,12 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       pct: Math.round((count / grandTotal) * 100),
       color: colors[index % colors.length],
     }))
-    return rows.length
-      ? rows.slice(0, 4)
-      : fallback.map(item => ({ ...item, count: 0, pct: 0 }))
+    return rows.slice(0, 4)
   }, [paidSales, grandTotal])
 
   // ==================== SELLER BREAKDOWN ====================
-  const KNOWN_SELLERS = ['SELLER-A', 'SELLER-B', 'SELLER-C', 'Admin']
   const sellerSummary = useMemo(() => {
     const map: Record<string, { sellerId: string; ticketCount: number; revenue: number; lastSale: string | null; sales: any[] }> = {}
-    for (const sid of KNOWN_SELLERS) {
-      map[sid] = { sellerId: sid, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
-    }
     for (const s of paidSales) {
       const who = s.generatedBy || s.prUserId || 'Admin'
       if (!map[who]) map[who] = { sellerId: who, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
@@ -117,7 +104,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
       
-      const dateKeyMap = new Map<string, { label: string; revenue: number; orders: number; forecast: number }>()
+      const dateKeyMap = new Map<string, { label: string; revenue: number; orders: number }>()
       for (let i = daysCount; i >= 0; i--) {
         const d = new Date(now)
         d.setDate(d.getDate() - i)
@@ -131,7 +118,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
           label = `${months[d.getMonth()]} ${d.getDate()}`
         }
         
-        dateKeyMap.set(dateKey, { label, revenue: 0, orders: 0, forecast: 0 })
+        dateKeyMap.set(dateKey, { label, revenue: 0, orders: 0 })
       }
       paidSales.forEach(s => {
         const raw = s.paidAt || s.createdAt
@@ -148,12 +135,11 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         time: v.label,
         revenue: v.revenue,
         orders: v.orders,
-        forecast: v.revenue > 0 ? Math.round(v.revenue * 1.25 + 1200) : 0,
       })))
     } else {
       const blocks = ['12am', '3am', '6am', '9am', '12pm', '3pm', '6pm', '9pm']
-      const blockMap = new Map<string, { revenue: number; orders: number; forecast: number }>()
-      blocks.forEach(b => blockMap.set(b, { revenue: 0, orders: 0, forecast: 0 }))
+      const blockMap = new Map<string, { revenue: number; orders: number }>()
+      blocks.forEach(b => blockMap.set(b, { revenue: 0, orders: 0 }))
 
       paidSales.forEach(s => {
         const raw = s.paidAt || s.createdAt
@@ -167,7 +153,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             const cur = blockMap.get(key)!
             cur.revenue += s.amount || 0
             cur.orders += 1
-            cur.forecast = Math.round(cur.revenue * 1.2 + 500)
           }
         }
       })
@@ -347,20 +332,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                     Today
                   </button>
                 </div>
-                <div className="pill-toggle" style={{ marginLeft: '6px' }}>
-                  <button
-                    className={chartMode === 'actual' ? 'active' : ''}
-                    onClick={() => setChartMode('actual')}
-                  >
-                    Actual
-                  </button>
-                  <button
-                    className={chartMode === 'forecast' ? 'active' : ''}
-                    onClick={() => setChartMode('forecast')}
-                  >
-                    Forecast
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -371,10 +342,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                     <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#7C5CFA" stopOpacity={0.4} />
                       <stop offset="95%" stopColor="#7C5CFA" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="forecastGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#38D9C4" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#38D9C4" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <XAxis
@@ -399,15 +366,15 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                       color: '#F5F4F8',
                       fontSize: '12px',
                     }}
-                    formatter={(val: any) => [`₹${val}`, chartMode === 'actual' ? 'Revenue' : 'Forecast']}
+                    formatter={(val: any) => [`₹${val}`, 'Revenue']}
                   />
                   <Area
                     type="monotone"
-                    dataKey={chartMode === 'actual' ? 'revenue' : 'forecast'}
-                    stroke={chartMode === 'actual' ? '#7C5CFA' : '#38D9C4'}
+                    dataKey="revenue"
+                    stroke="#7C5CFA"
                     strokeWidth={2.5}
                     fillOpacity={1}
-                    fill={`url(#${chartMode === 'actual' ? 'areaGrad' : 'forecastGrad'})`}
+                    fill="url(#areaGrad)"
                   />
                 </AreaChart>
               </ResponsiveContainer>

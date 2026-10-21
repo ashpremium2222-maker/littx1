@@ -16,15 +16,27 @@
       "destination": "/app.html"
     },
     {
-      "source": "/dashhboard",
-      "destination": "/app.html"
-    },
-    {
-      "source": "/dashhboard/(.*)",
-      "destination": "/app.html"
-    },
-    {
       "source": "/admin",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/organizer",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/organizer/(.*)",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/bookings",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/bookings/(.*)",
       "destination": "/app.html"
     },
     {

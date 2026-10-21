@@ -27,10 +27,6 @@ function MainAppShell() {
     }
   }, [path])
 
-  if (path.startsWith('/dashhboard')) {
-    return <AdminDashboard isPresentation={true} />
-  }
-
   if (path.startsWith('/dashboard')) {
     return <AdminDashboard isPresentation={false} />
   }

@@ -21,7 +21,6 @@ interface DashboardProps {
 export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, adminKey = '', scanStats }: DashboardProps) {
   void [summary, testMode, onManualGenerate]
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
-  const [chartMode, setChartMode] = useState<'actual' | 'forecast'>('actual')
   const [popupEvent, setPopupEvent] = useState<{ name: string; top: number; left: number } | null>(null)
   const [expandedSeller, setExpandedSeller] = useState<string | null>(null)
   const [configuredSellers, setConfiguredSellers] = useState<Array<{ userId: string; displayName: string; sellerSlot?: string; active: boolean }>>([])
@@ -176,7 +175,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
       
-      const dateKeyMap = new Map<string, { label: string; revenue: number; orders: number; forecast: number }>()
+      const dateKeyMap = new Map<string, { label: string; revenue: number; orders: number }>()
       for (let i = daysCount; i >= 0; i--) {
         const d = new Date(now)
         d.setDate(d.getDate() - i)
@@ -190,7 +189,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
           label = `${months[d.getMonth()]} ${d.getDate()}`
         }
         
-        dateKeyMap.set(dateKey, { label, revenue: 0, orders: 0, forecast: 0 })
+        dateKeyMap.set(dateKey, { label, revenue: 0, orders: 0 })
       }
       paidSales.forEach(s => {
         const raw = s.paidAt || s.createdAt
@@ -207,12 +206,11 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         time: v.label,
         revenue: v.revenue,
         orders: v.orders,
-        forecast: v.revenue > 0 ? Math.round(v.revenue * 1.25 + 1200) : 0,
       })))
     } else {
       const blocks = ['12am', '3am', '6am', '9am', '12pm', '3pm', '6pm', '9pm']
-      const blockMap = new Map<string, { revenue: number; orders: number; forecast: number }>()
-      blocks.forEach(b => blockMap.set(b, { revenue: 0, orders: 0, forecast: 0 }))
+      const blockMap = new Map<string, { revenue: number; orders: number }>()
+      blocks.forEach(b => blockMap.set(b, { revenue: 0, orders: 0 }))
 
       paidSales.forEach(s => {
         const raw = s.paidAt || s.createdAt
@@ -226,7 +224,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             const cur = blockMap.get(key)!
             cur.revenue += s.amount || 0
             cur.orders += 1
-            cur.forecast = Math.round(cur.revenue * 1.2 + 500)
           }
         }
       })
@@ -402,26 +399,15 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: 10,
-                    background: seller.sellerId === 'SELLER-A' ? 'linear-gradient(135deg,#A855F7,#7C3AED)'
-                      : seller.sellerId === 'SELLER-B' ? 'linear-gradient(135deg,#3B82F6,#1D4ED8)'
-                      : seller.sellerId === 'SELLER-C' ? 'linear-gradient(135deg,#10B981,#047857)'
-                      : 'linear-gradient(135deg,#F59E0B,#D97706)',
+                    background: 'linear-gradient(135deg,#A855F7,#7C3AED)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     color: '#fff', fontSize: 13, fontWeight: 800,
                   }}>
-                    {seller.sellerId === 'Admin' ? 'A' : seller.sellerId.slice(-1)}
+                    {(seller.displayName || seller.sellerId).trim().charAt(0).toUpperCase() || '?'}
                   </div>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)' }}>
-                      {seller.displayName === seller.sellerId
-                        ? seller.sellerId === 'littlane' ? 'Littlane Ent'
-                          : seller.sellerId === 'nitro' ? 'DGR'
-                          : seller.sellerId === '7th-heaven' ? '7th Heaven'
-                          : seller.sellerId === 'SELLER-A' ? 'Littlane Ent'
-                          : seller.sellerId === 'SELLER-B' ? 'DGR'
-                          : seller.sellerId === 'SELLER-C' ? '7th Heaven'
-                          : seller.sellerId
-                        : seller.displayName}
+                      {seller.displayName || seller.sellerId}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--ink-soft)', marginTop: 2 }}>
                       {seller.ticketCount} ticket{seller.ticketCount !== 1 ? 's' : ''} sold
@@ -526,20 +512,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                     Today
                   </button>
                 </div>
-                <div className="pill-toggle" style={{ marginLeft: '6px' }}>
-                  <button
-                    className={chartMode === 'actual' ? 'active' : ''}
-                    onClick={() => setChartMode('actual')}
-                  >
-                    Actual
-                  </button>
-                  <button
-                    className={chartMode === 'forecast' ? 'active' : ''}
-                    onClick={() => setChartMode('forecast')}
-                  >
-                    Forecast
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -550,10 +522,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                     <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#7C5CFA" stopOpacity={0.4} />
                       <stop offset="95%" stopColor="#7C5CFA" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="forecastGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#38D9C4" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#38D9C4" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <XAxis
@@ -578,15 +546,15 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                       color: '#F5F4F8',
                       fontSize: '12px',
                     }}
-                    formatter={(val: any) => [`₹${val}`, chartMode === 'actual' ? 'Revenue' : 'Forecast']}
+                    formatter={(val: any) => [`₹${val}`, 'Revenue']}
                   />
                   <Area
                     type="monotone"
-                    dataKey={chartMode === 'actual' ? 'revenue' : 'forecast'}
-                    stroke={chartMode === 'actual' ? '#7C5CFA' : '#38D9C4'}
+                    dataKey="revenue"
+                    stroke="#7C5CFA"
                     strokeWidth={2.5}
                     fillOpacity={1}
-                    fill={`url(#${chartMode === 'actual' ? 'areaGrad' : 'forecastGrad'})`}
+                    fill="url(#areaGrad)"
                   />
                 </AreaChart>
               </ResponsiveContainer>

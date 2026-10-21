@@ -41,7 +41,7 @@ export default function QRScans({ sales = [], isPresentation = false }: QRScansP
     return true
   })
 
-  // Strictly for /dashhboard (presentation mode), limit to recent 260 logs
+  // Presentation reports are explicitly limited to recent scan activity.
   const displayScans = isPresentation ? filteredScans.slice(0, 260) : filteredScans
 
   return (

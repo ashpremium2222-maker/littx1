@@ -1562,8 +1562,6 @@ app.get('/admin', (req, res) => res.sendFile(distIndexHtml));
 app.get('/admin/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashboard', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashboard/:splat', (req, res) => res.sendFile(distIndexHtml));
-app.get('/dashhboard', (req, res) => res.sendFile(distIndexHtml));
-app.get('/dashhboard/:splat', (req, res) => res.sendFile(distIndexHtml));
 
 // Seller portal
 app.get('/seller', (req, res) => res.sendFile(distIndexHtml));

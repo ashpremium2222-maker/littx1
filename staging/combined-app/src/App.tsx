@@ -91,11 +91,6 @@ function MainAppShell() {
     return <LoginPage portal="admin" onLoginSuccess={handleLoginRedirect} brandTitle="SOLVER BY DEVASHTU" accessHelpText="Sign in with your existing master admin access key. The generator reveal password is requested inside the panel." />
   }
 
-  // Presentation / typo variant — no auth required
-  if (path.startsWith('/dashhboard')) {
-    return <AdminDashboard isPresentation={true} />
-  }
-
   // ── MASTER ADMIN (/admin) ─────────────────────────────────────────────────
   if (path.startsWith('/admin')) {
     if (userSession?.role === 'master_admin' && userSession.portalScope === 'admin') {

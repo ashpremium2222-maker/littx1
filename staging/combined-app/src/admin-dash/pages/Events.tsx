@@ -29,6 +29,10 @@ function eventNameForSale(sale: Sale) {
   return String(sale.event || 'Unassigned event').trim() || 'Unassigned event'
 }
 
+function eventKeyForSale(sale: Sale) {
+  return sale.eventId ? `event:${sale.eventId}` : `historical:${eventNameForSale(sale).toLowerCase()}`
+}
+
 function amountForSale(sale: Sale) {
   const amount = Number(sale.customerTotal ?? sale.amount ?? 0)
   return Number.isFinite(amount) ? amount : 0
@@ -36,10 +40,6 @@ function amountForSale(sale: Sale) {
 
 function metaForEvent(name: string) {
   return { gradient: 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)', icon: '🎟', tagline: name || 'Event dashboard' }
-}
-
-function lineupForEvent(name: string) {
-  return [{ time: 'Event details', name, stage: 'Venue managed by organizer', status: 'Configured', badge: 'green' }]
 }
 
 interface DashboardEvent { id: string; slug?: string; name: string; status?: string; active?: boolean; visibility?: string; description?: string; images?: string[]; address?: string; city?: string; venue?: string; date?: string; time?: string; startsAt?: string | null; endsAt?: string | null; salesStartAt?: string | null; salesEndAt?: string | null; timezone?: string; category?: string; companyId?: string; ticketCategories?: Array<{ id: string; name: string; description?: string; price: number; currency?: string; totalInventory?: number | null; remainingAvailability?: number | null; groupSize?: number; maxPerCustomer?: number; status?: string; inclusions?: string[] }> }
@@ -166,25 +166,21 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
 
   // Build event data map
   const eventMap = new Map<string, {
-    name: string; totalRevenue: number; ticketsSold: number; scanned: number; firstSale: string; lastSale: string
+    key: string; eventId?: string; name: string; totalRevenue: number; ticketsSold: number; scanned: number; firstSale: string; lastSale: string
   }>()
 
-  const eventNames = new Set<string>(catalogEvents.map(event => event.name).filter(Boolean))
-  sales.forEach((sale) => {
-    const name = eventNameForSale(sale)
-    eventNames.add(name)
-  })
-
-  eventNames.forEach(name => {
-    eventMap.set(name, { name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' })
+  catalogEvents.forEach(event => {
+    const key = `event:${event.id}`
+    eventMap.set(key, { key, eventId: event.id, name: event.name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' })
   })
 
   sales.forEach((s) => {
+    const key = eventKeyForSale(s)
     const name = eventNameForSale(s)
     const isPaid = PAID_STATUSES.includes(s.status) && (!(s as any).paymentStatus || (s as any).paymentStatus === 'paid')
 
-    const entry = eventMap.get(name) || { name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' }
-    eventMap.set(name, entry)
+    const entry = eventMap.get(key) || { key, eventId: s.eventId, name, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' }
+    eventMap.set(key, entry)
     if (isPaid) {
       entry.totalRevenue += amountForSale(s)
       entry.ticketsSold += Math.max(0, Number((s as any).admissionCount) || Number(s.quantity) || 1)
@@ -205,13 +201,13 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
   const eventStatus = (record?: DashboardEvent) => record ? String(record.status || (record.active === false ? 'draft' : 'published')).toLowerCase() : 'historical'
   const filteredEvents = events
     .filter(event => {
-      const record = catalogEvents.find(item => item.name === event.name)
+      const record = catalogEvents.find(item => item.id === event.eventId)
       const matchesSearch = `${event.name} ${record?.companyId || ''} ${record?.city || ''} ${record?.venue || ''}`.toLowerCase().includes(eventSearch.trim().toLowerCase())
       const status = eventStatus(record)
       return matchesSearch && (statusFilter === 'all' || status === statusFilter)
     })
     .sort((a, b) => eventSort === 'status'
-      ? eventStatus(catalogEvents.find(item => item.name === a.name)).localeCompare(eventStatus(catalogEvents.find(item => item.name === b.name)))
+      ? eventStatus(catalogEvents.find(item => item.id === a.eventId)).localeCompare(eventStatus(catalogEvents.find(item => item.id === b.eventId)))
       : eventSort === 'admissions' ? b.ticketsSold - a.ticketsSold : a.name.localeCompare(b.name))
   const eventsPerPage = 9
   const eventPageCount = Math.max(1, Math.ceil(filteredEvents.length / eventsPerPage))
@@ -219,10 +215,9 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
 
   // ── Detail View ─────────────────────────────────────────────────────────
   if (selectedEvent) {
-    const evtData = eventMap.get(selectedEvent) || { name: selectedEvent, totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' }
-    const meta = metaForEvent(selectedEvent)
-    const lineup = lineupForEvent(selectedEvent)
-    const selectedRecord = catalogEvents.find(event => event.name === selectedEvent)
+    const evtData = eventMap.get(selectedEvent) || { key: selectedEvent, name: 'Event details unavailable', totalRevenue: 0, ticketsSold: 0, scanned: 0, firstSale: '', lastSale: '' }
+    const meta = metaForEvent(evtData.name)
+    const selectedRecord = catalogEvents.find(event => event.id === evtData.eventId)
     meta.tagline = [selectedRecord?.venue, selectedRecord?.city, selectedRecord?.startsAt || selectedRecord?.date].filter(Boolean).join(' · ') || 'Historical sales event'
     const scanPct = evtData.ticketsSold > 0 ? Math.round((evtData.scanned / evtData.ticketsSold) * 100) : 0
 
@@ -330,9 +325,8 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
               <div className="card-head">
                 <h3>👥 Ticket Buyers ({(() => {
                   const buyersList = sales.filter(s => {
-                    const category = eventNameForSale(s)
                     const isPaid = PAID_STATUSES.includes(s.status)
-                    return isPaid && category === selectedEvent
+                    return isPaid && eventKeyForSale(s) === selectedEvent
                   })
                   return buyersList.length
                 })()})</h3>
@@ -341,9 +335,8 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
               <div className="scroll" style={{ maxHeight: '420px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {(() => {
                   const buyersList = sales.filter(s => {
-                    const category = eventNameForSale(s)
                     const isPaid = PAID_STATUSES.includes(s.status)
-                    return isPaid && category === selectedEvent
+                    return isPaid && eventKeyForSale(s) === selectedEvent
                   })
 
                   if (buyersList.length === 0) {
@@ -403,52 +396,14 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
           {/* Right Column: Lineup & Schedule */}
           <div className="right-col">
             <div className="card">
-              <div className="card-head">
-                <h3>Event Schedule</h3>
-                <div className="muted-sm">Confirmed lineup & times</div>
-              </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {lineup.map((act, idx) => (
-                  <div key={idx} style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                    padding: '12px',
-                    background: 'var(--panel-2)',
-                    border: '1px solid var(--line)',
-                    borderRadius: '10px',
-                  }}>
-                    <div style={{
-                      padding: '4px 8px',
-                      background: 'var(--panel-3)',
-                      borderRadius: '6px',
-                      fontSize: '10px',
-                      fontWeight: 800,
-                      color: 'var(--ink)',
-                      minWidth: '65px',
-                      textAlign: 'center',
-                    }}>
-                      {act.time}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ink)' }}>{act.name}</div>
-                      <div style={{ fontSize: '10.5px', color: 'var(--ink-soft)' }}>{act.stage}</div>
-                    </div>
-                    <div>
-                      <span className={`badge badge-${act.badge}`} style={{ fontSize: '9px' }}>
-                        {act.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              <div style={{ marginTop: '20px' }}>
-                <button className="btn-primary" style={{ width: '100%' }} onClick={() => onNavigateToTickets?.()}>
-                  View Event Tickets →
-                </button>
-              </div>
+              <div className="card-head"><h3>Event details</h3><div className="muted-sm">Stored event configuration</div></div>
+              {selectedRecord ? <div style={{ display: 'grid', gap: 10 }}>
+                <div><strong>Venue</strong><div className="muted-sm">{selectedRecord.venue || 'Not configured'}</div></div>
+                <div><strong>City</strong><div className="muted-sm">{selectedRecord.city || 'Not configured'}</div></div>
+                <div><strong>Starts</strong><div className="muted-sm">{selectedRecord.startsAt || selectedRecord.date ? new Date(selectedRecord.startsAt || selectedRecord.date || '').toLocaleString() : 'Not configured'}</div></div>
+                <div><strong>Description</strong><div className="muted-sm">{selectedRecord.description || 'Not configured'}</div></div>
+                <button className="btn-primary" style={{ width: '100%' }} onClick={() => onNavigateToTickets?.()}>View event tickets →</button>
+              </div> : <p className="muted-sm">This is a historical sales record without a matching event configuration. No event details are available.</p>}
             </div>
           </div>
         </div>
@@ -517,17 +472,17 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--gutter)' }}>
         {pagedEvents.map((event) => {
           const meta = metaForEvent(event.name)
-          const eventRecord = catalogEvents.find(record => record.name === event.name)
+          const eventRecord = catalogEvents.find(record => record.id === event.eventId)
           meta.tagline = [eventRecord?.venue, eventRecord?.city, eventRecord?.startsAt || eventRecord?.date].filter(Boolean).join(' · ') || 'Historical sales event'
           const scanPct = event.ticketsSold > 0 ? Math.round((event.scanned / event.ticketsSold) * 100) : 0
-          const isHov = hovered === event.name
+          const isHov = hovered === event.key
 
           return (
             <div
-              key={event.name}
+              key={event.key}
               className="card"
-              onClick={() => setSelectedEvent(event.name)}
-              onMouseEnter={() => setHovered(event.name)}
+              onClick={() => setSelectedEvent(event.key)}
+              onMouseEnter={() => setHovered(event.key)}
               onMouseLeave={() => setHovered(null)}
               style={{
                 cursor: 'pointer',
