@@ -143,6 +143,12 @@ EventSchema.index({ organizerUserIds: 1, updatedAt: -1 });
 const UserSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     companyId: { type: String, default: 'littlane' },
+    email: { type: String, lowercase: true, trim: true, sparse: true },
+    emailVerifiedAt: { type: Date, default: null },
+    accountStatus: { type: String, enum: ['pending_activation', 'active', 'suspended'], default: null },
+    // null/absent means the account still uses its documented legacy
+    // company-wide scope; [] means an explicit event-scoped account with no access.
+    assignedEventIds: { type: [String], default: undefined },
     password: { type: String, required: false },
     displayName: { type: String },
     role: { type: String, enum: ['master_admin', 'company_admin', 'organizer', 'seller', 'pr'], default: 'pr' },
@@ -157,6 +163,7 @@ const UserSchema = new mongoose.Schema({
         passName: { type: String }  // e.g. "Male Pass"
     }]
 });
+UserSchema.index({ email: 1 }, { sparse: true });
 
 const SellerSessionSchema = new mongoose.Schema({
     sellerId: { type: String, required: true, unique: true },
@@ -385,6 +392,52 @@ const AuditLogSchema = new mongoose.Schema({
     timestamp: { type: String, required: true }
 });
 
+const OrganizerApplicationSchema = new mongoose.Schema({
+    applicationId: { type: String, required: true, unique: true },
+    organizationName: { type: String, required: true },
+    contactName: { type: String, required: true },
+    email: { type: String, required: true, lowercase: true, trim: true },
+    status: { type: String, enum: ['verification_pending', 'pending_review', 'provisioning', 'approved', 'rejected', 'suspended'], default: 'verification_pending' },
+    emailVerifiedAt: { type: Date, default: null },
+    companyId: { type: String, default: null },
+    userId: { type: String, default: null },
+    decisionReason: { type: String, default: '' },
+    decidedBy: { type: String, default: null },
+    decidedAt: { type: Date, default: null },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+OrganizerApplicationSchema.index({ status: 1, createdAt: -1 });
+OrganizerApplicationSchema.index({ email: 1, status: 1 });
+
+const EventInvitationSchema = new mongoose.Schema({
+    invitationId: { type: String, required: true, unique: true },
+    tokenHash: { type: String, required: true, unique: true },
+    recipientEmail: { type: String, required: true, lowercase: true, trim: true },
+    role: { type: String, enum: ['seller', 'pr'], required: true },
+    companyId: { type: String, required: true },
+    eventId: { type: String, required: true },
+    invitedBy: { type: String, required: true },
+    status: { type: String, enum: ['pending', 'accepting', 'accepted', 'revoked', 'expired'], default: 'pending' },
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, required: true },
+    acceptedAt: { type: Date, default: null },
+    acceptedUserId: { type: String, default: null },
+    revokedAt: { type: Date, default: null }
+});
+EventInvitationSchema.index({ companyId: 1, eventId: 1, status: 1, createdAt: -1 });
+EventInvitationSchema.index({ recipientEmail: 1, status: 1 });
+
+const PartnerAccessPolicySchema = new mongoose.Schema({
+    role: { type: String, enum: ['seller', 'pr'], required: true },
+    principalId: { type: String, required: true },
+    companyId: { type: String, required: true },
+    eventIds: { type: [String], required: true, default: [] },
+    updatedBy: { type: String, required: true },
+    updatedAt: { type: Date, default: Date.now }
+});
+PartnerAccessPolicySchema.index({ role: 1, principalId: 1 }, { unique: true });
+
 const CustomerSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -453,7 +506,7 @@ const CheckoutRequest = mongoose.model('CheckoutRequest', CheckoutRequestSchema)
 const OtpChallengeSchema = new mongoose.Schema({
     challengeId: { type: String, required: true, unique: true },
     subjectHash: { type: String, required: true },
-    purpose: { type: String, enum: ['booking_recovery', 'refund_request'], required: true },
+    purpose: { type: String, enum: ['booking_recovery', 'refund_request', 'organizer_application', 'organizer_activation'], required: true },
     codeHash: { type: String, required: true },
     attempts: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now },
@@ -472,6 +525,9 @@ OtpRateLimitSchema.index({ windowExpiresAt: 1 }, { expireAfterSeconds: 0 });
 const OtpRateLimit = mongoose.model('OtpRateLimit', OtpRateLimitSchema);
 const Company = mongoose.model('Company', CompanySchema);
 const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
+const OrganizerApplication = mongoose.model('OrganizerApplication', OrganizerApplicationSchema);
+const EventInvitation = mongoose.model('EventInvitation', EventInvitationSchema);
+const PartnerAccessPolicy = mongoose.model('PartnerAccessPolicy', PartnerAccessPolicySchema);
 const Customer = mongoose.model('Customer', CustomerSchema);
 const SellerSession = mongoose.model('SellerSession', SellerSessionSchema);
 const ScanLog = mongoose.model('ScanLog', ScanLogSchema);
@@ -1219,6 +1275,9 @@ const mockDb = {
     scanLogs: [],
     userSessions: []
 };
+mockDb.organizerApplications = [];
+mockDb.eventInvitations = [];
+mockDb.partnerAccessPolicies = [];
 
 function useMock() {
     // If an explicit MONGODB_URI is provided (like on Vercel), NEVER use mock.
@@ -1326,6 +1385,9 @@ module.exports = {
     ScanLog,
     UserSession,
     SellerDevice,
+    OrganizerApplication,
+    EventInvitation,
+    PartnerAccessPolicy,
 
     // WebAuthn Device Lock handlers
     getSellerDevice: async (sellerId) => {
@@ -1895,7 +1957,7 @@ module.exports = {
     },
     createUser: async (userData) => {
         if (useMock()) {
-            if (mockDb.users.some(u => u.userId.toLowerCase() === String(userData.userId).toLowerCase() || (userData.sellerSlot && u.sellerSlot === userData.sellerSlot))) {
+            if (mockDb.users.some(u => u.userId.toLowerCase() === String(userData.userId).toLowerCase() || (userData.sellerSlot && u.sellerSlot === userData.sellerSlot) || (userData.email && u.email === String(userData.email).toLowerCase()))) {
                 const error = new Error('A user with this identifier already exists.');
                 error.code = 11000;
                 throw error;
@@ -1917,6 +1979,93 @@ module.exports = {
     getUserBySellerSlot: async (sellerSlot) => {
         if (useMock()) return mockDb.users.find(u => u.sellerSlot === sellerSlot) || null;
         return await getUserBySellerSlot(sellerSlot);
+    },
+    createOrganizerApplication: async (application) => {
+        if (useMock()) { mockDb.organizerApplications.push({ ...application }); return application; }
+        return await OrganizerApplication.create(application).then(item => item.toObject());
+    },
+    getOrganizerApplication: async (applicationId) => {
+        if (useMock()) return mockDb.organizerApplications.find(item => item.applicationId === applicationId) || null;
+        return OrganizerApplication.findOne({ applicationId }).lean();
+    },
+    getOrganizerApplications: async (status) => {
+        if (useMock()) return mockDb.organizerApplications.filter(item => !status || item.status === status).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        return OrganizerApplication.find(status ? { status } : {}).sort({ createdAt: -1 }).lean();
+    },
+    updateOrganizerApplication: async (applicationId, updates, expectedStatus) => {
+        if (useMock()) {
+            const item = mockDb.organizerApplications.find(record => record.applicationId === applicationId && (!expectedStatus || record.status === expectedStatus));
+            if (!item) return null;
+            Object.assign(item, updates, { updatedAt: new Date().toISOString() }); return item;
+        }
+        return OrganizerApplication.findOneAndUpdate({ applicationId, ...(expectedStatus ? { status: expectedStatus } : {}) }, { $set: { ...updates, updatedAt: new Date() } }, { returnDocument: 'after', lean: true });
+    },
+    createEventInvitation: async (invitation) => {
+        if (useMock()) { mockDb.eventInvitations.push({ ...invitation }); return invitation; }
+        return await EventInvitation.create(invitation).then(item => item.toObject());
+    },
+    getEventInvitationByTokenHash: async (tokenHash) => {
+        if (useMock()) return mockDb.eventInvitations.find(item => item.tokenHash === tokenHash) || null;
+        return EventInvitation.findOne({ tokenHash }).lean();
+    },
+    getEventInvitations: async (filter = {}) => {
+        if (useMock()) return mockDb.eventInvitations.filter(item => Object.entries(filter).every(([key, value]) => item[key] === value));
+        return EventInvitation.find(filter).sort({ createdAt: -1 }).lean();
+    },
+    updateEventInvitation: async (invitationId, updates, expectedStatus) => {
+        if (useMock()) {
+            const item = mockDb.eventInvitations.find(record => record.invitationId === invitationId && (!expectedStatus || record.status === expectedStatus));
+            if (!item) return null;
+            Object.assign(item, updates); return item;
+        }
+        return EventInvitation.findOneAndUpdate({ invitationId, ...(expectedStatus ? { status: expectedStatus } : {}) }, { $set: updates }, { returnDocument: 'after', lean: true });
+    },
+    claimEventInvitation: async (invitationId, now = new Date()) => {
+        if (useMock()) {
+            const item = mockDb.eventInvitations.find(record => record.invitationId === invitationId && record.status === 'pending' && new Date(record.expiresAt).getTime() > new Date(now).getTime());
+            if (!item) return null;
+            item.status = 'accepting'; return item;
+        }
+        return EventInvitation.findOneAndUpdate({ invitationId, status: 'pending', expiresAt: { $gt: new Date(now) } }, { $set: { status: 'accepting' } }, { returnDocument: 'after', lean: true });
+    },
+    getPartnerAccessPolicy: async (role, principalId) => {
+        if (useMock()) return mockDb.partnerAccessPolicies.find(item => item.role === role && item.principalId === principalId) || null;
+        return PartnerAccessPolicy.findOne({ role, principalId }).lean();
+    },
+    getPartnerAccessPolicies: async (filter = {}) => {
+        if (useMock()) return mockDb.partnerAccessPolicies.filter(item => Object.entries(filter).every(([key, value]) => item[key] === value));
+        return PartnerAccessPolicy.find(filter).lean();
+    },
+    setPartnerAccessPolicy: async (policy) => {
+        if (useMock()) {
+            const idx = mockDb.partnerAccessPolicies.findIndex(item => item.role === policy.role && item.principalId === policy.principalId);
+            const value = { ...policy, updatedAt: new Date().toISOString() };
+            if (idx < 0) mockDb.partnerAccessPolicies.push(value); else mockDb.partnerAccessPolicies[idx] = value;
+            return value;
+        }
+        return PartnerAccessPolicy.findOneAndUpdate({ role: policy.role, principalId: policy.principalId }, { $set: { ...policy, updatedAt: new Date() } }, { upsert: true, returnDocument: 'after', lean: true });
+    },
+    addPartnerEventAssignment: async ({ role, principalId, companyId, eventId, updatedBy }) => {
+        if (useMock()) {
+            let policy = mockDb.partnerAccessPolicies.find(item => item.role === role && item.principalId === principalId);
+            if (policy && policy.companyId !== companyId) return null;
+            if (!policy) { policy = { role, principalId, companyId, eventIds: [], updatedBy }; mockDb.partnerAccessPolicies.push(policy); }
+            policy.eventIds = [...new Set([...(policy.eventIds || []), eventId])];
+            policy.updatedBy = updatedBy; policy.updatedAt = new Date().toISOString(); return policy;
+        }
+        return PartnerAccessPolicy.findOneAndUpdate(
+            { role, principalId, companyId },
+            { $addToSet: { eventIds: eventId }, $set: { updatedBy, updatedAt: new Date() }, $setOnInsert: { role, principalId, companyId } },
+            { upsert: true, returnDocument: 'after', lean: true }
+        );
+    },
+    removePartnerEventAssignment: async ({ role, principalId, eventId }) => {
+        if (useMock()) {
+            const policy = mockDb.partnerAccessPolicies.find(item => item.role === role && item.principalId === principalId);
+            if (!policy) return null;
+            policy.eventIds = (policy.eventIds || []).filter(id => id !== eventId); policy.updatedAt = new Date().toISOString(); return policy;
+        }
+        return PartnerAccessPolicy.findOneAndUpdate({ role, principalId }, { $pull: { eventIds: eventId }, $set: { updatedAt: new Date() } }, { returnDocument: 'after', lean: true });
     },
 
     // Customer Helpers

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import EventTeamManager from './EventTeamManager'
 
 function currencyTotals(total: number | null | undefined, currency: string | null | undefined, byCurrency?: Record<string, number>) {
   if (total !== null && total !== undefined) return `${currency || 'INR'} ${Number(total).toLocaleString()}`
@@ -24,11 +25,13 @@ type OrganizerCategory = {
 type OrganizerEvent = {
   eventId: string
   name: string
+  images?: string[]
   status: string
   city: string
   venue: string
   description: string
   startsAt: string | null
+  endsAt?: string | null
   ticketCategories: OrganizerCategory[]
   sales: { orders: number; confirmedOrders: number; ticketsIssued: number; admissions: number; online: any; offline: any; verifiedRevenue: number | null; verifiedRevenueCurrency?: string | null; verifiedRevenueByCurrency?: Record<string, number>; pending: number; pendingAmount: number | null; pendingAmountCurrency?: string | null; pendingAmountByCurrency?: Record<string, number>; cancelled: number; expired: number; unverified: number; unverifiedAmount: number | null; unverifiedAmountCurrency?: string | null; unverifiedAmountByCurrency?: Record<string, number>; refundRequests: number; refundApprovals: number; refundRejections: number }
   scans: { accepted: number; duplicate: number; admissions: number; recent: any[] }
@@ -43,9 +46,20 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editingEvent, setEditingEvent] = useState<OrganizerEvent | null>(null)
-  const [editForm, setEditForm] = useState({ name: '', venue: '', city: '', description: '' })
+  const [editForm, setEditForm] = useState({ name: '', venue: '', city: '', description: '', posterUrl: '', startsAt: '', endsAt: '' })
   const [categories, setCategories] = useState<OrganizerCategory[]>([])
   const [saving, setSaving] = useState(false)
+  const [draftForm, setDraftForm] = useState({ name: '', category: '', venue: '', city: '', description: '', posterUrl: '', startsAt: '', endsAt: '' })
+  const [creatingDraft, setCreatingDraft] = useState(false)
+  const [profile, setProfile] = useState<{ displayName: string; organizationName: string; verifiedEmail: string | null; emailVerified: boolean; companyId: string }>({ displayName: '', organizationName: '', verifiedEmail: null, emailVerified: false, companyId: '' })
+  const [profileSaving, setProfileSaving] = useState(false)
+
+  const localDatetime = (value?: string | null) => {
+    if (!value) return ''
+    const date = new Date(value)
+    if (!Number.isFinite(date.getTime())) return ''
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  }
 
   const load = async () => {
     setError('')
@@ -56,6 +70,9 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
       if (!response.ok || !data.success) throw new Error(data.message || 'Organizer data could not be loaded.')
       setEvents(data.events || [])
       setDisplayName(data.organizer?.displayName || 'Organizer')
+      const profileResponse = await fetch('/api/organizer/profile', { headers: { 'x-auth-token': token }, cache: 'no-store' })
+      const profileData = await profileResponse.json()
+      if (profileResponse.ok && profileData.success) setProfile(profileData.profile)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Organizer data could not be loaded.')
     } finally {
@@ -67,7 +84,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
 
   const beginEdit = (event: OrganizerEvent) => {
     setEditingEvent(event)
-    setEditForm({ name: event.name, venue: event.venue || '', city: event.city || '', description: event.description || '' })
+    setEditForm({ name: event.name, venue: event.venue || '', city: event.city || '', description: event.description || '', posterUrl: event.images?.[0] || '', startsAt: localDatetime(event.startsAt), endsAt: localDatetime(event.endsAt) })
     setCategories(event.ticketCategories.map(category => ({ ...category })))
   }
 
@@ -85,7 +102,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
       const token = sessionStorage.getItem('littx_token') || ''
       const response = await fetch(`/api/admin/events/${encodeURIComponent(editingEvent.eventId)}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-        body: JSON.stringify({ ...editForm, ticketCategories: categories })
+        body: JSON.stringify({ name: editForm.name, venue: editForm.venue, city: editForm.city, description: editForm.description, images: editForm.posterUrl.trim() ? [editForm.posterUrl.trim()] : [], startsAt: editForm.startsAt ? new Date(editForm.startsAt).toISOString() : null, endsAt: editForm.endsAt ? new Date(editForm.endsAt).toISOString() : null, ticketCategories: categories })
       })
       const data = await response.json()
       if (!response.ok || !data.success) throw new Error(data.message || 'Event changes could not be saved.')
@@ -96,6 +113,38 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
     } finally {
       setSaving(false)
     }
+  }
+
+  const createDraft = async (event: React.FormEvent) => {
+    event.preventDefault(); setCreatingDraft(true); setError('')
+    try {
+      const token = sessionStorage.getItem('littx_token') || ''
+      const response = await fetch('/api/admin/events', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': token }, body: JSON.stringify({ ...draftForm, images: draftForm.posterUrl.trim() ? [draftForm.posterUrl.trim()] : [], startsAt: draftForm.startsAt ? new Date(draftForm.startsAt).toISOString() : null, endsAt: draftForm.endsAt ? new Date(draftForm.endsAt).toISOString() : null, ticketCategories: [] }) })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Draft could not be created.')
+      setDraftForm({ name: '', category: '', venue: '', city: '', description: '', posterUrl: '', startsAt: '', endsAt: '' }); await load()
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Draft could not be created.') } finally { setCreatingDraft(false) }
+  }
+
+  const saveProfile = async (event: React.FormEvent) => {
+    event.preventDefault(); setProfileSaving(true); setError('')
+    try {
+      const response = await fetch('/api/organizer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': sessionStorage.getItem('littx_token') || '' }, body: JSON.stringify({ displayName: profile.displayName, organizationName: profile.organizationName }) })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Profile could not be updated.')
+      setProfile(data.profile); setDisplayName(data.profile.displayName)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Profile could not be updated.') } finally { setProfileSaving(false) }
+  }
+
+  const submitForReview = async (event: OrganizerEvent) => {
+    if (!window.confirm(`Submit ${event.name} for platform publication review? It will not be publicly listed until a master administrator publishes it.`)) return
+    setError('')
+    try {
+      const response = await fetch(`/api/admin/events/${encodeURIComponent(event.eventId)}/transition`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': sessionStorage.getItem('littx_token') || '' }, body: JSON.stringify({ status: 'pending_review' }) })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Event could not be submitted for review.')
+      await load()
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Event could not be submitted for review.') }
   }
 
   const logout = async () => {
@@ -113,11 +162,31 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         <button className="btn-secondary" onClick={logout}>Sign out</button>
       </header>
       {error && <div role="alert" className="card" style={{ color: 'var(--red)' }}>{error} <button className="btn-secondary" onClick={() => { setLoading(true); void load() }}>Retry</button></div>}
-      {!events.length && <div className="card"><h2>No assigned events</h2><p className="muted-sm">Ask a platform administrator to assign events to your organizer account.</p></div>}
+      <form className="card" onSubmit={saveProfile} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+        <h2 style={{ gridColumn: '1 / -1', margin: 0 }}>Organization profile</h2>
+        <input aria-label="Organizer contact name" value={profile.displayName} onChange={event => setProfile(current => ({ ...current, displayName: event.target.value }))} minLength={2} maxLength={120} required />
+        <input aria-label="Organization name" value={profile.organizationName} onChange={event => setProfile(current => ({ ...current, organizationName: event.target.value }))} minLength={2} maxLength={160} required />
+        <div className="muted-sm">Verified email: {profile.verifiedEmail || 'Not set'} · email changes require a separate verification workflow.</div>
+        <button className="btn-secondary" disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save profile'}</button>
+      </form>
+      <form className="card" onSubmit={createDraft} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
+        <h2 style={{ gridColumn: '1 / -1', margin: 0 }}>Create event draft</h2>
+        <input aria-label="New event name" placeholder="Event name" value={draftForm.name} onChange={event => setDraftForm(current => ({ ...current, name: event.target.value }))} maxLength={160} required />
+        <input aria-label="New event category" placeholder="Category" value={draftForm.category} onChange={event => setDraftForm(current => ({ ...current, category: event.target.value }))} />
+        <input aria-label="New event venue" placeholder="Venue" value={draftForm.venue} onChange={event => setDraftForm(current => ({ ...current, venue: event.target.value }))} />
+        <input aria-label="New event city" placeholder="City" value={draftForm.city} onChange={event => setDraftForm(current => ({ ...current, city: event.target.value }))} />
+        <input aria-label="Poster image URL" type="url" placeholder="Poster image URL (optional)" value={draftForm.posterUrl} onChange={event => setDraftForm(current => ({ ...current, posterUrl: event.target.value }))} />
+        <label className="muted-sm">Event date and time<input aria-label="New event date" type="datetime-local" value={draftForm.startsAt} onChange={event => setDraftForm(current => ({ ...current, startsAt: event.target.value }))} /></label>
+        <label className="muted-sm">Event end<input aria-label="New event end" type="datetime-local" value={draftForm.endsAt} onChange={event => setDraftForm(current => ({ ...current, endsAt: event.target.value }))} /></label>
+        <textarea aria-label="New event description" placeholder="Description" value={draftForm.description} onChange={event => setDraftForm(current => ({ ...current, description: event.target.value }))} rows={2} />
+        <button className="btn-primary" disabled={creatingDraft}>{creatingDraft ? 'Creating…' : 'Save draft'}</button>
+        <div className="muted-sm" style={{ gridColumn: '1 / -1' }}>New drafts are owned by your approved organization and assigned to your account. They are not public until platform review and publication.</div>
+      </form>
+      {!events.length && <div className="card"><h2>No events yet</h2><p className="muted-sm">Create a draft above. Only events explicitly assigned to your organizer account appear here.</p></div>}
       {events.map(event => <section className="card" key={event.eventId} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div><div className="muted-sm">{event.status.toUpperCase()} · {event.city}{event.venue ? ` · ${event.venue}` : ''}</div><h2 style={{ margin: '6px 0' }}>{event.name}</h2><div className="muted-sm">{event.startsAt ? new Date(event.startsAt).toLocaleString() : 'Date not set'}</div></div>
-          <button className="btn-secondary" onClick={() => beginEdit(event)}>Edit event and ticket categories</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="btn-secondary" onClick={() => beginEdit(event)}>Edit event and ticket categories</button>{event.status === 'draft' && <button className="btn-primary" onClick={() => void submitForReview(event)}>Submit for publication review</button>}</div>
         </div>
         <div className="kpi-row">
           <div className="tile tile-violet"><div className="tile-label">ORDERS / CONFIRMED</div><div className="tile-value">{event.sales.orders} / {event.sales.confirmedOrders}</div><div className="tile-sub">{event.sales.pending} pending · {event.sales.cancelled} cancelled · {event.sales.unverified} unverified</div></div>
@@ -134,6 +203,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           <div><h3>Recent scan history</h3>{event.scans.recent.slice(0, 8).map((scan: any, index: number) => <div key={`${scan.ticketId}-${index}`} className="muted-sm" style={{ padding: '5px 0' }}>{scan.result} · {scan.admissionCount} admissions · {scan.ticketId} · {new Date(scan.timestamp).toLocaleString()}</div>)}</div>
           <div><h3>Event activity</h3>{event.activity.length ? event.activity.map((activity: any, index: number) => <div key={`${activity.timestamp}-${index}`} className="muted-sm" style={{ padding: '5px 0' }}>{activity.action} · {activity.fieldChanged} · {activity.actor} · {activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'time unavailable'}</div>) : <div className="muted-sm">No event activity recorded.</div>}</div>
         </div>
+        <EventTeamManager eventId={event.eventId} />
       </section>)}
     </div>
 
@@ -143,6 +213,9 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         <input aria-label="Event name" value={editForm.name} onChange={event => setEditForm(current => ({ ...current, name: event.target.value }))} required />
         <input aria-label="Event venue" placeholder="Venue" value={editForm.venue} onChange={event => setEditForm(current => ({ ...current, venue: event.target.value }))} />
         <input aria-label="Event city" placeholder="City" value={editForm.city} onChange={event => setEditForm(current => ({ ...current, city: event.target.value }))} />
+        <input aria-label="Poster image URL" type="url" placeholder="Poster image URL" value={editForm.posterUrl} onChange={event => setEditForm(current => ({ ...current, posterUrl: event.target.value }))} />
+        <label>Start date<input aria-label="Event start date" type="datetime-local" value={editForm.startsAt} onChange={event => setEditForm(current => ({ ...current, startsAt: event.target.value }))} /></label>
+        <label>End date<input aria-label="Event end date" type="datetime-local" value={editForm.endsAt} onChange={event => setEditForm(current => ({ ...current, endsAt: event.target.value }))} /></label>
         <textarea aria-label="Event description" placeholder="Description" value={editForm.description} onChange={event => setEditForm(current => ({ ...current, description: event.target.value }))} rows={4} />
         <h3>Ticket categories</h3>
         <button type="button" className="btn-secondary" onClick={() => setCategories(current => [...current, { id: `organizer-category-${Date.now()}`, name: '', price: 0, currency: 'INR', totalInventory: null, remainingInventory: null, groupSize: 1, status: 'active', maxPerCustomer: 20, inclusions: [] }])}>Add ticket category</button>

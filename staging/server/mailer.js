@@ -11,6 +11,7 @@ let usingTestAccount = false;
 
 // Initialize Mailgun client if configuration is present
 let mgClient = null;
+const testMessageOutbox = [];
 if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN) {
     try {
         const FormData = require('form-data');
@@ -288,4 +289,70 @@ async function sendBookingRecoveryOtp({ to, code, expiresMinutes = 10 }) {
     }
 }
 
-module.exports = { sendTicketEmail, sendBookingRecoveryOtp, hasConfiguredEmailDelivery, renderTicketEmailContent };
+async function sendAccountSecurityOtp({ to, code, challengeId, purpose, expiresMinutes = 10 }) {
+    if (process.env.NODE_ENV === 'test') { testMessageOutbox.push({ to, purpose, text: `TEST ONLY ${purpose} challenge ${challengeId} code ${code}; expires in ${expiresMinutes} minutes.` }); return { success: true, testOnly: true }; }
+    if (!hasConfiguredEmailDelivery()) return { success: false, error: 'A real email delivery provider is not configured.' };
+    try {
+        const from = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'events@littx.com';
+        const action = purpose === 'organizer_activation' ? 'organizer account activation' : 'organizer application verification';
+        const subject = purpose === 'organizer_activation' ? 'Activate your Stageway organizer account' : 'Verify your Stageway organizer application';
+        let activationLink = '';
+        if (purpose === 'organizer_activation' && process.env.BASE_URL) {
+            try {
+                const base = new URL(process.env.BASE_URL);
+                const localHttp = process.env.NODE_ENV !== 'production' && base.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(base.hostname);
+                if ((base.protocol === 'https:' || localHttp) && !base.username && !base.password && !base.search && !base.hash) activationLink = `${base.origin}/organizer/activate`;
+            } catch (_) {}
+        }
+        const text = `Challenge reference: ${challengeId}. Your ${action} code is ${code}. It expires in ${expiresMinutes} minutes and can be used once.${activationLink ? ` Activate your account at ${activationLink}.` : ' Open the organizer portal and choose Activate an approved account.'} If you did not request this, ignore this email.`;
+        if (process.env.BREVO_API_KEY) {
+            const [name, address] = from.includes('<') ? [from.replace(/<.*$/, '').replace(/"/g, '').trim() || 'Stageway', from.match(/<([^>]+)>/)?.[1]] : ['Stageway', from];
+            if (!address) return { success: false, error: 'Email sender is not configured.' };
+            const payload = JSON.stringify({ sender: { name, email: address }, to: [{ email: to }], subject, textContent: text });
+            await new Promise((resolve, reject) => {
+                const request = require('https').request('https://api.brevo.com/v3/smtp/email', {
+                    method: 'POST', headers: { accept: 'application/json', 'api-key': process.env.BREVO_API_KEY, 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) }
+                }, result => { result.resume(); result.on('end', () => result.statusCode >= 200 && result.statusCode < 300 ? resolve() : reject(new Error('Email provider rejected message.'))); });
+                request.on('error', reject); request.write(payload); request.end();
+            });
+        } else if (mgClient) {
+            await mgClient.messages.create(process.env.MAILGUN_DOMAIN, { from, to: [to], subject, text });
+        } else {
+            await (await getTransporter()).sendMail({ from, to, subject, text });
+        }
+        return { success: true };
+    } catch (_) {
+        return { success: false, error: 'Email delivery failed.' };
+    }
+}
+
+async function sendEventInvitation({ to, role, eventName, token, expiresAt }) {
+    if (process.env.NODE_ENV === 'test') { testMessageOutbox.push({ to, purpose: 'event_invitation', text: `TEST ONLY invitation token ${token} for ${eventName} (${role}), expires ${expiresAt}.` }); return { success: true, testOnly: true }; }
+    if (!hasConfiguredEmailDelivery()) return { success: false, error: 'A real email delivery provider is not configured.' };
+    try {
+        const base = new URL(process.env.BASE_URL || '');
+        if (base.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(base.hostname) && base.protocol === 'http:')) return { success: false, error: 'A secure application URL is not configured.' };
+        if (base.username || base.password || base.search || base.hash) return { success: false, error: 'A secure application URL is not configured.' };
+        const origin = base.origin;
+        const link = `${origin}/accept-invitation#token=${encodeURIComponent(token)}`;
+        const from = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'events@littx.com';
+        const subject = `Stageway ${role.toUpperCase()} event invitation`;
+        const text = `You have been invited as a ${role.toUpperCase()} for ${eventName}. Accept your invitation at ${link}. This one-time invitation expires ${new Date(expiresAt).toISOString()}.`;
+        if (process.env.BREVO_API_KEY) {
+            const [name, address] = from.includes('<') ? [from.replace(/<.*$/, '').replace(/"/g, '').trim() || 'Stageway', from.match(/<([^>]+)>/)?.[1]] : ['Stageway', from];
+            if (!address) return { success: false, error: 'Email sender is not configured.' };
+            const payload = JSON.stringify({ sender: { name, email: address }, to: [{ email: to }], subject, textContent: text });
+            await new Promise((resolve, reject) => {
+                const request = require('https').request('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { accept: 'application/json', 'api-key': process.env.BREVO_API_KEY, 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, result => { result.resume(); result.on('end', () => result.statusCode >= 200 && result.statusCode < 300 ? resolve() : reject(new Error('Email provider rejected message.'))); });
+                request.on('error', reject); request.write(payload); request.end();
+            });
+        } else if (mgClient) {
+            await mgClient.messages.create(process.env.MAILGUN_DOMAIN, { from, to: [to], subject, text });
+        } else {
+            await (await getTransporter()).sendMail({ from, to, subject, text });
+        }
+        return { success: true };
+    } catch (_) { return { success: false, error: 'Invitation email delivery failed.' }; }
+}
+
+module.exports = { sendTicketEmail, sendBookingRecoveryOtp, sendAccountSecurityOtp, sendEventInvitation, hasConfiguredEmailDelivery, renderTicketEmailContent, getTestMessageOutbox: () => process.env.NODE_ENV === 'test' ? testMessageOutbox : [] };

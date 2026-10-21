@@ -12,6 +12,7 @@ import SolverByDevashtu from './admin-dash/pages/SolverByDevashtu'
 import EventMarketplace from './components/EventMarketplace'
 import CustomerBookingHistory from './components/CustomerBookingHistory'
 import OrganizerPortal from './organizer-portal/OrganizerPortal'
+import { InvitationAcceptanceFlow, OrganizerActivationFlow, OrganizerApplicationFlow } from './components/OrganizerAccountFlows'
 
 interface UserSession {
   userId: string
@@ -58,6 +59,9 @@ function MainAppShell() {
 
   if (path === '/events' || path.startsWith('/events/')) return <EventMarketplace />
   if (path === '/bookings') return <CustomerBookingHistory />
+  if (path === '/organizer/apply') return <OrganizerApplicationFlow />
+  if (path === '/organizer/activate') return <OrganizerActivationFlow />
+  if (path === '/accept-invitation') return <InvitationAcceptanceFlow />
 
   const handleLoginRedirect = (session: UserSession) => {
     setUserSession(session)

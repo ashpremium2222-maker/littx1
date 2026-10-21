@@ -83,6 +83,7 @@ function sellerTicketState(ticket: SellerTicketRecord) {
 export default function SellerPortalApp() {
   const [partners, setPartners] = useState<PartnerOption[]>(DEFAULT_PARTNERS)
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>('partner-slot-1')
+  const [invitedPartnerId, setInvitedPartnerId] = useState<string>('')
   const [passwordInput, setPasswordInput] = useState<string>('')
   
   const [authenticatedPartner, setAuthenticatedPartner] = useState<PartnerSessionData | null>(() => {
@@ -304,19 +305,20 @@ export default function SellerPortalApp() {
     setLoginError(null)
     setWebauthnStatus(null)
     setLoginLoading(true)
+    const requestedPartnerId = invitedPartnerId.trim() || selectedPartnerId
 
     try {
       // Step 1: Validate Password & Get WebAuthn Options
       const step1Res = await fetch('/api/seller/login-step1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partnerId: selectedPartnerId, password: passwordInput })
+        body: JSON.stringify({ partnerId: requestedPartnerId, password: passwordInput })
       })
 
       const step1Data = await step1Res.json()
 
       if (!step1Res.ok || !step1Data.success) {
-        if (step1Res.status === 403 && selectedPartnerId.startsWith('partner-slot-')) setActivationNotice(true)
+        if (step1Res.status === 403 && requestedPartnerId.startsWith('partner-slot-')) setActivationNotice(true)
         setLoginError(step1Data.message || 'Password authentication failed.')
         setLoginLoading(false)
         return
@@ -355,7 +357,7 @@ export default function SellerPortalApp() {
       const step2Res = await fetch('/api/seller/login-step2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partnerId: selectedPartnerId, loginId: step1Data.loginId, response: webauthnResponse })
+        body: JSON.stringify({ partnerId: requestedPartnerId, loginId: step1Data.loginId, response: webauthnResponse })
       })
 
       const step2Data = await step2Res.json()
@@ -530,6 +532,12 @@ export default function SellerPortalApp() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Invited account email or legacy ID (optional)</label>
+              <input type="text" value={invitedPartnerId} onChange={event => setInvitedPartnerId(event.target.value)} placeholder="Use the email that received your event invitation" autoComplete="username" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500" />
+              <div className="mt-1 text-xs text-slate-500">Seller accounts continue to use password plus a registered passkey. The invited email is private and is not listed publicly.</div>
             </div>
 
             <div>

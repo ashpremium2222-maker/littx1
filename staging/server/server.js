@@ -107,13 +107,12 @@ async function resolveSellerPartner(partnerId) {
         const lock = await db.getPartnerLock(partnerId);
         return { id: partnerId, name: PARTNER_NAMES[partnerId], active: !lock?.blocked, blocked: Boolean(lock?.blocked), legacyPassword: PARTNER_PASSWORDS[partnerId] };
     }
-    if (!PARTNER_LOGIN_SLOTS.includes(partnerId)) return null;
-    const user = await db.getUserBySellerSlot(partnerId);
+    const user = await db.getUserBySellerSlot(partnerId) || await db.getUserById(partnerId);
     if (!user || user.role !== 'seller') return null;
     return {
-        id: partnerId,
+        id: user.sellerSlot || user.userId,
         name: SELLER_COMPANY_NAMES[user.companyId] || user.displayName || SELLER_COMPANY_NAMES[partnerId] || 'Managed Seller',
-        active: user.active !== false && !user.blocked,
+        active: user.active !== false && !user.blocked && user.accountStatus !== 'pending_activation' && user.accountStatus !== 'suspended',
         passwordHash: user.passwordHash,
         user
     };
@@ -285,6 +284,10 @@ const loginRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefi
 const ticketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, keyPrefix: 'ticket-resend' });
 const bookingRecoveryRequestRateLimit = rateLimit({ limit: 5, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-request' });
 const bookingRecoveryVerifyRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-verify' });
+const organizerApplicationRateLimit = rateLimit({ limit: 5, windowMs: 60 * 60 * 1000, keyPrefix: 'organizer-application' });
+const organizerVerificationRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'organizer-verification' });
+const invitationAcceptanceRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'event-invitation-acceptance' });
+const organizerInvitationRateLimit = rateLimit({ limit: 20, windowMs: 60 * 60 * 1000, keyPrefix: 'organizer-event-invitation' });
 const recoveredTicketDownloadRateLimit = rateLimit({ limit: 20, windowMs: 15 * 60 * 1000, keyPrefix: 'recovered-ticket-download' });
 const recoveredTicketViewRateLimit = rateLimit({ limit: 30, windowMs: 15 * 60 * 1000, keyPrefix: 'recovered-ticket-view' });
 const recoveredTicketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, keyPrefix: 'recovered-ticket-resend' });
@@ -318,7 +321,7 @@ async function authenticateSeller(token) {
         const session = sessionsBySeller.get(sid);
         if (!isValidSellerSession(session, token)) continue;
         const partner = users.find(user => user.role === 'seller' && (user.sellerSlot === sid || user.userId === sid));
-        if (partner && (partner.active === false || partner.blocked)) return null;
+        if (partner && (partner.active === false || partner.blocked || partner.accountStatus === 'pending_activation' || partner.accountStatus === 'suspended')) return null;
         if (PARTNER_NAMES[sid] && (await db.getPartnerLock(sid))?.blocked) return null;
         sellerSessions[sid] = session;
         return sid;
@@ -335,7 +338,7 @@ const db = require('./db');
 const { issueOtp, verifyOtp } = require('./booking-otp');
 const { issueCustomerTicketToken, verifyCustomerTicketToken } = require('./ticket-access');
 const { generateTicketId, buildTicketPdf: buildTicketPdfRaw, buildQrDataUrl, buildQrBuffer, TICKETS_DIR } = require('./ticket');
-const { sendTicketEmail: sendTicketEmailRaw, sendBookingRecoveryOtp, hasConfiguredEmailDelivery } = require('./mailer');
+const { sendTicketEmail: sendTicketEmailRaw, sendBookingRecoveryOtp, sendAccountSecurityOtp, sendEventInvitation, hasConfiguredEmailDelivery } = require('./mailer');
 const { sendTicketWhatsApp, getWhatsAppConfigurationStatus } = require('./whatsapp-service');
 const {
     COOKIE_SESSION_MARKER,
@@ -1528,7 +1531,19 @@ async function sellerOwnsEvent(sellerId, eventName) {
     const seller = users.find(user => user.role === 'seller' && (user.userId === sellerId || user.sellerSlot === sellerId));
     const companyId = seller?.companyId || sellerCompanyIdFromValue(sellerId);
     const event = pickCanonicalEvent(await db.getAllEvents(), eventName);
-    return Boolean(companyId && event?.companyId && event.companyId === companyId);
+    return Boolean(companyId && event?.companyId && event.companyId === companyId && await partnerEventAllowed('seller', sellerId, event, companyId));
+}
+
+async function partnerEventAllowed(role, principalId, event, companyId) {
+    if (!event || !principalId || !companyId || event.companyId !== companyId) return false;
+    let policyPrincipal = principalId;
+    if (role === 'seller') {
+        const user = await db.getUserById(principalId) || (await db.getAllUsers()).find(item => item.role === 'seller' && item.sellerSlot === principalId);
+        if (user) policyPrincipal = user.userId;
+    }
+    const policy = await db.getPartnerAccessPolicy(role, policyPrincipal);
+    if (!policy) return true; // Existing accounts retain legacy company scope until explicitly migrated.
+    return policy.companyId === companyId && Array.isArray(policy.eventIds) && policy.eventIds.includes(eventRef(event));
 }
 
 // Ticket PDFs contain attendee PII. Serve them only through the ticket
@@ -1717,7 +1732,7 @@ async function requireEventManager(req, res, next) {
         if (!['master_admin', 'company_admin', 'organizer'].includes(session.role)) return res.status(403).json({ success: false, message: 'Event management is not authorized for this role.' });
         if (session.role === 'organizer') {
             const account = await db.getUserById(session.userId);
-            if (!account || account.role !== 'organizer' || account.active === false || account.blocked) {
+            if (!account || account.role !== 'organizer' || account.active === false || account.blocked || account.accountStatus === 'pending_activation' || account.accountStatus === 'suspended') {
                 await db.deleteUserSession(session.userId);
                 return res.status(403).json({ success: false, message: 'Organizer account is inactive or suspended.' });
             }
@@ -1734,7 +1749,7 @@ async function requireOrganizer(req, res, next) {
         const session = await db.getUserSessionByToken(token);
         if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
         const account = await db.getUserById(session.userId);
-        if (session.role !== 'organizer' || !account || account.role !== 'organizer' || account.active === false || account.blocked) {
+        if (session.role !== 'organizer' || !account || account.role !== 'organizer' || account.active === false || account.blocked || account.accountStatus === 'pending_activation' || account.accountStatus === 'suspended') {
             if (session.role === 'organizer') await db.deleteUserSession(session.userId);
             return res.status(403).json({ success: false, message: 'Organizer access is not authorized or the account is suspended.' });
         }
@@ -1828,11 +1843,12 @@ async function requirePR(req, res, next) {
             return res.status(403).json({ success: false, message: 'Partner access is not authorized.' });
         }
         const account = await db.getUserById(session.userId);
-        if (account && (account.role !== 'pr' || account.active === false || account.blocked)) {
+        if (account && (account.role !== 'pr' || account.active === false || account.blocked || account.accountStatus === 'pending_activation' || account.accountStatus === 'suspended')) {
             await db.deleteUserSession(session.userId);
             return res.status(403).json({ success: false, message: 'Partner account is inactive or suspended.' });
         }
         req.prSession = session;
+        req.prAccount = account || null;
         return next();
     } catch (err) {
         return next(err);
@@ -2428,8 +2444,24 @@ async function scopedStaffTicket(req, scope) {
         }
         return null;
     }
-    if (scope === 'pr') return sale.prUserId && sale.prUserId === req.prSession?.userId ? sale : null;
-    if (scope === 'seller') return (sale.sellerId || sale.generatedBy) === req.sellerId ? sale : null;
+    if (scope === 'pr') {
+        if (!sale.prUserId || sale.prUserId !== req.prSession?.userId) return null;
+        const event = pickCanonicalEvent(await db.getAllEvents(), sale.eventId || sale.event);
+        if (event) return await partnerEventAllowed('pr', req.prSession.userId, event, req.prSession.companyId) ? sale : null;
+        const policy = await db.getPartnerAccessPolicy('pr', req.prSession.userId);
+        return !policy && (!sale.companyId || sale.companyId === req.prSession.companyId) ? sale : null;
+    }
+    if (scope === 'seller') {
+        if ((sale.sellerId || sale.generatedBy) !== req.sellerId) return null;
+        const event = pickCanonicalEvent(await db.getAllEvents(), sale.eventId || sale.event);
+        if (event) return await sellerOwnsEvent(req.sellerId, sale.eventId || sale.event) ? sale : null;
+        const users = await db.getAllUsers();
+        const seller = users.find(user => user.role === 'seller' && (user.userId === req.sellerId || user.sellerSlot === req.sellerId));
+        const principalId = seller?.userId || req.sellerId;
+        const policy = await db.getPartnerAccessPolicy('seller', principalId);
+        const companyId = seller?.companyId || sellerCompanyIdFromValue(req.sellerId);
+        return !policy && (!sale.companyId || sale.companyId === companyId) ? sale : null;
+    }
     if (scope === 'shadow') return sale.source === 'shadow' || sale.isShadow ? sale : null;
     return null;
 }
@@ -2986,8 +3018,9 @@ app.get('/api/seller/events', requireSeller, async (req, res) => {
         const seller = users.find(user => user.role === 'seller' && (user.userId === req.sellerId || user.sellerSlot === req.sellerId));
         const companyId = seller?.companyId || sellerCompanyIdFromValue(req.sellerId);
         if (!companyId) return res.status(403).json({ success: false, message: 'Seller company is not configured.' });
-        const events = (await db.getAllEvents())
-            .filter(event => event.companyId === companyId && eventIsPublic(event))
+        const availableEvents = (await db.getAllEvents()).filter(event => event.companyId === companyId && eventIsPublic(event));
+        const events = (await Promise.all(availableEvents.map(async event => await partnerEventAllowed('seller', req.sellerId, event, companyId) ? event : null)))
+            .filter(Boolean)
             .map(event => ({ id: eventRef(event), slug: event.slug || slugifyEvent(event.name), name: event.name, city: event.city || '', venue: event.venue || '', startsAt: event.startsAt || event.date || null }));
         res.set('Cache-Control', 'no-store');
         return res.json({ success: true, events });
@@ -3113,7 +3146,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
     const users = await db.getAllUsers();
     const sellerUser = sellerId && users.find(user => user.role === 'seller' && (user.userId === sellerId || user.sellerSlot === sellerId));
     const sellerCompanyId = sellerUser?.companyId || sellerCompanyIdFromValue(sellerId);
-    if (sellerId && (!eventRecord?.companyId || !sellerCompanyId || eventRecord.companyId !== sellerCompanyId)) {
+    if (sellerId && (!eventRecord?.companyId || !sellerCompanyId || eventRecord.companyId !== sellerCompanyId || !(await partnerEventAllowed('seller', sellerId, eventRecord, sellerCompanyId)))) {
         return res.status(403).json({ success: false, message: 'Seller is not assigned to this event.' });
     }
     if (adminSession?.role === 'company_admin' && eventRecord?.companyId !== adminSession.companyId) {
@@ -4051,11 +4084,12 @@ app.get('/api/admin/events', requireEventManager, async (req, res) => {
     res.json({ success: true, events: req.adminSession?.role === 'organizer' ? events.map(organizerSafeEvent) : events, total, page, pageSize });
 });
 
-app.post('/api/admin/events', requireAdmin, async (req, res) => {
+app.post('/api/admin/events', requireEventManager, async (req, res) => {
     const body = req.body || {};
     const name = String(body.name || '').trim();
     if (!name || name.length > 160) return res.status(400).json({ success: false, message: 'Event title is required and must be at most 160 characters.' });
-    const companyId = req.adminSession.role === 'company_admin' ? req.adminSession.companyId : String(body.companyId || '').trim();
+    const isOrganizer = req.adminSession.role === 'organizer';
+    const companyId = ['company_admin', 'organizer'].includes(req.adminSession.role) ? req.adminSession.companyId : String(body.companyId || '').trim();
     if (!companyId || !(await db.getCompanyById(companyId))) return res.status(400).json({ success: false, message: 'Select a valid organizer company.' });
     const normalized = normalizeTicketCategories(body.ticketCategories === undefined ? [] : body.ticketCategories);
     if (normalized.error) return res.status(400).json({ success: false, message: normalized.error });
@@ -4066,6 +4100,7 @@ app.post('/api/admin/events', requireAdmin, async (req, res) => {
     const now = new Date().toISOString();
     const record = {
         id: `event_${crypto.randomUUID()}`, slug, name, companyId, organizerId: companyId,
+        ...(isOrganizer ? { organizerUserIds: [req.adminSession.userId] } : {}),
         description: String(body.description || '').slice(0, 10000), category: String(body.category || '').trim().slice(0, 100),
         images: Array.isArray(body.images) ? body.images.map(value => String(value).slice(0, 2000)).slice(0, 20) : [],
         venue: String(body.venue || '').slice(0, 300), city: String(body.city || '').slice(0, 100), address: String(body.address || '').slice(0, 1000),
@@ -4321,7 +4356,7 @@ app.get('/api/events/:eventRef', async (req, res) => {
 });
 
 app.get('/api/pr/events', requirePR, async (req, res) => {
-    const events = (await db.getAllEvents()).filter(event => eventIsPublic(event) && event.companyId === req.prSession.companyId);
+    const events = (await Promise.all((await db.getAllEvents()).filter(event => eventIsPublic(event) && event.companyId === req.prSession.companyId).map(async event => await partnerEventAllowed('pr', req.prSession.userId, event, req.prSession.companyId) ? event : null))).filter(Boolean);
     const payload = await Promise.all(events.map(async event => publicEventPayload(event, await getEventPricing(eventRef(event)))));
     res.set('Cache-Control', 'no-store');
     return res.json({ success: true, events: payload });
@@ -4349,6 +4384,43 @@ app.get('/api/admin/sellers', requireAdmin, async (req, res) => {
 
 // ==================== MASTER ADMIN COMPANY PORTAL / GOVERNANCE API ====================
 // GET /api/master/overview — verified platform totals and actionable queues.
+app.get('/api/master/partner-access-report', requireMasterAdmin, async (_req, res) => {
+    const [users, events, policies] = await Promise.all([db.getAllUsers(), db.getAllEvents(), db.getPartnerAccessPolicies()]);
+    const identities = new Map();
+    for (const user of users.filter(item => ['seller', 'pr'].includes(item.role))) identities.set(`${user.role}:${user.userId}`, { role: user.role, principalId: user.userId, companyId: user.companyId || null, accountStatus: user.accountStatus || 'legacy', source: 'managed_account' });
+    for (const [id, name] of Object.entries(PARTNER_NAMES)) identities.set(`seller:${id}`, { role: 'seller', principalId: id, companyId: sellerCompanyIdFromValue(id), accountStatus: 'legacy', source: 'configured_seller' });
+    for (const item of PR_USERS_AUTH) identities.set(`pr:${item.id}`, { role: 'pr', principalId: item.id, companyId: 'littlane', accountStatus: 'legacy', source: 'configured_pr' });
+    const report = [...identities.values()].map(identity => {
+        const policy = policies.find(item => item.role === identity.role && item.principalId === identity.principalId);
+        const effectiveEventIds = policy ? policy.eventIds : events.filter(event => event.companyId === identity.companyId).map(eventRef);
+        return { ...identity, assignmentMode: policy ? 'explicit_event_assignments' : 'legacy_company_wide', explicitEventIds: policy?.eventIds || [], effectiveEventIds };
+    });
+    return res.json({ success: true, generatedAt: new Date().toISOString(), warning: 'Report only. Legacy company-wide access is unchanged until a master administrator explicitly saves an account assignment.', accounts: report });
+});
+
+app.put('/api/master/accounts/:userId/event-assignments', requireMasterAdmin, async (req, res) => {
+    const principalId = String(req.params.userId || '').trim();
+    const role = req.body?.role;
+    const requested = req.body?.eventIds;
+    if (!principalId || !['seller', 'pr'].includes(role) || !Array.isArray(requested) || requested.length > 500 || requested.some(value => typeof value !== 'string')) return res.status(400).json({ success: false, message: 'Provide a seller or PR identity and an explicit list of event IDs.' });
+    const normalizedIds = [...new Set(requested.map(value => value.trim()).filter(Boolean))];
+    const account = await db.getUserById(principalId);
+    const staticSeller = role === 'seller' && (Boolean(PARTNER_NAMES[principalId]) || Boolean(SELLER_ACCOUNTS[String(principalId).toUpperCase()]));
+    const staticPr = role === 'pr' && PR_USERS_AUTH.some(item => item.id === principalId);
+    if (account && account.role !== role || !account && !staticSeller && !staticPr) return res.status(404).json({ success: false, message: 'Partner account not found for the selected role.' });
+    const companyId = account?.companyId || (role === 'pr' ? 'littlane' : sellerCompanyIdFromValue(principalId));
+    if (!companyId) return res.status(409).json({ success: false, message: 'Partner company could not be established.' });
+    const allEvents = await db.getAllEvents();
+    const selectedEvents = normalizedIds.map(id => pickCanonicalEvent(allEvents, id));
+    if (selectedEvents.some(event => !event || event.companyId !== companyId)) return res.status(400).json({ success: false, message: 'Every assigned event must belong to this partner’s company.' });
+    const previous = await db.getPartnerAccessPolicy(role, principalId);
+    const eventIds = [...new Set(selectedEvents.map(eventRef))];
+    const policy = await db.setPartnerAccessPolicy({ role, principalId, companyId, eventIds, updatedBy: req.adminSession.userId });
+    if (account) await db.updateUser(account.userId, { assignedEventIds: eventIds });
+    await db.createAuditLog({ adminUser: req.adminSession.userId, companyId, category: 'PARTNER_EVENT_ASSIGNMENTS_CHANGED', fieldChanged: 'eventIds', previousValue: previous?.eventIds || allEvents.filter(event => event.companyId === companyId).map(eventRef), newValue: eventIds, reason: 'Master admin explicitly set the partner event assignment list after report review.' });
+    return res.json({ success: true, role, principalId, companyId, eventIds: policy.eventIds, assignmentMode: 'explicit_event_assignments' });
+});
+
 app.get('/api/master/overview', requireMasterAdmin, async (_req, res) => {
     try {
         const [rawEvents, users, rawSales, auditLogs] = await Promise.all([
@@ -4468,7 +4540,8 @@ app.patch('/api/master/accounts/:userId/status', requireMasterAdmin, async (req,
     if (!userId || typeof active !== 'boolean') return res.status(400).json({ success: false, message: 'Provide an account identifier and active true or false.' });
     const user = await db.getUserById(userId);
     if (!user || !['organizer', 'seller', 'pr'].includes(user.role)) return res.status(404).json({ success: false, message: 'Managed organizer, seller, or PR account not found.' });
-    const updated = await db.updateUser(userId, { active, blocked: !active });
+    if (active && user.role === 'organizer' && user.accountStatus === 'pending_activation') return res.status(409).json({ success: false, message: 'The organizer must complete verified-email activation before administrator reactivation.' });
+    const updated = await db.updateUser(userId, { active, blocked: !active, accountStatus: active ? 'active' : 'suspended' });
     if (!updated) return res.status(404).json({ success: false, message: 'Account could not be updated.' });
     if (!active) {
         const sessionIds = [userId, user.sellerSlot].filter(Boolean);
@@ -4477,6 +4550,10 @@ app.patch('/api/master/accounts/:userId/status', requireMasterAdmin, async (req,
             for (const id of sessionIds) { delete sellerSessions[id]; await db.deleteSellerSession(id); }
             savePersisted(SESSIONS_FILE, sellerSessions);
         }
+    }
+    if (user.role === 'organizer') {
+        const application = (await db.getOrganizerApplications()).find(item => item.userId === userId && ['approved', 'suspended'].includes(item.status));
+        if (application) await db.updateOrganizerApplication(application.applicationId, { status: active ? 'approved' : 'suspended', decidedBy: req.adminSession?.userId || 'Master Admin', decidedAt: new Date() });
     }
     await db.createAuditLog({
         adminUser: req.adminSession?.userId || 'Master Admin', companyId: user.companyId || 'littlane',
@@ -4487,6 +4564,123 @@ app.patch('/api/master/accounts/:userId/status', requireMasterAdmin, async (req,
         reason: `${user.role} account ${user.userId} ${active ? 'activated' : 'suspended'}.`
     });
     return res.json({ success: true, account: { userId, role: user.role, companyId: user.companyId || null, active, blocked: !active } });
+});
+
+function normalizeContactEmail(value) {
+    const email = String(value || '').trim().toLowerCase();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && email.length <= 254 ? email : null;
+}
+
+function organizerActivationSubject(email) {
+    return `activation:${crypto.createHash('sha256').update(String(email).toLowerCase()).digest('hex')}`;
+}
+
+app.post('/api/organizer/applications', organizerApplicationRateLimit, async (req, res) => {
+    const organizationName = String(req.body?.organizationName || '').trim();
+    const contactName = String(req.body?.contactName || '').trim();
+    const email = normalizeContactEmail(req.body?.email);
+    if (!email || !organizationName || organizationName.length > 160 || !contactName || contactName.length > 120) {
+        return res.status(400).json({ success: false, message: 'Provide a valid email, organization name, and contact name.' });
+    }
+    const existing = (await db.getOrganizerApplications()).find(item => item.email === email && ['verification_pending', 'pending_review', 'provisioning'].includes(item.status));
+    if (existing) return res.status(409).json({ success: false, message: 'An application for this email is already in progress.' });
+    const applicationId = crypto.randomUUID();
+    try {
+        const challenge = await issueOtp({ subject: applicationId, purpose: 'organizer_application', secret: process.env.BOOKING_OTP_SECRET, db });
+        if (!challenge.ok) return res.status(429).json({ success: false, message: 'Too many verification requests. Try again later.' });
+        const delivery = await sendAccountSecurityOtp({ to: email, code: challenge.deliveryCode, challengeId: challenge.challengeId, purpose: 'organizer_application' });
+        if (!delivery.success) return res.status(503).json({ success: false, message: 'Verification email could not be sent. Try again later.' });
+        await db.createOrganizerApplication({ applicationId, organizationName, contactName, email, status: 'verification_pending', createdAt: new Date(), updatedAt: new Date() });
+        return res.status(202).json({ success: true, applicationId, challengeId: challenge.challengeId, message: 'A verification code was sent to the submitted email address.' });
+    } catch (error) {
+        console.error('[OrganizerApplication] Request failed.', { name: error.name || 'Error' });
+        return res.status(503).json({ success: false, message: 'Application verification is temporarily unavailable.' });
+    }
+});
+
+app.post('/api/organizer/applications/:applicationId/verify', organizerVerificationRateLimit, async (req, res) => {
+    const application = await db.getOrganizerApplication(req.params.applicationId);
+    const email = normalizeContactEmail(req.body?.email);
+    const { challengeId, code } = req.body || {};
+    if (!application || application.status !== 'verification_pending' || application.email !== email) return res.status(400).json({ success: false, message: 'Application verification is invalid or expired.' });
+    try {
+        const result = await verifyOtp({ subject: application.applicationId, purpose: 'organizer_application', challengeId, code, secret: process.env.BOOKING_OTP_SECRET, db });
+        if (!result.ok) return res.status(400).json({ success: false, message: 'Application verification is invalid or expired.' });
+        const updated = await db.updateOrganizerApplication(application.applicationId, { status: 'pending_review', emailVerifiedAt: new Date() }, 'verification_pending');
+        if (!updated) return res.status(409).json({ success: false, message: 'Application status changed. Refresh and try again.' });
+        await db.createAuditLog({ adminUser: 'Applicant', companyId: 'littlane', category: 'ORGANIZER_APPLICATION_SUBMITTED', fieldChanged: 'applicationId', newValue: application.applicationId, reason: 'Applicant verified their email and submitted an organizer application.' });
+        return res.json({ success: true, status: 'pending_review' });
+    } catch (_) { return res.status(503).json({ success: false, message: 'Application verification is temporarily unavailable.' }); }
+});
+
+app.post('/api/organizer/activate', organizerVerificationRateLimit, async (req, res) => {
+    const email = normalizeContactEmail(req.body?.email);
+    const { challengeId, code, password } = req.body || {};
+    if (!email || typeof password !== 'string' || password.length < 12 || password.length > 200) return res.status(400).json({ success: false, message: 'Enter the verified email and a password between 12 and 200 characters.' });
+    const user = await db.getUserById(email);
+    if (!user || user.role !== 'organizer' || user.email !== email || user.accountStatus !== 'pending_activation' || user.active !== false) return res.status(400).json({ success: false, message: 'Activation is invalid, expired, or already completed.' });
+    try {
+        const result = await verifyOtp({ subject: organizerActivationSubject(email), purpose: 'organizer_activation', challengeId, code, secret: process.env.BOOKING_OTP_SECRET, db });
+        if (!result.ok) return res.status(400).json({ success: false, message: 'Activation is invalid or expired.' });
+        const updated = await db.updateUser(user.userId, { passwordHash: hashPassword(password), active: true, blocked: false, accountStatus: 'active', emailVerifiedAt: user.emailVerifiedAt || new Date() });
+        await db.createAuditLog({ adminUser: user.userId, companyId: user.companyId, category: 'ORGANIZER_ACCOUNT_ACTIVATED_BY_OWNER', fieldChanged: 'accountStatus', previousValue: 'pending_activation', newValue: 'active', reason: 'Verified organizer activated their account.' });
+        return res.json({ success: true, user: { userId: updated.userId, role: updated.role, companyId: updated.companyId } });
+    } catch (_) { return res.status(503).json({ success: false, message: 'Activation is temporarily unavailable.' }); }
+});
+
+app.get('/api/master/organizer-applications', requireMasterAdmin, async (_req, res) => {
+    const applications = await db.getOrganizerApplications();
+    return res.json({ success: true, applications: applications.map(({ applicationId, organizationName, contactName, email, status, emailVerifiedAt, decisionReason, decidedBy, decidedAt, createdAt }) => ({ applicationId, organizationName, contactName, email, status, emailVerifiedAt, decisionReason, decidedBy, decidedAt, createdAt })) });
+});
+
+app.post('/api/master/organizer-applications/:applicationId/decision', requireMasterAdmin, async (req, res) => {
+    const decision = req.body?.decision;
+    const reason = String(req.body?.reason || '').trim().slice(0, 1000);
+    let application = await db.getOrganizerApplication(req.params.applicationId);
+    if (!application) return res.status(404).json({ success: false, message: 'Application not found.' });
+    if (decision === 'rejected') {
+        const rejected = await db.updateOrganizerApplication(application.applicationId, { status: 'rejected', decisionReason: reason, decidedBy: req.adminSession.userId, decidedAt: new Date() }, 'pending_review');
+        if (!rejected) return res.status(409).json({ success: false, message: 'Only a verified pending application can be rejected.' });
+        await db.createAuditLog({ adminUser: req.adminSession.userId, companyId: 'littlane', category: 'ORGANIZER_APPLICATION_REJECTED', fieldChanged: 'status', previousValue: 'pending_review', newValue: 'rejected', reason: reason || 'Application rejected.' });
+        return res.json({ success: true, status: 'rejected' });
+    }
+    if (decision !== 'approved') return res.status(400).json({ success: false, message: 'Decision must be approved or rejected.' });
+    if (!['pending_review', 'provisioning'].includes(application.status)) return res.status(409).json({ success: false, message: 'Only a verified pending application can be approved.' });
+    const conflicts = (await db.getAllUsers()).filter(user => user.userId.toLowerCase() === application.email || user.email === application.email);
+    if (application.status === 'pending_review' && conflicts.length) return res.status(409).json({ success: false, message: 'This verified email is already linked to an account. Resolve the identity conflict before approval; existing credentials and tenant ownership are preserved.' });
+    if (application.status === 'provisioning' && conflicts.some(user => user.userId !== application.userId || user.role !== 'organizer' || user.companyId !== application.companyId)) return res.status(409).json({ success: false, message: 'This verified email is linked to a conflicting identity. Manual review is required.' });
+    if (application.status === 'pending_review') {
+        const companyId = `org-${crypto.randomUUID()}`;
+        application = await db.updateOrganizerApplication(application.applicationId, { status: 'provisioning', companyId, userId: application.email, decisionReason: reason, decidedBy: req.adminSession.userId, decidedAt: new Date() }, 'pending_review');
+        if (!application) return res.status(409).json({ success: false, message: 'Application status changed. Refresh and try again.' });
+    }
+    try {
+        await db.ensureCompany(application.companyId, application.organizationName);
+        let account = await db.getUserById(application.userId);
+        if (!account) account = await db.createUser({ userId: application.userId, email: application.email, emailVerifiedAt: application.emailVerifiedAt || new Date(), displayName: application.contactName, companyId: application.companyId, role: 'organizer', passwordHash: null, active: false, blocked: false, accountStatus: 'pending_activation' });
+        if (account.role !== 'organizer' || account.companyId !== application.companyId) return res.status(409).json({ success: false, message: 'Organizer identity conflict requires manual review.' });
+        const approved = await db.updateOrganizerApplication(application.applicationId, { status: 'approved' }, 'provisioning');
+        if (!approved && application.status !== 'approved') return res.status(409).json({ success: false, message: 'Application provisioning is incomplete. Contact platform support.' });
+        const challenge = await issueOtp({ subject: organizerActivationSubject(application.email), purpose: 'organizer_activation', secret: process.env.BOOKING_OTP_SECRET, db });
+        let activationEmailSent = false;
+        if (challenge.ok) activationEmailSent = Boolean((await sendAccountSecurityOtp({ to: application.email, code: challenge.deliveryCode, challengeId: challenge.challengeId, purpose: 'organizer_activation' })).success);
+        await db.createAuditLog({ adminUser: req.adminSession.userId, companyId: application.companyId, category: 'ORGANIZER_APPLICATION_APPROVED', fieldChanged: 'status', previousValue: 'pending_review', newValue: 'approved', reason: reason || 'Approved; created a new organizer company and sent account activation.' });
+        return res.json({ success: true, status: 'approved', companyId: application.companyId, userId: application.userId, activationEmailSent });
+    } catch (error) {
+        console.error('[OrganizerApplication] Provisioning failed.', { name: error.name || 'Error' });
+        return res.status(503).json({ success: false, message: 'Organizer provisioning is incomplete. Retry approval or contact platform support.' });
+    }
+});
+
+app.post('/api/master/organizer-applications/:applicationId/resend-activation', requireMasterAdmin, async (req, res) => {
+    const application = await db.getOrganizerApplication(req.params.applicationId);
+    const user = application?.userId ? await db.getUserById(application.userId) : null;
+    if (!application || application.status !== 'approved' || !user || user.accountStatus !== 'pending_activation') return res.status(404).json({ success: false, message: 'Pending organizer activation not found.' });
+    const challenge = await issueOtp({ subject: organizerActivationSubject(user.email), purpose: 'organizer_activation', secret: process.env.BOOKING_OTP_SECRET, db });
+    if (!challenge.ok) return res.status(429).json({ success: false, message: 'Too many activation requests. Try again later.' });
+    const delivery = await sendAccountSecurityOtp({ to: user.email, code: challenge.deliveryCode, challengeId: challenge.challengeId, purpose: 'organizer_activation' });
+    if (!delivery.success) return res.status(503).json({ success: false, message: 'Activation email could not be sent.' });
+    return res.json({ success: true, message: 'A new activation code was sent to the verified email.' });
 });
 
 app.post('/api/master/organizers', requireMasterAdmin, async (req, res) => {
@@ -4584,6 +4778,164 @@ app.get('/api/organizer/overview', requireOrganizer, async (req, res) => {
         return res.json({ success: true, organizer: { userId: req.organizerAccount.userId, displayName: req.organizerAccount.displayName, companyId: req.organizerAccount.companyId }, events: byEvent });
     } catch (error) {
         return res.status(500).json({ success: false, message: safeErrorMessage(error) });
+    }
+});
+
+app.get('/api/organizer/profile', requireOrganizer, async (req, res) => {
+    const company = await db.getCompanyById(req.organizerAccount.companyId);
+    return res.json({ success: true, profile: { displayName: req.organizerAccount.displayName || '', organizationName: company?.name || '', verifiedEmail: req.organizerAccount.email || null, emailVerified: Boolean(req.organizerAccount.emailVerifiedAt), companyId: req.organizerAccount.companyId } });
+});
+
+app.patch('/api/organizer/profile', requireOrganizer, async (req, res) => {
+    const displayName = String(req.body?.displayName || '').trim();
+    const organizationName = String(req.body?.organizationName || '').trim();
+    if (displayName.length < 2 || displayName.length > 120 || organizationName.length < 2 || organizationName.length > 160) return res.status(400).json({ success: false, message: 'Contact name must be 2–120 characters and organization name 2–160 characters.' });
+    const previous = { displayName: req.organizerAccount.displayName || '', organizationName: (await db.getCompanyById(req.organizerAccount.companyId))?.name || '' };
+    const [user, company] = await Promise.all([
+        db.updateUser(req.organizerAccount.userId, { displayName }),
+        db.ensureCompany(req.organizerAccount.companyId, organizationName)
+    ]);
+    await db.createAuditLog({ adminUser: req.organizerAccount.userId, companyId: req.organizerAccount.companyId, category: 'ORGANIZER_PROFILE_UPDATED', fieldChanged: 'displayName,organizationName', previousValue: previous, newValue: { displayName, organizationName }, reason: 'Organizer updated organization profile. Verified contact email remains unchanged.' });
+    return res.json({ success: true, profile: { displayName: user.displayName, organizationName: company.name, verifiedEmail: user.email || null, emailVerified: Boolean(user.emailVerifiedAt), companyId: user.companyId } });
+});
+
+const EVENT_INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+app.get('/api/organizer/events/:eventRef/team', requireOrganizer, async (req, res) => {
+    const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
+    if (!event || !canManageEvent(req, event)) return res.status(404).json({ success: false, message: 'Event not found.' });
+    const [invitations, policies] = await Promise.all([
+        db.getEventInvitations({ companyId: event.companyId, eventId: eventRef(event) }),
+        db.getPartnerAccessPolicies({ companyId: event.companyId })
+    ]);
+    const team = policies.filter(policy => policy.eventIds.includes(eventRef(event))).map(policy => ({ role: policy.role, principalId: policy.principalId }));
+    return res.json({ success: true, eventId: eventRef(event), team, invitations: invitations.map(({ invitationId, recipientEmail, role, status, createdAt, expiresAt, acceptedAt, revokedAt }) => ({ invitationId, recipientEmail, role, status, createdAt, expiresAt, acceptedAt, revokedAt })) });
+});
+
+app.post('/api/organizer/events/:eventRef/invitations', organizerInvitationRateLimit, requireOrganizer, async (req, res) => {
+    const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
+    if (!event || !canManageEvent(req, event)) return res.status(404).json({ success: false, message: 'Event not found.' });
+    const role = req.body?.role;
+    const recipientEmail = normalizeContactEmail(req.body?.email);
+    if (!['seller', 'pr'].includes(role) || !recipientEmail) return res.status(400).json({ success: false, message: 'Choose seller or PR and enter a valid recipient email.' });
+    const existing = (await db.getAllUsers()).find(user => user.email === recipientEmail || user.userId.toLowerCase() === recipientEmail);
+    if (existing && (existing.role !== role || existing.companyId !== event.companyId)) return res.status(409).json({ success: false, message: 'This email is already linked to an account with a different role or organization.' });
+    const existingPolicy = existing ? await db.getPartnerAccessPolicy(role, existing.userId) : null;
+    if (existing && !existingPolicy) return res.status(409).json({ success: false, message: 'This legacy account needs an explicit master-admin event assignment before it can accept an invitation.' });
+    if (existingPolicy?.eventIds?.includes(eventRef(event))) return res.status(409).json({ success: false, message: 'This account is already assigned to the event.' });
+    const pending = await db.getEventInvitations({ companyId: event.companyId, eventId: eventRef(event), recipientEmail, role, status: 'pending' });
+    if (pending.some(invitation => new Date(invitation.expiresAt) > new Date())) return res.status(409).json({ success: false, message: 'A valid invitation for this event and role already exists.' });
+    const token = crypto.randomBytes(32).toString('base64url');
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + EVENT_INVITATION_TTL_MS);
+    const invitation = { invitationId: crypto.randomUUID(), tokenHash: crypto.createHash('sha256').update(token).digest('hex'), recipientEmail, role, companyId: event.companyId, eventId: eventRef(event), invitedBy: req.organizerAccount.userId, status: 'pending', createdAt, expiresAt };
+    await db.createEventInvitation(invitation);
+    const delivery = await sendEventInvitation({ to: recipientEmail, role, eventName: event.name, token, expiresAt });
+    if (!delivery.success) {
+        await db.updateEventInvitation(invitation.invitationId, { status: 'revoked', revokedAt: new Date() }, 'pending');
+        return res.status(503).json({ success: false, message: 'Invitation email could not be sent; the invitation was revoked.' });
+    }
+    await db.createAuditLog({ adminUser: req.organizerAccount.userId, companyId: event.companyId, eventId: eventRef(event), category: 'PARTNER_EVENT_INVITATION_CREATED', fieldChanged: 'invitation', newValue: invitation.invitationId, reason: `Sent a seven-day event-scoped ${role} invitation to the verified email address.` });
+    return res.status(201).json({ success: true, invitation: { invitationId: invitation.invitationId, role, recipientEmail, expiresAt } });
+});
+
+app.post('/api/organizer/events/:eventRef/invitations/:invitationId/resend', organizerInvitationRateLimit, requireOrganizer, async (req, res) => {
+    const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
+    if (!event || !canManageEvent(req, event)) return res.status(404).json({ success: false, message: 'Event not found.' });
+    const invitation = (await db.getEventInvitations({ companyId: event.companyId, eventId: eventRef(event) })).find(item => item.invitationId === req.params.invitationId);
+    if (!invitation || !['pending', 'expired'].includes(invitation.status)) return res.status(404).json({ success: false, message: 'A resendable invitation was not found.' });
+    const previous = { tokenHash: invitation.tokenHash, expiresAt: invitation.expiresAt, status: invitation.status };
+    const token = crypto.randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + EVENT_INVITATION_TTL_MS);
+    const updated = await db.updateEventInvitation(invitation.invitationId, { tokenHash: crypto.createHash('sha256').update(token).digest('hex'), expiresAt, status: 'pending' }, invitation.status);
+    if (!updated) return res.status(409).json({ success: false, message: 'Invitation state changed. Refresh and try again.' });
+    const delivery = await sendEventInvitation({ to: invitation.recipientEmail, role: invitation.role, eventName: event.name, token, expiresAt });
+    if (!delivery.success) {
+        await db.updateEventInvitation(invitation.invitationId, previous, 'pending');
+        return res.status(503).json({ success: false, message: 'Invitation email could not be sent; the previous invitation state was restored.' });
+    }
+    await db.createAuditLog({ adminUser: req.organizerAccount.userId, companyId: event.companyId, eventId: eventRef(event), category: 'PARTNER_EVENT_INVITATION_RESENT', fieldChanged: 'invitation', newValue: invitation.invitationId, reason: 'Reissued the recipient-bound invitation with a new seven-day expiry.' });
+    return res.json({ success: true, invitation: { invitationId: invitation.invitationId, role: invitation.role, expiresAt } });
+});
+
+app.delete('/api/organizer/events/:eventRef/invitations/:invitationId', requireOrganizer, async (req, res) => {
+    const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
+    if (!event || !canManageEvent(req, event)) return res.status(404).json({ success: false, message: 'Event not found.' });
+    const invitation = (await db.getEventInvitations({ companyId: event.companyId, eventId: eventRef(event) })).find(item => item.invitationId === req.params.invitationId);
+    if (!invitation) return res.status(404).json({ success: false, message: 'Invitation not found.' });
+    const revoked = await db.updateEventInvitation(invitation.invitationId, { status: 'revoked', revokedAt: new Date() }, 'pending');
+    if (!revoked) return res.status(409).json({ success: false, message: 'Only a pending invitation can be revoked.' });
+    await db.createAuditLog({ adminUser: req.organizerAccount.userId, companyId: event.companyId, eventId: eventRef(event), category: 'PARTNER_EVENT_INVITATION_REVOKED', fieldChanged: 'status', previousValue: 'pending', newValue: 'revoked', reason: `Revoked invitation ${invitation.invitationId}.` });
+    return res.json({ success: true });
+});
+
+app.delete('/api/organizer/events/:eventRef/team/:role/:principalId', requireOrganizer, async (req, res) => {
+    const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
+    const role = req.params.role;
+    const principalId = String(req.params.principalId || '');
+    if (!event || !canManageEvent(req, event)) return res.status(404).json({ success: false, message: 'Event not found.' });
+    if (!['seller', 'pr'].includes(role) || !principalId) return res.status(400).json({ success: false, message: 'Invalid team assignment.' });
+    const policy = await db.getPartnerAccessPolicy(role, principalId);
+    if (!policy || policy.companyId !== event.companyId) return res.status(409).json({ success: false, message: 'This legacy account must first receive explicit event assignments from a master administrator.' });
+    const eventIds = policy.eventIds.filter(id => id !== eventRef(event));
+    await db.setPartnerAccessPolicy({ ...policy, eventIds, updatedBy: req.organizerAccount.userId });
+    const account = await db.getUserById(principalId);
+    if (account) await db.updateUser(principalId, { assignedEventIds: eventIds });
+    await db.createAuditLog({ adminUser: req.organizerAccount.userId, companyId: event.companyId, eventId: eventRef(event), category: 'PARTNER_EVENT_ASSIGNMENT_REVOKED', fieldChanged: 'eventIds', previousValue: policy.eventIds, newValue: eventIds, reason: `Removed ${role} ${principalId} from event.` });
+    return res.json({ success: true, eventIds });
+});
+
+app.post('/api/invitations/accept', invitationAcceptanceRateLimit, async (req, res) => {
+    const token = String(req.body?.token || '').trim();
+    const email = normalizeContactEmail(req.body?.email);
+    const password = req.body?.password;
+    if (!/^[A-Za-z0-9_-]{40,60}$/.test(token) || !email || typeof password !== 'string' || !password || password.length > 200) return res.status(400).json({ success: false, message: 'Invitation, recipient email, and account password are required.' });
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const invitation = await db.getEventInvitationByTokenHash(tokenHash);
+    if (!invitation || invitation.status !== 'pending' || invitation.recipientEmail !== email) return res.status(400).json({ success: false, message: 'Invitation is invalid, expired, or already used.' });
+    if (new Date(invitation.expiresAt).getTime() <= Date.now()) {
+        await db.updateEventInvitation(invitation.invitationId, { status: 'expired' }, 'pending');
+        return res.status(400).json({ success: false, message: 'Invitation is invalid, expired, or already used.' });
+    }
+    const event = pickCanonicalEvent(await db.getAllEvents(), invitation.eventId);
+    if (!event || event.companyId !== invitation.companyId) return res.status(400).json({ success: false, message: 'The invited event is no longer available.' });
+    let account = (await db.getAllUsers()).find(user => user.email === email || user.userId.toLowerCase() === email) || null;
+    let policy = account ? await db.getPartnerAccessPolicy(invitation.role, account.userId) : null;
+    if (!account && password.length < 12) return res.status(400).json({ success: false, message: 'Choose a password with at least 12 characters.' });
+    if (account && (account.role !== invitation.role || account.companyId !== invitation.companyId || !policy)) return res.status(409).json({ success: false, message: 'This account needs a master-admin identity and assignment review before it can be linked.' });
+    if (account && !verifyPassword(password, account.passwordHash)) return res.status(401).json({ success: false, message: 'Enter the existing account password to link this event.' });
+    const claim = await db.claimEventInvitation(invitation.invitationId, new Date());
+    if (!claim) return res.status(409).json({ success: false, message: 'Invitation has already been accepted or revoked.' });
+    const principalId = account?.userId || email;
+    const oldAssignedEventIds = Array.isArray(account?.assignedEventIds) ? account.assignedEventIds : null;
+    let accountCreated = false;
+    let assignmentAdded = false;
+    let invitationAccepted = false;
+    try {
+        const accepted = await db.updateEventInvitation(invitation.invitationId, { status: 'accepted', acceptedAt: new Date(), acceptedUserId: principalId }, 'accepting');
+        if (!accepted) throw new Error('Invitation state changed during acceptance.');
+        invitationAccepted = true;
+        if (!account) {
+            account = await db.createUser({ userId: principalId, email, emailVerifiedAt: new Date(), displayName: email.split('@')[0], companyId: invitation.companyId, role: invitation.role, passwordHash: hashPassword(password), active: false, blocked: false, accountStatus: 'pending_activation', assignedEventIds: [] });
+            accountCreated = true;
+        }
+        const updatedPolicy = await db.addPartnerEventAssignment({ role: invitation.role, principalId, companyId: invitation.companyId, eventId: eventRef(event), updatedBy: invitation.invitedBy });
+        if (!updatedPolicy) throw new Error('Partner event policy could not be updated.');
+        assignmentAdded = true;
+        const eventIds = updatedPolicy.eventIds;
+        const userUpdates = { assignedEventIds: eventIds, ...(accountCreated ? { active: true, blocked: false, accountStatus: 'active' } : {}) };
+        const updatedAccount = await db.updateUser(principalId, userUpdates);
+        if (!updatedAccount) throw new Error('Partner account could not be finalized.');
+        await db.createAuditLog({ adminUser: principalId, companyId: invitation.companyId, eventId: eventRef(event), category: 'PARTNER_EVENT_INVITATION_ACCEPTED', fieldChanged: 'eventIds', newValue: eventIds, reason: `Accepted event-scoped ${invitation.role} invitation.` });
+        return res.json({ success: true, role: invitation.role, userId: principalId, eventId: eventRef(event), nextStep: invitation.role === 'seller' ? 'Sign in and register a passkey to complete seller login.' : 'Sign in through the PR portal.' });
+    } catch (error) {
+        if (assignmentAdded) await db.removePartnerEventAssignment({ role: invitation.role, principalId, eventId: eventRef(event) }).catch(() => {});
+        if (invitationAccepted) await db.updateEventInvitation(invitation.invitationId, { status: 'pending', acceptedAt: null, acceptedUserId: null }, 'accepted').catch(() => {});
+        else await db.updateEventInvitation(invitation.invitationId, { status: 'pending' }, 'accepting').catch(() => {});
+        if (accountCreated) await db.deleteUser(principalId).catch(() => {});
+        else if (account && oldAssignedEventIds) await db.updateUser(principalId, { assignedEventIds: oldAssignedEventIds }).catch(() => {});
+        console.error('[EventInvitation] Acceptance failed.', { name: error.name || 'Error' });
+        return res.status(503).json({ success: false, message: 'Invitation acceptance could not be completed. Try again or contact the organizer.' });
     }
 });
 
@@ -4854,13 +5206,23 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
 
     const managedUser = (await db.getAllUsers()).find(user => user.userId.toLowerCase() === String(username).toLowerCase());
     if (managedUser?.role === 'organizer') {
-        if (managedUser.active === false || managedUser.blocked) return res.status(403).json({ success: false, message: 'Organizer account is inactive. Contact the Master Admin.' });
+        if (managedUser.active === false || managedUser.blocked || managedUser.accountStatus === 'pending_activation' || managedUser.accountStatus === 'suspended') return res.status(403).json({ success: false, message: 'Organizer account is inactive. Contact the Master Admin.' });
         if (!verifyPassword(String(password), managedUser.passwordHash)) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
         const token = generateToken();
         const loginAt = new Date().toISOString();
         const session = { token, ip: clientIp(req), loginAt, role: 'organizer', companyId: managedUser.companyId, displayName: managedUser.displayName || managedUser.userId };
         await db.setUserSession(managedUser.userId, session);
         return respondWithSession(req, res, 'user', token, { user: { userId: managedUser.userId, displayName: session.displayName, role: 'organizer', companyId: managedUser.companyId, portalScope: 'organizer' } }, 'token', loginAt);
+    }
+
+    if (managedUser?.role === 'pr') {
+        if (managedUser.active === false || managedUser.blocked || managedUser.accountStatus === 'pending_activation' || managedUser.accountStatus === 'suspended') return res.status(403).json({ success: false, message: 'Partner account is inactive. Contact the organizer.' });
+        if (!verifyPassword(String(password), managedUser.passwordHash)) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        const token = generateToken();
+        const loginAt = new Date().toISOString();
+        const session = { token, ip: clientIp(req), loginAt, role: 'pr', companyId: managedUser.companyId, displayName: managedUser.displayName || managedUser.userId };
+        await db.setUserSession(managedUser.userId, session);
+        return respondWithSession(req, res, 'user', token, { user: { userId: managedUser.userId, displayName: session.displayName, role: 'pr', companyId: managedUser.companyId, portalScope: 'pr' } }, 'token', loginAt);
     }
 
     // 2. Check PR partners
@@ -5167,9 +5529,8 @@ app.get('/api/seller/verify', async (req, res) => {
 app.get('/api/seller/sales', requireSeller, async (req, res) => {
     try {
         const all = (await db.getAll()).filter(s => !isShadowSale(s));
-        const mySales = all.filter(s =>
-            s.generatedBy === req.sellerId || s.prUserId === req.sellerId
-        );
+        const attributed = all.filter(s => s.generatedBy === req.sellerId || s.prUserId === req.sellerId);
+        const mySales = (await Promise.all(attributed.map(async sale => await sellerOwnsEvent(req.sellerId, sale.eventId || sale.event) ? sale : null))).filter(Boolean);
         res.json({ success: true, sellerId: req.sellerId, report: buildSalesReport(mySales), sales: mySales });
     } catch (err) {
         res.status(500).json({ success: false, message: safeErrorMessage(err) });
@@ -5186,14 +5547,14 @@ app.get('/api/mobile/seller-config', requireSeller, async (req, res) => {
         const seller = users.find(user => user.role === 'seller' && (user.userId === req.sellerId || user.sellerSlot === req.sellerId));
         const companyId = seller?.companyId || sellerCompanyIdFromValue(req.sellerId);
         if (!companyId) return res.status(403).json({ success: false, message: 'Seller company is not configured.' });
-        const events = (await db.getAllEvents())
-            .filter(event => event.companyId === companyId && eventIsPublic(event))
+        const availableEvents = (await db.getAllEvents()).filter(event => event.companyId === companyId && eventIsPublic(event));
+        const events = (await Promise.all(availableEvents.map(async event => await partnerEventAllowed('seller', req.sellerId, event, companyId) ? event : null))).filter(Boolean)
             .map(event => ({ id: eventRef(event), name: event.name, displayName: event.name }));
         const eventRefParam = String(req.query.event || '').trim();
         if (!eventRefParam) return res.json({ success: true, config: { ...baseConfig, event: null, events, passes: [] } });
         const selectedEvent = pickCanonicalEvent(events.map(item => ({ ...item, id: item.id })), eventRefParam);
         const eventRecord = pickCanonicalEvent(await db.getAllEvents(), eventRefParam);
-        if (!selectedEvent || !eventRecord || eventRecord.companyId !== companyId || !eventIsPublic(eventRecord)) return res.status(404).json({ success: false, message: 'Event is not available to this seller.' });
+        if (!selectedEvent || !eventRecord || eventRecord.companyId !== companyId || !eventIsPublic(eventRecord) || !(await partnerEventAllowed('seller', req.sellerId, eventRecord, companyId))) return res.status(404).json({ success: false, message: 'Event is not available to this seller.' });
         const pricing = await getEventPricing(eventRef(eventRecord));
         if (!pricing?.passes?.length) return res.status(404).json({ success: false, message: 'Seller pricing is unavailable for this event.' });
         return res.json({ success: true, config: {
@@ -5545,7 +5906,11 @@ const PR_USERS = [
 app.get('/api/pr/sales', requirePR, async (req, res) => {
     try {
         const all = await db.getAll();
-        const sales = all.filter(s => s.prUserId === req.prSession.userId);
+        const attributed = all.filter(s => s.prUserId === req.prSession.userId);
+        const sales = (await Promise.all(attributed.map(async sale => {
+            const event = pickCanonicalEvent(await db.getAllEvents(), sale.eventId || sale.event);
+            return event && await partnerEventAllowed('pr', req.prSession.userId, event, req.prSession.companyId) ? sale : null;
+        }))).filter(Boolean);
         res.json({ success: true, sales });
     } catch (err) {
         res.status(500).json({ success: false, message: safeErrorMessage(err) });
@@ -5584,7 +5949,7 @@ app.post('/api/pr/create-order', requirePR, checkoutRateLimit, async (req, res) 
         return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable.' });
     }
     const pricingEvent = pickCanonicalEvent(await db.getAllEvents(), requestedEvent);
-    if (!pricingEvent || pricingEvent.companyId !== req.prSession.companyId) {
+    if (!pricingEvent || !(await partnerEventAllowed('pr', req.prSession.userId, pricingEvent, req.prSession.companyId))) {
         await db.failCheckoutRequest(idempotencyKey);
         return res.status(403).json({ success: false, message: 'PR partner is not assigned to this event.' });
     }
@@ -5670,7 +6035,7 @@ app.post('/api/pr/cash-request', requirePR, async (req, res) => {
     const computed = await resolveTicketAmount(requestedEvent, ticketCategoryId || ticketType || gender, quantity);
     if (!computed) return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable.' });
     const pricingEvent = pickCanonicalEvent(await db.getAllEvents(), requestedEvent);
-    if (!pricingEvent || pricingEvent.companyId !== req.prSession.companyId) return res.status(403).json({ success: false, message: 'PR partner is not assigned to this event.' });
+    if (!pricingEvent || !(await partnerEventAllowed('pr', req.prSession.userId, pricingEvent, req.prSession.companyId))) return res.status(403).json({ success: false, message: 'PR partner is not assigned to this event.' });
     const { amount, qty, admissionCount, inventoryLimited, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
 
     try {

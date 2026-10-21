@@ -46,7 +46,7 @@ function runtimeSourceText(directory) {
 }
 
 test('path-based admin, organizer, and booking routes serve the React app on direct entry and refresh', () => {
-    for (const route of ['/admin', '/admin/events', '/organizer', '/organizer/reports', '/bookings']) {
+    for (const route of ['/admin', '/admin/events', '/organizer', '/organizer/reports', '/organizer/apply', '/organizer/activate', '/bookings', '/accept-invitation']) {
         assert.equal(rewriteFor(route), '/app.html', `${route} should resolve to the SPA entry`);
     }
 });

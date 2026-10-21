@@ -50,17 +50,24 @@ export default function MasterOverview() {
   const [expandedCompanyId, setExpandedCompanyId] = useState<string | null>(null)
   const [openingPartnerId, setOpeningPartnerId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [organizerApplications, setOrganizerApplications] = useState<any[]>([])
+  const [partnerAccessReport, setPartnerAccessReport] = useState<any[]>([])
+  const [selectedPartnerKey, setSelectedPartnerKey] = useState('')
+  const [partnerEventIds, setPartnerEventIds] = useState<string[]>([])
+  const [partnerAssignmentBusy, setPartnerAssignmentBusy] = useState(false)
 
   const fetchData = async () => {
     try {
       const token = sessionStorage.getItem('littx_token') || ''
       const headers = { 'x-auth-token': token }
-      const [compRes, salesRes, partnersRes, overviewRes, reconciliationRes] = await Promise.all([
+      const [compRes, salesRes, partnersRes, overviewRes, reconciliationRes, applicationsRes, partnerAccessRes] = await Promise.all([
         fetch('/api/master/companies', { headers, cache: 'no-store' }),
         fetch('/api/admin/sales', { headers, cache: 'no-store' }),
         fetch('/api/seller/partners', { headers, cache: 'no-store' }),
         fetch('/api/master/overview', { headers, cache: 'no-store' }),
-        fetch('/api/admin/reconciliation', { headers, cache: 'no-store' })
+        fetch('/api/admin/reconciliation', { headers, cache: 'no-store' }),
+        fetch('/api/master/organizer-applications', { headers, cache: 'no-store' }),
+        fetch('/api/master/partner-access-report', { headers, cache: 'no-store' })
       ])
 
       const compData = await compRes.json()
@@ -68,6 +75,8 @@ export default function MasterOverview() {
       const partnersData = await partnersRes.json()
       const overviewData = await overviewRes.json()
       const reconciliationData = await reconciliationRes.json()
+      const applicationsData = await applicationsRes.json()
+      const partnerAccessData = await partnerAccessRes.json()
 
       if (compData.success) setCompanies(compData.companies || [])
       if (salesData.success) setSales(salesData.sales || [])
@@ -75,6 +84,12 @@ export default function MasterOverview() {
       if (overviewRes.ok && overviewData.success) setOverview(overviewData)
       else setOverviewError(overviewData.message || 'Platform overview is unavailable.')
       if (reconciliationRes.ok && reconciliationData.success) setReconciliation(reconciliationData)
+      if (applicationsRes.ok && applicationsData.success) setOrganizerApplications(applicationsData.applications || [])
+      if (partnerAccessRes.ok && partnerAccessData.success) {
+        const accounts = partnerAccessData.accounts || []
+        setPartnerAccessReport(accounts)
+        setSelectedPartnerKey(current => accounts.some((item: any) => `${item.role}:${item.principalId}` === current) ? current : '')
+      }
     } catch (err) {
       console.error('Failed to load master overview data:', err)
       setOverviewError('Platform overview could not be loaded. Refresh to retry.')
@@ -163,6 +178,32 @@ export default function MasterOverview() {
       setAssignmentBusy(false)
     }
   }
+
+  const decideOrganizerApplication = async (application: any, decision: 'approved' | 'rejected') => {
+    const reason = window.prompt(decision === 'rejected' ? 'Reason for rejecting this verified application:' : 'Optional approval note:') || ''
+    if (decision === 'rejected' && !reason.trim()) return
+    setAccountError(''); setAccountBusyId(application.applicationId)
+    try {
+      const response = await fetch(`/api/master/organizer-applications/${encodeURIComponent(application.applicationId)}/decision`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': sessionStorage.getItem('littx_token') || '' }, body: JSON.stringify({ decision, reason }) })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Application decision failed.')
+      await fetchData()
+    } catch (error) { setAccountError(error instanceof Error ? error.message : 'Application decision failed.') } finally { setAccountBusyId(null) }
+  }
+
+  const savePartnerEventAssignments = async () => {
+    const selected = partnerAccessReport.find(item => `${item.role}:${item.principalId}` === selectedPartnerKey)
+    if (!selected) return
+    setPartnerAssignmentBusy(true); setAccountError('')
+    try {
+      const response = await fetch(`/api/master/accounts/${encodeURIComponent(selected.principalId)}/event-assignments`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-auth-token': sessionStorage.getItem('littx_token') || '' }, body: JSON.stringify({ role: selected.role, eventIds: partnerEventIds }) })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Event assignments could not be saved.')
+      await fetchData()
+    } catch (error) { setAccountError(error instanceof Error ? error.message : 'Event assignments could not be saved.') } finally { setPartnerAssignmentBusy(false) }
+  }
+
+  const selectedPartner = partnerAccessReport.find(item => `${item.role}:${item.principalId}` === selectedPartnerKey)
 
   const sellerStats = (partner: SellerPartner) => {
     const partnerKeys = new Set([
@@ -302,6 +343,14 @@ export default function MasterOverview() {
       <div className="card table-card">
         <div className="card-head" style={{ padding: '18px 18px 0' }}><h3>Organizer, seller and PR accounts</h3><div className="muted-sm">Suspension revokes access and preserves sales and ticket history.</div></div>
         {accountError && <div role="alert" style={{ padding: 12, color: 'var(--red)' }}>{accountError}</div>}
+        <section style={{ padding: 16, borderBottom: '1px solid var(--line)' }}>
+          <h3>Verified organizer applications</h3>
+          <div className="muted-sm">Approval creates a new company and sends an activation code to the verified email. It does not publish events.</div>
+          <div className="table-scroll"><table className="table"><thead><tr><th>Organization / contact</th><th>Verified email</th><th>Status</th><th>Decision reason</th><th></th></tr></thead><tbody>
+            {organizerApplications.map(application => <tr key={application.applicationId}><td><strong>{application.organizationName}</strong><div className="muted-sm">{application.contactName} · {application.applicationId}</div></td><td>{application.email}</td><td>{application.status}</td><td>{application.decisionReason || '—'}</td><td>{application.status === 'pending_review' && <div style={{ display: 'flex', gap: 6 }}><button className="btn-primary" disabled={accountBusyId === application.applicationId} onClick={() => void decideOrganizerApplication(application, 'approved')}>Approve</button><button className="btn-secondary" disabled={accountBusyId === application.applicationId} onClick={() => void decideOrganizerApplication(application, 'rejected')}>Reject</button></div>}{application.status === 'approved' && <span className="muted-sm">Organizer activates by verified email</span>}</td></tr>)}
+            {!organizerApplications.length && <tr><td colSpan={5} className="muted-sm">No organizer applications.</td></tr>}
+          </tbody></table></div>
+        </section>
         <form onSubmit={createOrganizerAccount} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, padding: 16, borderBottom: '1px solid var(--line)' }}>
           <input aria-label="Organizer account ID" placeholder="Account ID" autoComplete="off" value={organizerForm.userId} onChange={event => setOrganizerForm(current => ({ ...current, userId: event.target.value }))} required />
           <input aria-label="Organizer display name" placeholder="Display name" value={organizerForm.displayName} onChange={event => setOrganizerForm(current => ({ ...current, displayName: event.target.value }))} required />
@@ -336,6 +385,26 @@ export default function MasterOverview() {
             {overview && !overview.accounts?.users?.length && <tr><td colSpan={5} className="muted-sm">No managed organizer, seller or PR accounts.</td></tr>}
           </tbody>
         </table></div>
+        <section style={{ padding: 16, borderTop: '1px solid var(--line)' }}>
+          <h3>Seller / PR event-access migration</h3>
+          <p className="muted-sm">Report-only until you save a per-account list. Legacy company-wide access is unchanged unless you explicitly save an assignment set. Select each account and review its current effective events first.</p>
+          <div className="table-scroll"><table className="table"><thead><tr><th>Role / identity</th><th>Company</th><th>Current scope</th><th>Effective event count</th></tr></thead><tbody>
+            {partnerAccessReport.map(item => <tr key={`${item.role}:${item.principalId}`}><td>{item.role} · {item.principalId}</td><td>{item.companyId || '—'}</td><td>{item.assignmentMode}</td><td>{item.effectiveEventIds.length}</td></tr>)}
+            {!partnerAccessReport.length && <tr><td colSpan={4}>No seller or PR identities found.</td></tr>}
+          </tbody></table></div>
+          <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+            <select aria-label="Partner identity for explicit event migration" value={selectedPartnerKey} onChange={event => { const key = event.target.value; setSelectedPartnerKey(key); const item = partnerAccessReport.find(account => `${account.role}:${account.principalId}` === key); setPartnerEventIds(item?.assignmentMode === 'explicit_event_assignments' ? item.explicitEventIds : []) }}>
+              <option value="">Choose a seller or PR identity</option>{partnerAccessReport.map(item => <option key={`${item.role}:${item.principalId}`} value={`${item.role}:${item.principalId}`}>{item.role} · {item.principalId} · {item.assignmentMode}</option>)}
+            </select>
+            {selectedPartner && <>
+              <div className="muted-sm">{selectedPartner.assignmentMode === 'legacy_company_wide' ? `Legacy access currently covers ${selectedPartner.effectiveEventIds.length} company events. None are preselected; choose the exact permitted events before saving.` : 'The checked events are the current explicit assignments.'}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8 }}>
+                {(overview?.byEvent || []).filter((event: any) => event.companyId === selectedPartner.companyId).map((event: any) => <label key={event.eventId} style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={partnerEventIds.includes(event.eventId)} onChange={change => setPartnerEventIds(current => change.target.checked ? [...new Set([...current, event.eventId])] : current.filter(id => id !== event.eventId))} />{event.name} · {event.status}</label>)}
+              </div>
+              <button className="btn-primary" disabled={partnerAssignmentBusy} onClick={() => void savePartnerEventAssignments()}>{partnerAssignmentBusy ? 'Saving…' : 'Save explicit event assignments'}</button>
+            </>}
+          </div>
+        </section>
       </div>
 
       {/* Companies Leaderboard */}

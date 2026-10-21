@@ -83,6 +83,7 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
             {loading ? 'Authenticating…' : 'Continue'}
           </button>
         </form>
+        {portal === 'organizer' && <div style={{ marginTop: 18, textAlign: 'center', fontSize: 13 }}><a href="/organizer/apply">Apply to become an organizer</a><span style={{ padding: '0 8px' }}>·</span><a href="/organizer/activate">Activate an approved account</a></div>}
       </div>
     </div>
   )

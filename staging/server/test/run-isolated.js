@@ -29,6 +29,9 @@ Object.assign(isolatedEnv, {
     PRESENTATION_KEY: 'test-presentation-secret',
     ADMIN_KEY: 'test-legacy-admin-key',
     PORTAL_ADMIN_KEY: 'test-portal-admin-key',
+    PORTAL_DASHBOARD_KEY: 'test-portal-dashboard-key',
+    WEBAUTHN_ORIGIN: 'http://localhost:5173',
+    WEBAUTHN_RP_ID: 'localhost',
     BOOKING_OTP_SECRET: 'test-only-booking-otp-secret-with-more-than-32-characters',
     LITTX_MOCK_SALES_FILE: path.join(os.tmpdir(), 'littx-isolated-test-sales-' + process.pid + '.json'),
 });

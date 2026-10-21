@@ -6,7 +6,7 @@ const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_ISSUE_LIMIT = 3;
 const OTP_ISSUE_WINDOW_MS = 15 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
-const ALLOWED_PURPOSES = new Set(['booking_recovery', 'refund_request']);
+const ALLOWED_PURPOSES = new Set(['booking_recovery', 'refund_request', 'organizer_application', 'organizer_activation']);
 
 function keyedHash(secret, value) {
     if (typeof secret !== 'string' || secret.length < 32) throw new Error('BOOKING_OTP_SECRET must be configured with at least 32 characters.');

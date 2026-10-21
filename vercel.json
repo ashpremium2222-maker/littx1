@@ -50,6 +50,10 @@
       "destination": "/app.html"
     },
     {
+      "source": "/accept-invitation",
+      "destination": "/app.html"
+    },
+    {
       "source": "/bookings/(.*)",
       "destination": "/app.html"
     },
