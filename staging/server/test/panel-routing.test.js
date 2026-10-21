@@ -57,7 +57,7 @@ test('existing seller, PR, scanner, marketplace, and ticket paths remain routed 
     }
 });
 
-test('the root public homepage remains static and only the organiser host opens the organizer route', () => {
+test('the public homepage remains static and exact panel hosts open their matching panel paths', () => {
     assert.equal(rewriteFor('/'), '/index.html');
     const organizerRedirect = redirectFor('/', 'organiser.littx.in');
     assert.equal(organizerRedirect?.destination, '/organizer');
@@ -65,9 +65,30 @@ test('the root public homepage remains static and only the organiser host opens 
     assert.equal(organizerRedirect?.preserveQueryParams, true);
     assert.equal(redirectLocation('/', 'organiser.littx.in', '?campaign=spring%2026&event=sample'), '/organizer?campaign=spring%2026&event=sample');
     assert.equal(redirectLocation('/organizer', 'organiser.littx.in'), null, 'direct panel routes must not be redirected again');
-    for (const hostname of ['littx.in', 'admin.littx.in', 'organizer.littx.in', 'seller.littx.in', 'pr.littx.in', 'scan.littx.in', 'my.littx.in', 'unknown.example.test']) {
-        assert.equal(redirectFor('/', hostname), undefined, `${hostname} must not be redirected to the organizer panel`);
+    assert.equal(redirectLocation('/', 'admin.littx.in', '?tab=events'), '/admin?tab=events');
+    assert.equal(redirectLocation('/', 'pr.littx.in', '?campaign=team'), '/pr?campaign=team');
+    assert.equal(redirectLocation('/admin/events', 'admin.littx.in'), null, 'admin paths must not redirect again');
+    assert.equal(redirectLocation('/pr/sales', 'pr.littx.in'), null, 'PR paths must not redirect again');
+    for (const hostname of ['littx.in', 'www.littx.in', 'organizer.littx.in', 'seller.littx.in', 'scan.littx.in', 'my.littx.in', 'unknown.example.test', 'notadmin.littx.in', 'notpr.littx.in']) {
+        assert.equal(redirectFor('/', hostname), undefined, `${hostname} must not be redirected to a panel`);
     }
+    assert.equal(rewriteFor('/'), '/index.html', 'public root remains the marketing homepage');
+    for (const route of ['/admin', '/admin/events', '/admin/settings', '/pr', '/pr/sales', '/pr/requests']) {
+        assert.equal(rewriteFor(route), '/app.html', `${route} must support direct navigation and refresh`);
+    }
+});
+
+test('admin and PR panel hosts land on existing role-gated panel experiences', () => {
+    const app = fs.readFileSync(path.join(frontendRoot, 'App.tsx'), 'utf8');
+    assert.equal(redirectFor('/', 'admin.littx.in')?.destination, '/admin');
+    assert.equal(redirectFor('/', 'pr.littx.in')?.destination, '/pr');
+    assert.match(app, /path\.startsWith\('\/admin'\)/);
+    assert.match(app, /userSession\?\.role === 'master_admin' && userSession\.portalScope === 'admin'/);
+    assert.match(app, /return <LoginPage portal="admin"/);
+    assert.match(app, /path\.startsWith\('\/pr'\)/);
+
+    const prApp = fs.readFileSync(path.join(frontendRoot, 'pr-portal/PRApp.tsx'), 'utf8');
+    assert.match(prApp, /data\.user\?\.role !== 'pr'/, 'PR login must reject other roles');
 });
 
 test('organizer hostname destination retains existing SPA deep-link routes and authenticated screen gate', () => {

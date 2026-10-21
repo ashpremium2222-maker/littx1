@@ -14,6 +14,20 @@
       "destination": "/organizer",
       "permanent": false,
       "preserveQueryParams": true
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "admin.littx.in" }],
+      "destination": "/admin",
+      "permanent": false,
+      "preserveQueryParams": true
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "pr.littx.in" }],
+      "destination": "/pr",
+      "permanent": false,
+      "preserveQueryParams": true
     }
   ],
   "rewrites": [
