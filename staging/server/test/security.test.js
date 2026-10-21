@@ -55,6 +55,12 @@ test('empty event database produces an empty public catalogue without a fallback
     assert.deepEqual(result.events, []);
 });
 
+test('organizer dashboard API rejects unauthenticated access', async () => {
+    const response = await fetch(`${baseUrl}/api/organizer/overview`);
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).success, false);
+});
+
 test('native scanner session fails closed when scanner password is not configured', async () => {
     const configured = process.env.SCANNER_PASSWORD;
     delete process.env.SCANNER_PASSWORD;

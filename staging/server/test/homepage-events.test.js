@@ -24,6 +24,17 @@ test('public homepage scripts parse and catalogue is connected to the published-
     assert.doesNotMatch(homepage, /const catalogue\s+const catalogue/);
 });
 
+test('public event cards have no static demo fallback and the marketplace reports API errors and empty results', () => {
+    const marketplace = fs.readFileSync(path.join(repositoryRoot, 'staging/combined-app/src/components/EventMarketplace.tsx'), 'utf8');
+    assert.match(homepage, /fetch\('\/api\/events'/);
+    assert.doesNotMatch(homepage, /Dholida Garba Royale 2026|Aura Genesis Fest/);
+    assert.match(marketplace, /fetch\(url\)/);
+    assert.match(marketplace, /Events could not be loaded\./);
+    assert.match(marketplace, /No published events match these filters\./);
+    assert.match(marketplace, /eventId: event\.id/);
+    assert.match(marketplace, /ticketCategoryId: selectedTicket\.id/);
+});
+
 test('active marketplace and install metadata display Stageway without renaming compatibility identifiers', () => {
     const appIndex = fs.readFileSync(path.join(repositoryRoot, 'staging/combined-app/index.html'), 'utf8');
     const manifest = JSON.parse(fs.readFileSync(path.join(repositoryRoot, 'staging/combined-app/public/manifest.json'), 'utf8'));

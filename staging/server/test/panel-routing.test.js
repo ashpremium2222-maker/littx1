@@ -21,6 +21,13 @@ function rewriteFor(urlPath) {
     return route?.destination;
 }
 
+function redirectFor(urlPath, hostname) {
+    return (vercelConfig.redirects || []).find(({ source, has }) => {
+        if (source !== urlPath) return false;
+        return (has || []).every(condition => condition.type !== 'host' || condition.value === hostname);
+    });
+}
+
 function runtimeSourceText(directory) {
     return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
         const filePath = path.join(directory, entry.name);
@@ -44,9 +51,23 @@ test('existing seller, PR, scanner, marketplace, and ticket paths remain routed 
     }
 });
 
-test('the root public homepage remains on the existing static entry and host routing stays disabled', () => {
+test('the root public homepage remains static and only the organiser host opens the organizer route', () => {
     assert.equal(rewriteFor('/'), '/index.html');
-    assert.equal(vercelConfig.rewrites.some(rule => rule.has?.some(condition => condition.type === 'host')), false);
+    const organizerRedirect = redirectFor('/', 'organiser.littx.in');
+    assert.equal(organizerRedirect?.destination, '/organizer');
+    assert.equal(organizerRedirect?.permanent, false);
+    for (const hostname of ['littx.in', 'admin.littx.in', 'organizer.littx.in', 'seller.littx.in', 'pr.littx.in', 'scan.littx.in', 'my.littx.in', 'unknown.example.test']) {
+        assert.equal(redirectFor('/', hostname), undefined, `${hostname} must not be redirected to the organizer panel`);
+    }
+});
+
+test('organizer hostname destination retains existing SPA deep-link routes and authenticated screen gate', () => {
+    assert.equal(rewriteFor('/organizer'), '/app.html');
+    assert.equal(rewriteFor('/organizer/reports'), '/app.html');
+    const app = fs.readFileSync(path.join(frontendRoot, 'App.tsx'), 'utf8');
+    assert.match(app, /path\.startsWith\('\/organizer'\)/);
+    assert.match(app, /userSession\?\.role === 'organizer' && userSession\.portalScope === 'organizer'/);
+    assert.match(app, /<LoginPage portal="organizer"/);
 });
 
 test('admin company workspace uses the authenticated session instead of a hardcoded key or no-op resend action', () => {
