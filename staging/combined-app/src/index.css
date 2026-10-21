@@ -2216,6 +2216,103 @@ html, body {
 .theme-light .pr-portal .pr-sale-card-chip-label {
   color: #64748B !important; /* slate‑500 */
 }
+
+/* Organizer account entry flows */
+.account-flow-page {
+  min-height: 100vh;
+  padding: clamp(16px, 4vw, 48px);
+  display: grid;
+  place-items: center;
+  color: #f8f7fc;
+  background: #09090d;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.account-flow-shell {
+  width: min(1120px, 100%);
+  min-height: min(740px, calc(100vh - 32px));
+  display: grid;
+  grid-template-columns: minmax(300px, .88fr) 1.12fr;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 28px;
+  background: #101014;
+  box-shadow: 0 32px 100px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.025) inset;
+}
+.account-flow-aside {
+  position: relative;
+  min-height: 100%;
+  padding: 38px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(ellipse at 15% 84%, rgba(84,64,195,.42), transparent 48%), linear-gradient(145deg,#191525,#111118 68%,#181125);
+  border-right: 1px solid rgba(255,255,255,.08);
+}
+.account-flow-aside::before { content:""; position:absolute; z-index:-1; inset:0; opacity:.2; background-image:linear-gradient(rgba(255,255,255,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.09) 1px,transparent 1px); background-size:44px 44px; mask-image:linear-gradient(transparent,black 25%,black 75%,transparent); }
+.account-flow-brand,.account-flow-mobile-brand { display:inline-flex; align-items:center; gap:11px; width:max-content; color:#fff; text-decoration:none; font-size:19px; font-weight:800; letter-spacing:-.055em; }
+.account-flow-mark { width:32px; height:32px; display:grid; place-items:center; border-radius:10px 10px 10px 3px; background:linear-gradient(145deg,#d9ff39,#a6df23); color:#13140b; font-size:17px; font-weight:900; letter-spacing:-.08em; box-shadow:0 6px 24px rgba(202,255,52,.2); }
+.account-flow-aside-copy { position:relative; z-index:1; max-width:340px; margin:40px 0 54px; }
+.account-flow-overline { display:block; color:#b8a8ff; font-size:10px; font-weight:800; letter-spacing:.17em; }
+.account-flow-aside-copy h2 { margin:17px 0 13px; max-width:330px; font-size:clamp(32px,4vw,48px); line-height:1.04; letter-spacing:-.055em; }
+.account-flow-aside-copy p { max-width:300px; margin:0; color:#aaa6b7; font-size:14px; line-height:1.75; }
+.account-flow-aside-footer { display:flex; align-items:center; gap:9px; color:#aaa6b7; font-size:11px; }
+.account-flow-live-dot { width:7px; height:7px; border-radius:50%; background:#c9ff3f; box-shadow:0 0 12px rgba(201,255,63,.6); }
+.account-flow-orbit { position:absolute; z-index:-1; width:280px; aspect-ratio:1; right:-150px; bottom:8%; border:1px solid rgba(196,175,255,.13); border-radius:50%; box-shadow:0 0 0 35px rgba(196,175,255,.025),0 0 0 70px rgba(196,175,255,.02); }
+.account-flow-orbit-two { width:150px; right:20px; bottom:20%; border-color:rgba(201,255,63,.12); box-shadow:none; }
+.account-flow-content { display:flex; flex-direction:column; justify-content:center; align-items:center; padding:56px clamp(28px,7vw,88px) 26px; }
+.account-flow-mobile-brand { display:none; }
+.account-flow-form-wrap { width:min(420px,100%); }
+.account-flow-heading h1 { margin:11px 0 9px; font-size:clamp(27px,3vw,34px); line-height:1.12; letter-spacing:-.055em; }
+.account-flow-heading p { margin:0; color:#a7a4b2; font-size:13px; line-height:1.7; }
+.account-flow-progress { position:relative; display:flex; gap:7px; margin:28px 0 20px; }
+.account-flow-progress span { height:3px; flex:1; border-radius:10px; background:#292832; }
+.account-flow-progress span.is-complete { background:linear-gradient(90deg,#caff39,#8ebd27); }
+.account-flow-progress small { position:absolute; right:0; top:-8px; transform:translateY(-100%); color:#858291; font-size:9px; font-weight:700; letter-spacing:.12em; }
+.account-flow-form-card { padding:25px; border:1px solid rgba(255,255,255,.08); border-radius:19px; background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018)); box-shadow:0 16px 45px rgba(0,0,0,.2),inset 0 1px rgba(255,255,255,.035); }
+.account-flow-form { display:grid; gap:17px; }
+.account-flow-field { display:grid; gap:8px; color:#dcd9e4; font-size:11px; font-weight:700; }
+.account-flow-field small { display:block; margin-top:4px; color:#858291; font-size:10px; font-weight:500; }
+.account-flow-field input { width:100%; height:46px; padding:0 13px; color:#f8f7fc; font:500 13px Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; outline:none; border:1px solid #34323d; border-radius:11px; background:#111116; transition:border-color .18s,box-shadow .18s,background .18s; }
+.account-flow-field input::placeholder { color:#6f6c7a; }
+.account-flow-field input:hover { border-color:#4b4858; }
+.account-flow-field input:focus { border-color:#a8d92e; background:#141419; box-shadow:0 0 0 3px rgba(201,255,63,.1); }
+.account-flow-field input[aria-invalid="true"] { border-color:#ff6b77; }
+.account-flow-code { letter-spacing:.35em; font-size:17px!important; font-weight:700!important; }
+.account-flow-notice { padding:11px 12px; border:1px solid rgba(136,203,132,.23); border-radius:10px; color:#bde8b6; background:rgba(75,150,74,.1); font-size:12px; line-height:1.5; }
+.account-flow-notice-error { border-color:rgba(255,107,119,.25); color:#ffb1b7; background:rgba(197,48,65,.1); }
+.account-flow-reference { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; background:rgba(255,255,255,.035); }
+.account-flow-reference span { color:#858291; font-size:9px; font-weight:800; letter-spacing:.1em; }
+.account-flow-reference code { color:#dedbe7; font-size:11px; overflow-wrap:anywhere; }
+.account-flow-submit { display:flex; align-items:center; justify-content:space-between; width:100%; min-height:48px; margin-top:3px; padding:0 16px; border:0; border-radius:11px; background:linear-gradient(105deg,#d4ff39,#adf22c); color:#171a0d; font:800 12px Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer; box-shadow:0 8px 24px rgba(183,239,44,.13); transition:transform .18s,filter .18s,box-shadow .18s; }
+.account-flow-submit span { font-size:18px; font-weight:500; }
+.account-flow-submit:hover:not(:disabled) { transform:translateY(-1px); filter:brightness(1.04); box-shadow:0 11px 30px rgba(183,239,44,.2); }
+.account-flow-submit:focus-visible,.account-flow-bottom a:focus-visible,.account-flow-brand:focus-visible { outline:2px solid #d4ff39; outline-offset:3px; }
+.account-flow-submit:disabled { opacity:.58; cursor:wait; }
+.account-flow-bottom { display:grid; gap:7px; margin-top:22px; color:#8e8b99; font-size:11px; }
+.account-flow-bottom a { width:max-content; color:#e1ff89; font-weight:700; text-decoration:none; }
+.account-flow-bottom a:hover { text-decoration:underline; }
+.account-flow-bottom a span { margin-left:3px; }
+.account-flow-security-note { margin:0; color:#92909d; font-size:11px; line-height:1.6; }
+.account-flow-footer { width:min(420px,100%); margin-top:auto; padding-top:36px; color:#716e7b; font-size:10px; }
+.account-flow-footer span { padding:0 5px; color:#b4aecc; }
+@media(max-width:760px) {
+  .account-flow-page { padding:12px; background:#0b0b0f; }
+  .account-flow-shell { min-height:calc(100dvh - 24px); grid-template-columns:1fr; border-radius:22px; }
+  .account-flow-aside { display:none; }
+  .account-flow-content { justify-content:flex-start; padding:24px 20px 18px; }
+  .account-flow-mobile-brand { display:inline-flex; align-self:flex-start; margin-bottom:44px; font-size:17px; }
+  .account-flow-mark { width:29px; height:29px; }
+  .account-flow-form-wrap { margin:auto 0; }
+  .account-flow-form-card { padding:19px; }
+  .account-flow-footer { padding-top:36px; }
+}
+@media(max-width:380px) {
+  .account-flow-content { padding-right:15px; padding-left:15px; }
+  .account-flow-form-card { padding:16px; }
+}
+@media(prefers-reduced-motion:reduce) { .account-flow-field input,.account-flow-submit { transition:none; } }
 .theme-light .pr-portal .pr-sale-card-chip-value {
   color: #0F172A !important;
 }

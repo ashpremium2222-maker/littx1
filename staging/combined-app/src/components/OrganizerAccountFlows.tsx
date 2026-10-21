@@ -1,7 +1,33 @@
 import React, { useState } from 'react'
 
-function AccountFlowCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return <main className="app-canvas theme-dark" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 20 }}><section className="card" style={{ width: '100%', maxWidth: 520, display: 'grid', gap: 14 }}><h1>{title}</h1>{children}</section></main>
+function AccountFlowCard({ title, eyebrow, description, step, children }: { title: string; eyebrow: string; description: string; step?: number; children: React.ReactNode }) {
+  return <main className="account-flow-page">
+    <div className="account-flow-shell">
+      <aside className="account-flow-aside" aria-label="Stageway organizer portal">
+        <a className="account-flow-brand" href="/" aria-label="Stageway home"><span className="account-flow-mark">S</span><span>stageway</span></a>
+        <div className="account-flow-aside-copy">
+          <span className="account-flow-overline">MADE FOR LIVE MOMENTS</span>
+          <h2>Bring your next event to life.</h2>
+          <p>Manage events, reach your audience, and make every show night run smoothly.</p>
+        </div>
+        <div className="account-flow-aside-footer"><span className="account-flow-live-dot" /> Organizer portal <span>•</span> Secure access</div>
+        <div className="account-flow-orbit account-flow-orbit-one" /><div className="account-flow-orbit account-flow-orbit-two" />
+      </aside>
+      <section className="account-flow-content">
+        <div className="account-flow-mobile-brand"><span className="account-flow-mark">S</span><span>stageway</span></div>
+        <div className="account-flow-form-wrap">
+          <div className="account-flow-heading">
+            <span className="account-flow-overline">{eyebrow}</span>
+            <h1>{title}</h1>
+            <p>{description}</p>
+          </div>
+          {typeof step === 'number' && <div className="account-flow-progress" aria-label={`Step ${step} of 2`}><span className={step >= 1 ? 'is-complete' : ''} /><span className={step >= 2 ? 'is-complete' : ''} /><small>{step === 1 ? 'YOUR DETAILS' : 'VERIFY YOUR EMAIL'}</small></div>}
+          <div className="account-flow-form-card">{children}</div>
+        </div>
+        <footer className="account-flow-footer">© {new Date().getFullYear()} Stageway <span>•</span> Your events, all in one place</footer>
+      </section>
+    </div>
+  </main>
 }
 
 export function OrganizerApplicationFlow() {
@@ -31,21 +57,21 @@ export function OrganizerApplicationFlow() {
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Request failed.') } finally { setBusy(false) }
   }
-  return <AccountFlowCard title="Apply to organize on Stageway">
-    <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
+  return <AccountFlowCard title={stage === 'apply' ? 'Let’s get your events moving.' : 'Verify your email'} eyebrow="ORGANIZER APPLICATION" description={stage === 'apply' ? 'Tell us a little about your organization. We’ll send a one-time code to confirm your email.' : 'Enter the six-digit code we sent to your email to submit your application for review.'} step={stage === 'apply' ? 1 : 2}>
+    <form onSubmit={submit} className="account-flow-form">
       {stage === 'apply' ? <>
-        <label>Organization name<input value={organizationName} onChange={event => setOrganizationName(event.target.value)} maxLength={160} required /></label>
-        <label>Contact name<input value={contactName} onChange={event => setContactName(event.target.value)} maxLength={120} required /></label>
-        <label>Verified email<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required /></label>
+        <label className="account-flow-field"><span>Organization name</span><input autoComplete="organization" placeholder="e.g. Northstar Live" value={organizationName} onChange={event => setOrganizationName(event.target.value)} maxLength={160} required /></label>
+        <label className="account-flow-field"><span>Your name</span><input autoComplete="name" placeholder="Name of the primary contact" value={contactName} onChange={event => setContactName(event.target.value)} maxLength={120} required /></label>
+        <label className="account-flow-field"><span>Work email</span><input type="email" autoComplete="email" placeholder="you@organization.com" value={email} onChange={event => setEmail(event.target.value)} required /></label>
       </> : <>
-        <label>Verification challenge ID<input value={challengeId} onChange={event => setChallengeId(event.target.value)} required /></label>
-        <label>Email code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" value={code} onChange={event => setCode(event.target.value)} required /></label>
+        <label className="account-flow-field"><span>Verification challenge ID</span><input autoComplete="off" value={challengeId} onChange={event => setChallengeId(event.target.value)} required /></label>
+        <label className="account-flow-field"><span>Six-digit email code</span><input className="account-flow-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="000000" value={code} onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} required /></label>
       </>}
-      {error && <div role="alert">{error}</div>}{message && <div role="status">{message}</div>}
-      {stage === 'verify' && <div className="muted-sm">Application reference: {applicationId}</div>}
-      <button className="btn-primary" disabled={busy}>{busy ? 'Please wait…' : stage === 'apply' ? 'Send verification code' : 'Verify email and submit'}</button>
+      {error && <div className="account-flow-notice account-flow-notice-error" role="alert">{error}</div>}{message && <div className="account-flow-notice" role="status">{message}</div>}
+      {stage === 'verify' && <div className="account-flow-reference"><span>APPLICATION REFERENCE</span><code>{applicationId}</code></div>}
+      <button className="account-flow-submit" disabled={busy}>{busy ? 'Please wait…' : stage === 'apply' ? 'Send verification code' : 'Verify email and submit'}<span aria-hidden="true">→</span></button>
     </form>
-    <a href="/organizer">Return to organizer sign in</a>
+    <div className="account-flow-bottom"><span>Already have an account?</span><a href="/organizer">Sign in to organizer portal <span aria-hidden="true">→</span></a></div>
   </AccountFlowCard>
 }
 
@@ -66,14 +92,14 @@ export function OrganizerActivationFlow() {
       setPassword(''); setMessage('Account activated. You can now sign in at the organizer portal.')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Activation failed.') } finally { setBusy(false) }
   }
-  return <AccountFlowCard title="Activate organizer account"><form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
-    <label>Verified email<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required /></label>
-    <label>Activation challenge ID<input value={challengeId} onChange={event => setChallengeId(event.target.value)} required /></label>
-    <label>Email code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" value={code} onChange={event => setCode(event.target.value)} required /></label>
-    <label>Create password<input type="password" autoComplete="new-password" minLength={12} maxLength={200} value={password} onChange={event => setPassword(event.target.value)} required /></label>
-    {error && <div role="alert">{error}</div>}{message && <div role="status">{message}</div>}
-    <button className="btn-primary" disabled={busy}>{busy ? 'Activating…' : 'Activate account'}</button>
-  </form><a href="/organizer">Return to organizer sign in</a></AccountFlowCard>
+  return <AccountFlowCard title="Your organizer account is waiting." eyebrow="ACCOUNT ACTIVATION" description="Confirm your invitation and choose a strong password to finish setting up your organizer access."><form onSubmit={submit} className="account-flow-form">
+    <label className="account-flow-field"><span>Verified email</span><input type="email" autoComplete="email" placeholder="you@organization.com" value={email} onChange={event => setEmail(event.target.value)} required /></label>
+    <label className="account-flow-field"><span>Activation challenge ID</span><input autoComplete="off" value={challengeId} onChange={event => setChallengeId(event.target.value)} required /></label>
+    <label className="account-flow-field"><span>Six-digit email code</span><input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="000000" value={code} onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} required /></label>
+    <label className="account-flow-field"><span>Create password <small>12 characters or more</small></span><input type="password" autoComplete="new-password" minLength={12} maxLength={200} value={password} onChange={event => setPassword(event.target.value)} required /></label>
+    {error && <div className="account-flow-notice account-flow-notice-error" role="alert">{error}</div>}{message && <div className="account-flow-notice" role="status">{message}</div>}
+    <button className="account-flow-submit" disabled={busy}>{busy ? 'Activating…' : 'Activate account'}<span aria-hidden="true">→</span></button>
+  </form><div className="account-flow-bottom"><span>Already activated?</span><a href="/organizer">Sign in to organizer portal <span aria-hidden="true">→</span></a></div></AccountFlowCard>
 }
 
 export function InvitationAcceptanceFlow() {
@@ -93,10 +119,11 @@ export function InvitationAcceptanceFlow() {
       setMessage(data.nextStep || 'Invitation accepted. Sign in through your assigned portal.')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Invitation could not be accepted.') } finally { setBusy(false) }
   }
-  return <AccountFlowCard title="Accept event team invitation"><p className="muted-sm">This invitation is recipient-bound, usable once, and expires after seven days. Sellers must register a passkey during their first login.</p><form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
-    <label>Invited email<input type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required /></label>
-    <label>Create a 12+ character password, or enter your current password for an existing account<input type="password" autoComplete="current-password" maxLength={200} value={password} onChange={event => setPassword(event.target.value)} required /></label>
-    {error && <div role="alert">{error}</div>}{message && <div role="status">{message}</div>}
-    <button className="btn-primary" disabled={busy || !token}>{busy ? 'Accepting…' : 'Accept invitation'}</button>
+  return <AccountFlowCard title="You’re invited to the team." eyebrow="EVENT TEAM INVITATION" description="Accept your invitation to get started. The link is private, can be used once, and expires after seven days."><form onSubmit={submit} className="account-flow-form">
+    <label className="account-flow-field"><span>Invited email</span><input type="email" autoComplete="email" placeholder="you@organization.com" value={email} onChange={event => setEmail(event.target.value)} required /></label>
+    <label className="account-flow-field"><span>Password <small>Use 12+ characters, or your current password</small></span><input type="password" autoComplete="current-password" maxLength={200} value={password} onChange={event => setPassword(event.target.value)} required /></label>
+    {error && <div className="account-flow-notice account-flow-notice-error" role="alert">{error}</div>}{message && <div className="account-flow-notice" role="status">{message}</div>}
+    <button className="account-flow-submit" disabled={busy || !token}>{busy ? 'Accepting…' : 'Accept invitation'}<span aria-hidden="true">→</span></button>
+    <p className="account-flow-security-note">Sellers will set up a passkey when they first sign in.</p>
   </form></AccountFlowCard>
 }
