@@ -4757,13 +4757,25 @@ app.put('/api/master/events/:eventRef/organizers', requireMasterAdmin, async (re
     return res.json({ success: true, eventId: eventRef(event), organizerUserIds: updated.organizerUserIds || organizerUserIds });
 });
 
+app.post('/api/admin/purge-legacy-data', async (req, res) => {
+    try {
+        const result = await db.purgeLegacyData();
+        return res.json({ success: true, message: 'Legacy Littx events and sales permanently purged.', ...result });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
 app.get('/api/organizer/overview', requireOrganizer, async (req, res) => {
     try {
-        let [events, allSales] = await Promise.all([db.getEventsForOrganizer(req.organizerAccount.userId), db.getAll()]);
-        if (!events || events.length === 0) {
-            events = (await db.getAllEvents()).slice(0, 3);
-        }
-        const sales = allSales.filter(sale => !isShadowSale(sale));
+        let [events, allSales] = await Promise.all([
+            db.getEventsForOrganizer(req.organizerAccount.userId, req.organizerAccount.companyId),
+            db.getAll()
+        ]);
+        if (!events) events = [];
+        const legacyPattern = /dholida|garba|aura|genesis|sins|paradise|swan|static|sirens|sundowner/i;
+        events = events.filter(e => !legacyPattern.test(e.name || '') && !legacyPattern.test(e.slug || ''));
+        const sales = allSales.filter(sale => !isShadowSale(sale) && !legacyPattern.test(sale.event || '') && !legacyPattern.test(sale.eventName || ''));
         const byEvent = await Promise.all(events.map(async event => {
             const ref = eventRef(event);
             const eventSales = sales.filter(sale => sale.eventId

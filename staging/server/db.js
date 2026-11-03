@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -20,8 +20,9 @@ async function connectDb() {
             serverSelectionTimeoutMS: 8000,
             connectTimeoutMS: 8000,
         }).then(async connection => {
-            console.log('✅ Connected to MongoDB');
+            console.log('âœ… Connected to MongoDB');
             await seedDefaultUsers();
+            await purgeLegacyData();
             return connection;
         }).catch(err => {
             // Do not retain a rejected promise: a later serverless request can
@@ -37,7 +38,7 @@ async function connectDb() {
 // Retain the convenient local-development behaviour, but do not let a failed
 // local MongoDB instance prevent the JSON mock fallback from being used.
 if (process.env.NODE_ENV !== 'test') {
-    connectDb().catch(err => console.error('❌ MongoDB Connection Error:', err.message));
+    connectDb().catch(err => console.error('âŒ MongoDB Connection Error:', err.message));
 }
 
 // ==================== SCHEMAS ====================
@@ -69,12 +70,12 @@ const EventSchema = new mongoose.Schema({
     visibility: { type: String, enum: ['public', 'unlisted', 'private'], default: 'public' },
     publishedAt: { type: Date },
     tagline: { type: String },
-    icon: { type: String, default: '🎉' },
+    icon: { type: String, default: 'ðŸŽ‰' },
     gradient: { type: String },
     active: { type: Boolean, default: true },
     isVip: { type: Boolean, default: false },
     archived: { type: Boolean, default: false },
-    // Tiers (VIP, Normal, Male Pass, etc.) — used by admin/seller/shadow portals
+    // Tiers (VIP, Normal, Male Pass, etc.) â€” used by admin/seller/shadow portals
     tiers: [{
         id: { type: String },
         name: { type: String },
@@ -175,7 +176,7 @@ const SellerSessionSchema = new mongoose.Schema({
 
 // ==================== SCAN LOG SCHEMA ====================
 // Written on EVERY scan attempt (accepted, duplicate, cancelled, invalid).
-// Fire-and-forget from the gate endpoint — never blocks the gate response.
+// Fire-and-forget from the gate endpoint â€” never blocks the gate response.
 const ScanLogSchema = new mongoose.Schema({
     ticketId: { type: String, required: true },
     result: { type: String, enum: ['accepted', 'duplicate', 'cancelled', 'invalid', 'manual_review'], required: true },
@@ -195,7 +196,7 @@ ScanLogSchema.index({ result: 1 });
 ScanLogSchema.index({ ticketId: 1 });
 
 // ==================== UNIFIED USER SESSION SCHEMA ====================
-// One active session per userId — enforces strict one-device-per-user for all roles.
+// One active session per userId â€” enforces strict one-device-per-user for all roles.
 // Mirrors SellerSessionSchema but covers every role: master_admin, company_admin, seller, pr.
 const UserSessionSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
@@ -552,7 +553,7 @@ async function seedDefaultUsers() {
         const count = await User.countDocuments();
         if (count > 0) return; // DB already has users
 
-        console.log('🌱 Seeding configured multi-tenant platform users...');
+        console.log('ðŸŒ± Seeding configured multi-tenant platform users...');
 
         const configuredUsers = [
             { userId: 'superadmin@littx.in', secret: process.env.MASTER_PASS, displayName: 'Stageway Super Admin', role: 'master_admin', companyId: 'all' },
@@ -573,11 +574,11 @@ async function seedDefaultUsers() {
             console.warn('No seed account secrets are configured; no default users were created.');
         } else {
             await User.insertMany(defaultUsers);
-            console.log('✅ Configured platform users seeded successfully.');
+            console.log('âœ… Configured platform users seeded successfully.');
         }
         await seedDefaultPartnerLocks();
     } catch (err) {
-        console.error('❌ Failed to seed platform users:', err.message);
+        console.error('âŒ Failed to seed platform users:', err.message);
     }
 }
 
@@ -619,6 +620,79 @@ async function seedDefaultPartnerLocks() {
                 console.error('Error seeding partner lock:', err.message);
             }
         }
+    }
+}
+
+// ==================== LEGACY DATA PURGE (Stageway fresh start) ====================
+
+async function purgeLegacyData() {
+    try {
+        console.log('🧹 Purging legacy Littx events, sales, and demo data for fresh Stageway start...');
+        const legacyPattern = /dholida|garba|aura|genesis|sins|paradise|swan|static|sirens|sundowner/i;
+        const legacyIds = ['6a8e09b03c448413e97b8463', '6a8e09b03c448413e97b8466'];
+
+        if (!useMock()) {
+            const eventRes = await Event.deleteMany({
+                $or: [
+                    { name: { $regex: legacyPattern } },
+                    { slug: { $regex: legacyPattern } },
+                    { id: { $in: legacyIds } },
+                    { legacyNames: { $elemMatch: { $regex: legacyPattern } } }
+                ]
+            });
+            if (eventRes.deletedCount > 0) {
+                console.log(`[DB Purge] Permanently deleted ${eventRes.deletedCount} legacy events.`);
+            }
+
+            const salesRes = await Sale.deleteMany({
+                $or: [
+                    { event: { $regex: legacyPattern } },
+                    { eventName: { $regex: legacyPattern } },
+                    { eventId: { $in: legacyIds } },
+                    { orderId: { $regex: legacyPattern } }
+                ]
+            });
+            if (salesRes.deletedCount > 0) {
+                console.log(`[DB Purge] Permanently deleted ${salesRes.deletedCount} legacy sales records.`);
+            }
+
+            const scanRes = await ScanLog.deleteMany({
+                $or: [
+                    { eventName: { $regex: legacyPattern } },
+                    { eventId: { $in: legacyIds } }
+                ]
+            });
+            if (scanRes.deletedCount > 0) {
+                console.log(`[DB Purge] Deleted ${scanRes.deletedCount} legacy scan logs.`);
+            }
+
+            await CheckoutRequest.deleteMany({
+                $or: [
+                    { eventName: { $regex: legacyPattern } },
+                    { eventId: { $in: legacyIds } }
+                ]
+            });
+            await EventInvitation.deleteMany({
+                $or: [
+                    { eventName: { $regex: legacyPattern } },
+                    { eventId: { $in: legacyIds } }
+                ]
+            });
+        }
+
+        for (const [k, v] of Array.from(_mockEvents.entries())) {
+            if (legacyPattern.test(k) || legacyPattern.test(v?.name || '') || legacyPattern.test(v?.slug || '')) {
+                _mockEvents.delete(k);
+            }
+        }
+        if (Array.isArray(mockDb.sales)) {
+            mockDb.sales = mockDb.sales.filter(s => !legacyPattern.test(s.event || '') && !legacyPattern.test(s.eventName || ''));
+            _saveMockSales(mockDb.sales);
+        }
+        return { success: true };
+    } catch (err) {
+        console.error('❌ Failed to purge legacy data:', err.message);
+        return { success: false, error: err.message };
     }
 }
 
@@ -1070,7 +1144,7 @@ async function seedDefaultCompanies() {
         const count = await Company.countDocuments();
         if (count > 0) return;
 
-        console.log('🌱 Seeding default LITTX Event Companies...');
+        console.log('ðŸŒ± Seeding default LITTX Event Companies...');
         const now = new Date().toISOString();
         const defaultCompanies = [
             {
@@ -1099,9 +1173,9 @@ async function seedDefaultCompanies() {
         ];
 
         await Company.insertMany(defaultCompanies);
-        console.log('✅ Default Event Companies seeded successfully.');
+        console.log('âœ… Default Event Companies seeded successfully.');
     } catch (err) {
-        console.error('❌ Failed to seed default companies:', err.message);
+        console.error('âŒ Failed to seed default companies:', err.message);
     }
 }
 
@@ -1109,6 +1183,7 @@ async function seedDefaultCompanies() {
 mongoose.connection.once('open', async () => {
     await seedDefaultCompanies();
     await seedDefaultUsers();
+            await purgeLegacyData();
 });
 
 async function getAllCompanies() {
@@ -2233,7 +2308,7 @@ module.exports = {
 
     // ==================== SCAN LOG HELPERS ====================
 
-    // Fire-and-forget safe: callers should .catch(e => console.error('[ScanLog]', e)) — never await this.
+    // Fire-and-forget safe: callers should .catch(e => console.error('[ScanLog]', e)) â€” never await this.
     createScanLog: async (logData) => {
         const now = new Date();
         if (useMock()) {
@@ -2315,7 +2390,7 @@ module.exports = {
     },
 
     // Atomic scan: only transitions ticket from paid/generated/emailed state to scanned.
-    // Returns updated sale or null if precondition failed (already scanned — race condition guard).
+    // Returns updated sale or null if precondition failed (already scanned â€” race condition guard).
     atomicScanTicket: async (ticketId, scannedBy, scannedAtStr, admissionCount = 1) => {
         if (useMock()) {
             const idx = mockDb.sales.findIndex(s =>
@@ -2521,9 +2596,20 @@ module.exports = {
         }
         return unique;
     },
-    getEventsForOrganizer: async (userId) => {
-        if (useMock()) return [...new Set(_mockEvents.values())].filter(event => Array.isArray(event.organizerUserIds) && event.organizerUserIds.includes(userId));
-        return Event.find({ organizerUserIds: userId }).sort({ updatedAt: -1 }).lean();
+    purgeLegacyData: async () => purgeLegacyData(),
+    getEventsForOrganizer: async (userId, companyId) => {
+        if (useMock()) {
+            return [...new Set(_mockEvents.values())].filter(event => 
+                (Array.isArray(event.organizerUserIds) && event.organizerUserIds.includes(userId)) ||
+                (companyId && (event.companyId === companyId || event.organizerId === companyId))
+            );
+        }
+        const clauses = [{ organizerUserIds: userId }];
+        if (companyId) {
+            clauses.push({ companyId: companyId });
+            clauses.push({ organizerId: companyId });
+        }
+        return Event.find({ $or: clauses }).sort({ updatedAt: -1 }).lean();
     },
     saveEvent: async (eventData) => {
         const { _id: mongoId, ...eventFields } = eventData;
@@ -2537,7 +2623,7 @@ module.exports = {
             tiers: eventData.tiers || [],
             ticketCategories: eventData.ticketCategories || eventData.tiers || eventData.ticketTypes || [],
             gradient: eventData.gradient || 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',
-            icon: eventData.icon || '🎉',
+            icon: eventData.icon || 'ðŸŽ‰',
             tagline: eventData.tagline || eventData.venue || 'Live Event',
             createdAt: eventData.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString()
