@@ -1,58 +1,56 @@
 import React, { useEffect, useState } from 'react'
-import EventTeamManager from './EventTeamManager'
-
-function currencyTotals(total: number | null | undefined, currency: string | null | undefined, byCurrency?: Record<string, number>) {
-  if (total !== null && total !== undefined) return `${currency || 'INR'} ${Number(total).toLocaleString()}`
-  return Object.entries(byCurrency || {}).map(([code, amount]) => `${code} ${Number(amount).toLocaleString()}`).join(' · ') || '—'
-}
-
-type OrganizerCategory = {
-  id: string
-  name: string
-  description?: string
-  price: number
-  currency?: string
-  totalInventory: number | null
-  remainingInventory: number | null
-  groupSize: number
-  status: string
-  maxPerCustomer?: number
-  salesStartAt?: string | null
-  salesEndAt?: string | null
-  inclusions?: string[]
-}
-
-type OrganizerEvent = {
-  eventId: string
-  name: string
-  images?: string[]
-  status: string
-  city: string
-  venue: string
-  description: string
-  startsAt: string | null
-  endsAt?: string | null
-  ticketCategories: OrganizerCategory[]
-  sales: { orders: number; confirmedOrders: number; ticketsIssued: number; admissions: number; online: any; offline: any; verifiedRevenue: number | null; verifiedRevenueCurrency?: string | null; verifiedRevenueByCurrency?: Record<string, number>; pending: number; pendingAmount: number | null; pendingAmountCurrency?: string | null; pendingAmountByCurrency?: Record<string, number>; cancelled: number; expired: number; unverified: number; unverifiedAmount: number | null; unverifiedAmountCurrency?: string | null; unverifiedAmountByCurrency?: Record<string, number>; refundRequests: number; refundApprovals: number; refundRejections: number }
-  scans: { accepted: number; duplicate: number; admissions: number; recent: any[] }
-  refundRequests: any[]
-  activity: any[]
-  orders: any[]
-}
+import { OrganizerCategory, OrganizerEvent, OrganizerProfile, OrganizerTab } from './types'
+import OverviewTab from './tabs/OverviewTab'
+import EventsTab from './tabs/EventsTab'
+import TicketTiersTab from './tabs/TicketTiersTab'
+import SalesOrdersTab from './tabs/SalesOrdersTab'
+import GateScansTab from './tabs/GateScansTab'
+import TeamPRTab from './tabs/TeamPRTab'
+import PayoutsTab from './tabs/PayoutsTab'
+import ProfileTab from './tabs/ProfileTab'
 
 export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) {
+  const [activeTab, setActiveTab] = useState<OrganizerTab>('overview')
   const [events, setEvents] = useState<OrganizerEvent[]>([])
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('Organizer')
+  const [profile, setProfile] = useState<OrganizerProfile>({
+    displayName: '',
+    organizationName: '',
+    verifiedEmail: null,
+    emailVerified: false,
+    companyId: '',
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [editingEvent, setEditingEvent] = useState<OrganizerEvent | null>(null)
-  const [editForm, setEditForm] = useState({ name: '', venue: '', city: '', description: '', posterUrl: '', startsAt: '', endsAt: '' })
-  const [categories, setCategories] = useState<OrganizerCategory[]>([])
-  const [saving, setSaving] = useState(false)
-  const [draftForm, setDraftForm] = useState({ name: '', category: '', venue: '', city: '', description: '', posterUrl: '', startsAt: '', endsAt: '' })
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Create Draft Modal State
+  const [showCreateModal, setShowCreateModal] = useState(false)
   const [creatingDraft, setCreatingDraft] = useState(false)
-  const [profile, setProfile] = useState<{ displayName: string; organizationName: string; verifiedEmail: string | null; emailVerified: boolean; companyId: string }>({ displayName: '', organizationName: '', verifiedEmail: null, emailVerified: false, companyId: '' })
-  const [profileSaving, setProfileSaving] = useState(false)
+  const [draftForm, setDraftForm] = useState({
+    name: '',
+    category: '',
+    venue: '',
+    city: '',
+    description: '',
+    posterUrl: '',
+    startsAt: '',
+    endsAt: '',
+  })
+
+  // Edit Event Modal State
+  const [editingEvent, setEditingEvent] = useState<OrganizerEvent | null>(null)
+  const [editForm, setEditForm] = useState({
+    name: '',
+    venue: '',
+    city: '',
+    description: '',
+    posterUrl: '',
+    startsAt: '',
+    endsAt: '',
+  })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const localDatetime = (value?: string | null) => {
     if (!value) return ''
@@ -61,168 +59,1009 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
     return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
   }
 
-  const load = async () => {
+  const loadData = async () => {
     setError('')
     try {
       const token = sessionStorage.getItem('littx_token') || ''
-      const response = await fetch('/api/organizer/overview', { headers: { 'x-auth-token': token }, cache: 'no-store' })
-      const data = await response.json()
-      if (!response.ok || !data.success) throw new Error(data.message || 'Organizer data could not be loaded.')
-      setEvents(data.events || [])
+      const res = await fetch('/api/organizer/overview', {
+        headers: { 'x-auth-token': token },
+        cache: 'no-store',
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.message || 'Could not load organizer data.')
+
+      const evs: OrganizerEvent[] = data.events || []
+      setEvents(evs)
       setDisplayName(data.organizer?.displayName || 'Organizer')
-      const profileResponse = await fetch('/api/organizer/profile', { headers: { 'x-auth-token': token }, cache: 'no-store' })
-      const profileData = await profileResponse.json()
-      if (profileResponse.ok && profileData.success) setProfile(profileData.profile)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Organizer data could not be loaded.')
+
+      if (!selectedEventId && evs.length > 0) {
+        setSelectedEventId(evs[0].eventId)
+      }
+
+      const profRes = await fetch('/api/organizer/profile', {
+        headers: { 'x-auth-token': token },
+        cache: 'no-store',
+      })
+      const profData = await profRes.json()
+      if (profRes.ok && profData.success) {
+        setProfile(profData.profile)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load organizer data.')
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    void loadData()
+  }, [])
 
-  const beginEdit = (event: OrganizerEvent) => {
-    setEditingEvent(event)
-    setEditForm({ name: event.name, venue: event.venue || '', city: event.city || '', description: event.description || '', posterUrl: event.images?.[0] || '', startsAt: localDatetime(event.startsAt), endsAt: localDatetime(event.endsAt) })
-    setCategories(event.ticketCategories.map(category => ({ ...category })))
-  }
-
-  const saveEvent = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!editingEvent) return
-    const priceChanges = categories.filter(category => {
-      const previous = editingEvent.ticketCategories.find(item => item.id === category.id)
-      return !previous || previous.price !== category.price
-    })
-    if (priceChanges.length && !window.confirm(`Save ticket price changes for ${priceChanges.map(category => category.name).join(', ')}? This changes the configured price used for future sales; existing orders remain unchanged.`)) return
-    setSaving(true)
-    setError('')
-    try {
-      const token = sessionStorage.getItem('littx_token') || ''
-      const response = await fetch(`/api/admin/events/${encodeURIComponent(editingEvent.eventId)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-        body: JSON.stringify({ name: editForm.name, venue: editForm.venue, city: editForm.city, description: editForm.description, images: editForm.posterUrl.trim() ? [editForm.posterUrl.trim()] : [], startsAt: editForm.startsAt ? new Date(editForm.startsAt).toISOString() : null, endsAt: editForm.endsAt ? new Date(editForm.endsAt).toISOString() : null, ticketCategories: categories })
-      })
-      const data = await response.json()
-      if (!response.ok || !data.success) throw new Error(data.message || 'Event changes could not be saved.')
-      setEditingEvent(null)
-      await load()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Event changes could not be saved.')
-    } finally {
-      setSaving(false)
+  const handleSelectEvent = (eventId: string, tab?: string) => {
+    setSelectedEventId(eventId)
+    if (tab && (['overview', 'events', 'tiers', 'sales', 'scans', 'team', 'payouts', 'profile'] as string[]).includes(tab)) {
+      setActiveTab(tab as OrganizerTab)
     }
   }
 
-  const createDraft = async (event: React.FormEvent) => {
-    event.preventDefault(); setCreatingDraft(true); setError('')
-    try {
-      const token = sessionStorage.getItem('littx_token') || ''
-      const response = await fetch('/api/admin/events', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': token }, body: JSON.stringify({ ...draftForm, images: draftForm.posterUrl.trim() ? [draftForm.posterUrl.trim()] : [], startsAt: draftForm.startsAt ? new Date(draftForm.startsAt).toISOString() : null, endsAt: draftForm.endsAt ? new Date(draftForm.endsAt).toISOString() : null, ticketCategories: [] }) })
-      const data = await response.json()
-      if (!response.ok || !data.success) throw new Error(data.message || 'Draft could not be created.')
-      setDraftForm({ name: '', category: '', venue: '', city: '', description: '', posterUrl: '', startsAt: '', endsAt: '' }); await load()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Draft could not be created.') } finally { setCreatingDraft(false) }
-  }
-
-  const saveProfile = async (event: React.FormEvent) => {
-    event.preventDefault(); setProfileSaving(true); setError('')
-    try {
-      const response = await fetch('/api/organizer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-auth-token': sessionStorage.getItem('littx_token') || '' }, body: JSON.stringify({ displayName: profile.displayName, organizationName: profile.organizationName }) })
-      const data = await response.json()
-      if (!response.ok || !data.success) throw new Error(data.message || 'Profile could not be updated.')
-      setProfile(data.profile); setDisplayName(data.profile.displayName)
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Profile could not be updated.') } finally { setProfileSaving(false) }
-  }
-
-  const submitForReview = async (event: OrganizerEvent) => {
-    if (!window.confirm(`Submit ${event.name} for platform publication review? It will not be publicly listed until a master administrator publishes it.`)) return
+  const handleCreateDraft = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreatingDraft(true)
     setError('')
     try {
-      const response = await fetch(`/api/admin/events/${encodeURIComponent(event.eventId)}/transition`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-auth-token': sessionStorage.getItem('littx_token') || '' }, body: JSON.stringify({ status: 'pending_review' }) })
-      const data = await response.json()
-      if (!response.ok || !data.success) throw new Error(data.message || 'Event could not be submitted for review.')
-      await load()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Event could not be submitted for review.') }
+      const token = sessionStorage.getItem('littx_token') || ''
+      const res = await fetch('/api/admin/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify({
+          ...draftForm,
+          images: draftForm.posterUrl.trim() ? [draftForm.posterUrl.trim()] : [],
+          startsAt: draftForm.startsAt ? new Date(draftForm.startsAt).toISOString() : null,
+          endsAt: draftForm.endsAt ? new Date(draftForm.endsAt).toISOString() : null,
+          ticketCategories: [],
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.message || 'Draft creation failed.')
+      setDraftForm({
+        name: '',
+        category: '',
+        venue: '',
+        city: '',
+        description: '',
+        posterUrl: '',
+        startsAt: '',
+        endsAt: '',
+      })
+      setShowCreateModal(false)
+      await loadData()
+      if (data.event?.id || data.event?.eventId) {
+        setSelectedEventId(data.event.id || data.event.eventId)
+        setActiveTab('tiers')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Draft creation failed.')
+    } finally {
+      setCreatingDraft(false)
+    }
   }
 
-  const logout = async () => {
+  const handleOpenEdit = (event: OrganizerEvent) => {
+    setEditingEvent(event)
+    setEditForm({
+      name: event.name,
+      venue: event.venue || '',
+      city: event.city || '',
+      description: event.description || '',
+      posterUrl: event.images?.[0] || '',
+      startsAt: localDatetime(event.startsAt),
+      endsAt: localDatetime(event.endsAt),
+    })
+  }
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingEvent) return
+    setSavingEdit(true)
+    setError('')
+    try {
+      const token = sessionStorage.getItem('littx_token') || ''
+      const res = await fetch(`/api/admin/events/${encodeURIComponent(editingEvent.eventId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+        body: JSON.stringify({
+          name: editForm.name,
+          venue: editForm.venue,
+          city: editForm.city,
+          description: editForm.description,
+          images: editForm.posterUrl.trim() ? [editForm.posterUrl.trim()] : [],
+          startsAt: editForm.startsAt ? new Date(editForm.startsAt).toISOString() : null,
+          endsAt: editForm.endsAt ? new Date(editForm.endsAt).toISOString() : null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.message || 'Failed to save event info.')
+      setEditingEvent(null)
+      await loadData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save event info.')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const handleSaveTiers = async (eventId: string, categories: OrganizerCategory[]) => {
+    const token = sessionStorage.getItem('littx_token') || ''
+    const res = await fetch(`/api/admin/events/${encodeURIComponent(eventId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+      body: JSON.stringify({ ticketCategories: categories }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data.success) throw new Error(data.message || 'Failed to save ticket categories.')
+    await loadData()
+  }
+
+  const handleSubmitForReview = async (event: OrganizerEvent) => {
+    if (!window.confirm(`Submit "${event.name}" for public review? Once reviewed by the platform administrators, the event will be officially published.`)) {
+      return
+    }
+    const token = sessionStorage.getItem('littx_token') || ''
+    const res = await fetch(`/api/admin/events/${encodeURIComponent(event.eventId)}/transition`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+      body: JSON.stringify({ status: 'pending_review' }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data.success) throw new Error(data.message || 'Submission for review failed.')
+    await loadData()
+  }
+
+  const handleSaveProfile = async (dispName: string, orgName: string) => {
+    const token = sessionStorage.getItem('littx_token') || ''
+    const res = await fetch('/api/organizer/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+      body: JSON.stringify({ displayName: dispName, organizationName: orgName }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data.success) throw new Error(data.message || 'Failed to update profile.')
+    setProfile(data.profile)
+    setDisplayName(data.profile.displayName)
+  }
+
+  const handleLogout = async () => {
     const token = sessionStorage.getItem('littx_token') || ''
     await fetch('/api/auth/logout', { method: 'POST', headers: { 'x-auth-token': token } }).catch(() => {})
     onLogout()
   }
 
-  if (loading) return <main className="app-canvas theme-dark" style={{ minHeight: '100vh', padding: 32, color: 'var(--ink)' }}>Loading organizer events…</main>
+  if (loading) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          background: '#0A0912',
+          color: '#F5F2EA',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 16,
+          fontFamily: 'Unbounded, sans-serif',
+        }}
+      >
+        <div style={{ color: '#D8FF3F', fontSize: 24, letterSpacing: '0.05em' }}>STAGEWAY</div>
+        <div style={{ fontSize: 13, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.6)' }}>
+          Loading Organizer Dashboard…
+        </div>
+      </div>
+    )
+  }
 
-  return <main className="app-canvas theme-dark" style={{ minHeight: '100vh', padding: '24px clamp(16px, 4vw, 48px)', color: 'var(--ink)' }}>
-    <div style={{ maxWidth: 1440, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <header className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div><div className="muted-sm">STAGEWAY · ORGANIZER</div><h1 style={{ margin: '6px 0' }}>Welcome, {displayName}</h1><div className="muted-sm">Only events explicitly assigned to your account appear here.</div></div>
-        <button className="btn-secondary" onClick={logout}>Sign out</button>
-      </header>
-      {error && <div role="alert" className="card" style={{ color: 'var(--red)' }}>{error} <button className="btn-secondary" onClick={() => { setLoading(true); void load() }}>Retry</button></div>}
-      <form className="card" onSubmit={saveProfile} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-        <h2 style={{ gridColumn: '1 / -1', margin: 0 }}>Organization profile</h2>
-        <input aria-label="Organizer contact name" value={profile.displayName} onChange={event => setProfile(current => ({ ...current, displayName: event.target.value }))} minLength={2} maxLength={120} required />
-        <input aria-label="Organization name" value={profile.organizationName} onChange={event => setProfile(current => ({ ...current, organizationName: event.target.value }))} minLength={2} maxLength={160} required />
-        <div className="muted-sm">Verified email: {profile.verifiedEmail || 'Not set'} · email changes require a separate verification workflow.</div>
-        <button className="btn-secondary" disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save profile'}</button>
-      </form>
-      <form className="card" onSubmit={createDraft} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
-        <h2 style={{ gridColumn: '1 / -1', margin: 0 }}>Create event draft</h2>
-        <input aria-label="New event name" placeholder="Event name" value={draftForm.name} onChange={event => setDraftForm(current => ({ ...current, name: event.target.value }))} maxLength={160} required />
-        <input aria-label="New event category" placeholder="Category" value={draftForm.category} onChange={event => setDraftForm(current => ({ ...current, category: event.target.value }))} />
-        <input aria-label="New event venue" placeholder="Venue" value={draftForm.venue} onChange={event => setDraftForm(current => ({ ...current, venue: event.target.value }))} />
-        <input aria-label="New event city" placeholder="City" value={draftForm.city} onChange={event => setDraftForm(current => ({ ...current, city: event.target.value }))} />
-        <input aria-label="Poster image URL" type="url" placeholder="Poster image URL (optional)" value={draftForm.posterUrl} onChange={event => setDraftForm(current => ({ ...current, posterUrl: event.target.value }))} />
-        <label className="muted-sm">Event date and time<input aria-label="New event date" type="datetime-local" value={draftForm.startsAt} onChange={event => setDraftForm(current => ({ ...current, startsAt: event.target.value }))} /></label>
-        <label className="muted-sm">Event end<input aria-label="New event end" type="datetime-local" value={draftForm.endsAt} onChange={event => setDraftForm(current => ({ ...current, endsAt: event.target.value }))} /></label>
-        <textarea aria-label="New event description" placeholder="Description" value={draftForm.description} onChange={event => setDraftForm(current => ({ ...current, description: event.target.value }))} rows={2} />
-        <button className="btn-primary" disabled={creatingDraft}>{creatingDraft ? 'Creating…' : 'Save draft'}</button>
-        <div className="muted-sm" style={{ gridColumn: '1 / -1' }}>New drafts are owned by your approved organization and assigned to your account. They are not public until platform review and publication.</div>
-      </form>
-      {!events.length && <div className="card"><h2>No events yet</h2><p className="muted-sm">Create a draft above. Only events explicitly assigned to your organizer account appear here.</p></div>}
-      {events.map(event => <section className="card" key={event.eventId} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-          <div><div className="muted-sm">{event.status.toUpperCase()} · {event.city}{event.venue ? ` · ${event.venue}` : ''}</div><h2 style={{ margin: '6px 0' }}>{event.name}</h2><div className="muted-sm">{event.startsAt ? new Date(event.startsAt).toLocaleString() : 'Date not set'}</div></div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="btn-secondary" onClick={() => beginEdit(event)}>Edit event and ticket categories</button>{event.status === 'draft' && <button className="btn-primary" onClick={() => void submitForReview(event)}>Submit for publication review</button>}</div>
+  const navItems: Array<{ id: OrganizerTab; label: string; icon: string }> = [
+    { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'events', label: 'My Events', icon: '🎪' },
+    { id: 'tiers', label: 'Ticket Tiers', icon: '🎟️' },
+    { id: 'sales', label: 'Sales & Orders', icon: '💳' },
+    { id: 'scans', label: 'Gate Check-in', icon: '📱' },
+    { id: 'team', label: 'Team & PR', icon: '🤝' },
+    { id: 'payouts', label: 'Payouts', icon: '⚡' },
+    { id: 'profile', label: 'Profile', icon: '⚙️' },
+  ]
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        minHeight: '100vh',
+        background: '#0A0912',
+        color: '#F5F2EA',
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      {/* SIDEBAR NAVIGATION */}
+      <aside
+        style={{
+          width: 260,
+          background: '#111018',
+          borderRight: '1px solid rgba(255,255,255,0.06)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          position: 'sticky',
+          top: 0,
+          height: '100vh',
+          zIndex: 40,
+        }}
+        className="organizer-sidebar"
+      >
+        <div>
+          {/* Logo Brand Header */}
+          <div
+            style={{
+              padding: '24px 20px',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: '#D8FF3F',
+                color: '#0A0912',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontFamily: 'Unbounded, sans-serif',
+                fontWeight: 900,
+                fontSize: 16,
+              }}
+            >
+              S
+            </div>
+            <div>
+              <div style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 800, fontSize: 15, letterSpacing: '0.02em', color: '#F5F2EA' }}>
+                STAGEWAY
+              </div>
+              <div style={{ fontSize: 9.5, fontFamily: 'JetBrains Mono, monospace', color: '#D8FF3F', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                ORGANIZER PORTAL
+              </div>
+            </div>
+          </div>
+
+          {/* Org Info Snapshot */}
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+            <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.4)', textTransform: 'uppercase' }}>
+              LOGGED IN PROMOTER
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#F5F2EA', marginTop: 3 }}>
+              {profile.organizationName || displayName}
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(245,242,234,0.5)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: '#31E7C8' }}>●</span> Approved Partner
+            </div>
+          </div>
+
+          {/* Navigation Items */}
+          <nav style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {navItems.map(item => {
+              const active = activeTab === item.id
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id)
+                    setMobileMenuOpen(false)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: active ? 'rgba(216,255,63,0.12)' : 'transparent',
+                    color: active ? '#D8FF3F' : 'rgba(245,242,234,0.7)',
+                    border: '1px solid',
+                    borderColor: active ? 'rgba(216,255,63,0.25)' : 'transparent',
+                    fontFamily: active ? 'Unbounded, sans-serif' : 'Inter, sans-serif',
+                    fontSize: 13,
+                    fontWeight: active ? 700 : 500,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
+              )
+            })}
+          </nav>
         </div>
-        <div className="kpi-row">
-          <div className="tile tile-violet"><div className="tile-label">ORDERS / CONFIRMED</div><div className="tile-value">{event.sales.orders} / {event.sales.confirmedOrders}</div><div className="tile-sub">{event.sales.pending} pending · {event.sales.cancelled} cancelled · {event.sales.unverified} unverified</div></div>
-          <div className="tile tile-teal"><div className="tile-label">QR CODES / ADMISSIONS</div><div className="tile-value">{event.sales.ticketsIssued} / {event.sales.admissions}</div><div className="tile-sub">{event.scans.admissions} admissions scanned · {event.scans.duplicate} duplicate scans</div></div>
-          <div className="tile tile-gold"><div className="tile-label">ONLINE / OFFLINE ADMISSIONS</div><div className="tile-value">{event.sales.online.admissions} / {event.sales.offline.admissions}</div><div className="tile-sub">From confirmed sales only</div></div>
-          <div className="tile tile-orange"><div className="tile-label">GROSS CONFIRMED CUSTOMER TOTAL</div><div className="tile-value">{currencyTotals(event.sales.verifiedRevenue, event.sales.verifiedRevenueCurrency, event.sales.verifiedRevenueByCurrency)}</div><div className="tile-sub">Customer total, before internal refund decisions</div><div className="muted-sm">Pending {currencyTotals(event.sales.pendingAmount, event.sales.pendingAmountCurrency, event.sales.pendingAmountByCurrency)} · unverified {currencyTotals(event.sales.unverifiedAmount, event.sales.unverifiedAmountCurrency, event.sales.unverifiedAmountByCurrency)}</div></div>
+
+        {/* Bottom Actions */}
+        <div style={{ padding: '16px 14px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            style={{
+              width: '100%',
+              background: '#D8FF3F',
+              color: '#0A0912',
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 14px',
+              fontFamily: 'Unbounded, sans-serif',
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+              marginBottom: 8,
+            }}
+          >
+            + Create Event
+          </button>
+
+          <button
+            onClick={handleLogout}
+            style={{
+              width: '100%',
+              background: 'transparent',
+              color: 'rgba(245,242,234,0.6)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 8,
+              padding: '8px 12px',
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            Sign Out
+          </button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: 16 }}>
-          <div><h3>Ticket categories and inventory</h3><div className="table-scroll"><table className="table"><thead><tr><th>Category</th><th>Price</th><th>Remaining</th><th>Admissions / QR</th></tr></thead><tbody>{event.ticketCategories.map(category => <tr key={category.id}><td>{category.name} · group of {category.groupSize}</td><td>{category.currency || 'INR'} {category.price.toLocaleString()}</td><td>{category.remainingInventory ?? 'Unlimited'}</td><td>{category.groupSize} / 1</td></tr>)}{!event.ticketCategories.length && <tr><td colSpan={4}>No ticket categories configured.</td></tr>}</tbody></table></div></div>
-          <div><h3>Internal refund decisions</h3><div className="muted-sm">{event.sales.refundRequests} requested · {event.sales.refundApprovals} approved internally · {event.sales.refundRejections} rejected</div><div className="muted-sm">Approval does not confirm that money was returned.</div>{event.refundRequests.length ? event.refundRequests.map((refund: any) => <div key={refund.orderId} style={{ padding: '9px 0', borderBottom: '1px solid var(--line)' }}><strong>{refund.orderId}</strong><div className="muted-sm">{refund.reason || 'No reason supplied'} · {refund.requestedAt ? new Date(refund.requestedAt).toLocaleString() : 'time unavailable'}</div><div className="muted-sm">View only · approval remains with an authorized admin</div></div>) : <p className="muted-sm">No pending refund requests.</p>}</div>
+      </aside>
+
+      {/* MAIN CONTENT AREA */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {/* TOP STATUS BAR */}
+        <header
+          style={{
+            height: 68,
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(17,16,24,0.85)',
+            backdropFilter: 'blur(12px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 24px',
+            position: 'sticky',
+            top: 0,
+            zIndex: 30,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <h1 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 16, fontWeight: 700, margin: 0 }}>
+              {navItems.find(i => i.id === activeTab)?.label}
+            </h1>
+
+            {events.length > 0 && (
+              <span style={{ fontSize: 11, color: 'rgba(245,242,234,0.4)', fontFamily: 'JetBrains Mono, monospace' }}>
+                · {events.length} Assigned Event{events.length === 1 ? '' : 's'}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            {/* Quick Event Switcher */}
+            {events.length > 0 && (
+              <select
+                value={selectedEventId || ''}
+                onChange={e => setSelectedEventId(e.target.value)}
+                style={{
+                  background: 'rgba(10,9,18,0.85)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  color: '#F5F2EA',
+                  fontSize: 12,
+                  fontFamily: 'JetBrains Mono, monospace',
+                  cursor: 'pointer',
+                  maxWidth: 220,
+                }}
+              >
+                {events.map(e => (
+                  <option key={e.eventId} value={e.eventId}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <button
+              onClick={() => void loadData()}
+              style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: '#F5F2EA',
+                borderRadius: 6,
+                padding: '6px 10px',
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+              title="Refresh Data"
+            >
+              🔄
+            </button>
+          </div>
+        </header>
+
+        {/* ERROR BANNER */}
+        {error && (
+          <div
+            style={{
+              margin: '16px 24px 0',
+              padding: '12px 18px',
+              borderRadius: 8,
+              background: 'rgba(255,107,107,0.15)',
+              border: '1px solid #FF6B6B',
+              color: '#FF6B6B',
+              fontSize: 13,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <span>{error}</span>
+            <button
+              onClick={() => void loadData()}
+              style={{ background: 'transparent', border: 'none', color: '#FF6B6B', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* TAB BODY */}
+        <main style={{ padding: '24px clamp(16px, 3vw, 36px)', flex: 1, minHeight: 0 }}>
+          {activeTab === 'overview' && (
+            <OverviewTab
+              events={events}
+              onSelectEvent={handleSelectEvent}
+              onOpenCreateDraft={() => setShowCreateModal(true)}
+            />
+          )}
+
+          {activeTab === 'events' && (
+            <EventsTab
+              events={events}
+              onSelectEvent={handleSelectEvent}
+              onOpenCreateDraft={() => setShowCreateModal(true)}
+              onEditEvent={handleOpenEdit}
+              onSubmitForReview={handleSubmitForReview}
+            />
+          )}
+
+          {activeTab === 'tiers' && (
+            <TicketTiersTab
+              events={events}
+              selectedEventId={selectedEventId}
+              onSelectEventId={setSelectedEventId}
+              onSaveTiers={handleSaveTiers}
+            />
+          )}
+
+          {activeTab === 'sales' && (
+            <SalesOrdersTab
+              events={events}
+              selectedEventId={selectedEventId}
+              onSelectEventId={setSelectedEventId}
+            />
+          )}
+
+          {activeTab === 'scans' && (
+            <GateScansTab
+              events={events}
+              selectedEventId={selectedEventId}
+              onSelectEventId={setSelectedEventId}
+              onRefresh={loadData}
+            />
+          )}
+
+          {activeTab === 'team' && (
+            <TeamPRTab
+              events={events}
+              selectedEventId={selectedEventId}
+              onSelectEventId={setSelectedEventId}
+            />
+          )}
+
+          {activeTab === 'payouts' && <PayoutsTab />}
+
+          {activeTab === 'profile' && (
+            <ProfileTab profile={profile} onSaveProfile={handleSaveProfile} />
+          )}
+        </main>
+      </div>
+
+      {/* CREATE EVENT DRAFT MODAL */}
+      {showCreateModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            background: 'rgba(0,0,0,0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            overflowY: 'auto',
+          }}
+        >
+          <div
+            style={{
+              background: '#141220',
+              border: '1px solid rgba(216,255,63,0.3)',
+              borderRadius: 16,
+              width: '100%',
+              maxWidth: 640,
+              padding: 28,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 18,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 18, margin: 0, color: '#D8FF3F' }}>
+                  Create Event Draft
+                </h2>
+                <div style={{ fontSize: 12, color: 'rgba(245,242,234,0.5)', marginTop: 4 }}>
+                  Save your draft now; configure ticket tiers and team members before submitting for review.
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                style={{ background: 'transparent', border: 'none', color: '#F5F2EA', fontSize: 20, cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateDraft} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  EVENT NAME *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Neon Horizon Festival"
+                  value={draftForm.name}
+                  onChange={e => setDraftForm(prev => ({ ...prev, name: e.target.value }))}
+                  required
+                  style={{
+                    width: '100%',
+                    background: 'rgba(10,9,18,0.85)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 6,
+                    padding: '9px 12px',
+                    color: '#F5F2EA',
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                    CITY *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Mumbai, Bengaluru, Goa"
+                    value={draftForm.city}
+                    onChange={e => setDraftForm(prev => ({ ...prev, city: e.target.value }))}
+                    required
+                    style={{
+                      width: '100%',
+                      background: 'rgba(10,9,18,0.85)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                      padding: '9px 12px',
+                      color: '#F5F2EA',
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                    VENUE NAME
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. The Great Eastern Mills"
+                    value={draftForm.venue}
+                    onChange={e => setDraftForm(prev => ({ ...prev, venue: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(10,9,18,0.85)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                      padding: '9px 12px',
+                      color: '#F5F2EA',
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                    EVENT START DATE & TIME
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={draftForm.startsAt}
+                    onChange={e => setDraftForm(prev => ({ ...prev, startsAt: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(10,9,18,0.85)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                      padding: '9px 12px',
+                      color: '#F5F2EA',
+                      fontSize: 12,
+                      fontFamily: 'JetBrains Mono, monospace',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                    EVENT END DATE & TIME
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={draftForm.endsAt}
+                    onChange={e => setDraftForm(prev => ({ ...prev, endsAt: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(10,9,18,0.85)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                      padding: '9px 12px',
+                      color: '#F5F2EA',
+                      fontSize: 12,
+                      fontFamily: 'JetBrains Mono, monospace',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  POSTER IMAGE URL (OPTIONAL)
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://example.com/poster.jpg"
+                  value={draftForm.posterUrl}
+                  onChange={e => setDraftForm(prev => ({ ...prev, posterUrl: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(10,9,18,0.85)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 6,
+                    padding: '9px 12px',
+                    color: '#F5F2EA',
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  DESCRIPTION
+                </label>
+                <textarea
+                  placeholder="Set times, genre, dress code, age limit, entry requirements..."
+                  value={draftForm.description}
+                  onChange={e => setDraftForm(prev => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(10,9,18,0.85)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 6,
+                    padding: '9px 12px',
+                    color: '#F5F2EA',
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  style={{
+                    background: 'rgba(255,255,255,0.06)',
+                    color: 'rgba(245,242,234,0.7)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8,
+                    padding: '10px 18px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingDraft}
+                  style={{
+                    background: '#D8FF3F',
+                    color: '#0A0912',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '10px 24px',
+                    fontFamily: 'Unbounded, sans-serif',
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: creatingDraft ? 'not-allowed' : 'pointer',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {creatingDraft ? 'Saving Draft…' : 'Save Event Draft'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-        <div><h3>Recent orders · latest 100</h3><div className="table-scroll"><table className="table"><thead><tr><th>Order / QR</th><th>Category</th><th>State</th><th>Channel / seller</th><th>Admissions</th><th>Scan</th></tr></thead><tbody>{event.orders.map((order: any) => <tr key={order.orderId}><td>{order.orderId}<div className="muted-sm">{order.ticketId || 'QR not issued'}</div></td><td>{order.ticketType}</td><td>{order.status}{order.paymentStatus ? ` · ${order.paymentStatus}` : ''}{order.approvalStatus ? ` · ${order.approvalStatus}` : ''}</td><td>{order.channel}{order.sellerId ? ` · ${order.sellerName || order.sellerId}` : ''}</td><td>{order.admissions} · {order.amount === null ? 'unverified' : `${order.currency || 'INR'} ${Number(order.amount).toLocaleString()}`}</td><td>{order.scannedAdmissions} at {order.scannedAt ? new Date(order.scannedAt).toLocaleString() : 'not scanned'}</td></tr>)}{!event.orders.length && <tr><td colSpan={6}>No orders for this event.</td></tr>}</tbody></table></div></div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 16 }}>
-          <div><h3>Recent scan history</h3>{event.scans.recent.slice(0, 8).map((scan: any, index: number) => <div key={`${scan.ticketId}-${index}`} className="muted-sm" style={{ padding: '5px 0' }}>{scan.result} · {scan.admissionCount} admissions · {scan.ticketId} · {new Date(scan.timestamp).toLocaleString()}</div>)}</div>
-          <div><h3>Event activity</h3>{event.activity.length ? event.activity.map((activity: any, index: number) => <div key={`${activity.timestamp}-${index}`} className="muted-sm" style={{ padding: '5px 0' }}>{activity.action} · {activity.fieldChanged} · {activity.actor} · {activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'time unavailable'}</div>) : <div className="muted-sm">No event activity recorded.</div>}</div>
+      )}
+
+      {/* EDIT EVENT INFO MODAL */}
+      {editingEvent && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            background: 'rgba(0,0,0,0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            overflowY: 'auto',
+          }}
+        >
+          <div
+            style={{
+              background: '#141220',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 16,
+              width: '100%',
+              maxWidth: 640,
+              padding: 28,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 18,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 18, margin: 0, color: '#F5F2EA' }}>
+                  Edit Event Details
+                </h2>
+                <div style={{ fontSize: 12, color: 'rgba(245,242,234,0.5)', marginTop: 4 }}>
+                  {editingEvent.name}
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingEvent(null)}
+                style={{ background: 'transparent', border: 'none', color: '#F5F2EA', fontSize: 20, cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  EVENT NAME
+                </label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={e => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                  required
+                  style={{
+                    width: '100%',
+                    background: 'rgba(10,9,18,0.85)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 6,
+                    padding: '9px 12px',
+                    color: '#F5F2EA',
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                    CITY
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.city}
+                    onChange={e => setEditForm(prev => ({ ...prev, city: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(10,9,18,0.85)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                      padding: '9px 12px',
+                      color: '#F5F2EA',
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                    VENUE
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.venue}
+                    onChange={e => setEditForm(prev => ({ ...prev, venue: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(10,9,18,0.85)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                      padding: '9px 12px',
+                      color: '#F5F2EA',
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                    START DATE & TIME
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={editForm.startsAt}
+                    onChange={e => setEditForm(prev => ({ ...prev, startsAt: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(10,9,18,0.85)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                      padding: '9px 12px',
+                      color: '#F5F2EA',
+                      fontSize: 12,
+                      fontFamily: 'JetBrains Mono, monospace',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                    END DATE & TIME
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={editForm.endsAt}
+                    onChange={e => setEditForm(prev => ({ ...prev, endsAt: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(10,9,18,0.85)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                      padding: '9px 12px',
+                      color: '#F5F2EA',
+                      fontSize: 12,
+                      fontFamily: 'JetBrains Mono, monospace',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  POSTER IMAGE URL
+                </label>
+                <input
+                  type="url"
+                  value={editForm.posterUrl}
+                  onChange={e => setEditForm(prev => ({ ...prev, posterUrl: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(10,9,18,0.85)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 6,
+                    padding: '9px 12px',
+                    color: '#F5F2EA',
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  DESCRIPTION
+                </label>
+                <textarea
+                  value={editForm.description}
+                  onChange={e => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(10,9,18,0.85)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 6,
+                    padding: '9px 12px',
+                    color: '#F5F2EA',
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingEvent(null)}
+                  style={{
+                    background: 'rgba(255,255,255,0.06)',
+                    color: 'rgba(245,242,234,0.7)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8,
+                    padding: '10px 18px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  style={{
+                    background: '#D8FF3F',
+                    color: '#0A0912',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '10px 24px',
+                    fontFamily: 'Unbounded, sans-serif',
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: savingEdit ? 'not-allowed' : 'pointer',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {savingEdit ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-        <EventTeamManager eventId={event.eventId} />
-      </section>)}
+      )}
     </div>
-
-    {editingEvent && <div role="dialog" aria-modal="true" aria-label="Edit organizer event" style={{ position: 'fixed', inset: 0, zIndex: 100, overflowY: 'auto', background: 'rgba(0,0,0,.76)', padding: 20 }}>
-      <form className="card" onSubmit={saveEvent} style={{ maxWidth: 900, margin: '20px auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h2>Edit {editingEvent.name}</h2><button type="button" className="btn-secondary" onClick={() => setEditingEvent(null)}>Close</button></div>
-        <input aria-label="Event name" value={editForm.name} onChange={event => setEditForm(current => ({ ...current, name: event.target.value }))} required />
-        <input aria-label="Event venue" placeholder="Venue" value={editForm.venue} onChange={event => setEditForm(current => ({ ...current, venue: event.target.value }))} />
-        <input aria-label="Event city" placeholder="City" value={editForm.city} onChange={event => setEditForm(current => ({ ...current, city: event.target.value }))} />
-        <input aria-label="Poster image URL" type="url" placeholder="Poster image URL" value={editForm.posterUrl} onChange={event => setEditForm(current => ({ ...current, posterUrl: event.target.value }))} />
-        <label>Start date<input aria-label="Event start date" type="datetime-local" value={editForm.startsAt} onChange={event => setEditForm(current => ({ ...current, startsAt: event.target.value }))} /></label>
-        <label>End date<input aria-label="Event end date" type="datetime-local" value={editForm.endsAt} onChange={event => setEditForm(current => ({ ...current, endsAt: event.target.value }))} /></label>
-        <textarea aria-label="Event description" placeholder="Description" value={editForm.description} onChange={event => setEditForm(current => ({ ...current, description: event.target.value }))} rows={4} />
-        <h3>Ticket categories</h3>
-        <button type="button" className="btn-secondary" onClick={() => setCategories(current => [...current, { id: `organizer-category-${Date.now()}`, name: '', price: 0, currency: 'INR', totalInventory: null, remainingInventory: null, groupSize: 1, status: 'active', maxPerCustomer: 20, inclusions: [] }])}>Add ticket category</button>
-        <div className="table-scroll"><table className="table"><thead><tr><th>Name</th><th>Price</th><th>Total inventory</th><th>Remaining</th><th>Group size</th><th>Status</th><th></th></tr></thead><tbody>{categories.map((category, index) => <tr key={category.id}><td><input aria-label={`Category ${index + 1} name`} value={category.name} onChange={event => setCategories(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} /></td><td><input aria-label={`Category ${index + 1} price`} type="number" min="0" step="0.01" value={category.price} onChange={event => setCategories(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, price: Number(event.target.value) } : item))} /></td><td><input aria-label={`Category ${index + 1} total inventory`} type="number" min="0" value={category.totalInventory ?? ''} onChange={event => setCategories(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, totalInventory: event.target.value === '' ? null : Number(event.target.value) } : item))} /></td><td>{category.remainingInventory ?? 'Unlimited'}</td><td><input aria-label={`Category ${index + 1} group size`} type="number" min="1" max="100" value={category.groupSize} onChange={event => setCategories(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, groupSize: Number(event.target.value) } : item))} /></td><td><select aria-label={`Category ${index + 1} status`} value={category.status} onChange={event => setCategories(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, status: event.target.value } : item))}><option value="active">Active</option><option value="paused">Paused</option><option value="sold_out">Sold out</option></select></td><td><button type="button" className="btn-secondary" onClick={() => { if (window.confirm(`Remove category ${category.name || 'without a name'}? The server will reject removal if orders already use it.`)) setCategories(current => current.filter((_, itemIndex) => itemIndex !== index)) }}>Remove</button></td></tr>)}</tbody></table></div>
-        <div className="muted-sm">Inventory capacity changes are rejected by the server after orders exist. Lifecycle publication and internal refund decisions remain with authorized administrators.</div>
-        <button className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save event changes'}</button>
-      </form>
-    </div>}
-  </main>
+  )
 }

@@ -4885,6 +4885,87 @@ app.delete('/api/organizer/events/:eventRef/team/:role/:principalId', requireOrg
     return res.json({ success: true, eventIds });
 });
 
+
+app.get('/api/organizer/payouts', requireOrganizer, async (req, res) => {
+    try {
+        const companyId = req.organizerAccount.companyId;
+        const [company, allSales] = await Promise.all([
+            db.getCompanyById(companyId),
+            db.getAll()
+        ]);
+        const sales = allSales.filter(sale => !isShadowSale(sale) && String(sale.companyId || 'littlane') === String(companyId || 'littlane'));
+        const verified = sales.filter(isVerifiedSalesRecord);
+        const grossRevenue = verified.reduce((sum, s) => sum + Number(s.customerTotal ?? s.amount ?? 0), 0);
+        const feePercentage = company?.commercials?.percentageFee ?? 5.0;
+        const platformFee = Math.round((grossRevenue * feePercentage) / 100);
+        const netPayout = Math.max(0, grossRevenue - platformFee);
+        const payoutDetails = company?.payoutDetails || {
+            accountHolder: '',
+            bankName: '',
+            accountNumber: '',
+            ifscCode: '',
+            upiId: '',
+            status: 'pending_verification'
+        };
+        const masked = payoutDetails.accountNumber ? '••••' + String(payoutDetails.accountNumber).slice(-4) : '';
+        return res.json({
+            success: true,
+            payouts: {
+                grossRevenue,
+                platformFee,
+                feePercentage,
+                netPayout,
+                currency: 'INR',
+                totalOrders: verified.length,
+                payoutDetails: { ...payoutDetails, accountNumberMasked: masked },
+                settlementHistory: company?.settlementHistory || []
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
+app.patch('/api/organizer/payouts', requireOrganizer, async (req, res) => {
+    try {
+        const companyId = req.organizerAccount.companyId;
+        const { accountHolder, bankName, accountNumber, ifscCode, upiId } = req.body || {};
+        if (!accountHolder || (!accountNumber && !upiId)) {
+            return res.status(400).json({ success: false, message: 'Account holder name and account number or UPI ID are required.' });
+        }
+        const company = await db.getCompanyById(companyId);
+        if (!company) return res.status(404).json({ success: false, message: 'Company not found.' });
+
+        const updatedPayoutDetails = {
+            accountHolder: String(accountHolder).trim().slice(0, 100),
+            bankName: String(bankName || '').trim().slice(0, 100),
+            accountNumber: String(accountNumber || '').trim().slice(0, 30),
+            ifscCode: String(ifscCode || '').trim().toUpperCase().slice(0, 15),
+            upiId: String(upiId || '').trim().slice(0, 50),
+            status: 'submitted',
+            updatedAt: new Date().toISOString()
+        };
+
+        await db.updateCompanyConfig(companyId, { payoutDetails: updatedPayoutDetails });
+        await db.createAuditLog({
+            adminUser: req.organizerAccount.userId,
+            companyId,
+            category: 'ORGANIZER_PAYOUT_DETAILS_UPDATED',
+            fieldChanged: 'payoutDetails',
+            reason: 'Organizer updated settlement bank details.'
+        });
+        return res.json({
+            success: true,
+            payoutDetails: {
+                ...updatedPayoutDetails,
+                accountNumberMasked: updatedPayoutDetails.accountNumber ? '••••' + String(updatedPayoutDetails.accountNumber).slice(-4) : ''
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
 app.post('/api/invitations/accept', invitationAcceptanceRateLimit, async (req, res) => {
     const token = String(req.body?.token || '').trim();
     const email = normalizeContactEmail(req.body?.email);
