@@ -76,7 +76,7 @@ export default function TeamPRTab({
       const data = await res.json()
       if (!res.ok || !data.success) throw new Error(data.message || 'Failed to send invitation.')
       setEmail('')
-      setMessage(`Invitation sent to ${email}. The link is valid for 7 days.`)
+      setMessage(`Invitation sent to ${email}. Single-use link expires in 7 days.`)
       await loadTeam()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send invitation.')
@@ -120,7 +120,7 @@ export default function TeamPRTab({
       )
       const data = await res.json()
       if (!res.ok || !data.success) throw new Error(data.message || 'Failed to resend invitation.')
-      setMessage('New single-use invitation sent. The previous link has been invalidated.')
+      setMessage('New single-use invitation sent. The previous token is no longer valid.')
       await loadTeam()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to resend invitation.')
@@ -131,7 +131,7 @@ export default function TeamPRTab({
 
   const removeMember = async (member: TeamMember) => {
     if (!activeEvent) return
-    if (!window.confirm(`Revoke access for ${member.principalId}? They will no longer be able to sell or promote tickets for this event.`)) {
+    if (!window.confirm(`Revoke access for ${member.principalId}? Their access to this event will stop immediately.`)) {
       return
     }
     setBusy(true)
@@ -156,7 +156,7 @@ export default function TeamPRTab({
 
   if (!activeEvent) {
     return (
-      <div style={{ background: 'rgba(20,16,38,0.7)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 14, padding: 48, textAlign: 'center', color: 'rgba(245,242,234,0.5)' }}>
+      <div style={{ background: '#14161C', border: '1px dashed #282C36', borderRadius: 10, padding: 48, textAlign: 'center', color: '#555962' }}>
         No events available. Create an event first to manage team coordinators.
       </div>
     )
@@ -164,7 +164,7 @@ export default function TeamPRTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* EVENT SELECTOR HEADER */}
+      {/* HEADER & SELECTOR */}
       <div
         style={{
           display: 'flex',
@@ -172,26 +172,25 @@ export default function TeamPRTab({
           alignItems: 'center',
           gap: 16,
           flexWrap: 'wrap',
-          background: 'rgba(20,16,38,0.7)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 14,
+          background: '#14161C',
+          border: '1px solid #20232B',
+          borderRadius: 10,
           padding: 16,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label style={{ fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.6)', textTransform: 'uppercase' }}>
-            Event Team For:
+          <label style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase' }}>
+            Production Team For:
           </label>
           <select
             value={activeEvent.eventId}
             onChange={e => onSelectEventId(e.target.value)}
             style={{
-              background: 'rgba(10,9,18,0.9)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: 8,
-              padding: '8px 14px',
-              color: '#F5F2EA',
-              fontFamily: 'Unbounded, sans-serif',
+              background: '#0E1013',
+              border: '1px solid #282C36',
+              borderRadius: 6,
+              padding: '8px 12px',
+              color: '#EDEDEF',
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
@@ -206,37 +205,37 @@ export default function TeamPRTab({
           </select>
         </div>
 
-        <div style={{ fontSize: 12, color: 'rgba(245,242,234,0.6)' }}>
-          {team.length} Active Member{team.length === 1 ? '' : 's'} · {invitations.filter(i => i.status === 'pending').length} Pending
+        <div style={{ fontSize: 12, color: '#8B909A' }}>
+          {team.length} Active Member{team.length === 1 ? '' : 's'} · {invitations.filter(i => i.status === 'pending').length} Pending Link{invitations.filter(i => i.status === 'pending').length === 1 ? '' : 's'}
         </div>
       </div>
 
       {error && (
-        <div role="alert" style={{ background: 'rgba(255,107,107,0.15)', border: '1px solid #FF6B6B', borderRadius: 10, padding: '12px 16px', color: '#FF6B6B', fontSize: 13 }}>
+        <div role="alert" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 8, padding: '12px 16px', color: '#EF4444', fontSize: 13 }}>
           {error}
         </div>
       )}
 
       {message && (
-        <div role="status" style={{ background: 'rgba(49,231,200,0.15)', border: '1px solid #31E7C8', borderRadius: 10, padding: '12px 16px', color: '#31E7C8', fontSize: 13 }}>
+        <div role="status" style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 8, padding: '12px 16px', color: '#10B981', fontSize: 13 }}>
           {message}
         </div>
       )}
 
-      {/* INVITE NEW MEMBER CARD */}
+      {/* INVITE FORM */}
       <div
         style={{
-          background: 'rgba(20,16,38,0.9)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 14,
+          background: '#14161C',
+          border: '1px solid #20232B',
+          borderRadius: 10,
           padding: 20,
         }}
       >
-        <h3 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 16, margin: '0 0 6px' }}>
-          Invite Seller or PR Coordinator
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: '#EDEDEF', margin: '0 0 4px' }}>
+          Assign Authorized Seller or PR Representative
         </h3>
-        <p style={{ fontSize: 12, color: 'rgba(245,242,234,0.6)', margin: '0 0 16px' }}>
-          Assign authorized sellers (to issue tickets from cash/offline sales) or PR representatives (who earn attribution via tracked promotional links).
+        <p style={{ fontSize: 12, color: '#8B909A', margin: '0 0 16px', lineHeight: 1.5 }}>
+          Sellers can issue direct door tickets. PR coordinators receive exclusive tracked referral links to earn attribution on customer sales.
         </p>
 
         <form onSubmit={sendInvite} style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -244,33 +243,32 @@ export default function TeamPRTab({
             value={role}
             onChange={e => setRole(e.target.value as 'seller' | 'pr')}
             style={{
-              background: 'rgba(10,9,18,0.85)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: 8,
-              padding: '10px 14px',
-              color: '#F5F2EA',
+              background: '#0E1013',
+              border: '1px solid #282C36',
+              borderRadius: 6,
+              padding: '9px 12px',
+              color: '#EDEDEF',
               fontSize: 13,
-              fontWeight: 600,
             }}
           >
             <option value="seller">Seller (Direct Ticket Issuer)</option>
-            <option value="pr">PR Representative (Tracking Link)</option>
+            <option value="pr">PR Coordinator (Attribution Link)</option>
           </select>
 
           <input
             type="email"
-            placeholder="Verified invitee email address"
+            placeholder="Recipient email address"
             value={email}
             onChange={e => setEmail(e.target.value)}
             required
             style={{
               flex: 1,
               minWidth: 260,
-              background: 'rgba(10,9,18,0.85)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: 8,
-              padding: '10px 14px',
-              color: '#F5F2EA',
+              background: '#0E1013',
+              border: '1px solid #282C36',
+              borderRadius: 6,
+              padding: '9px 12px',
+              color: '#EDEDEF',
               fontSize: 13,
             }}
           />
@@ -279,19 +277,17 @@ export default function TeamPRTab({
             type="submit"
             disabled={busy}
             style={{
-              background: '#D8FF3F',
-              color: '#0A0912',
+              background: '#EDEDEF',
+              color: '#0B0C0E',
               border: 'none',
-              padding: '10px 20px',
-              borderRadius: 8,
-              fontFamily: 'Unbounded, sans-serif',
-              fontWeight: 700,
+              padding: '9px 18px',
+              borderRadius: 6,
+              fontWeight: 600,
               fontSize: 12,
               cursor: busy ? 'not-allowed' : 'pointer',
-              textTransform: 'uppercase',
             }}
           >
-            {busy ? 'Sending…' : 'Send 7-Day Invite'}
+            {busy ? 'Sending…' : 'Send Invitation'}
           </button>
         </form>
       </div>
@@ -299,22 +295,22 @@ export default function TeamPRTab({
       {/* ACTIVE TEAM ROSTER */}
       <div
         style={{
-          background: 'rgba(20,16,38,0.9)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 14,
+          background: '#14161C',
+          border: '1px solid #20232B',
+          borderRadius: 10,
           padding: 20,
         }}
       >
-        <h3 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 16, margin: '0 0 14px' }}>
-          Active Event Coordinators ({team.length})
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: '#EDEDEF', margin: '0 0 14px' }}>
+          Active Team Members ({team.length})
         </h3>
 
         {team.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '30px 0', color: 'rgba(245,242,234,0.4)', fontSize: 13 }}>
+          <div style={{ textAlign: 'center', padding: '30px 0', color: '#555962', fontSize: 13 }}>
             No sellers or PR coordinators actively assigned to {activeEvent.name}.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {team.map(member => (
               <div
                 key={`${member.role}:${member.principalId}`}
@@ -322,10 +318,10 @@ export default function TeamPRTab({
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  padding: '12px 16px',
-                  borderRadius: 8,
-                  background: 'rgba(10,9,18,0.6)',
-                  border: '1px solid rgba(255,255,255,0.04)',
+                  padding: '11px 16px',
+                  borderRadius: 6,
+                  background: '#0E1013',
+                  border: '1px solid #1C1F26',
                   flexWrap: 'wrap',
                   gap: 12,
                 }}
@@ -336,16 +332,17 @@ export default function TeamPRTab({
                       fontSize: 10,
                       fontFamily: 'JetBrains Mono, monospace',
                       textTransform: 'uppercase',
-                      fontWeight: 700,
-                      padding: '3px 8px',
+                      fontWeight: 600,
+                      padding: '2px 7px',
                       borderRadius: 4,
-                      background: member.role === 'seller' ? 'rgba(56,217,196,0.15)' : 'rgba(245,185,66,0.15)',
-                      color: member.role === 'seller' ? '#31E7C8' : '#F5B942',
+                      background: member.role === 'seller' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                      color: member.role === 'seller' ? '#60A5FA' : '#8B909A',
+                      border: `1px solid ${member.role === 'seller' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
                     }}
                   >
                     {member.role === 'seller' ? 'Seller' : 'PR Coordinator'}
                   </span>
-                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#F5F2EA', fontWeight: 600 }}>
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#EDEDEF', fontWeight: 500 }}>
                     {member.principalId}
                   </span>
                 </div>
@@ -354,11 +351,11 @@ export default function TeamPRTab({
                   onClick={() => removeMember(member)}
                   disabled={busy}
                   style={{
-                    background: 'rgba(255,107,107,0.1)',
-                    color: '#FF6B6B',
-                    border: '1px solid rgba(255,107,107,0.3)',
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    color: '#EF4444',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
                     borderRadius: 6,
-                    padding: '6px 12px',
+                    padding: '5px 12px',
                     fontSize: 11,
                     cursor: 'pointer',
                   }}
@@ -371,21 +368,21 @@ export default function TeamPRTab({
         )}
       </div>
 
-      {/* PENDING & EXPIRED INVITATIONS */}
+      {/* PENDING INVITATIONS */}
       {invitations.length > 0 && (
         <div
           style={{
-            background: 'rgba(20,16,38,0.9)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 14,
+            background: '#14161C',
+            border: '1px solid #20232B',
+            borderRadius: 10,
             padding: 20,
           }}
         >
-          <h3 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 16, margin: '0 0 14px' }}>
-            Pending & Past Invitations
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: '#EDEDEF', margin: '0 0 14px' }}>
+            Invitation Requests
           </h3>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {invitations.map(inv => {
               const isPending = inv.status === 'pending'
               const isExpired = inv.status === 'expired'
@@ -397,40 +394,38 @@ export default function TeamPRTab({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    padding: '12px 16px',
-                    borderRadius: 8,
-                    background: 'rgba(10,9,18,0.4)',
-                    border: '1px solid rgba(255,255,255,0.04)',
+                    padding: '11px 16px',
+                    borderRadius: 6,
+                    background: '#0E1013',
+                    border: '1px solid #1C1F26',
                     flexWrap: 'wrap',
                     gap: 12,
                   }}
                 >
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontFamily: 'JetBrains Mono, monospace',
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: 'rgba(255,255,255,0.06)',
-                          color: 'rgba(245,242,234,0.7)',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {inv.role}
-                      </span>
-                      <span style={{ fontSize: 13, color: '#F5F2EA' }}>{inv.recipientEmail}</span>
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontFamily: 'JetBrains Mono, monospace',
-                          color: isPending ? '#31E7C8' : isExpired ? '#FF6B6B' : 'rgba(245,242,234,0.4)',
-                        }}
-                      >
-                        ({inv.status} {isPending ? `· expires ${new Date(inv.expiresAt).toLocaleDateString()}` : ''})
-                      </span>
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontFamily: 'JetBrains Mono, monospace',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        background: 'rgba(255,255,255,0.04)',
+                        color: '#8B909A',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {inv.role}
+                    </span>
+                    <span style={{ fontSize: 13, color: '#EDEDEF' }}>{inv.recipientEmail}</span>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontFamily: 'JetBrains Mono, monospace',
+                        color: isPending ? '#10B981' : isExpired ? '#EF4444' : '#8B909A',
+                      }}
+                    >
+                      ({inv.status} {isPending ? `· expires ${new Date(inv.expiresAt).toLocaleDateString()}` : ''})
+                    </span>
                   </div>
 
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -440,11 +435,11 @@ export default function TeamPRTab({
                           onClick={() => resendInvitation(inv.invitationId)}
                           disabled={busy}
                           style={{
-                            background: 'rgba(255,255,255,0.08)',
-                            color: '#F5F2EA',
-                            border: '1px solid rgba(255,255,255,0.12)',
+                            background: 'rgba(255,255,255,0.04)',
+                            color: '#EDEDEF',
+                            border: '1px solid rgba(255,255,255,0.1)',
                             borderRadius: 6,
-                            padding: '6px 12px',
+                            padding: '5px 10px',
                             fontSize: 11,
                             cursor: 'pointer',
                           }}
@@ -455,11 +450,11 @@ export default function TeamPRTab({
                           onClick={() => revokeInvitation(inv.invitationId)}
                           disabled={busy}
                           style={{
-                            background: 'rgba(255,107,107,0.1)',
-                            color: '#FF6B6B',
-                            border: '1px solid rgba(255,107,107,0.3)',
+                            background: 'rgba(239, 68, 68, 0.08)',
+                            color: '#EF4444',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
                             borderRadius: 6,
-                            padding: '6px 12px',
+                            padding: '5px 10px',
                             fontSize: 11,
                             cursor: 'pointer',
                           }}
@@ -473,16 +468,16 @@ export default function TeamPRTab({
                         onClick={() => resendInvitation(inv.invitationId)}
                         disabled={busy}
                         style={{
-                          background: 'rgba(255,255,255,0.08)',
-                          color: '#F5F2EA',
-                          border: '1px solid rgba(255,255,255,0.12)',
+                          background: 'rgba(255,255,255,0.04)',
+                          color: '#EDEDEF',
+                          border: '1px solid rgba(255,255,255,0.1)',
                           borderRadius: 6,
-                          padding: '6px 12px',
+                          padding: '5px 10px',
                           fontSize: 11,
                           cursor: 'pointer',
                         }}
                       >
-                        Send New Link
+                        New Link
                       </button>
                     )}
                   </div>

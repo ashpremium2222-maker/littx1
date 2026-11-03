@@ -65,7 +65,7 @@ export default function PayoutsTab() {
       })
       const result = await res.json()
       if (!res.ok || !result.success) throw new Error(result.message || 'Failed to update bank details.')
-      setSuccess('Settlement bank details submitted successfully!')
+      setSuccess('Settlement bank details submitted successfully.')
       await loadPayouts()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update bank details.')
@@ -75,7 +75,7 @@ export default function PayoutsTab() {
   }
 
   if (loading) {
-    return <div style={{ color: 'rgba(245,242,234,0.6)', padding: 32 }}>Loading payout & settlement records…</div>
+    return <div style={{ color: '#8B909A', padding: 32 }}>Loading payout & settlement records…</div>
   }
 
   const grossRevenue = data?.grossRevenue || 0
@@ -85,77 +85,74 @@ export default function PayoutsTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* FINANCIAL SUMMARY CARDS */}
+      {/* FINANCIAL SUMMARY METRICS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
-        {/* Gross Revenue */}
         <div
           style={{
-            background: 'linear-gradient(135deg, rgba(216,255,63,0.1), rgba(10,9,18,0.95))',
-            border: '1px solid rgba(216,255,63,0.3)',
-            borderRadius: 14,
+            background: '#14161C',
+            border: '1px solid #20232B',
+            borderRadius: 10,
             padding: 20,
           }}
         >
-          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.6)', textTransform: 'uppercase' }}>
-            GROSS VERIFIED SALES
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Gross Verified Revenue
           </div>
-          <div style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 28, fontWeight: 800, color: '#D8FF3F', marginTop: 8 }}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: '#EDEDEF', marginTop: 8, letterSpacing: '-0.02em' }}>
             ₹{grossRevenue.toLocaleString()}
           </div>
-          <div style={{ fontSize: 12, color: 'rgba(245,242,234,0.5)', marginTop: 6 }}>
-            {data?.totalOrders || 0} verified customer ticket transactions
+          <div style={{ fontSize: 12, color: '#8B909A', marginTop: 4 }}>
+            From {data?.totalOrders || 0} confirmed ticket transactions
           </div>
         </div>
 
-        {/* Platform Commission Fee */}
         <div
           style={{
-            background: 'rgba(20,16,38,0.9)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 14,
+            background: '#14161C',
+            border: '1px solid #20232B',
+            borderRadius: 10,
             padding: 20,
           }}
         >
-          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.6)', textTransform: 'uppercase' }}>
-            STAGEWAY PLATFORM FEE ({feePercentage}%)
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Platform Fee ({feePercentage}%)
           </div>
-          <div style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 28, fontWeight: 800, color: 'rgba(245,242,234,0.8)', marginTop: 8 }}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: '#EDEDEF', marginTop: 8, letterSpacing: '-0.02em' }}>
             ₹{platformFee.toLocaleString()}
           </div>
-          <div style={{ fontSize: 12, color: 'rgba(245,242,234,0.5)', marginTop: 6 }}>
-            Includes ticketing infrastructure, gateway & scanner servers
+          <div style={{ fontSize: 12, color: '#8B909A', marginTop: 4 }}>
+            Direct payment processing, QR tickets, gate scanners
           </div>
         </div>
 
-        {/* Estimated Net Payout */}
         <div
           style={{
-            background: 'linear-gradient(135deg, rgba(49,231,200,0.15), rgba(10,9,18,0.95))',
-            border: '1px solid rgba(49,231,200,0.35)',
-            borderRadius: 14,
+            background: '#14161C',
+            border: '1px solid #20232B',
+            borderRadius: 10,
             padding: 20,
           }}
         >
-          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.6)', textTransform: 'uppercase' }}>
-            ESTIMATED NET PAYOUT
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Estimated Net Payout
           </div>
-          <div style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 28, fontWeight: 900, color: '#31E7C8', marginTop: 8 }}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: '#EDEDEF', marginTop: 8, letterSpacing: '-0.02em' }}>
             ₹{netPayout.toLocaleString()}
           </div>
-          <div style={{ fontSize: 12, color: 'rgba(245,242,234,0.5)', marginTop: 6 }}>
-            Disbursed next business day following event completion
+          <div style={{ fontSize: 12, color: '#8B909A', marginTop: 4 }}>
+            Calculated post-event net balance for remittance
           </div>
         </div>
       </div>
 
       {error && (
-        <div role="alert" style={{ background: 'rgba(255,107,107,0.15)', border: '1px solid #FF6B6B', borderRadius: 10, padding: '12px 16px', color: '#FF6B6B', fontSize: 13 }}>
+        <div role="alert" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 8, padding: '12px 16px', color: '#EF4444', fontSize: 13 }}>
           {error}
         </div>
       )}
 
       {success && (
-        <div role="status" style={{ background: 'rgba(49,231,200,0.15)', border: '1px solid #31E7C8', borderRadius: 10, padding: '12px 16px', color: '#31E7C8', fontSize: 13 }}>
+        <div role="status" style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 8, padding: '12px 16px', color: '#10B981', fontSize: 13 }}>
           {success}
         </div>
       )}
@@ -163,33 +160,33 @@ export default function PayoutsTab() {
       {/* BANK ACCOUNT & SETTLEMENT DETAILS */}
       <div
         style={{
-          background: 'rgba(20,16,38,0.9)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 14,
+          background: '#14161C',
+          border: '1px solid #20232B',
+          borderRadius: 10,
           padding: 24,
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h3 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 18, margin: 0 }}>
-              Payout Settlement Account
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: '#EDEDEF', margin: 0 }}>
+              Settlement Bank Account
             </h3>
-            <div style={{ fontSize: 12, color: 'rgba(245,242,234,0.6)', marginTop: 4 }}>
-              Funds are transferred directly via NEFT/RTGS or IMPS to this registered entity
+            <div style={{ fontSize: 12, color: '#8B909A', marginTop: 2 }}>
+              Bank account for automated NEFT/RTGS disbursements
             </div>
           </div>
 
           <span
             style={{
-              fontSize: 11,
+              fontSize: 10,
               fontFamily: 'JetBrains Mono, monospace',
-              fontWeight: 700,
+              fontWeight: 600,
               textTransform: 'uppercase',
-              padding: '4px 10px',
-              borderRadius: 6,
-              background: form.status === 'verified' ? 'rgba(49,231,200,0.15)' : 'rgba(245,185,66,0.15)',
-              color: form.status === 'verified' ? '#31E7C8' : '#F5B942',
-              border: `1px solid ${form.status === 'verified' ? '#31E7C8' : '#F5B942'}55`,
+              padding: '3px 8px',
+              borderRadius: 4,
+              background: form.status === 'verified' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+              color: form.status === 'verified' ? '#10B981' : '#F59E0B',
+              border: `1px solid ${form.status === 'verified' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
             }}
           >
             ● {form.status.replace('_', ' ')}
@@ -198,30 +195,30 @@ export default function PayoutsTab() {
 
         <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 6 }}>
-              ACCOUNT HOLDER / LEGAL ENTITY NAME *
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+              LEGAL ENTITY / BENEFICIARY NAME *
             </label>
             <input
               type="text"
-              placeholder="e.g. Blue Nile Entertainment Pvt Ltd"
+              placeholder="e.g. Stageway Entertainment Pvt Ltd"
               value={form.accountHolder}
               onChange={e => setForm(prev => ({ ...prev, accountHolder: e.target.value }))}
               required
               style={{
                 width: '100%',
-                background: 'rgba(10,9,18,0.85)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 8,
-                padding: '10px 14px',
-                color: '#F5F2EA',
+                background: '#0E1013',
+                border: '1px solid #282C36',
+                borderRadius: 6,
+                padding: '9px 12px',
+                color: '#EDEDEF',
                 fontSize: 13,
               }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 6 }}>
-              BANK NAME
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+              BANK INSTITUTION NAME
             </label>
             <input
               type="text"
@@ -230,19 +227,19 @@ export default function PayoutsTab() {
               onChange={e => setForm(prev => ({ ...prev, bankName: e.target.value }))}
               style={{
                 width: '100%',
-                background: 'rgba(10,9,18,0.85)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 8,
-                padding: '10px 14px',
-                color: '#F5F2EA',
+                background: '#0E1013',
+                border: '1px solid #282C36',
+                borderRadius: 6,
+                padding: '9px 12px',
+                color: '#EDEDEF',
                 fontSize: 13,
               }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 6 }}>
-              BANK ACCOUNT NUMBER {form.accountNumberMasked ? `(Current: ${form.accountNumberMasked})` : ''}
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+              ACCOUNT NUMBER {form.accountNumberMasked ? `(Current: ${form.accountNumberMasked})` : ''}
             </label>
             <input
               type="text"
@@ -251,11 +248,11 @@ export default function PayoutsTab() {
               onChange={e => setForm(prev => ({ ...prev, accountNumber: e.target.value }))}
               style={{
                 width: '100%',
-                background: 'rgba(10,9,18,0.85)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 8,
-                padding: '10px 14px',
-                color: '#F5F2EA',
+                background: '#0E1013',
+                border: '1px solid #282C36',
+                borderRadius: 6,
+                padding: '9px 12px',
+                color: '#EDEDEF',
                 fontSize: 13,
                 fontFamily: 'JetBrains Mono, monospace',
               }}
@@ -263,7 +260,7 @@ export default function PayoutsTab() {
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
               IFSC CODE
             </label>
             <input
@@ -274,11 +271,11 @@ export default function PayoutsTab() {
               maxLength={11}
               style={{
                 width: '100%',
-                background: 'rgba(10,9,18,0.85)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 8,
-                padding: '10px 14px',
-                color: '#F5F2EA',
+                background: '#0E1013',
+                border: '1px solid #282C36',
+                borderRadius: 6,
+                padding: '9px 12px',
+                color: '#EDEDEF',
                 fontSize: 13,
                 fontFamily: 'JetBrains Mono, monospace',
               }}
@@ -286,42 +283,40 @@ export default function PayoutsTab() {
           </div>
 
           <div style={{ gridColumn: '1 / -1' }}>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 6 }}>
-              BUSINESS UPI ID (OPTIONAL FAST SETTLEMENT)
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+              BUSINESS UPI VPA (OPTIONAL FAST SETTLEMENT)
             </label>
             <input
               type="text"
-              placeholder="e.g. bluenile@hdfcbank"
+              placeholder="e.g. company@hdfcbank"
               value={form.upiId}
               onChange={e => setForm(prev => ({ ...prev, upiId: e.target.value }))}
               style={{
                 width: '100%',
-                background: 'rgba(10,9,18,0.85)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 8,
-                padding: '10px 14px',
-                color: '#F5F2EA',
+                background: '#0E1013',
+                border: '1px solid #282C36',
+                borderRadius: 6,
+                padding: '9px 12px',
+                color: '#EDEDEF',
                 fontSize: 13,
                 fontFamily: 'JetBrains Mono, monospace',
               }}
             />
           </div>
 
-          <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+          <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
             <button
               type="submit"
               disabled={saving}
               style={{
-                background: '#D8FF3F',
-                color: '#0A0912',
+                background: '#EDEDEF',
+                color: '#0B0C0E',
                 border: 'none',
-                padding: '12px 28px',
-                borderRadius: 8,
-                fontFamily: 'Unbounded, sans-serif',
-                fontWeight: 800,
+                padding: '10px 22px',
+                borderRadius: 6,
+                fontWeight: 600,
                 fontSize: 12,
                 cursor: saving ? 'not-allowed' : 'pointer',
-                textTransform: 'uppercase',
               }}
             >
               {saving ? 'Updating…' : 'Save Settlement Details'}
@@ -330,20 +325,20 @@ export default function PayoutsTab() {
         </form>
       </div>
 
-      {/* SETTLEMENT POLICY & HISTORY */}
+      {/* DISBURSEMENT TIMELINE */}
       <div
         style={{
-          background: 'rgba(20,16,38,0.7)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 14,
+          background: '#14161C',
+          border: '1px solid #20232B',
+          borderRadius: 10,
           padding: 20,
         }}
       >
-        <h4 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 14, margin: '0 0 8px', color: '#D8FF3F' }}>
-          ⚡ Next-Day Payout Settlement Policy
+        <h4 style={{ fontSize: 14, fontWeight: 600, color: '#EDEDEF', margin: '0 0 6px' }}>
+          Settlement Policy & Schedule
         </h4>
-        <p style={{ fontSize: 13, color: 'rgba(245,242,234,0.7)', lineHeight: 1.6, margin: 0 }}>
-          Stageway automatically initiates payout disbursements within 24 to 48 hours following event closure. Payout amounts reflect total confirmed admissions minus the standard platform commission fee. Bank verification is required prior to initial release.
+        <p style={{ fontSize: 13, color: '#8B909A', lineHeight: 1.6, margin: 0 }}>
+          Stageway processes event payouts within 24–48 hours following event closure. Payout amounts reflect total confirmed admissions minus the standard platform commission fee. Bank verification is required prior to initial release.
         </p>
       </div>
     </div>

@@ -24,32 +24,33 @@
   --topbar-h: 76px;
   --gutter: 20px;
   --pad: 24px;
-  --bg: #000000;
-  --panel: #09090B;
-  --panel-2: #141417;
-  --panel-3: #1E1E24;
-  --line: rgba(255, 255, 255, .05);
-  --line-soft: rgba(255, 255, 255, .025);
-  --ink: #F5F4F8;
-  --ink-soft: #9C9AAB;
-  --ink-faint: #64626F;
-  --violet: #7C5CFA;
-  --violet-2: #5B8DEF;
-  --grad-violet: linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%);
-  --grad-orange: linear-gradient(135deg, #FF7A59 0%, #F5378A 100%);
-  --grad-teal: linear-gradient(135deg, #38D9C4 0%, #3B82F6 100%);
-  --grad-gold: linear-gradient(135deg, #F5C542 0%, #F5854D 100%);
-  --green: #3DDC84;
-  --amber: #F5B942;
-  --red: #FF6B6B;
-  --radius-xl: 22px;
-  --radius-lg: 18px;
-  --radius-md: 14px;
-  --radius-sm: 10px;
-  --shadow-card: 0 1px 0 rgba(255, 255, 255, .02) inset, 0 10px 30px -14px rgba(0, 0, 0, .8);
-  --drawer-bg: #0C0A1A;
-  --drawer-border: rgba(124, 92, 250, 0.3);
-  --accent: #7C5CFA;
+  --bg: #0B0C0E;
+  --panel: #111215;
+  --panel-2: #16181D;
+  --panel-3: #1F2228;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-soft: rgba(255, 255, 255, 0.04);
+  --ink: #EDEDEF;
+  --ink-soft: #8B909A;
+  --ink-faint: #555962;
+  --accent: #EDEDEF;
+  --accent-surface: rgba(255, 255, 255, 0.06);
+  --accent-border: rgba(255, 255, 255, 0.12);
+  --green: #10B981;
+  --amber: #F59E0B;
+  --red: #EF4444;
+  --blue: #3B82F6;
+  --grad-violet: #16181D;
+  --grad-orange: #16181D;
+  --grad-teal: #16181D;
+  --grad-gold: #16181D;
+  --radius-xl: 14px;
+  --radius-lg: 10px;
+  --radius-md: 8px;
+  --radius-sm: 6px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --drawer-bg: #111215;
+  --drawer-border: rgba(255, 255, 255, 0.08);
 }
 
 .theme-light {
@@ -1199,15 +1200,15 @@ html, body {
   box-shadow: 0 16px 36px rgba(0,0,0,0.45);
 }
 
-.tile-orange:hover { box-shadow: 0 16px 36px rgba(255,122,89,0.25); }
-.tile-teal:hover   { box-shadow: 0 16px 36px rgba(56,217,196,0.25); }
-.tile-violet:hover { box-shadow: 0 16px 36px rgba(124,92,250,0.25); }
-.tile-gold:hover   { box-shadow: 0 16px 36px rgba(245,197,66,0.25); }
-
-.tile-orange { background: var(--grad-orange); }
-.tile-teal   { background: var(--grad-teal); }
-.tile-violet { background: var(--grad-violet); }
-.tile-gold   { background: var(--grad-gold); }
+.tile-orange, .tile-teal, .tile-violet, .tile-gold {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  transition: border-color .15s ease;
+}
+.tile-orange:hover, .tile-teal:hover, .tile-violet:hover, .tile-gold:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
 .tile-dark   { background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); }
 
 .tile-label {

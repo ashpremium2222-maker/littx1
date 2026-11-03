@@ -23,7 +23,6 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Create Draft Modal State
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -203,7 +202,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
   }
 
   const handleSubmitForReview = async (event: OrganizerEvent) => {
-    if (!window.confirm(`Submit "${event.name}" for public review? Once reviewed by the platform administrators, the event will be officially published.`)) {
+    if (!window.confirm(`Submit "${event.name}" for public review? Once approved by the platform team, tickets will be available for public booking.`)) {
       return
     }
     const token = sessionStorage.getItem('littx_token') || ''
@@ -241,33 +240,32 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
       <div
         style={{
           minHeight: '100vh',
-          background: '#0A0912',
-          color: '#F5F2EA',
+          background: '#0B0C0E',
+          color: '#EDEDEF',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 16,
-          fontFamily: 'Unbounded, sans-serif',
+          gap: 12,
         }}
       >
-        <div style={{ color: '#D8FF3F', fontSize: 24, letterSpacing: '0.05em' }}>STAGEWAY</div>
-        <div style={{ fontSize: 13, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.6)' }}>
-          Loading Organizer Dashboard…
+        <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>Stageway</div>
+        <div style={{ fontSize: 12, color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>
+          Loading dashboard…
         </div>
       </div>
     )
   }
 
-  const navItems: Array<{ id: OrganizerTab; label: string; icon: string }> = [
-    { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'events', label: 'My Events', icon: '🎪' },
-    { id: 'tiers', label: 'Ticket Tiers', icon: '🎟️' },
-    { id: 'sales', label: 'Sales & Orders', icon: '💳' },
-    { id: 'scans', label: 'Gate Check-in', icon: '📱' },
-    { id: 'team', label: 'Team & PR', icon: '🤝' },
-    { id: 'payouts', label: 'Payouts', icon: '⚡' },
-    { id: 'profile', label: 'Profile', icon: '⚙️' },
+  const navItems: Array<{ id: OrganizerTab; label: string }> = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'events', label: 'My Events' },
+    { id: 'tiers', label: 'Ticket Tiers' },
+    { id: 'sales', label: 'Sales & Orders' },
+    { id: 'scans', label: 'Gate Check-in' },
+    { id: 'team', label: 'Team & PR' },
+    { id: 'payouts', label: 'Payouts & Settlement' },
+    { id: 'profile', label: 'Entity Profile' },
   ]
 
   return (
@@ -275,17 +273,17 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
       style={{
         display: 'flex',
         minHeight: '100vh',
-        background: '#0A0912',
-        color: '#F5F2EA',
-        fontFamily: 'Inter, sans-serif',
+        background: '#0B0C0E',
+        color: '#EDEDEF',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      {/* SIDEBAR NAVIGATION */}
+      {/* PROFESSIONAL SIDEBAR */}
       <aside
         style={{
-          width: 260,
-          background: '#111018',
-          borderRight: '1px solid rgba(255,255,255,0.06)',
+          width: 240,
+          background: '#101216',
+          borderRight: '1px solid #1E2026',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
@@ -295,14 +293,13 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           height: '100vh',
           zIndex: 40,
         }}
-        className="organizer-sidebar"
       >
         <div>
-          {/* Logo Brand Header */}
+          {/* Brand Header */}
           <div
             style={{
-              padding: '24px 20px',
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              padding: '20px',
+              borderBottom: '1px solid #1E2026',
               display: 'flex',
               alignItems: 'center',
               gap: 10,
@@ -310,75 +307,64 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           >
             <div
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                background: '#D8FF3F',
-                color: '#0A0912',
+                width: 26,
+                height: 26,
+                borderRadius: 6,
+                background: '#EDEDEF',
+                color: '#0B0C0E',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontFamily: 'Unbounded, sans-serif',
-                fontWeight: 900,
-                fontSize: 16,
+                fontWeight: 700,
+                fontSize: 14,
               }}
             >
               S
             </div>
             <div>
-              <div style={{ fontFamily: 'Unbounded, sans-serif', fontWeight: 800, fontSize: 15, letterSpacing: '0.02em', color: '#F5F2EA' }}>
-                STAGEWAY
+              <div style={{ fontWeight: 600, fontSize: 14, color: '#EDEDEF', letterSpacing: '-0.01em' }}>
+                Stageway
               </div>
-              <div style={{ fontSize: 9.5, fontFamily: 'JetBrains Mono, monospace', color: '#D8FF3F', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                ORGANIZER PORTAL
+              <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                Organizer Portal
               </div>
             </div>
           </div>
 
-          {/* Org Info Snapshot */}
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-            <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.4)', textTransform: 'uppercase' }}>
-              LOGGED IN PROMOTER
+          {/* Org Profile Pill */}
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid #1E2026' }}>
+            <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#555962', textTransform: 'uppercase' }}>
+              PROMOTER
             </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#F5F2EA', marginTop: 3 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#EDEDEF', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {profile.organizationName || displayName}
             </div>
-            <div style={{ fontSize: 11, color: 'rgba(245,242,234,0.5)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ color: '#31E7C8' }}>●</span> Approved Partner
-            </div>
           </div>
 
-          {/* Navigation Items */}
-          <nav style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {/* Nav List */}
+          <nav style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
             {navItems.map(item => {
               const active = activeTab === item.id
               return (
                 <button
                   key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id)
-                    setMobileMenuOpen(false)
-                  }}
+                  onClick={() => setActiveTab(item.id)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 12,
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    background: active ? 'rgba(216,255,63,0.12)' : 'transparent',
-                    color: active ? '#D8FF3F' : 'rgba(245,242,234,0.7)',
-                    border: '1px solid',
-                    borderColor: active ? 'rgba(216,255,63,0.25)' : 'transparent',
-                    fontFamily: active ? 'Unbounded, sans-serif' : 'Inter, sans-serif',
+                    padding: '8px 12px',
+                    borderRadius: 6,
+                    background: active ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                    color: active ? '#EDEDEF' : '#8B909A',
+                    border: 'none',
                     fontSize: 13,
-                    fontWeight: active ? 700 : 500,
+                    fontWeight: active ? 600 : 400,
                     cursor: 'pointer',
                     textAlign: 'left',
-                    transition: 'all 0.15s ease',
+                    transition: 'all 0.1s ease',
                   }}
                 >
-                  <span style={{ fontSize: 16 }}>{item.icon}</span>
-                  <span>{item.label}</span>
+                  {item.label}
                 </button>
               )
             })}
@@ -386,21 +372,19 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         </div>
 
         {/* Bottom Actions */}
-        <div style={{ padding: '16px 14px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ padding: '16px', borderTop: '1px solid #1E2026' }}>
           <button
             onClick={() => setShowCreateModal(true)}
             style={{
               width: '100%',
-              background: '#D8FF3F',
-              color: '#0A0912',
+              background: '#EDEDEF',
+              color: '#0B0C0E',
               border: 'none',
-              borderRadius: 8,
-              padding: '10px 14px',
-              fontFamily: 'Unbounded, sans-serif',
+              borderRadius: 6,
+              padding: '9px 12px',
               fontSize: 12,
-              fontWeight: 800,
+              fontWeight: 600,
               cursor: 'pointer',
-              textTransform: 'uppercase',
               marginBottom: 8,
             }}
           >
@@ -412,10 +396,10 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             style={{
               width: '100%',
               background: 'transparent',
-              color: 'rgba(245,242,234,0.6)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 8,
-              padding: '8px 12px',
+              color: '#8B909A',
+              border: '1px solid #20232B',
+              borderRadius: 6,
+              padding: '7px 12px',
               fontSize: 12,
               cursor: 'pointer',
             }}
@@ -430,10 +414,9 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         {/* TOP STATUS BAR */}
         <header
           style={{
-            height: 68,
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-            background: 'rgba(17,16,24,0.85)',
-            backdropFilter: 'blur(12px)',
+            height: 60,
+            borderBottom: '1px solid #1E2026',
+            background: '#101216',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -444,29 +427,28 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <h1 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 16, fontWeight: 700, margin: 0 }}>
+            <h1 style={{ fontSize: 15, fontWeight: 600, color: '#EDEDEF', margin: 0 }}>
               {navItems.find(i => i.id === activeTab)?.label}
             </h1>
 
             {events.length > 0 && (
-              <span style={{ fontSize: 11, color: 'rgba(245,242,234,0.4)', fontFamily: 'JetBrains Mono, monospace' }}>
-                · {events.length} Assigned Event{events.length === 1 ? '' : 's'}
+              <span style={{ fontSize: 12, color: '#555962', fontFamily: 'JetBrains Mono, monospace' }}>
+                · {events.length} production{events.length === 1 ? '' : 's'}
               </span>
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            {/* Quick Event Switcher */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {events.length > 0 && (
               <select
                 value={selectedEventId || ''}
                 onChange={e => setSelectedEventId(e.target.value)}
                 style={{
-                  background: 'rgba(10,9,18,0.85)',
-                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: '#0E1013',
+                  border: '1px solid #282C36',
                   borderRadius: 6,
-                  padding: '6px 12px',
-                  color: '#F5F2EA',
+                  padding: '6px 10px',
+                  color: '#EDEDEF',
                   fontSize: 12,
                   fontFamily: 'JetBrains Mono, monospace',
                   cursor: 'pointer',
@@ -484,31 +466,31 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             <button
               onClick={() => void loadData()}
               style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: '#F5F2EA',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid #20232B',
+                color: '#8B909A',
                 borderRadius: 6,
                 padding: '6px 10px',
                 fontSize: 12,
                 cursor: 'pointer',
               }}
-              title="Refresh Data"
+              title="Refresh"
             >
-              🔄
+              Refresh
             </button>
           </div>
         </header>
 
-        {/* ERROR BANNER */}
+        {/* ERROR NOTIFICATION */}
         {error && (
           <div
             style={{
               margin: '16px 24px 0',
-              padding: '12px 18px',
-              borderRadius: 8,
-              background: 'rgba(255,107,107,0.15)',
-              border: '1px solid #FF6B6B',
-              color: '#FF6B6B',
+              padding: '12px 16px',
+              borderRadius: 6,
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              color: '#EF4444',
               fontSize: 13,
               display: 'flex',
               justifyContent: 'space-between',
@@ -518,7 +500,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             <span>{error}</span>
             <button
               onClick={() => void loadData()}
-              style={{ background: 'transparent', border: 'none', color: '#FF6B6B', cursor: 'pointer', textDecoration: 'underline' }}
+              style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', textDecoration: 'underline' }}
             >
               Retry
             </button>
@@ -596,8 +578,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             position: 'fixed',
             inset: 0,
             zIndex: 100,
-            background: 'rgba(0,0,0,0.85)',
-            backdropFilter: 'blur(6px)',
+            background: 'rgba(0,0,0,0.7)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -607,30 +588,30 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         >
           <div
             style={{
-              background: '#141220',
-              border: '1px solid rgba(216,255,63,0.3)',
-              borderRadius: 16,
+              background: '#14161C',
+              border: '1px solid #282C36',
+              borderRadius: 10,
               width: '100%',
-              maxWidth: 640,
-              padding: 28,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+              maxWidth: 600,
+              padding: 24,
+              boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 18,
+              gap: 16,
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h2 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 18, margin: 0, color: '#D8FF3F' }}>
+                <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: '#EDEDEF' }}>
                   Create Event Draft
                 </h2>
-                <div style={{ fontSize: 12, color: 'rgba(245,242,234,0.5)', marginTop: 4 }}>
-                  Save your draft now; configure ticket tiers and team members before submitting for review.
+                <div style={{ fontSize: 12, color: '#8B909A', marginTop: 2 }}>
+                  Set up event venue and timing details. You can configure ticket tiers next.
                 </div>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
-                style={{ background: 'transparent', border: 'none', color: '#F5F2EA', fontSize: 20, cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: '#8B909A', fontSize: 18, cursor: 'pointer' }}
               >
                 ✕
               </button>
@@ -638,22 +619,22 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
 
             <form onSubmit={handleCreateDraft} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
-                  EVENT NAME *
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                  EVENT TITLE *
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Neon Horizon Festival"
+                  placeholder="e.g. Saturday Night Session"
                   value={draftForm.name}
                   onChange={e => setDraftForm(prev => ({ ...prev, name: e.target.value }))}
                   required
                   style={{
                     width: '100%',
-                    background: 'rgba(10,9,18,0.85)',
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: '#0E1013',
+                    border: '1px solid #282C36',
                     borderRadius: 6,
-                    padding: '9px 12px',
-                    color: '#F5F2EA',
+                    padding: '8px 12px',
+                    color: '#EDEDEF',
                     fontSize: 13,
                   }}
                 />
@@ -661,42 +642,42 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                     CITY *
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Mumbai, Bengaluru, Goa"
+                    placeholder="e.g. Mumbai"
                     value={draftForm.city}
                     onChange={e => setDraftForm(prev => ({ ...prev, city: e.target.value }))}
                     required
                     style={{
                       width: '100%',
-                      background: 'rgba(10,9,18,0.85)',
-                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: '#0E1013',
+                      border: '1px solid #282C36',
                       borderRadius: 6,
-                      padding: '9px 12px',
-                      color: '#F5F2EA',
+                      padding: '8px 12px',
+                      color: '#EDEDEF',
                       fontSize: 13,
                     }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
-                    VENUE NAME
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                    VENUE
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. The Great Eastern Mills"
+                    placeholder="e.g. Blue Frog"
                     value={draftForm.venue}
                     onChange={e => setDraftForm(prev => ({ ...prev, venue: e.target.value }))}
                     style={{
                       width: '100%',
-                      background: 'rgba(10,9,18,0.85)',
-                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: '#0E1013',
+                      border: '1px solid #282C36',
                       borderRadius: 6,
-                      padding: '9px 12px',
-                      color: '#F5F2EA',
+                      padding: '8px 12px',
+                      color: '#EDEDEF',
                       fontSize: 13,
                     }}
                   />
@@ -705,8 +686,8 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
-                    EVENT START DATE & TIME
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                    START DATE & TIME
                   </label>
                   <input
                     type="datetime-local"
@@ -714,19 +695,19 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     onChange={e => setDraftForm(prev => ({ ...prev, startsAt: e.target.value }))}
                     style={{
                       width: '100%',
-                      background: 'rgba(10,9,18,0.85)',
-                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: '#0E1013',
+                      border: '1px solid #282C36',
                       borderRadius: 6,
-                      padding: '9px 12px',
-                      color: '#F5F2EA',
+                      padding: '8px 12px',
+                      color: '#EDEDEF',
                       fontSize: 12,
                       fontFamily: 'JetBrains Mono, monospace',
                     }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
-                    EVENT END DATE & TIME
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                    END DATE & TIME
                   </label>
                   <input
                     type="datetime-local"
@@ -734,11 +715,11 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     onChange={e => setDraftForm(prev => ({ ...prev, endsAt: e.target.value }))}
                     style={{
                       width: '100%',
-                      background: 'rgba(10,9,18,0.85)',
-                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: '#0E1013',
+                      border: '1px solid #282C36',
                       borderRadius: 6,
-                      padding: '9px 12px',
-                      color: '#F5F2EA',
+                      padding: '8px 12px',
+                      color: '#EDEDEF',
                       fontSize: 12,
                       fontFamily: 'JetBrains Mono, monospace',
                     }}
@@ -747,57 +728,57 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
-                  POSTER IMAGE URL (OPTIONAL)
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                  POSTER IMAGE URL
                 </label>
                 <input
                   type="url"
-                  placeholder="https://example.com/poster.jpg"
+                  placeholder="https://..."
                   value={draftForm.posterUrl}
                   onChange={e => setDraftForm(prev => ({ ...prev, posterUrl: e.target.value }))}
                   style={{
                     width: '100%',
-                    background: 'rgba(10,9,18,0.85)',
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: '#0E1013',
+                    border: '1px solid #282C36',
                     borderRadius: 6,
-                    padding: '9px 12px',
-                    color: '#F5F2EA',
+                    padding: '8px 12px',
+                    color: '#EDEDEF',
                     fontSize: 13,
                   }}
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
-                  DESCRIPTION
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                  EVENT DESCRIPTION
                 </label>
                 <textarea
-                  placeholder="Set times, genre, dress code, age limit, entry requirements..."
+                  placeholder="Lineup, entry requirements, age limit..."
                   value={draftForm.description}
                   onChange={e => setDraftForm(prev => ({ ...prev, description: e.target.value }))}
                   rows={3}
                   style={{
                     width: '100%',
-                    background: 'rgba(10,9,18,0.85)',
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: '#0E1013',
+                    border: '1px solid #282C36',
                     borderRadius: 6,
-                    padding: '9px 12px',
-                    color: '#F5F2EA',
+                    padding: '8px 12px',
+                    color: '#EDEDEF',
                     fontSize: 13,
                   }}
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
                   style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    color: 'rgba(245,242,234,0.7)',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: '#8B909A',
                     border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 8,
-                    padding: '10px 18px',
+                    borderRadius: 6,
+                    padding: '8px 16px',
                     fontSize: 12,
                     cursor: 'pointer',
                   }}
@@ -808,19 +789,17 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                   type="submit"
                   disabled={creatingDraft}
                   style={{
-                    background: '#D8FF3F',
-                    color: '#0A0912',
+                    background: '#EDEDEF',
+                    color: '#0B0C0E',
                     border: 'none',
-                    borderRadius: 8,
-                    padding: '10px 24px',
-                    fontFamily: 'Unbounded, sans-serif',
-                    fontWeight: 800,
+                    borderRadius: 6,
+                    padding: '8px 20px',
+                    fontWeight: 600,
                     fontSize: 12,
                     cursor: creatingDraft ? 'not-allowed' : 'pointer',
-                    textTransform: 'uppercase',
                   }}
                 >
-                  {creatingDraft ? 'Saving Draft…' : 'Save Event Draft'}
+                  {creatingDraft ? 'Saving…' : 'Save Draft'}
                 </button>
               </div>
             </form>
@@ -837,8 +816,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             position: 'fixed',
             inset: 0,
             zIndex: 100,
-            background: 'rgba(0,0,0,0.85)',
-            backdropFilter: 'blur(6px)',
+            background: 'rgba(0,0,0,0.7)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -848,30 +826,30 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         >
           <div
             style={{
-              background: '#141220',
-              border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: 16,
+              background: '#14161C',
+              border: '1px solid #282C36',
+              borderRadius: 10,
               width: '100%',
-              maxWidth: 640,
-              padding: 28,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+              maxWidth: 600,
+              padding: 24,
+              boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 18,
+              gap: 16,
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h2 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 18, margin: 0, color: '#F5F2EA' }}>
+                <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: '#EDEDEF' }}>
                   Edit Event Details
                 </h2>
-                <div style={{ fontSize: 12, color: 'rgba(245,242,234,0.5)', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: '#8B909A', marginTop: 2 }}>
                   {editingEvent.name}
                 </div>
               </div>
               <button
                 onClick={() => setEditingEvent(null)}
-                style={{ background: 'transparent', border: 'none', color: '#F5F2EA', fontSize: 20, cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: '#8B909A', fontSize: 18, cursor: 'pointer' }}
               >
                 ✕
               </button>
@@ -879,8 +857,8 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
 
             <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
-                  EVENT NAME
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                  EVENT TITLE
                 </label>
                 <input
                   type="text"
@@ -889,11 +867,11 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                   required
                   style={{
                     width: '100%',
-                    background: 'rgba(10,9,18,0.85)',
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: '#0E1013',
+                    border: '1px solid #282C36',
                     borderRadius: 6,
-                    padding: '9px 12px',
-                    color: '#F5F2EA',
+                    padding: '8px 12px',
+                    color: '#EDEDEF',
                     fontSize: 13,
                   }}
                 />
@@ -901,7 +879,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                     CITY
                   </label>
                   <input
@@ -910,17 +888,17 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     onChange={e => setEditForm(prev => ({ ...prev, city: e.target.value }))}
                     style={{
                       width: '100%',
-                      background: 'rgba(10,9,18,0.85)',
-                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: '#0E1013',
+                      border: '1px solid #282C36',
                       borderRadius: 6,
-                      padding: '9px 12px',
-                      color: '#F5F2EA',
+                      padding: '8px 12px',
+                      color: '#EDEDEF',
                       fontSize: 13,
                     }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                     VENUE
                   </label>
                   <input
@@ -929,11 +907,11 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     onChange={e => setEditForm(prev => ({ ...prev, venue: e.target.value }))}
                     style={{
                       width: '100%',
-                      background: 'rgba(10,9,18,0.85)',
-                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: '#0E1013',
+                      border: '1px solid #282C36',
                       borderRadius: 6,
-                      padding: '9px 12px',
-                      color: '#F5F2EA',
+                      padding: '8px 12px',
+                      color: '#EDEDEF',
                       fontSize: 13,
                     }}
                   />
@@ -942,7 +920,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                     START DATE & TIME
                   </label>
                   <input
@@ -951,18 +929,18 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     onChange={e => setEditForm(prev => ({ ...prev, startsAt: e.target.value }))}
                     style={{
                       width: '100%',
-                      background: 'rgba(10,9,18,0.85)',
-                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: '#0E1013',
+                      border: '1px solid #282C36',
                       borderRadius: 6,
-                      padding: '9px 12px',
-                      color: '#F5F2EA',
+                      padding: '8px 12px',
+                      color: '#EDEDEF',
                       fontSize: 12,
                       fontFamily: 'JetBrains Mono, monospace',
                     }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                     END DATE & TIME
                   </label>
                   <input
@@ -971,11 +949,11 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     onChange={e => setEditForm(prev => ({ ...prev, endsAt: e.target.value }))}
                     style={{
                       width: '100%',
-                      background: 'rgba(10,9,18,0.85)',
-                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: '#0E1013',
+                      border: '1px solid #282C36',
                       borderRadius: 6,
-                      padding: '9px 12px',
-                      color: '#F5F2EA',
+                      padding: '8px 12px',
+                      color: '#EDEDEF',
                       fontSize: 12,
                       fontFamily: 'JetBrains Mono, monospace',
                     }}
@@ -984,7 +962,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                   POSTER IMAGE URL
                 </label>
                 <input
@@ -993,18 +971,18 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                   onChange={e => setEditForm(prev => ({ ...prev, posterUrl: e.target.value }))}
                   style={{
                     width: '100%',
-                    background: 'rgba(10,9,18,0.85)',
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: '#0E1013',
+                    border: '1px solid #282C36',
                     borderRadius: 6,
-                    padding: '9px 12px',
-                    color: '#F5F2EA',
+                    padding: '8px 12px',
+                    color: '#EDEDEF',
                     fontSize: 13,
                   }}
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                   DESCRIPTION
                 </label>
                 <textarea
@@ -1013,26 +991,26 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                   rows={3}
                   style={{
                     width: '100%',
-                    background: 'rgba(10,9,18,0.85)',
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: '#0E1013',
+                    border: '1px solid #282C36',
                     borderRadius: 6,
-                    padding: '9px 12px',
-                    color: '#F5F2EA',
+                    padding: '8px 12px',
+                    color: '#EDEDEF',
                     fontSize: 13,
                   }}
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
                 <button
                   type="button"
                   onClick={() => setEditingEvent(null)}
                   style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    color: 'rgba(245,242,234,0.7)',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: '#8B909A',
                     border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 8,
-                    padding: '10px 18px',
+                    borderRadius: 6,
+                    padding: '8px 16px',
                     fontSize: 12,
                     cursor: 'pointer',
                   }}
@@ -1043,16 +1021,14 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                   type="submit"
                   disabled={savingEdit}
                   style={{
-                    background: '#D8FF3F',
-                    color: '#0A0912',
+                    background: '#EDEDEF',
+                    color: '#0B0C0E',
                     border: 'none',
-                    borderRadius: 8,
-                    padding: '10px 24px',
-                    fontFamily: 'Unbounded, sans-serif',
-                    fontWeight: 800,
+                    borderRadius: 6,
+                    padding: '8px 20px',
+                    fontWeight: 600,
                     fontSize: 12,
                     cursor: savingEdit ? 'not-allowed' : 'pointer',
-                    textTransform: 'uppercase',
                   }}
                 >
                   {savingEdit ? 'Saving…' : 'Save Changes'}

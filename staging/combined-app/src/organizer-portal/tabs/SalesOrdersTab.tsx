@@ -16,7 +16,6 @@ export default function SalesOrdersTab({
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
 
-  // Gather orders based on selected event or all events
   const allOrders = useMemo(() => {
     const list: Array<OrganizerOrder & { eventName: string; eventId: string }> = []
     events.forEach(e => {
@@ -29,7 +28,6 @@ export default function SalesOrdersTab({
     return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
   }, [events, selectedEventId])
 
-  // Filter orders
   const filteredOrders = useMemo(() => {
     return allOrders.filter(order => {
       const matchChannel = channelFilter === 'all' || order.channel === channelFilter
@@ -47,13 +45,11 @@ export default function SalesOrdersTab({
     })
   }, [allOrders, channelFilter, statusFilter, searchTerm])
 
-  // Aggregate metrics
   const totalAmount = filteredOrders.reduce((sum, o) => sum + (o.amount || 0), 0)
   const totalAdmissions = filteredOrders.reduce((sum, o) => sum + (o.admissions || 0), 0)
   const onlineCount = filteredOrders.filter(o => o.channel === 'online').length
   const offlineCount = filteredOrders.filter(o => o.channel === 'offline').length
 
-  // CSV Export
   const exportCSV = () => {
     if (!filteredOrders.length) return
     const headers = ['Order ID', 'Ticket ID', 'Event', 'Category', 'Channel', 'Seller/PR', 'Admissions', 'Amount (INR)', 'Status', 'Payment Status', 'Created At']
@@ -75,7 +71,7 @@ export default function SalesOrdersTab({
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', `stageway_sales_${Date.now()}.csv`)
+    link.setAttribute('download', `stageway_orders_${Date.now()}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -91,29 +87,28 @@ export default function SalesOrdersTab({
           alignItems: 'center',
           gap: 14,
           flexWrap: 'wrap',
-          background: 'rgba(20,16,38,0.7)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 14,
+          background: '#14161C',
+          border: '1px solid #20232B',
+          borderRadius: 10,
           padding: 16,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flex: 1 }}>
-          {/* Event Filter */}
           <select
             value={selectedEventId || 'all'}
             onChange={e => onSelectEventId(e.target.value)}
             style={{
-              background: 'rgba(10,9,18,0.85)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: 8,
+              background: '#0E1013',
+              border: '1px solid #282C36',
+              borderRadius: 6,
               padding: '8px 12px',
-              color: '#F5F2EA',
+              color: '#EDEDEF',
               fontSize: 13,
-              fontWeight: 600,
+              fontWeight: 500,
               cursor: 'pointer',
             }}
           >
-            <option value="all">All Events ({events.length})</option>
+            <option value="all">All Productions ({events.length})</option>
             {events.map(e => (
               <option key={e.eventId} value={e.eventId}>
                 {e.name}
@@ -121,34 +116,32 @@ export default function SalesOrdersTab({
             ))}
           </select>
 
-          {/* Search Box */}
           <input
             type="text"
             placeholder="Search Order ID, Ticket ID, Seller..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             style={{
-              background: 'rgba(10,9,18,0.85)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: 8,
-              padding: '8px 14px',
-              color: '#F5F2EA',
+              background: '#0E1013',
+              border: '1px solid #282C36',
+              borderRadius: 6,
+              padding: '8px 12px',
+              color: '#EDEDEF',
               fontSize: 13,
               minWidth: 240,
             }}
           />
 
-          {/* Channel Filters */}
           <div style={{ display: 'flex', gap: 6 }}>
             {(['all', 'online', 'offline'] as const).map(ch => (
               <button
                 key={ch}
                 onClick={() => setChannelFilter(ch)}
                 style={{
-                  background: channelFilter === ch ? '#D8FF3F' : 'rgba(255,255,255,0.05)',
-                  color: channelFilter === ch ? '#0A0912' : 'rgba(245,242,234,0.7)',
+                  background: channelFilter === ch ? '#EDEDEF' : 'rgba(255,255,255,0.04)',
+                  color: channelFilter === ch ? '#0B0C0E' : '#8B909A',
                   border: '1px solid',
-                  borderColor: channelFilter === ch ? '#D8FF3F' : 'rgba(255,255,255,0.08)',
+                  borderColor: channelFilter === ch ? '#EDEDEF' : 'rgba(255,255,255,0.08)',
                   borderRadius: 6,
                   padding: '6px 12px',
                   fontSize: 11,
@@ -163,16 +156,15 @@ export default function SalesOrdersTab({
             ))}
           </div>
 
-          {/* Status Filter */}
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
             style={{
-              background: 'rgba(10,9,18,0.85)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: 8,
+              background: '#0E1013',
+              border: '1px solid #282C36',
+              borderRadius: 6,
               padding: '8px 12px',
-              color: '#F5F2EA',
+              color: '#EDEDEF',
               fontSize: 12,
               fontFamily: 'JetBrains Mono, monospace',
               cursor: 'pointer',
@@ -189,81 +181,79 @@ export default function SalesOrdersTab({
           onClick={exportCSV}
           disabled={!filteredOrders.length}
           style={{
-            background: 'rgba(255,255,255,0.08)',
-            color: '#F5F2EA',
-            border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: 8,
-            padding: '8px 16px',
+            background: 'rgba(255,255,255,0.06)',
+            color: '#EDEDEF',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 6,
+            padding: '8px 14px',
             fontSize: 12,
             fontFamily: 'JetBrains Mono, monospace',
-            fontWeight: 600,
             cursor: filteredOrders.length ? 'pointer' : 'not-allowed',
-            opacity: filteredOrders.length ? 1 : 0.5,
+            opacity: filteredOrders.length ? 1 : 0.4,
           }}
         >
           ⬇ Export CSV ({filteredOrders.length})
         </button>
       </div>
 
-      {/* SUMMARY STATS BAR */}
+      {/* METRIC STRIP */}
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: 12,
-          background: 'rgba(20,16,38,0.85)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 12,
+          background: '#14161C',
+          border: '1px solid #20232B',
+          borderRadius: 10,
           padding: '14px 18px',
         }}
       >
         <div>
-          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)' }}>
+          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
             FILTERED REVENUE
           </div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: '#D8FF3F', marginTop: 4 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#EDEDEF', marginTop: 4 }}>
             ₹{totalAmount.toLocaleString()}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)' }}>
+          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
             TOTAL ORDERS
           </div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: '#F5F2EA', marginTop: 4 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#EDEDEF', marginTop: 4 }}>
             {filteredOrders.length}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)' }}>
-            TOTAL ADMISSIONS
+          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
+            ADMISSIONS
           </div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: '#31E7C8', marginTop: 4 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#EDEDEF', marginTop: 4 }}>
             {totalAdmissions} pax
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)' }}>
-            CHANNEL SPLIT
+          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
+            CHANNELS
           </div>
-          <div style={{ fontSize: 13, color: 'rgba(245,242,234,0.8)', marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>
-            <span style={{ color: '#31E7C8' }}>{onlineCount} Online</span> ·{' '}
-            <span style={{ color: '#F5B942' }}>{offlineCount} Offline/PR</span>
+          <div style={{ fontSize: 13, color: '#8B909A', marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>
+            {onlineCount} Online · {offlineCount} Offline/PR
           </div>
         </div>
       </div>
 
-      {/* ORDERS DATA TABLE */}
+      {/* DATA TABLE */}
       <div
         style={{
-          background: 'rgba(20,16,38,0.9)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 14,
+          background: '#14161C',
+          border: '1px solid #20232B',
+          borderRadius: 10,
           overflow: 'hidden',
         }}
       >
         {filteredOrders.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 20px', color: 'rgba(245,242,234,0.4)', fontSize: 13 }}>
-            No orders found matching the filter criteria.
+          <div style={{ textAlign: 'center', padding: '48px 20px', color: '#555962', fontSize: 13 }}>
+            No orders match the filter criteria.
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -271,115 +261,119 @@ export default function SalesOrdersTab({
               <thead>
                 <tr
                   style={{
-                    borderBottom: '1px solid rgba(255,255,255,0.1)',
-                    background: 'rgba(10,9,18,0.6)',
-                    color: 'rgba(245,242,234,0.5)',
+                    borderBottom: '1px solid #20232B',
+                    background: '#0E1013',
+                    color: '#8B909A',
                     fontFamily: 'JetBrains Mono, monospace',
                     fontSize: 11,
                   }}
                 >
-                  <th style={{ padding: '12px 14px' }}>ORDER ID / QR</th>
-                  <th style={{ padding: '12px 14px' }}>EVENT</th>
-                  <th style={{ padding: '12px 14px' }}>TIER</th>
-                  <th style={{ padding: '12px 14px' }}>STATE</th>
-                  <th style={{ padding: '12px 14px' }}>CHANNEL</th>
-                  <th style={{ padding: '12px 14px' }}>ADMISSIONS</th>
-                  <th style={{ padding: '12px 14px' }}>AMOUNT</th>
-                  <th style={{ padding: '12px 14px' }}>GATE SCAN</th>
-                  <th style={{ padding: '12px 14px' }}>DATE</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 500 }}>ORDER / QR</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 500 }}>EVENT</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 500 }}>TIER</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 500 }}>STATE</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 500 }}>CHANNEL</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 500 }}>ADMISSIONS</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 500 }}>AMOUNT</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 500 }}>GATE SCAN</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 500 }}>DATE</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map(order => (
-                  <tr
-                    key={order.orderId}
-                    style={{
-                      borderBottom: '1px solid rgba(255,255,255,0.04)',
-                      transition: 'background 0.2s',
-                    }}
-                  >
-                    <td style={{ padding: '12px 14px' }}>
-                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, color: '#F5F2EA' }}>
-                        {order.orderId}
-                      </div>
-                      <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.4)', marginTop: 2 }}>
-                        {order.ticketId ? `QR: ${order.ticketId.slice(0, 16)}…` : 'No QR'}
-                      </div>
-                    </td>
-                    <td style={{ padding: '12px 14px', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {order.eventName}
-                    </td>
-                    <td style={{ padding: '12px 14px', color: '#D8FF3F', fontWeight: 600 }}>
-                      {order.ticketType}
-                    </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontFamily: 'JetBrains Mono, monospace',
-                          textTransform: 'uppercase',
-                          fontWeight: 700,
-                          padding: '3px 8px',
-                          borderRadius: 4,
-                          background:
-                            order.status === 'confirmed' || order.status === 'completed'
-                              ? 'rgba(49,231,200,0.15)'
-                              : order.status === 'pending'
-                              ? 'rgba(245,185,66,0.15)'
-                              : 'rgba(255,107,107,0.15)',
-                          color:
-                            order.status === 'confirmed' || order.status === 'completed'
-                              ? '#31E7C8'
-                              : order.status === 'pending'
-                              ? '#F5B942'
-                              : '#FF6B6B',
-                        }}
-                      >
-                        {order.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontFamily: 'JetBrains Mono, monospace',
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: order.channel === 'online' ? 'rgba(56,217,196,0.12)' : 'rgba(245,185,66,0.12)',
-                          color: order.channel === 'online' ? '#31E7C8' : '#F5B942',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {order.channel}
-                      </span>
-                      {order.sellerName && (
-                        <div style={{ fontSize: 10, color: 'rgba(245,242,234,0.5)', marginTop: 2 }}>
-                          {order.sellerName}
+                {filteredOrders.map(order => {
+                  const isConfirmed = order.status === 'confirmed' || order.status === 'completed'
+                  const isPending = order.status === 'pending'
+
+                  return (
+                    <tr
+                      key={order.orderId}
+                      style={{ borderBottom: '1px solid #1A1D24' }}
+                    >
+                      <td style={{ padding: '12px 14px' }}>
+                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, color: '#EDEDEF' }}>
+                          {order.orderId}
                         </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 14px', fontFamily: 'JetBrains Mono, monospace' }}>
-                      {order.admissions} pax
-                    </td>
-                    <td style={{ padding: '12px 14px', fontWeight: 700, color: '#F5F2EA' }}>
-                      {order.amount !== null ? `₹${Number(order.amount).toLocaleString()}` : 'Unverified'}
-                    </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      {order.scannedAdmissions > 0 ? (
-                        <span style={{ fontSize: 11, color: '#31E7C8', fontFamily: 'JetBrains Mono, monospace' }}>
-                          ✅ {order.scannedAdmissions}/{order.admissions} admitted
+                        <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#555962', marginTop: 2 }}>
+                          {order.ticketId ? `QR: ${order.ticketId.slice(0, 16)}…` : 'No QR'}
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px 14px', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#8B909A' }}>
+                        {order.eventName}
+                      </td>
+                      <td style={{ padding: '12px 14px', color: '#EDEDEF', fontWeight: 500 }}>
+                        {order.ticketType}
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontFamily: 'JetBrains Mono, monospace',
+                            textTransform: 'uppercase',
+                            fontWeight: 600,
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            background: isConfirmed
+                              ? 'rgba(16, 185, 129, 0.1)'
+                              : isPending
+                              ? 'rgba(245, 158, 11, 0.1)'
+                              : 'rgba(239, 68, 68, 0.1)',
+                            color: isConfirmed ? '#10B981' : isPending ? '#F59E0B' : '#EF4444',
+                            border: `1px solid ${
+                              isConfirmed
+                                ? 'rgba(16, 185, 129, 0.25)'
+                                : isPending
+                                ? 'rgba(245, 158, 11, 0.25)'
+                                : 'rgba(239, 68, 68, 0.25)'
+                            }`,
+                          }}
+                        >
+                          {order.status}
                         </span>
-                      ) : (
-                        <span style={{ fontSize: 11, color: 'rgba(245,242,234,0.4)', fontFamily: 'JetBrains Mono, monospace' }}>
-                          Not checked in
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontFamily: 'JetBrains Mono, monospace',
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: order.channel === 'online' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                            color: order.channel === 'online' ? '#60A5FA' : '#8B909A',
+                            border: `1px solid ${order.channel === 'online' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {order.channel}
                         </span>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 14px', fontSize: 11, color: 'rgba(245,242,234,0.5)', fontFamily: 'JetBrains Mono, monospace' }}>
-                      {order.createdAt ? new Date(order.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
-                    </td>
-                  </tr>
-                ))}
+                        {order.sellerName && (
+                          <div style={{ fontSize: 10, color: '#8B909A', marginTop: 2 }}>
+                            {order.sellerName}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 14px', fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
+                        {order.admissions} pax
+                      </td>
+                      <td style={{ padding: '12px 14px', fontWeight: 600, color: '#EDEDEF' }}>
+                        {order.amount !== null ? `₹${Number(order.amount).toLocaleString()}` : 'Unverified'}
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        {order.scannedAdmissions > 0 ? (
+                          <span style={{ fontSize: 11, color: '#10B981', fontFamily: 'JetBrains Mono, monospace' }}>
+                            ✓ {order.scannedAdmissions}/{order.admissions} checked in
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: '#555962', fontFamily: 'JetBrains Mono, monospace' }}>
+                            Unscanned
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 14px', fontSize: 11, color: '#555962', fontFamily: 'JetBrains Mono, monospace' }}>
+                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

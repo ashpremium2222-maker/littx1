@@ -20,7 +20,7 @@ export default function ProfileTab({ profile, onSaveProfile }: ProfileTabProps) 
     setSuccess('')
     try {
       await onSaveProfile(displayName, organizationName)
-      setSuccess('Profile updated successfully!')
+      setSuccess('Profile updated successfully.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save profile.')
     } finally {
@@ -29,39 +29,39 @@ export default function ProfileTab({ profile, onSaveProfile }: ProfileTabProps) 
   }
 
   return (
-    <div style={{ maxWidth: 840, display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ maxWidth: 780, display: 'flex', flexDirection: 'column', gap: 20 }}>
       {error && (
-        <div role="alert" style={{ background: 'rgba(255,107,107,0.15)', border: '1px solid #FF6B6B', borderRadius: 10, padding: '12px 16px', color: '#FF6B6B', fontSize: 13 }}>
+        <div role="alert" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 8, padding: '12px 16px', color: '#EF4444', fontSize: 13 }}>
           {error}
         </div>
       )}
 
       {success && (
-        <div role="status" style={{ background: 'rgba(49,231,200,0.15)', border: '1px solid #31E7C8', borderRadius: 10, padding: '12px 16px', color: '#31E7C8', fontSize: 13 }}>
+        <div role="status" style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 8, padding: '12px 16px', color: '#10B981', fontSize: 13 }}>
           {success}
         </div>
       )}
 
       <div
         style={{
-          background: 'rgba(20,16,38,0.9)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 14,
+          background: '#14161C',
+          border: '1px solid #20232B',
+          borderRadius: 10,
           padding: 24,
         }}
       >
         <div style={{ marginBottom: 20 }}>
-          <h2 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 18, margin: '0 0 6px', color: '#F5F2EA' }}>
-            Organizer Brand Profile
+          <h2 style={{ fontSize: 17, fontWeight: 600, margin: '0 0 4px', color: '#EDEDEF' }}>
+            Organization Entity Profile
           </h2>
-          <p style={{ fontSize: 12, color: 'rgba(245,242,234,0.6)', margin: 0 }}>
-            Your organization name appears on event listings, buyer confirmation emails, and digital QR ticket passes.
+          <p style={{ fontSize: 12, color: '#8B909A', margin: 0 }}>
+            This legal name appears on buyer transaction receipts, ticket passes, and tax invoices.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
               ORGANIZATION / COMPANY NAME
             </label>
             <input
@@ -73,20 +73,20 @@ export default function ProfileTab({ profile, onSaveProfile }: ProfileTabProps) 
               required
               style={{
                 width: '100%',
-                background: 'rgba(10,9,18,0.85)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 8,
-                padding: '10px 14px',
-                color: '#F5F2EA',
-                fontSize: 14,
-                fontWeight: 600,
+                background: '#0E1013',
+                border: '1px solid #282C36',
+                borderRadius: 6,
+                padding: '9px 12px',
+                color: '#EDEDEF',
+                fontSize: 13,
+                fontWeight: 500,
               }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 6 }}>
-              CONTACT REPRESENTATIVE NAME
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+              PRIMARY CONTACT NAME
             </label>
             <input
               type="text"
@@ -97,57 +97,54 @@ export default function ProfileTab({ profile, onSaveProfile }: ProfileTabProps) 
               required
               style={{
                 width: '100%',
-                background: 'rgba(10,9,18,0.85)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 8,
-                padding: '10px 14px',
-                color: '#F5F2EA',
-                fontSize: 14,
+                background: '#0E1013',
+                border: '1px solid #282C36',
+                borderRadius: 6,
+                padding: '9px 12px',
+                color: '#EDEDEF',
+                fontSize: 13,
               }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 6 }}>
-              VERIFIED CONTACT EMAIL
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+              VERIFIED IDENTITY EMAIL
             </label>
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                background: 'rgba(10,9,18,0.5)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 8,
-                padding: '10px 14px',
-                color: 'rgba(245,242,234,0.7)',
+                background: '#0E1013',
+                border: '1px solid #1C1F26',
+                borderRadius: 6,
+                padding: '9px 12px',
+                color: '#8B909A',
                 fontSize: 13,
                 fontFamily: 'JetBrains Mono, monospace',
               }}
             >
               <span>{profile.verifiedEmail || 'No email associated'}</span>
               {profile.emailVerified && (
-                <span style={{ fontSize: 10, background: 'rgba(49,231,200,0.15)', color: '#31E7C8', padding: '2px 6px', borderRadius: 4 }}>
+                <span style={{ fontSize: 10, background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', padding: '1px 6px', borderRadius: 4 }}>
                   VERIFIED
                 </span>
               )}
             </div>
-            <div style={{ fontSize: 11, color: 'rgba(245,242,234,0.4)', marginTop: 4 }}>
-              Contact email is locked for account security. Changing it requires platform re-verification.
-            </div>
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 6 }}>
-              COMPANY IDENTIFIER
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+              TENANT COMPANY ID
             </label>
             <div
               style={{
-                background: 'rgba(10,9,18,0.5)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 8,
-                padding: '10px 14px',
-                color: 'rgba(245,242,234,0.5)',
+                background: '#0E1013',
+                border: '1px solid #1C1F26',
+                borderRadius: 6,
+                padding: '9px 12px',
+                color: '#555962',
                 fontSize: 12,
                 fontFamily: 'JetBrains Mono, monospace',
               }}
@@ -156,21 +153,19 @@ export default function ProfileTab({ profile, onSaveProfile }: ProfileTabProps) 
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
             <button
               type="submit"
               disabled={saving}
               style={{
-                background: '#D8FF3F',
-                color: '#0A0912',
+                background: '#EDEDEF',
+                color: '#0B0C0E',
                 border: 'none',
-                padding: '12px 24px',
-                borderRadius: 8,
-                fontFamily: 'Unbounded, sans-serif',
-                fontWeight: 700,
+                padding: '10px 20px',
+                borderRadius: 6,
+                fontWeight: 600,
                 fontSize: 12,
                 cursor: saving ? 'not-allowed' : 'pointer',
-                textTransform: 'uppercase',
               }}
             >
               {saving ? 'Saving…' : 'Save Profile Changes'}

@@ -32,12 +32,12 @@ export default function TicketTiersTab({
     return (
       <div
         style={{
-          background: 'rgba(20,16,38,0.7)',
-          border: '1px dashed rgba(255,255,255,0.1)',
-          borderRadius: 14,
+          background: '#14161C',
+          border: '1px dashed #282C36',
+          borderRadius: 10,
           padding: 48,
           textAlign: 'center',
-          color: 'rgba(245,242,234,0.5)',
+          color: '#555962',
         }}
       >
         No events found. Please create an event draft first to configure ticket categories.
@@ -78,7 +78,6 @@ export default function TicketTiersTab({
     setError('')
     setSuccess('')
 
-    // Validate that all categories have names
     const emptyName = categories.some(c => !c.name.trim())
     if (emptyName) {
       setError('All ticket categories must have a name.')
@@ -106,26 +105,25 @@ export default function TicketTiersTab({
           alignItems: 'center',
           gap: 16,
           flexWrap: 'wrap',
-          background: 'rgba(20,16,38,0.7)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 14,
+          background: '#14161C',
+          border: '1px solid #20232B',
+          borderRadius: 10,
           padding: '14px 18px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label style={{ fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.6)', textTransform: 'uppercase' }}>
+          <label style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase' }}>
             Event:
           </label>
           <select
             value={activeEvent.eventId}
             onChange={e => onSelectEventId(e.target.value)}
             style={{
-              background: 'rgba(10,9,18,0.9)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: 8,
-              padding: '8px 14px',
-              color: '#F5F2EA',
-              fontFamily: 'Unbounded, sans-serif',
+              background: '#0E1013',
+              border: '1px solid #282C36',
+              borderRadius: 6,
+              padding: '8px 12px',
+              color: '#EDEDEF',
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
@@ -143,47 +141,45 @@ export default function TicketTiersTab({
               fontSize: 10,
               fontFamily: 'JetBrains Mono, monospace',
               textTransform: 'uppercase',
-              fontWeight: 700,
-              padding: '3px 8px',
+              fontWeight: 600,
+              padding: '2px 8px',
               borderRadius: 4,
-              background: 'rgba(216,255,63,0.12)',
-              color: '#D8FF3F',
+              background: 'rgba(255,255,255,0.05)',
+              color: '#8B909A',
+              border: '1px solid rgba(255,255,255,0.1)',
             }}
           >
             {activeEvent.status}
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            onClick={addCategory}
-            style={{
-              background: 'rgba(255,255,255,0.08)',
-              color: '#F5F2EA',
-              border: '1px solid rgba(255,255,255,0.14)',
-              borderRadius: 8,
-              padding: '8px 16px',
-              fontSize: 12,
-              fontFamily: 'JetBrains Mono, monospace',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            + Add Tier
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={addCategory}
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            color: '#EDEDEF',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 6,
+            padding: '7px 14px',
+            fontSize: 12,
+            fontWeight: 500,
+            cursor: 'pointer',
+          }}
+        >
+          + Add Category Tier
+        </button>
       </div>
 
       {error && (
         <div
           role="alert"
           style={{
-            background: 'rgba(255,107,107,0.15)',
-            border: '1px solid #FF6B6B',
-            borderRadius: 10,
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            borderRadius: 8,
             padding: '12px 16px',
-            color: '#FF6B6B',
+            color: '#EF4444',
             fontSize: 13,
           }}
         >
@@ -195,11 +191,11 @@ export default function TicketTiersTab({
         <div
           role="status"
           style={{
-            background: 'rgba(49,231,200,0.15)',
-            border: '1px solid #31E7C8',
-            borderRadius: 10,
+            background: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            borderRadius: 8,
             padding: '12px 16px',
-            color: '#31E7C8',
+            color: '#10B981',
             fontSize: 13,
           }}
         >
@@ -212,27 +208,26 @@ export default function TicketTiersTab({
         {categories.length === 0 ? (
           <div
             style={{
-              background: 'rgba(20,16,38,0.6)',
-              border: '1px dashed rgba(255,255,255,0.1)',
-              borderRadius: 14,
+              background: '#14161C',
+              border: '1px dashed #282C36',
+              borderRadius: 10,
               padding: 40,
               textAlign: 'center',
             }}
           >
-            <p style={{ color: 'rgba(245,242,234,0.6)', margin: '0 0 16px' }}>
-              No ticket tiers created for {activeEvent.name}. Add your first tier (e.g., General Admission, VIP, Group Pass).
+            <p style={{ color: '#8B909A', margin: '0 0 16px', fontSize: 13 }}>
+              No ticket tiers created for {activeEvent.name}.
             </p>
             <button
               type="button"
               onClick={addCategory}
               style={{
-                background: '#D8FF3F',
-                color: '#0A0912',
+                background: '#EDEDEF',
+                color: '#0B0C0E',
                 border: 'none',
                 padding: '10px 20px',
-                borderRadius: 8,
-                fontFamily: 'Unbounded, sans-serif',
-                fontWeight: 700,
+                borderRadius: 6,
+                fontWeight: 600,
                 fontSize: 12,
                 cursor: 'pointer',
               }}
@@ -252,19 +247,19 @@ export default function TicketTiersTab({
                 <div
                   key={cat.id || index}
                   style={{
-                    background: 'rgba(20,16,38,0.9)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 14,
+                    background: '#14161C',
+                    border: '1px solid #20232B',
+                    borderRadius: 10,
                     padding: 18,
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 14,
                   }}
                 >
-                  {/* Row 1: Name, Price, Status, Delete */}
+                  {/* Grid Fields */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'center' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                         TIER NAME
                       </label>
                       <input
@@ -275,18 +270,19 @@ export default function TicketTiersTab({
                         required
                         style={{
                           width: '100%',
-                          background: 'rgba(10,9,18,0.8)',
-                          border: '1px solid rgba(255,255,255,0.15)',
+                          background: '#0E1013',
+                          border: '1px solid #282C36',
                           borderRadius: 6,
                           padding: '8px 12px',
-                          color: '#F5F2EA',
-                          fontWeight: 600,
+                          color: '#EDEDEF',
+                          fontWeight: 500,
+                          fontSize: 13,
                         }}
                       />
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                         PRICE ({cat.currency || 'INR'})
                       </label>
                       <input
@@ -298,42 +294,44 @@ export default function TicketTiersTab({
                         required
                         style={{
                           width: '100%',
-                          background: 'rgba(10,9,18,0.8)',
-                          border: '1px solid rgba(255,255,255,0.15)',
+                          background: '#0E1013',
+                          border: '1px solid #282C36',
                           borderRadius: 6,
                           padding: '8px 12px',
-                          color: '#D8FF3F',
+                          color: '#EDEDEF',
                           fontFamily: 'JetBrains Mono, monospace',
-                          fontWeight: 700,
+                          fontWeight: 600,
+                          fontSize: 13,
                         }}
                       />
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                         TOTAL CAPACITY
                       </label>
                       <input
                         type="number"
                         min="0"
-                        placeholder="Unlimited if empty"
+                        placeholder="Unlimited"
                         value={cat.totalInventory ?? ''}
                         onChange={e => updateCategory(index, { totalInventory: e.target.value === '' ? null : Number(e.target.value) })}
                         style={{
                           width: '100%',
-                          background: 'rgba(10,9,18,0.8)',
-                          border: '1px solid rgba(255,255,255,0.15)',
+                          background: '#0E1013',
+                          border: '1px solid #282C36',
                           borderRadius: 6,
                           padding: '8px 12px',
-                          color: '#F5F2EA',
+                          color: '#EDEDEF',
                           fontFamily: 'JetBrains Mono, monospace',
+                          fontSize: 13,
                         }}
                       />
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
-                        GROUP SIZE (PAX PER QR)
+                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                        ADMISSIONS / QR
                       </label>
                       <input
                         type="number"
@@ -343,18 +341,19 @@ export default function TicketTiersTab({
                         onChange={e => updateCategory(index, { groupSize: Number(e.target.value) })}
                         style={{
                           width: '100%',
-                          background: 'rgba(10,9,18,0.8)',
-                          border: '1px solid rgba(255,255,255,0.15)',
+                          background: '#0E1013',
+                          border: '1px solid #282C36',
                           borderRadius: 6,
                           padding: '8px 12px',
-                          color: '#F5F2EA',
+                          color: '#EDEDEF',
                           fontFamily: 'JetBrains Mono, monospace',
+                          fontSize: 13,
                         }}
                       />
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(245,242,234,0.5)', marginBottom: 4 }}>
+                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
                         STATUS
                       </label>
                       <select
@@ -362,13 +361,14 @@ export default function TicketTiersTab({
                         onChange={e => updateCategory(index, { status: e.target.value })}
                         style={{
                           width: '100%',
-                          background: 'rgba(10,9,18,0.8)',
-                          border: '1px solid rgba(255,255,255,0.15)',
+                          background: '#0E1013',
+                          border: '1px solid #282C36',
                           borderRadius: 6,
                           padding: '8px 12px',
-                          color: cat.status === 'active' ? '#31E7C8' : cat.status === 'sold_out' ? '#FF2E7E' : '#F5B942',
+                          color: cat.status === 'active' ? '#10B981' : cat.status === 'sold_out' ? '#EF4444' : '#F59E0B',
                           fontFamily: 'JetBrains Mono, monospace',
-                          fontWeight: 600,
+                          fontWeight: 500,
+                          fontSize: 13,
                           cursor: 'pointer',
                         }}
                       >
@@ -383,12 +383,12 @@ export default function TicketTiersTab({
                         type="button"
                         onClick={() => removeCategory(index)}
                         style={{
-                          background: 'rgba(255,107,107,0.1)',
-                          color: '#FF6B6B',
-                          border: '1px solid rgba(255,107,107,0.3)',
+                          background: 'rgba(239, 68, 68, 0.08)',
+                          color: '#EF4444',
+                          border: '1px solid rgba(239, 68, 68, 0.2)',
                           borderRadius: 6,
-                          padding: '8px 14px',
-                          fontSize: 12,
+                          padding: '7px 12px',
+                          fontSize: 11,
                           cursor: 'pointer',
                         }}
                       >
@@ -397,62 +397,58 @@ export default function TicketTiersTab({
                     </div>
                   </div>
 
-                  {/* Row 2: Capacity meter bar if inventory is finite */}
+                  {/* Capacity Bar */}
                   {cat.totalInventory !== null && (
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(245,242,234,0.6)', marginBottom: 4, fontFamily: 'JetBrains Mono, monospace' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8B909A', marginBottom: 4, fontFamily: 'JetBrains Mono, monospace' }}>
                         <span>Capacity: {sold} sold / {total} total</span>
                         <span>{cat.remainingInventory ?? total} remaining ({percentSold}% sold)</span>
                       </div>
-                      <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 999, overflow: 'hidden' }}>
-                        <div style={{ width: `${percentSold}%`, height: '100%', background: percentSold > 80 ? '#FF2E7E' : '#D8FF3F', borderRadius: 999 }} />
+                      <div style={{ height: 4, background: '#1E2026', borderRadius: 999, overflow: 'hidden' }}>
+                        <div style={{ width: `${percentSold}%`, height: '100%', background: percentSold > 80 ? '#F59E0B' : '#10B981', borderRadius: 999 }} />
                       </div>
                     </div>
                   )}
 
-                  {/* Row 3: Description & Inclusions */}
+                  {/* Description & Inclusions */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-                    <div>
-                      <input
-                        type="text"
-                        placeholder="Tier description or notes (e.g. Phase 1 Early Bird access)"
-                        value={cat.description || ''}
-                        onChange={e => updateCategory(index, { description: e.target.value })}
-                        style={{
-                          width: '100%',
-                          background: 'rgba(10,9,18,0.6)',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 6,
-                          padding: '6px 10px',
-                          fontSize: 12,
-                          color: 'rgba(245,242,234,0.8)',
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <input
-                        type="text"
-                        placeholder="Inclusions (comma separated, e.g. Free Welcome Drink, VIP Lounge)"
-                        value={(cat.inclusions || []).join(', ')}
-                        onChange={e =>
-                          updateCategory(index, {
-                            inclusions: e.target.value
-                              .split(',')
-                              .map(s => s.trim())
-                              .filter(Boolean),
-                          })
-                        }
-                        style={{
-                          width: '100%',
-                          background: 'rgba(10,9,18,0.6)',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: 6,
-                          padding: '6px 10px',
-                          fontSize: 12,
-                          color: 'rgba(245,242,234,0.8)',
-                        }}
-                      />
-                    </div>
+                    <input
+                      type="text"
+                      placeholder="Tier notes / timing (e.g. Entry valid before 11 PM)"
+                      value={cat.description || ''}
+                      onChange={e => updateCategory(index, { description: e.target.value })}
+                      style={{
+                        width: '100%',
+                        background: '#0E1013',
+                        border: '1px solid #1E2026',
+                        borderRadius: 6,
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        color: '#8B909A',
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Inclusions (comma separated, e.g. Free Welcome Drink, VIP Lounge)"
+                      value={(cat.inclusions || []).join(', ')}
+                      onChange={e =>
+                        updateCategory(index, {
+                          inclusions: e.target.value
+                            .split(',')
+                            .map(s => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      style={{
+                        width: '100%',
+                        background: '#0E1013',
+                        border: '1px solid #1E2026',
+                        borderRadius: 6,
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        color: '#8B909A',
+                      }}
+                    />
                   </div>
                 </div>
               )
@@ -465,35 +461,32 @@ export default function TicketTiersTab({
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 padding: '16px 20px',
-                background: 'rgba(20,16,38,0.95)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 14,
+                background: '#14161C',
+                border: '1px solid #20232B',
+                borderRadius: 10,
                 position: 'sticky',
                 bottom: 16,
                 zIndex: 10,
               }}
             >
-              <div style={{ fontSize: 12, color: 'rgba(245,242,234,0.6)' }}>
-                ℹ️ Price updates apply to future orders immediately. Capacity reductions are locked once orders exist.
+              <div style={{ fontSize: 12, color: '#8B909A' }}>
+                Price updates apply to future customer orders. Existing orders remain locked.
               </div>
               <button
                 type="submit"
                 disabled={saving}
                 style={{
-                  background: '#D8FF3F',
-                  color: '#0A0912',
+                  background: '#EDEDEF',
+                  color: '#0B0C0E',
                   border: 'none',
-                  padding: '12px 28px',
-                  borderRadius: 8,
-                  fontFamily: 'Unbounded, sans-serif',
-                  fontWeight: 800,
+                  padding: '10px 24px',
+                  borderRadius: 6,
+                  fontWeight: 600,
                   fontSize: 13,
                   cursor: 'pointer',
-                  textTransform: 'uppercase',
-                  boxShadow: '0 4px 20px rgba(216,255,63,0.3)',
                 }}
               >
-                {saving ? 'Saving Tiers…' : 'Save All Changes'}
+                {saving ? 'Saving…' : 'Save Changes'}
               </button>
             </div>
           </div>
