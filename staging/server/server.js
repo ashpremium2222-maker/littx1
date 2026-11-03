@@ -856,7 +856,11 @@ function publicEventPayload(event, pricing) {
 
 function canManageEvent(req, event) {
     if (req.adminSession?.role === 'master_admin') return true;
-    if (req.adminSession?.role === 'organizer') return Array.isArray(event?.organizerUserIds) && event.organizerUserIds.includes(req.adminSession.userId);
+    if (req.adminSession?.role === 'organizer') {
+        if (Array.isArray(event?.organizerUserIds) && event.organizerUserIds.includes(req.adminSession.userId)) return true;
+        const orgCompany = req.organizerAccount?.companyId || req.adminSession?.companyId;
+        if (orgCompany && (event?.companyId === orgCompany || event?.organizerId === orgCompany)) return true;
+    }
     const owner = event?.organizerId || event?.companyId;
     return req.adminSession?.role === 'company_admin' && Boolean(owner) && owner === req.adminSession.companyId;
 }
@@ -1541,9 +1545,15 @@ async function partnerEventAllowed(role, principalId, event, companyId) {
         const user = await db.getUserById(principalId) || (await db.getAllUsers()).find(item => item.role === 'seller' && item.sellerSlot === principalId);
         if (user) policyPrincipal = user.userId;
     }
+    const user = await db.getUserById(policyPrincipal) || (await db.getAllUsers()).find(u => u.userId.toLowerCase() === String(policyPrincipal).toLowerCase());
+    if (user && user.role === 'pr') {
+        if (user.accessType === 'all' || (Array.isArray(user.assignedEventIds) && (user.assignedEventIds.includes('*') || user.assignedEventIds.length === 0))) return true;
+        if (Array.isArray(user.assignedEventIds) && (user.assignedEventIds.includes(eventRef(event)) || user.assignedEventIds.includes(event.id))) return true;
+    }
     const policy = await db.getPartnerAccessPolicy(role, policyPrincipal);
-    if (!policy) return true; // Existing accounts retain legacy company scope until explicitly migrated.
-    return policy.companyId === companyId && Array.isArray(policy.eventIds) && policy.eventIds.includes(eventRef(event));
+    if (!policy) return true;
+    if (policy.accessScope === 'all' || (Array.isArray(policy.eventIds) && policy.eventIds.includes('*'))) return true;
+    return policy.companyId === companyId && Array.isArray(policy.eventIds) && (policy.eventIds.includes(eventRef(event)) || policy.eventIds.includes(event.id));
 }
 
 // Ticket PDFs contain attendee PII. Serve them only through the ticket
@@ -4368,7 +4378,8 @@ app.get('/api/events/:eventRef', async (req, res) => {
 });
 
 app.get('/api/pr/events', requirePR, async (req, res) => {
-    const events = (await Promise.all((await db.getAllEvents()).filter(event => eventIsPublic(event) && event.companyId === req.prSession.companyId).map(async event => await partnerEventAllowed('pr', req.prSession.userId, event, req.prSession.companyId) ? event : null))).filter(Boolean);
+    const allCompanyEvents = (await db.getAllEvents()).filter(event => !event.archived && event.companyId === req.prSession.companyId);
+    const events = (await Promise.all(allCompanyEvents.map(async event => await partnerEventAllowed('pr', req.prSession.userId, event, req.prSession.companyId) ? event : null))).filter(Boolean);
     const payload = await Promise.all(events.map(async event => publicEventPayload(event, await getEventPricing(eventRef(event)))));
     res.set('Cache-Control', 'no-store');
     return res.json({ success: true, events: payload });
@@ -4976,6 +4987,182 @@ app.patch('/api/organizer/payouts', requireOrganizer, async (req, res) => {
                 accountNumberMasked: updatedPayoutDetails.accountNumber ? '••••' + String(updatedPayoutDetails.accountNumber).slice(-4) : ''
             }
         });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
+// ==================== ORGANIZER PR PARTNER MANAGEMENT ====================
+// GET /api/organizer/pr-partners — list all PR partners for this organizer
+app.get('/api/organizer/pr-partners', requireOrganizer, async (req, res) => {
+    try {
+        const companyId = req.organizerAccount.companyId;
+        const [allUsers, allEvents, allSales] = await Promise.all([
+            db.getAllUsers(),
+            db.getAllEvents(),
+            db.getAll()
+        ]);
+
+        const prUsers = allUsers.filter(u => u.role === 'pr' && u.companyId === companyId);
+        const orgEvents = allEvents.filter(e => e.companyId === companyId);
+
+        const partners = await Promise.all(prUsers.map(async user => {
+            const policy = await db.getPartnerAccessPolicy('pr', user.userId);
+            const accessType = user.accessType || (policy?.accessScope === 'all' || policy?.eventIds?.includes('*') ? 'all' : 'single');
+            const assignedIds = Array.isArray(user.assignedEventIds) && user.assignedEventIds.length 
+                ? user.assignedEventIds 
+                : (policy?.eventIds || []);
+
+            const assignedEvents = accessType === 'all' 
+                ? orgEvents.map(e => ({ id: eventRef(e), name: e.name, slug: e.slug || null }))
+                : orgEvents.filter(e => assignedIds.includes(eventRef(e)) || assignedIds.includes(e.id)).map(e => ({ id: eventRef(e), name: e.name, slug: e.slug || null }));
+
+            const userSales = allSales.filter(s => s.prUserId === user.userId);
+            const ticketsSold = userSales.length;
+            const totalRevenue = userSales
+                .filter(s => ['paid', 'ticket_generated', 'emailed', 'scanned'].includes(s.status))
+                .reduce((sum, s) => sum + (s.amount || 0), 0);
+
+            return {
+                userId: user.userId,
+                displayName: user.displayName || user.userId,
+                email: user.email || '',
+                accessType,
+                assignedEventIds: assignedIds,
+                assignedEvents,
+                ticketsSold,
+                totalRevenue,
+                active: user.active !== false && !user.blocked,
+                createdAt: user.createdAt || new Date().toISOString()
+            };
+        }));
+
+        res.set('Cache-Control', 'no-store');
+        return res.json({ success: true, partners });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
+// POST /api/organizer/pr-partners — direct PR partner account creation with ID and password
+app.post('/api/organizer/pr-partners', requireOrganizer, async (req, res) => {
+    try {
+        const companyId = req.organizerAccount.companyId;
+        const { username, password, displayName, accessType, eventId } = req.body || {};
+
+        const rawUsername = String(username || '').trim().toLowerCase();
+        const normalizedUsername = rawUsername.replace(/[^a-z0-9_-]/g, '');
+        if (!normalizedUsername || normalizedUsername.length < 3 || normalizedUsername.length > 50) {
+            return res.status(400).json({ success: false, message: 'PR username/ID must be 3–50 alphanumeric characters (letters, numbers, hyphens, underscores).' });
+        }
+
+        const rawPassword = String(password || '');
+        if (!rawPassword || rawPassword.length < 6) {
+            return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+        }
+
+        const existingUser = (await db.getAllUsers()).find(u => u.userId.toLowerCase() === normalizedUsername);
+        if (existingUser) {
+            return res.status(409).json({ success: false, message: `A user with ID "${normalizedUsername}" already exists. Please choose a different ID.` });
+        }
+
+        let assignedEventIds = ['*'];
+        let resolvedEvent = null;
+        if (accessType === 'single') {
+            if (!eventId) {
+                return res.status(400).json({ success: false, message: 'Select an event for single-event PR access.' });
+            }
+            resolvedEvent = pickCanonicalEvent(await db.getAllEvents(), eventId);
+            if (!resolvedEvent || resolvedEvent.companyId !== companyId) {
+                return res.status(400).json({ success: false, message: 'Selected event not found in your organization.' });
+            }
+            assignedEventIds = [eventRef(resolvedEvent)];
+        }
+
+        const now = new Date().toISOString();
+        const prUser = {
+            userId: normalizedUsername,
+            email: `${normalizedUsername}@pr.${companyId || 'stageway'}.local`,
+            displayName: String(displayName || '').trim() || normalizedUsername,
+            role: 'pr',
+            companyId,
+            password: '__hashed__',
+            passwordHash: hashPassword(rawPassword),
+            accessType: accessType === 'all' ? 'all' : 'single',
+            assignedEventIds,
+            active: true,
+            blocked: false,
+            accountStatus: 'active',
+            emailVerifiedAt: new Date(),
+            createdAt: now,
+            updatedAt: now
+        };
+
+        await db.createUser(prUser);
+
+        await db.setPartnerAccessPolicy({
+            role: 'pr',
+            principalId: normalizedUsername,
+            companyId,
+            accessScope: accessType === 'all' ? 'all' : 'explicit_events',
+            eventIds: assignedEventIds,
+            updatedBy: req.organizerAccount.userId
+        });
+
+        await db.createAuditLog({
+            adminUser: req.organizerAccount.userId,
+            companyId,
+            category: 'PR_PARTNER_CREATED',
+            fieldChanged: 'prUser',
+            newValue: normalizedUsername,
+            reason: `Organizer created PR partner ${normalizedUsername} with ${accessType === 'all' ? 'Full Access' : 'Single Event: ' + (resolvedEvent?.name || eventId)} scope.`
+        });
+
+        return res.status(201).json({
+            success: true,
+            partner: {
+                userId: prUser.userId,
+                displayName: prUser.displayName,
+                accessType: prUser.accessType,
+                assignedEventIds,
+                assignedEvents: resolvedEvent ? [{ id: eventRef(resolvedEvent), name: resolvedEvent.name, slug: resolvedEvent.slug || null }] : []
+            },
+            message: 'PR partner account created successfully.'
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
+// DELETE /api/organizer/pr-partners/:userId — revoke / delete PR partner
+app.delete('/api/organizer/pr-partners/:userId', requireOrganizer, async (req, res) => {
+    try {
+        const companyId = req.organizerAccount.companyId;
+        const targetId = String(req.params.userId || '').trim().toLowerCase();
+
+        const user = (await db.getAllUsers()).find(u => u.userId.toLowerCase() === targetId && u.role === 'pr' && u.companyId === companyId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'PR partner account not found.' });
+        }
+
+        if (typeof db.deleteUser === 'function') {
+            await db.deleteUser(user.userId).catch(() => {});
+        } else {
+            await db.updateUser(user.userId, { active: false, blocked: true, accountStatus: 'suspended' });
+        }
+        await db.deleteUserSession(user.userId).catch(() => {});
+
+        await db.createAuditLog({
+            adminUser: req.organizerAccount.userId,
+            companyId,
+            category: 'PR_PARTNER_REVOKED',
+            fieldChanged: 'prUser',
+            previousValue: targetId,
+            newValue: 'revoked',
+            reason: `Organizer revoked PR partner ${targetId}.`
+        });
+
+        return res.json({ success: true, message: 'PR partner account revoked.' });
     } catch (err) {
         return res.status(500).json({ success: false, message: safeErrorMessage(err) });
     }
@@ -6196,6 +6383,86 @@ app.post('/api/pr/cash-request', requirePR, async (req, res) => {
         res.json({ success: true, orderId, message: 'Cash sale submitted for approval.' });
     } catch (err) {
         res.status(500).json({ success: false, message: safeErrorMessage(err) });
+
+// POST /api/pr/generate-ticket — PR partner generates an instant verified ticket for an attendee
+app.post('/api/pr/generate-ticket', requirePR, async (req, res) => {
+    const { name, email, phone, gender, quantity, eventId, eventSlug, event, ticketCategoryId, ticketType, paymentMethod } = req.body || {};
+    const requestedEvent = eventId || eventSlug || event;
+    if (!name || !email || !phone || !requestedEvent || !(ticketCategoryId || ticketType || gender)) {
+        return res.status(400).json({ success: false, message: 'Missing required attendee or ticket fields.' });
+    }
+
+    const computed = await resolveTicketAmount(requestedEvent, ticketCategoryId || ticketType || gender, quantity);
+    if (!computed) return res.status(400).json({ success: false, message: 'Event or ticket category is unavailable.' });
+    const pricingEvent = pickCanonicalEvent(await db.getAllEvents(), requestedEvent);
+    if (!pricingEvent || !(await partnerEventAllowed('pr', req.prSession.userId, pricingEvent, req.prSession.companyId))) {
+        return res.status(403).json({ success: false, message: 'PR partner is not authorized to generate tickets for this event.' });
+    }
+
+    const { amount, qty, admissionCount, inventoryLimited, event: eventName, eventId: canonicalEventId, ticketCategoryId: canonicalCategoryId, ticketType: categoryName, currency } = computed;
+
+    try {
+        const orderId = `order_pr_${crypto.randomBytes(8).toString('hex')}`;
+        const ticketId = generateTicketId();
+        const now = new Date().toISOString();
+
+        try {
+            await buildTicketPdf({
+                ticketId,
+                name,
+                email,
+                gender: gender || categoryName,
+                quantity: qty,
+                amount,
+                createdAt: now,
+                event: eventName
+            });
+        } catch (pdfErr) {
+            console.error('[PR Ticket PDF generation]', pdfErr.message);
+        }
+
+        const saleRecord = {
+            orderId,
+            event: eventName,
+            eventId: canonicalEventId,
+            ticketCategoryId: canonicalCategoryId,
+            name, email, phone, gender: gender || categoryName,
+            ticketType: categoryName,
+            quantity: qty,
+            admissionCount,
+            inventoryLimited,
+            inventoryReserved: false,
+            reservationStatus: 'not_required',
+            amount,
+            currency,
+            status: 'ticket_generated',
+            paymentStatus: 'paid',
+            fulfillmentStatus: 'fulfilled',
+            paymentId: `pr_pass_${Date.now()}`,
+            ticketId,
+            emailStatus: 'sent',
+            createdAt: now,
+            updatedAt: now,
+            prUserId: req.prSession.userId,
+            prName: req.prSession.displayName,
+            companyId: req.prSession.companyId,
+            source: 'offline_pr',
+            paymentMethod: paymentMethod || 'direct_pr',
+        };
+
+        await db.createSaleRecord(saleRecord);
+
+        return res.status(201).json({
+            success: true,
+            orderId,
+            ticketId,
+            ticketUrl: `/api/pr/tickets/${ticketId}/download`,
+            message: 'Ticket successfully generated for attendee!'
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
     }
 });
 

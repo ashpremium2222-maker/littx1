@@ -90,7 +90,7 @@ function LoginPage({ onLogin }: { onLogin: (user: PRUser) => void }) {
   )
 }
 
-// ==================== SELL TICKET MODAL ====================
+// ==================== SELL / GENERATE TICKET MODAL ====================
 function SellTicketModal({
   prUser,
   onClose,
@@ -107,11 +107,13 @@ function SellTicketModal({
   const [events, setEvents] = useState<PREvent[]>([])
   const [eventId, setEventId] = useState('')
   const [ticketCategoryId, setTicketCategoryId] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'cash'>('razorpay')
+  const [paymentMethod, setPaymentMethod] = useState<'direct' | 'cash' | 'razorpay'>('direct')
   const [loading, setLoading] = useState(false)
   const checkoutRequest = useRef<{ fingerprint: string; key: string } | null>(null)
   const [step, setStep] = useState<'form' | 'pending' | 'done'>('form')
   const [message, setMessage] = useState('')
+  const [issuedTicketId, setIssuedTicketId] = useState<string | null>(null)
+  const [issuedTicketUrl, setIssuedTicketUrl] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`${API}/api/pr/events`, { headers: prAuthHeaders() })
@@ -136,7 +138,29 @@ function SellTicketModal({
     setLoading(true)
 
     try {
-      if (paymentMethod === 'razorpay') {
+      if (paymentMethod === 'direct') {
+        const res = await fetch(`${API}/api/pr/generate-ticket`, {
+          method: 'POST',
+          headers: prAuthHeaders(true),
+          body: JSON.stringify({
+            name: name.trim(),
+            email: email.trim().toLowerCase(),
+            phone: phone.trim(),
+            eventId,
+            ticketCategoryId,
+            ticketType: selectedTicket.name,
+            quantity: 1,
+            paymentMethod: 'direct_pr',
+          }),
+        })
+        const data = await res.json()
+        if (!data.success) throw new Error(data.message || 'Failed to generate ticket.')
+        setIssuedTicketId(data.ticketId)
+        setIssuedTicketUrl(data.ticketUrl || `/api/pr/tickets/${data.ticketId}/download`)
+        setMessage(`Ticket successfully generated! Pass ID: ${data.ticketId}`)
+        setStep('done')
+        onSuccess()
+      } else if (paymentMethod === 'razorpay') {
         const fingerprint = JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), phone: phone.trim(), eventId, ticketCategoryId, quantity: 1 })
         if (!checkoutRequest.current || checkoutRequest.current.fingerprint !== fingerprint) {
           checkoutRequest.current = { fingerprint, key: crypto.randomUUID() }
@@ -153,11 +177,11 @@ function SellTicketModal({
           key: data.keyId,
           amount: data.amountMinor,
           currency: data.currency,
-          name: 'LITTX',
+          name: 'Stageway',
           description: `${selectedTicket.name} — ${selectedEvent.name}`,
           order_id: data.orderId,
           prefill: { name, email, contact: phone },
-          theme: { color: '#7C5CFA' },
+          theme: { color: '#10B981' },
           handler: async (response: any) => {
             const verRes = await fetch(`${API}/api/verify-payment`, {
               method: 'POST',
@@ -171,11 +195,11 @@ function SellTicketModal({
             })
             const verData = await verRes.json()
             if (verData.success) {
-              setMessage('✅ Payment successful! Ticket sent to customer.')
+              setMessage('Payment successful! Ticket issued to customer.')
               setStep('done')
               onSuccess()
             } else {
-              setMessage('❌ Payment verification failed. Contact admin.')
+              setMessage('Payment verification failed. Contact admin.')
               setStep('done')
             }
           },
@@ -191,7 +215,7 @@ function SellTicketModal({
         })
         const data = await res.json()
         if (!data.success) throw new Error(data.message || 'Failed')
-        setMessage('⏳ Cash sale submitted for admin approval. Ticket will be sent once approved.')
+        setMessage('Cash sale submitted for admin approval. Ticket will be sent once approved.')
         setStep('pending')
         onSuccess()
         setLoading(false)
@@ -205,72 +229,127 @@ function SellTicketModal({
 
   if (step === 'done' || step === 'pending') {
     return (
-      <div className="pr-modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
-        <div className="card" onClick={e => e.stopPropagation()} style={{ width: '400px', textAlign: 'center', padding: '32px' }}>
-          <p style={{ fontSize: '1.1rem', fontWeight: 700 }}>{message}</p>
-          <button className="btn btn-primary" style={{ marginTop: 24, width: '100%' }} onClick={onClose}>Done</button>
+      <div className="pr-modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
+        <div className="card" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '440px', textAlign: 'center', padding: '32px 24px', background: '#14161C', border: '1px solid #282C36', borderRadius: 12 }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 20 }}>
+            ✓
+          </div>
+          <p style={{ fontSize: '1.05rem', fontWeight: 600, color: '#EDEDEF', margin: '0 0 16px' }}>{message}</p>
+          
+          {issuedTicketId && (
+            <div style={{ background: '#0E1013', border: '1px solid #1C1F26', borderRadius: 8, padding: 16, marginBottom: 20, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                <span style={{ color: '#8B909A' }}>Ticket ID</span>
+                <span style={{ fontFamily: 'JetBrains Mono, monospace', color: '#10B981', fontWeight: 600 }}>{issuedTicketId}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                <span style={{ color: '#8B909A' }}>Attendee</span>
+                <span style={{ color: '#EDEDEF', fontWeight: 500 }}>{name}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                <span style={{ color: '#8B909A' }}>Event</span>
+                <span style={{ color: '#EDEDEF', fontWeight: 500 }}>{selectedEvent?.name}</span>
+              </div>
+              {issuedTicketUrl && (
+                <a
+                  href={issuedTicketUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    marginTop: 8,
+                    background: 'rgba(255,255,255,0.06)',
+                    color: '#EDEDEF',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 6,
+                    padding: '8px 12px',
+                    fontSize: 12,
+                    textAlign: 'center',
+                    textDecoration: 'none',
+                    fontWeight: 600,
+                    display: 'block',
+                  }}
+                >
+                  Download PDF Pass 📄
+                </a>
+              )}
+            </div>
+          )}
+
+          <button className="btn btn-primary" style={{ width: '100%', background: '#EDEDEF', color: '#0B0C0E', border: 'none', padding: 12, borderRadius: 6, fontWeight: 600, cursor: 'pointer' }} onClick={onClose}>
+            Done
+          </button>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={onClose}>
-      <div className="card" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '500px', padding: 0, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--line)', background: 'var(--panel-2)' }}>
-          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Sell Ticket</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--ink-faint)', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={onClose}>
+      <div className="card" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '520px', padding: 0, overflow: 'hidden', background: '#14161C', border: '1px solid #282C36', borderRadius: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #1E2026', background: '#101216' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#EDEDEF' }}>Generate Ticket Pass</h3>
+            <div style={{ fontSize: '0.8rem', color: '#8B909A', marginTop: 2 }}>Issue a promotional or paid pass for an attendee</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#8B909A', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
         </div>
         <form onSubmit={handleSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>ATTENDEE NAME</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Riya Sharma" required style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }} />
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px', color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>ATTENDEE NAME *</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Riya Sharma" required style={{ width: '100%', background: '#0E1013', border: '1px solid #282C36', padding: '10px 14px', borderRadius: '6px', color: '#EDEDEF', fontSize: '13px' }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>EMAIL</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="riya@example.com" required style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }} />
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px', color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>EMAIL *</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="riya@example.com" required style={{ width: '100%', background: '#0E1013', border: '1px solid #282C36', padding: '10px 14px', borderRadius: '6px', color: '#EDEDEF', fontSize: '13px' }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>PHONE</label>
-            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91 98765 43210" required style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }} />
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px', color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>PHONE NUMBER *</label>
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91 98765 43210" required style={{ width: '100%', background: '#0E1013', border: '1px solid #282C36', padding: '10px 14px', borderRadius: '6px', color: '#EDEDEF', fontSize: '13px' }} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>EVENT</label>
-              <select value={eventId} onChange={e => { const next = events.find(item => item.id === e.target.value); setEventId(e.target.value); setTicketCategoryId(next?.ticketCategories?.[0]?.id || '') }} required style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px', color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>ASSIGNED EVENT *</label>
+              <select value={eventId} onChange={e => { const next = events.find(item => item.id === e.target.value); setEventId(e.target.value); setTicketCategoryId(next?.ticketCategories?.[0]?.id || '') }} required style={{ width: '100%', background: '#0E1013', border: '1px solid #282C36', padding: '10px 12px', borderRadius: '6px', color: '#EDEDEF', fontSize: '13px' }}>
                 <option value="">Select event</option>
                 {events.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>TICKET CATEGORY</label>
-              <select value={ticketCategoryId} onChange={e => setTicketCategoryId(e.target.value)} required disabled={!selectedEvent} style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px', color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>TICKET CATEGORY *</label>
+              <select value={ticketCategoryId} onChange={e => setTicketCategoryId(e.target.value)} required disabled={!selectedEvent} style={{ width: '100%', background: '#0E1013', border: '1px solid #282C36', padding: '10px 12px', borderRadius: '6px', color: '#EDEDEF', fontSize: '13px' }}>
                 <option value="">Select ticket</option>
                 {selectedEvent?.ticketCategories.map(item => <option key={item.id} value={item.id} disabled={item.status !== 'active' || item.remainingAvailability === 0}>{item.name} · {item.currency} {Number(item.price).toLocaleString()}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px', color: 'var(--ink-soft)' }}>PAYMENT</label>
-            <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as any)} style={{ width: '100%', background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', color: 'var(--ink)' }}>
-              <option value="razorpay">Razorpay (Online)</option>
-              <option value="cash">Cash (Needs Approval)</option>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px', color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>ISSUANCE METHOD</label>
+            <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as any)} style={{ width: '100%', background: '#0E1013', border: '1px solid #282C36', padding: '10px 12px', borderRadius: '6px', color: '#EDEDEF', fontSize: '13px' }}>
+              <option value="direct">Direct PR Pass (Instant Ticket Generation)</option>
+              <option value="cash">Cash Collection (Needs Organizer Approval)</option>
+              <option value="razorpay">Razorpay (Online Payment)</option>
             </select>
           </div>
 
-          <div style={{ background: 'var(--panel-3)', padding: '16px', borderRadius: '12px', border: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-            <span style={{ fontSize: '0.9rem', color: 'var(--ink-soft)' }}>Total to collect</span>
-            <span style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent)' }}>{selectedTicket?.currency || 'INR'} {amount.toLocaleString()}</span>
+          <div style={{ background: '#0E1013', padding: '14px 18px', borderRadius: '8px', border: '1px solid #1C1F26', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+            <span style={{ fontSize: '0.85rem', color: '#8B909A' }}>Value of Pass</span>
+            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: '#EDEDEF' }}>{selectedTicket?.currency || 'INR'} {amount.toLocaleString()}</span>
           </div>
 
-          {paymentMethod === 'cash' && (
-            <div style={{ background: 'rgba(245, 197, 66, 0.15)', border: '1px solid rgba(245, 197, 66, 0.3)', color: '#F5C542', padding: '12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600 }}>
-              ⚠️ Cash sales require admin approval before the ticket is sent.
+          {paymentMethod === 'direct' && (
+            <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', color: '#10B981', padding: '10px 14px', borderRadius: '6px', fontSize: '0.8rem', lineHeight: 1.4 }}>
+              ● Pass will be generated instantly with a valid QR code and confirmed ticket ID.
             </div>
           )}
 
-          <button type="submit" className="btn btn-primary" disabled={loading || !selectedTicket || events.length === 0} style={{ width: '100%', padding: '14px', marginTop: '8px', fontSize: '1rem' }}>
-            {loading ? 'Processing…' : paymentMethod === 'razorpay' ? `Pay ${selectedTicket?.currency || 'INR'} ${amount.toLocaleString()} via Razorpay` : 'Submit for Approval'}
+          {paymentMethod === 'cash' && (
+            <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', color: '#F59E0B', padding: '10px 14px', borderRadius: '6px', fontSize: '0.8rem', lineHeight: 1.4 }}>
+              ⚠️ Cash sales require organizer approval before the attendee ticket is officially released.
+            </div>
+          )}
+
+          <button type="submit" disabled={loading || !selectedTicket || events.length === 0} style={{ width: '100%', padding: '12px', marginTop: '6px', fontSize: '0.95rem', fontWeight: 600, background: '#EDEDEF', color: '#0B0C0E', border: 'none', borderRadius: '6px', cursor: loading ? 'not-allowed' : 'pointer' }}>
+            {loading ? 'Processing…' : paymentMethod === 'direct' ? 'Generate Pass Now' : paymentMethod === 'razorpay' ? `Pay ${selectedTicket?.currency || 'INR'} ${amount.toLocaleString()} via Razorpay` : 'Submit Cash Request for Approval'}
           </button>
         </form>
       </div>

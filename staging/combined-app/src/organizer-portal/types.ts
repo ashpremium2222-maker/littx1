@@ -136,6 +136,19 @@ export interface PayoutSummary {
   }>
 }
 
+export interface PRPartner {
+  userId: string
+  displayName: string
+  email?: string
+  accessType: 'all' | 'single'
+  assignedEventIds: string[]
+  assignedEvents?: Array<{ id: string; name: string; slug?: string | null }>
+  ticketsSold: number
+  totalRevenue: number
+  active: boolean
+  createdAt: string
+}
+
 export type OrganizerTab =
   | 'overview'
   | 'events'
@@ -143,5 +156,7 @@ export type OrganizerTab =
   | 'sales'
   | 'scans'
   | 'team'
+  | 'pr'
   | 'payouts'
   | 'profile'
+

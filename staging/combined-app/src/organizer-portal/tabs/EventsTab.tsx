@@ -274,24 +274,24 @@ export default function EventsTab({
                     flexWrap: 'wrap',
                   }}
                 >
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button
                       onClick={() => onEditEvent(event)}
                       style={{
-                        background: 'rgba(255,255,255,0.04)',
-                        color: '#EDEDEF',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: '#EDEDEF',
+                        color: '#0B0C0E',
+                        border: 'none',
                         padding: '6px 12px',
                         borderRadius: 6,
                         fontSize: 12,
                         cursor: 'pointer',
-                        fontWeight: 500,
+                        fontWeight: 600,
                       }}
                     >
-                      Edit Info
+                      ⚙️ Event Settings
                     </button>
                     <button
-                      onClick={() => onSelectEvent(event.eventId, 'team')}
+                      onClick={() => onSelectEvent(event.eventId, 'pr')}
                       style={{
                         background: 'rgba(255,255,255,0.04)',
                         color: '#EDEDEF',
@@ -303,7 +303,22 @@ export default function EventsTab({
                         fontWeight: 500,
                       }}
                     >
-                      Team & PR
+                      PR Partners
+                    </button>
+                    <button
+                      onClick={() => onSelectEvent(event.eventId, 'tiers')}
+                      style={{
+                        background: 'rgba(255,255,255,0.04)',
+                        color: '#EDEDEF',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        padding: '6px 12px',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                      }}
+                    >
+                      Tiers
                     </button>
                   </div>
 
