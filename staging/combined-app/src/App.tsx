@@ -26,17 +26,22 @@ function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
   const [userSession, setUserSession] = useState<UserSession | null>(() => {
     try {
-      // Older builds persisted bearer credentials; discard them so the user
-      // signs in again into tab-scoped session storage.
       const stored = sessionStorage.getItem('littx_user') || localStorage.getItem('littx_user')
       if (stored) {
         const parsed = JSON.parse(stored)
-        if (parsed?.token) {
+        // Ensure token is the new signed format (has signature dots)
+        if (parsed?.token && typeof parsed.token === 'string' && parsed.token.includes('.')) {
           sessionStorage.setItem('littx_user', stored)
           sessionStorage.setItem('littx_token', parsed.token)
+          localStorage.setItem('littx_user', stored)
+          localStorage.setItem('littx_token', parsed.token)
+          return parsed
         }
-        return parsed
       }
+      sessionStorage.removeItem('littx_user')
+      sessionStorage.removeItem('littx_token')
+      localStorage.removeItem('littx_user')
+      localStorage.removeItem('littx_token')
       return null
     } catch { return null }
   })
@@ -112,6 +117,8 @@ function MainAppShell() {
     if (userSession?.role === 'organizer' && userSession.portalScope === 'organizer') return <OrganizerPortal onLogout={() => {
       sessionStorage.removeItem('littx_user')
       sessionStorage.removeItem('littx_token')
+      localStorage.removeItem('littx_user')
+      localStorage.removeItem('littx_token')
       setUserSession(null)
       navigate('/organizer')
     }} />

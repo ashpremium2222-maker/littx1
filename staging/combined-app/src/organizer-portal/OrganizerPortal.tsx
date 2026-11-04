@@ -112,6 +112,14 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           await new Promise(r => setTimeout(r, 600))
           return await loadData(true)
         }
+        if (data.message && data.message.toLowerCase().includes('session')) {
+          sessionStorage.removeItem('littx_user')
+          sessionStorage.removeItem('littx_token')
+          localStorage.removeItem('littx_user')
+          localStorage.removeItem('littx_token')
+          onLogout()
+          return
+        }
         throw new Error(data.message || 'Could not load organizer data.')
       }
 
@@ -313,7 +321,11 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
   }
 
   const handleLogout = async () => {
-    const token = sessionStorage.getItem('littx_token') || ''
+    const token = sessionStorage.getItem('littx_token') || localStorage.getItem('littx_token') || ''
+    sessionStorage.removeItem('littx_user')
+    sessionStorage.removeItem('littx_token')
+    localStorage.removeItem('littx_user')
+    localStorage.removeItem('littx_token')
     await fetch('/api/auth/logout', { method: 'POST', headers: { 'x-auth-token': token } }).catch(() => {})
     onLogout()
   }
