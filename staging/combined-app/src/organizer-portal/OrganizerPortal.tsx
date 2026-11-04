@@ -26,6 +26,30 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // Theme Mode: Dark by default, with option to toggle to white/light
+  const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
+    try {
+      const saved = localStorage.getItem('stageway_theme_mode')
+      return saved === 'light' ? 'light' : 'dark' // DARK DEFAULT
+    } catch {
+      return 'dark'
+    }
+  })
+
+  const toggleTheme = () => {
+    setThemeMode(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark'
+      try {
+        localStorage.setItem('stageway_theme_mode', next)
+      } catch {}
+      return next
+    })
+  }
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', themeMode)
+  }, [themeMode])
+
   // Create Draft Modal State
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [creatingDraft, setCreatingDraft] = useState(false)
@@ -297,7 +321,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
   // Shared input style for modals
   const inputStyle: React.CSSProperties = {
     width: '100%',
-    background: '#F8FCFA',
+    background: STAGEWAY_THEME.inputBg,
     border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
     borderRadius: 6,
     padding: '8px 12px',
@@ -351,19 +375,20 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
 
   return (
     <div
+      data-theme={themeMode}
       style={{
         display: 'flex',
         minHeight: '100vh',
-        background: STAGEWAY_THEME.canvasBg || '#F3FAF6',
+        background: STAGEWAY_THEME.canvasBg,
         color: STAGEWAY_THEME.textPrimary,
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      {/* ── SIDEBAR (Light Emerald) ── */}
+      {/* ── SIDEBAR ── */}
       <aside
         style={{
           width: 240,
-          background: STAGEWAY_THEME.sidebarBg || '#E8F5EF',
+          background: STAGEWAY_THEME.sidebarBg,
           borderRight: `1px solid ${STAGEWAY_THEME.border}`,
           display: 'flex',
           flexDirection: 'column',
@@ -380,7 +405,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           <div
             style={{
               padding: '20px',
-              borderBottom: '1px solid rgba(4, 120, 87, 0.12)',
+              borderBottom: `1px solid ${STAGEWAY_THEME.borderLight}`,
               display: 'flex',
               alignItems: 'center',
               gap: 10,
@@ -389,7 +414,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             <img
               src="/stageway-logo.png"
               alt="StageWay"
-              style={{ width: 34, height: 34, objectFit: 'contain', borderRadius: 8, background: '#FFFFFF', border: '1px solid rgba(4, 120, 87, 0.2)', padding: 3 }}
+              style={{ width: 34, height: 34, objectFit: 'contain', borderRadius: 8, background: STAGEWAY_THEME.surface, border: `1px solid ${STAGEWAY_THEME.border}`, padding: 3 }}
               onError={(e) => {
                 const el = e.target as HTMLImageElement
                 el.style.display = 'none'
@@ -417,7 +442,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           </div>
 
           {/* Org Profile Pill */}
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(4, 120, 87, 0.12)' }}>
+          <div style={{ padding: '14px 20px', borderBottom: `1px solid ${STAGEWAY_THEME.borderLight}` }}>
             <div style={{ fontSize: 10, color: STAGEWAY_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
               PROMOTER
             </div>
@@ -446,11 +471,11 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     fontWeight: active ? 700 : 500,
                     cursor: 'pointer',
                     textAlign: 'left',
-                    boxShadow: active ? '0 2px 6px rgba(4, 120, 87, 0.25)' : 'none',
+                    boxShadow: active ? '0 2px 6px rgba(16, 165, 121, 0.25)' : 'none',
                     transition: 'all 0.12s ease',
                     width: '100%',
                   }}
-                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(4, 120, 87, 0.08)' }}
+                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(16, 165, 121, 0.1)' }}
                   onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
                 >
                   {item.label}
@@ -461,7 +486,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         </div>
 
         {/* Bottom Actions */}
-        <div style={{ padding: '16px', borderTop: '1px solid rgba(4, 120, 87, 0.12)' }}>
+        <div style={{ padding: '16px', borderTop: `1px solid ${STAGEWAY_THEME.borderLight}` }}>
           <button
             onClick={() => setShowCreateModal(true)}
             style={{
@@ -475,7 +500,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
               fontWeight: 600,
               cursor: 'pointer',
               marginBottom: 8,
-              boxShadow: '0 2px 6px rgba(4, 120, 87, 0.2)',
+              boxShadow: '0 2px 6px rgba(16, 165, 121, 0.2)',
             }}
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = STAGEWAY_THEME.secondary }}
             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = STAGEWAY_THEME.primary }}
@@ -483,13 +508,38 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             + Create Event
           </button>
 
+          {/* Theme Toggle Button in Sidebar */}
+          <button
+            onClick={toggleTheme}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              background: STAGEWAY_THEME.surface,
+              color: STAGEWAY_THEME.textSecondary,
+              border: `1px solid ${STAGEWAY_THEME.border}`,
+              borderRadius: 6,
+              padding: '7px 12px',
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: 'pointer',
+              marginBottom: 8,
+              transition: 'all 0.12s ease',
+            }}
+            title={themeMode === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+          >
+            <span>{themeMode === 'dark' ? '🌙 Dark Theme' : '☀️ White Theme'}</span>
+          </button>
+
           <button
             onClick={handleLogout}
             style={{
               width: '100%',
-              background: '#FFFFFF',
+              background: 'transparent',
               color: STAGEWAY_THEME.textSecondary,
-              border: '1px solid rgba(4, 120, 87, 0.25)',
+              border: `1px solid ${STAGEWAY_THEME.border}`,
               borderRadius: 6,
               padding: '7px 12px',
               fontSize: 12,
@@ -499,15 +549,15 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             }}
             onMouseEnter={e => {
               const el = e.currentTarget as HTMLButtonElement
-              el.style.background = '#FEE2E2'
+              el.style.background = 'rgba(220, 38, 38, 0.12)'
               el.style.color = '#DC2626'
-              el.style.borderColor = 'rgba(220, 38, 38, 0.3)'
+              el.style.borderColor = 'rgba(220, 38, 38, 0.4)'
             }}
             onMouseLeave={e => {
               const el = e.currentTarget as HTMLButtonElement
-              el.style.background = '#FFFFFF'
+              el.style.background = 'transparent'
               el.style.color = STAGEWAY_THEME.textSecondary
-              el.style.borderColor = 'rgba(4, 120, 87, 0.25)'
+              el.style.borderColor = 'rgba(255, 255, 255, 0.1)'
             }}
           >
             Sign Out
@@ -522,7 +572,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           style={{
             height: 60,
             borderBottom: `1px solid ${STAGEWAY_THEME.border}`,
-            background: '#FFFFFF',
+            background: STAGEWAY_THEME.surface,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -544,13 +594,13 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {events.length > 0 && (
               <select
                 value={selectedEventId || ''}
                 onChange={e => setSelectedEventId(e.target.value)}
                 style={{
-                  background: '#FFFFFF',
+                  background: STAGEWAY_THEME.surface,
                   border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                   borderRadius: 6,
                   padding: '6px 10px',
@@ -568,11 +618,33 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
               </select>
             )}
 
+            {/* Quick Theme Toggle in Header */}
+            <button
+              onClick={toggleTheme}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: STAGEWAY_THEME.light,
+                border: `1px solid ${STAGEWAY_THEME.border}`,
+                color: STAGEWAY_THEME.textPrimary,
+                borderRadius: 6,
+                padding: '6px 12px',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.12s ease',
+              }}
+              title={themeMode === 'dark' ? 'Switch to White/Light Theme' : 'Switch to Dark Theme'}
+            >
+              <span>{themeMode === 'dark' ? '🌙 Dark' : '☀️ White'}</span>
+            </button>
+
             <button
               onClick={() => void loadData()}
               style={{
                 background: STAGEWAY_THEME.light,
-                border: `1px solid ${STAGEWAY_THEME.secondary}`,
+                border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                 color: STAGEWAY_THEME.primary,
                 borderRadius: 6,
                 padding: '6px 12px',
@@ -723,7 +795,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         >
           <div
             style={{
-              background: '#FFFFFF',
+              background: STAGEWAY_THEME.surface,
               border: `1px solid ${STAGEWAY_THEME.border}`,
               borderRadius: 12,
               width: '100%',
@@ -892,7 +964,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         >
           <div
             style={{
-              background: '#FFFFFF',
+              background: STAGEWAY_THEME.surface,
               border: `1px solid ${STAGEWAY_THEME.border}`,
               borderRadius: 14,
               width: '100%',
