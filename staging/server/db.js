@@ -199,8 +199,8 @@ ScanLogSchema.index({ ticketId: 1 });
 // One active session per userId â€” enforces strict one-device-per-user for all roles.
 // Mirrors SellerSessionSchema but covers every role: master_admin, company_admin, seller, pr.
 const UserSessionSchema = new mongoose.Schema({
-    userId: { type: String, required: true, unique: true },
-    token: { type: String, required: true },
+    userId: { type: String, required: true, index: true },
+    token: { type: String, required: true, unique: true },
     ip: { type: String, default: 'unknown' },
     loginAt: { type: String },
     role: { type: String },
@@ -621,6 +621,7 @@ async function purgeLegacyData() {
         const legacyIds = ['6a8e09b03c448413e97b8463', '6a8e09b03c448413e97b8466'];
 
         if (!useMock()) {
+            try { await UserSession.collection.dropIndex('userId_1').catch(() => {}); } catch (_) {}
             // 1. Delete legacy companies
             const compRes = await Company.deleteMany({
                 $or: [
@@ -1996,6 +1997,7 @@ module.exports = {
     recordRazorpayEvent: async (orderId, eventId) => {
         if (!eventId) return false;
         if (!useMock()) {
+            try { await UserSession.collection.dropIndex('userId_1').catch(() => {}); } catch (_) {}
             const result = await Sale.updateOne({ orderId, razorpayEventIds: { $ne: eventId } }, { $addToSet: { razorpayEventIds: eventId } });
             return result.modifiedCount > 0;
         }
@@ -2490,11 +2492,11 @@ module.exports = {
     },
     setUserSession: async (userId, data) => {
         if (useMock()) {
-            _mockUserSessions.set(userId, { ...data, userId });
+            _mockUserSessions.set(data.token || userId, { ...data, userId });
             return data;
         }
         return UserSession.findOneAndUpdate(
-            { userId },
+            { token: data.token },
             { ...data, userId },
             { upsert: true, new: true, lean: true }
         );
@@ -2620,6 +2622,7 @@ module.exports = {
     getAllEvents: async () => {
         let events = [];
         if (!useMock()) {
+            try { await UserSession.collection.dropIndex('userId_1').catch(() => {}); } catch (_) {}
             try {
                 const raw = await Event.find({}).lean();
                 // Normalize: always expose a string 'id' field (fallback to _id)
@@ -2678,6 +2681,7 @@ module.exports = {
         _mockEvents.set(name, doc);
         _mockEvents.set(id, doc);
         if (!useMock()) {
+            try { await UserSession.collection.dropIndex('userId_1').catch(() => {}); } catch (_) {}
             try {
                 const selector = mongoId && mongoose.Types.ObjectId.isValid(String(mongoId))
                     ? { _id: new mongoose.Types.ObjectId(String(mongoId)) }
@@ -2714,6 +2718,7 @@ module.exports = {
         }
 
         if (!useMock()) {
+            try { await UserSession.collection.dropIndex('userId_1').catch(() => {}); } catch (_) {}
             try {
                 const orClauses = [];
                 // Try by MongoDB _id if valid ObjectId

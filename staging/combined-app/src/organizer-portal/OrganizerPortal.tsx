@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+﻿import React, { useEffect, useState } from 'react'
 import { OrganizerCategory, OrganizerEvent, OrganizerProfile, OrganizerTab } from './types'
 import OverviewTab from './tabs/OverviewTab'
 import EventsTab from './tabs/EventsTab'
@@ -296,7 +296,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
       >
         <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>Stageway</div>
         <div style={{ fontSize: 12, color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>
-          Loading dashboard…
+          Loading dashboardâ€¦
         </div>
       </div>
     )
@@ -479,7 +479,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
 
             {events.length > 0 && (
               <span style={{ fontSize: 12, color: '#555962', fontFamily: 'JetBrains Mono, monospace' }}>
-                · {events.length} production{events.length === 1 ? '' : 's'}
+                Â· {events.length} production{events.length === 1 ? '' : 's'}
               </span>
             )}
           </div>
@@ -544,12 +544,32 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             }}
           >
             <span>{error}</span>
-            <button
-              onClick={() => void loadData()}
-              style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              Retry
-            </button>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              {error.toLowerCase().includes('session') ? (
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    background: '#EF4444',
+                    color: '#FFF',
+                    border: 'none',
+                    borderRadius: 4,
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Log In Again
+                </button>
+              ) : (
+                <button
+                  onClick={() => void loadData()}
+                  style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  Retry
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -667,7 +687,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                 onClick={() => setShowCreateModal(false)}
                 style={{ background: 'transparent', border: 'none', color: '#8B909A', fontSize: 18, cursor: 'pointer' }}
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -853,7 +873,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     cursor: creatingDraft ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  {creatingDraft ? 'Saving…' : 'Save Draft'}
+                  {creatingDraft ? 'Savingâ€¦' : 'Save Draft'}
                 </button>
               </div>
             </form>
@@ -915,7 +935,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                       border: `1px solid ${editingEvent.status === 'published' ? 'rgba(16, 185, 129, 0.25)' : editingEvent.status === 'pending_review' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255, 255, 255, 0.1)'}`,
                     }}
                   >
-                    ● {editingEvent.status.replace('_', ' ')}
+                    â— {editingEvent.status.replace('_', ' ')}
                   </span>
                 </div>
                 <div style={{ fontSize: 12.5, color: '#8B909A', marginTop: 4 }}>
@@ -943,7 +963,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     fontWeight: 500,
                   }}
                 >
-                  Manage Tiers →
+                  Manage Tiers â†’
                 </button>
                 <button
                   type="button"
@@ -964,13 +984,13 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     fontWeight: 500,
                   }}
                 >
-                  PR Partners →
+                  PR Partners â†’
                 </button>
                 <button
                   onClick={() => setEditingEvent(null)}
                   style={{ background: 'transparent', border: 'none', color: '#8B909A', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}
                 >
-                  ✕
+                  âœ•
                 </button>
               </div>
             </div>
@@ -1408,7 +1428,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                       cursor: savingEdit ? 'not-allowed' : 'pointer',
                     }}
                   >
-                    {savingEdit ? 'Saving…' : 'Save Event Settings'}
+                    {savingEdit ? 'Savingâ€¦' : 'Save Event Settings'}
                   </button>
                 </div>
               </div>
