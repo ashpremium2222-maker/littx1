@@ -491,7 +491,7 @@
     </div>
     <div class="d-flex flex-column gap-3 mt-4 pt-3 border-top border-line-soft">
       <a class="btn-volt w-100 py-3 text-center" href="#events" data-bs-dismiss="offcanvas">Get tickets</a>
-      <a class="btn-ghost w-100 py-3 text-center" href="#" data-bs-dismiss="offcanvas">Sign in</a>
+      <a class="btn-ghost w-100 py-3 text-center" href="#" data-bs-dismiss="offcanvas" id="mobileSignInBtn" onclick="openSignIn(event)">Sign in</a>
     </div>
   </div>
 </div>
@@ -519,7 +519,7 @@
 
       <!-- Desktop CTA -->
       <div class="d-none d-lg-flex align-items-center gap-3">
-        <a class="btn-ghost" href="#">Sign in</a>
+        <a class="btn-ghost" href="#" id="desktopSignInBtn" onclick="openSignIn(event)">Sign in</a>
         <a class="btn-volt" href="#events">Get tickets</a>
       </div>
 
@@ -902,6 +902,327 @@
     });
   }, {threshold:0.5});
   nums.forEach(n=>numIO.observe(n));
+</script>
+
+<!-- ===== SIGN-IN PORTAL ===== -->
+<style>
+  /* ---------- Sign-in Modal ---------- */
+  #signinPortal {
+    position: fixed; inset: 0; z-index: 3000;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    background: rgba(5,4,10,.88);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    opacity: 0; visibility: hidden;
+    transition: opacity .35s ease, visibility .35s ease;
+  }
+  #signinPortal.open { opacity: 1; visibility: visible; }
+
+  .signin-card {
+    width: min(440px, 100%);
+    background: linear-gradient(145deg, #141026, #1B1530 60%, #0f0d1e);
+    border: 1px solid rgba(216,255,63,.18);
+    box-shadow: 0 30px 80px rgba(0,0,0,.7), 0 0 60px rgba(139,92,246,.18);
+    padding: 44px 40px 40px;
+    position: relative;
+    clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
+    animation: cardIn .45s cubic-bezier(.16,.84,.44,1) both;
+  }
+  @keyframes cardIn { from { opacity:0; transform:translateY(28px) scale(.96); } }
+
+  .signin-card .sc-close {
+    position: absolute; top: 14px; right: 14px;
+    width: 32px; height: 32px; border: none; background: rgba(245,242,234,.08);
+    color: rgba(245,242,234,.6); font-size: 18px; cursor: pointer;
+    display: grid; place-items: center;
+    transition: background .2s, color .2s;
+  }
+  .signin-card .sc-close:hover { background: rgba(255,46,126,.2); color: #fff; }
+
+  .signin-logo {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 28px;
+  }
+  .signin-logo img { height: 22px; filter: invert(1) brightness(1.2); }
+  .signin-logo span {
+    font-family: 'Unbounded', sans-serif; font-weight: 800; font-size: 15px;
+    color: var(--paper);
+  }
+
+  .signin-title {
+    font-family: 'Unbounded', sans-serif; font-weight: 800;
+    font-size: clamp(22px, 4vw, 28px); line-height: 1.1;
+    margin-bottom: 6px;
+  }
+  .signin-sub {
+    font-size: 13.5px; color: var(--muted); margin-bottom: 28px; line-height: 1.5;
+  }
+
+  .sc-field { margin-bottom: 16px; }
+  .sc-field label {
+    display: block; font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 7px;
+  }
+  .sc-field input {
+    width: 100%; background: rgba(245,242,234,.06);
+    border: 1px solid rgba(245,242,234,.12);
+    color: var(--paper); font-size: 15px; font-family: 'Inter', sans-serif;
+    padding: 13px 16px; outline: none;
+    transition: border-color .25s, box-shadow .25s;
+  }
+  .sc-field input::placeholder { color: rgba(245,242,234,.3); }
+  .sc-field input:focus {
+    border-color: rgba(216,255,63,.55);
+    box-shadow: 0 0 0 3px rgba(216,255,63,.12);
+  }
+
+  .sc-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 22px; font-size: 13px;
+  }
+  .sc-row label { display: flex; align-items: center; gap: 7px; color: var(--muted); cursor: pointer; }
+  .sc-row a { color: var(--volt); text-decoration: none; font-size: 12.5px; }
+  .sc-row a:hover { text-decoration: underline; }
+
+  #signinBtn {
+    width: 100%; padding: 14px; border: none; cursor: pointer;
+    font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 13px;
+    letter-spacing: .04em; text-transform: uppercase;
+    background: var(--volt); color: var(--void);
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+    transition: transform .18s, box-shadow .18s, background .2s;
+    position: relative; overflow: hidden;
+  }
+  #signinBtn:hover { transform: translateY(-2px); box-shadow: 0 12px 32px -6px rgba(216,255,63,.55); }
+  #signinBtn .btn-spin {
+    display: none; width: 18px; height: 18px; border-radius: 50%;
+    border: 2.5px solid rgba(10,9,18,.35); border-top-color: var(--void);
+    animation: btnSpin .65s linear infinite;
+    margin: 0 auto;
+  }
+  #signinBtn.loading span { display: none; }
+  #signinBtn.loading .btn-spin { display: block; }
+  @keyframes btnSpin { to { rotate: 360deg; } }
+
+  .sc-divider {
+    display: flex; align-items: center; gap: 12px; margin: 20px 0;
+    font-size: 11px; color: rgba(245,242,234,.35); font-family: 'JetBrains Mono', monospace;
+  }
+  .sc-divider::before, .sc-divider::after {
+    content: ''; flex: 1; height: 1px; background: rgba(245,242,234,.1);
+  }
+
+  .sc-social {
+    display: flex; gap: 10px;
+  }
+  .sc-social button {
+    flex: 1; padding: 11px; border: 1px solid rgba(245,242,234,.13);
+    background: rgba(245,242,234,.05); color: var(--paper); font-size: 13px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    cursor: pointer; transition: background .2s, border-color .2s;
+  }
+  .sc-social button:hover { background: rgba(245,242,234,.1); border-color: rgba(245,242,234,.22); }
+  .sc-social button svg { width: 18px; height: 18px; }
+
+  .sc-foot {
+    text-align: center; margin-top: 20px; font-size: 12.5px; color: var(--muted);
+  }
+  .sc-foot a { color: var(--volt); text-decoration: none; }
+  .sc-foot a:hover { text-decoration: underline; }
+
+  /* Volt shimmer effect on button */
+  #signinBtn::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: -60%;
+    width: 35%; transform: skewX(-20deg);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+    animation: signinShimmer 3s 1.2s ease-in-out infinite;
+  }
+  @keyframes signinShimmer { 0%{left:-60%} 40%,100%{left:140%} }
+
+  /* ---------- Vibora App Overlay ---------- */
+  #viboraOverlay {
+    position: fixed; inset: 0; z-index: 4000;
+    background: #050204;
+    opacity: 0; visibility: hidden;
+    transition: opacity .5s ease, visibility .5s ease;
+    display: flex; flex-direction: column;
+  }
+  #viboraOverlay.open { opacity: 1; visibility: visible; }
+
+  .vibora-topbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    background: linear-gradient(180deg, rgba(5,2,4,.85) 60%, transparent);
+    pointer-events: none;
+  }
+  .vibora-topbar .vt-brand {
+    display: flex; align-items: center; gap: 7px; pointer-events: auto;
+  }
+  .vibora-topbar .vt-brand img { height: 16px; filter: invert(1) brightness(1.2); }
+  .vibora-topbar .vt-brand span {
+    font-family: 'Unbounded', sans-serif; font-weight: 800; font-size: 12px;
+    color: rgba(245,242,234,.7);
+  }
+  .vibora-topbar .vt-close {
+    pointer-events: auto; border: 1px solid rgba(245,242,234,.2);
+    background: rgba(5,2,4,.65); backdrop-filter: blur(10px);
+    color: var(--paper); padding: 7px 14px; font-size: 12px;
+    font-family: 'JetBrains Mono', monospace; cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    transition: background .2s, border-color .2s;
+  }
+  .vibora-topbar .vt-close:hover { background: rgba(255,46,126,.25); border-color: rgba(255,46,126,.5); }
+
+  #viboraFrame {
+    width: 100%; height: 100%; border: none;
+    display: block;
+  }
+
+  /* Transition: white flash then fade to app */
+  #viboraOverlay .launch-flash {
+    position: absolute; inset: 0; background: #fff;
+    opacity: 0; pointer-events: none; z-index: 20;
+    transition: opacity .2s;
+  }
+  #viboraOverlay.flashing .launch-flash { opacity: 1; }
+</style>
+
+<!-- Sign-in Modal -->
+<div id="signinPortal" role="dialog" aria-modal="true" aria-labelledby="signinTitle">
+  <div class="signin-card">
+    <button class="sc-close" onclick="closeSignIn()" aria-label="Close">&times;</button>
+
+    <div class="signin-logo">
+      <img src="logo.png" alt="Littx">
+      <span>LITTX</span>
+    </div>
+
+    <div class="signin-title" id="signinTitle">Welcome back.</div>
+    <p class="signin-sub">Sign in to access your tickets, discover events, and manage everything in one place.</p>
+
+    <div class="sc-field">
+      <label for="scEmail">Email or phone</label>
+      <input type="email" id="scEmail" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="sc-field">
+      <label for="scPass">Password</label>
+      <input type="password" id="scPass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+
+    <div class="sc-row">
+      <label><input type="checkbox" style="accent-color:var(--volt)"> Keep me signed in</label>
+      <a href="#">Forgot password?</a>
+    </div>
+
+    <button id="signinBtn" onclick="handleSignIn()">
+      <span>Sign in &amp; open app</span>
+      <div class="btn-spin"></div>
+    </button>
+
+    <div class="sc-divider">or continue with</div>
+    <div class="sc-social">
+      <button onclick="handleSignIn()">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+        Google
+      </button>
+      <button onclick="handleSignIn()">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.09.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.741 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
+        Apple
+      </button>
+    </div>
+
+    <p class="sc-foot">New to Littx? <a href="#" onclick="handleSignIn()">Create account &rarr;</a></p>
+  </div>
+</div>
+
+<!-- Vibora App Full-Screen Overlay -->
+<div id="viboraOverlay">
+  <div class="launch-flash"></div>
+  <div class="vibora-topbar">
+    <div class="vt-brand">
+      <img src="logo.png" alt="Littx">
+      <span>LITTX</span>
+    </div>
+    <button class="vt-close" onclick="closeApp()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>
+      Back to site
+    </button>
+  </div>
+  <iframe id="viboraFrame" src="" title="Littx App" allow="vibrate"></iframe>
+</div>
+
+<script>
+  /* ===== Sign-in portal logic ===== */
+  function openSignIn(e) {
+    if (e) e.preventDefault();
+    document.getElementById('signinPortal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => {
+      const em = document.getElementById('scEmail');
+      if (em) em.focus();
+    }, 350);
+  }
+
+  function closeSignIn() {
+    document.getElementById('signinPortal').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function handleSignIn() {
+    const btn = document.getElementById('signinBtn');
+    btn.classList.add('loading');
+    btn.disabled = true;
+
+    // Simulate auth handshake then launch app
+    setTimeout(() => {
+      closeSignIn();
+      launchApp();
+    }, 1200);
+  }
+
+  function launchApp() {
+    const overlay = document.getElementById('viboraOverlay');
+    const frame = document.getElementById('viboraFrame');
+
+    // Load the Vibora HTML if not already loaded
+    if (!frame.src || frame.src === window.location.href) {
+      frame.src = 'vibora-responsive%20(1)-2.html';
+    }
+
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+
+    // Subtle flash on launch for premium feel
+    overlay.classList.add('flashing');
+    setTimeout(() => overlay.classList.remove('flashing'), 220);
+
+    // Reset sign-in button for next time
+    setTimeout(() => {
+      const btn = document.getElementById('signinBtn');
+      btn.classList.remove('loading');
+      btn.disabled = false;
+    }, 1500);
+  }
+
+  function closeApp() {
+    const overlay = document.getElementById('viboraOverlay');
+    overlay.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  // Close sign-in portal on backdrop click
+  document.getElementById('signinPortal').addEventListener('click', function(e) {
+    if (e.target === this) closeSignIn();
+  });
+
+  // Escape key support
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeSignIn();
+      closeApp();
+    }
+  });
 </script>
 
 </body>
