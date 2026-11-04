@@ -1,4 +1,4 @@
-﻿
+
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -145,7 +145,10 @@ const sellerSessions = loadPersisted(SESSIONS_FILE); // sid/token -> session
 const WEBAUTHN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const SELLER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
-function generateToken() {
+function generateToken(payload) {
+    if (payload && payload.userId && db.createSignedSessionToken) {
+        return db.createSignedSessionToken(payload);
+    }
     return crypto.randomBytes(32).toString('base64url');
 }
 
@@ -227,14 +230,15 @@ function isValidSellerSession(session, token, persistent = false) {
     return Number.isFinite(loginAt) && Date.now() - loginAt <= SELLER_SESSION_TTL_MS;
 }
 
-const USER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const USER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days persistent session
 function isValidUserSession(session, token) {
     if (!session || typeof session.token !== 'string' || typeof token !== 'string') return false;
     const expected = Buffer.from(session.token);
     const supplied = Buffer.from(token);
     if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) return false;
     const loginAt = new Date(session.loginAt || 0).getTime();
-    return Number.isFinite(loginAt) && loginAt <= Date.now() && Date.now() - loginAt <= USER_SESSION_TTL_MS;
+    // Allow up to 5 minutes of clock skew across serverless Lambda nodes
+    return Number.isFinite(loginAt) && loginAt <= Date.now() + 5 * 60 * 1000 && Date.now() - loginAt <= USER_SESSION_TTL_MS;
 }
 
 function clientIp(req) {
@@ -1751,7 +1755,10 @@ async function requireOrganizer(req, res, next) {
     const token = req.headers['x-auth-token'] || String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     if (!token) return res.status(401).json({ success: false, message: 'Organizer authentication is required.' });
     try {
-        const session = await db.getUserSessionByToken(token);
+        let session = await db.getUserSessionByToken(token);
+        if (!session && db.verifySignedSessionToken) {
+            session = db.verifySignedSessionToken(token);
+        }
         if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
         let account = await db.getUserById(session.userId);
         // Synthetic fallback for test organizer account that may not exist in DB
@@ -5487,7 +5494,6 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
     const isTestOrganizer = (normalizedUser === 'organizer@stageway.in' || normalizedUser === 'organizer') && 
         (password === 'Organizer@2026!' || password === 'stageway1234' || password === (process.env.ORGANIZER_PASS || ''));
     if (isTestOrganizer) {
-        const token = generateToken();
         const loginAt = new Date().toISOString();
         const testUser = {
             userId: 'organizer@stageway.in',
@@ -5497,6 +5503,13 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
             portalScope: 'organizer',
             active: true
         };
+        const token = generateToken({
+            userId: testUser.userId,
+            role: 'organizer',
+            companyId: testUser.companyId,
+            displayName: testUser.displayName,
+            loginAt
+        });
         await db.setUserSession(testUser.userId, {
             token,
             ip: clientIp(req),
@@ -5513,8 +5526,14 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
         u => u.userId.toLowerCase() === String(username).toLowerCase() && safeStringEqual(u.password, password)
     );
     if (platformUser) {
-        const token = generateToken();
         const loginAt = new Date().toISOString();
+        const token = generateToken({
+            userId: platformUser.userId,
+            role: platformUser.role,
+            companyId: platformUser.companyId,
+            displayName: platformUser.displayName,
+            loginAt
+        });
         // Register this token so requireAdmin accepts x-auth-token from the frontend
         await db.setUserSession(platformUser.userId, {
             token,
@@ -5538,8 +5557,14 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
     if (managedUser?.role === 'organizer') {
         if (managedUser.active === false || managedUser.blocked || managedUser.accountStatus === 'pending_activation' || managedUser.accountStatus === 'suspended') return res.status(403).json({ success: false, message: 'Organizer account is inactive. Contact the Master Admin.' });
         if (!verifyPassword(String(password), managedUser.passwordHash)) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
-        const token = generateToken();
         const loginAt = new Date().toISOString();
+        const token = generateToken({
+            userId: managedUser.userId,
+            role: 'organizer',
+            companyId: managedUser.companyId,
+            displayName: managedUser.displayName || managedUser.userId,
+            loginAt
+        });
         const session = { token, ip: clientIp(req), loginAt, role: 'organizer', companyId: managedUser.companyId, displayName: managedUser.displayName || managedUser.userId };
         await db.setUserSession(managedUser.userId, session);
         return respondWithSession(req, res, 'user', token, { user: { userId: managedUser.userId, displayName: session.displayName, role: 'organizer', companyId: managedUser.companyId, portalScope: 'organizer' } }, 'token', loginAt);

@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -10,6 +10,51 @@ const crypto = require('crypto');
 const HAS_CONFIGURED_MONGODB = Boolean(process.env.MONGODB_URI);
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/littx';
 const MONGO_PROMISE_KEY = '__littxMongoConnectionPromise';
+
+const SESSION_SIGN_SECRET = process.env.SESSION_SIGNING_SECRET || process.env.SCANNER_SESSION_SECRET || 'stageway-unified-session-secret-2026-secure-persistent';
+
+function createSignedSessionToken(payload) {
+    if (!payload || !payload.userId) {
+        return crypto.randomBytes(32).toString('base64url');
+    }
+    const head = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    const body = Buffer.from(JSON.stringify({
+        userId: payload.userId,
+        role: payload.role || 'organizer',
+        companyId: payload.companyId || 'stageway',
+        displayName: payload.displayName || payload.userId,
+        loginAt: payload.loginAt || new Date().toISOString(),
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600 // 7 days TTL
+    })).toString('base64url');
+    const sig = crypto.createHmac('sha256', SESSION_SIGN_SECRET).update(`${head}.${body}`).digest('base64url');
+    return `${head}.${body}.${sig}`;
+}
+
+function verifySignedSessionToken(token) {
+    if (!token || typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [head, body, sig] = parts;
+    const expected = crypto.createHmac('sha256', SESSION_SIGN_SECRET).update(`${head}.${body}`).digest('base64url');
+    if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+        return null;
+    }
+    try {
+        const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+        if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+        return {
+            userId: payload.userId,
+            role: payload.role,
+            companyId: payload.companyId || 'stageway',
+            displayName: payload.displayName || payload.userId,
+            loginAt: payload.loginAt,
+            token: token
+        };
+    } catch (_) {
+        return null;
+    }
+}
 
 async function connectDb() {
     if (mongoose.connection.readyState === 1) return mongoose.connection;
@@ -556,7 +601,8 @@ async function seedDefaultUsers() {
         console.log('ðŸŒ± Seeding configured multi-tenant platform users...');
 
         const configuredUsers = [
-            { userId: 'superadmin@stageway.in', secret: process.env.MASTER_PASS || 'Stageway@2026!', displayName: 'Stageway Super Admin', role: 'master_admin', companyId: 'all' }
+            { userId: 'superadmin@stageway.in', secret: process.env.MASTER_PASS || 'Stageway@2026!', displayName: 'Stageway Super Admin', role: 'master_admin', companyId: 'all' },
+            { userId: 'organizer@stageway.in', secret: process.env.ORGANIZER_PASS || 'Organizer@2026!', displayName: 'Blue Nile Productions', role: 'organizer', companyId: 'stageway' }
         ];
         const defaultUsers = configuredUsers.filter(user => user.secret).map(({ secret, ...user }) => {
             const salt = crypto.randomBytes(16).toString('hex');
@@ -2482,14 +2528,34 @@ module.exports = {
     },
     getUserSessionByToken: async (token) => {
         if (!token) return null;
+        let session = null;
         if (useMock()) {
             for (const s of _mockUserSessions.values()) {
-                if (s.token === token) return s;
+                if (s.token === token) { session = s; break; }
             }
-            return null;
+        } else {
+            try {
+                session = await UserSession.findOne({ token }).lean();
+            } catch (_) {}
         }
-        return UserSession.findOne({ token }).lean();
+        if (session) return session;
+
+        // Stateless verification fallback: if a Vercel serverless cold-start or container switch occurs,
+        // recover session directly from the cryptographically signed token.
+        const verified = verifySignedSessionToken(token);
+        if (verified) {
+            _mockUserSessions.set(token, verified);
+            if (!useMock()) {
+                try {
+                    await UserSession.findOneAndUpdate({ token }, verified, { upsert: true }).catch(() => {});
+                } catch (_) {}
+            }
+            return verified;
+        }
+        return null;
     },
+    createSignedSessionToken,
+    verifySignedSessionToken,
     setUserSession: async (userId, data) => {
         if (useMock()) {
             _mockUserSessions.set(data.token || userId, { ...data, userId });

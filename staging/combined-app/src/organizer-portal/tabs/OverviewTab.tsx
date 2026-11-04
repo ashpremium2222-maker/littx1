@@ -133,7 +133,7 @@ export default function OverviewTab({
         <div
           style={{
             background: STAGEWAY_THEME.surface,
-            border: `2px dashed ${STAGEWAY_THEME.secondary}`,
+            border: `1.5px dashed ${STAGEWAY_THEME.borderMedium}`,
             borderRadius: 12,
             padding: 48,
             textAlign: 'center',

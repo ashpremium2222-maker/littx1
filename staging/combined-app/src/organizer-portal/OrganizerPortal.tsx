@@ -67,16 +67,29 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
     return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
   }
 
-  const loadData = async () => {
+  const getToken = () => sessionStorage.getItem('littx_token') || localStorage.getItem('littx_token') || ''
+
+  const loadData = async (isRetry = false) => {
     setError('')
     try {
-      const token = sessionStorage.getItem('littx_token') || ''
+      const token = getToken()
+      if (token) {
+        sessionStorage.setItem('littx_token', token)
+        localStorage.setItem('littx_token', token)
+      }
       const res = await fetch('/api/organizer/overview', {
         headers: { 'x-auth-token': token },
         cache: 'no-store',
       })
       const data = await res.json()
-      if (!res.ok || !data.success) throw new Error(data.message || 'Could not load organizer data.')
+      if (!res.ok || !data.success) {
+        if (!isRetry) {
+          // Automatic retry once for serverless cold-start resilience
+          await new Promise(r => setTimeout(r, 600))
+          return await loadData(true)
+        }
+        throw new Error(data.message || 'Could not load organizer data.')
+      }
 
       const evs: OrganizerEvent[] = data.events || []
       setEvents(evs)
@@ -341,16 +354,17 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
       style={{
         display: 'flex',
         minHeight: '100vh',
-        background: STAGEWAY_THEME.light,
+        background: STAGEWAY_THEME.canvasBg || '#F3FAF6',
         color: STAGEWAY_THEME.textPrimary,
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      {/* ── SIDEBAR ── */}
+      {/* ── SIDEBAR (Light Emerald) ── */}
       <aside
         style={{
           width: 240,
-          background: STAGEWAY_THEME.primary,
+          background: STAGEWAY_THEME.sidebarBg || '#E8F5EF',
+          borderRight: `1px solid ${STAGEWAY_THEME.border}`,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
@@ -366,7 +380,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           <div
             style={{
               padding: '20px',
-              borderBottom: '1px solid rgba(255,255,255,0.12)',
+              borderBottom: '1px solid rgba(4, 120, 87, 0.12)',
               display: 'flex',
               alignItems: 'center',
               gap: 10,
@@ -375,7 +389,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             <img
               src="/stageway-logo.png"
               alt="StageWay"
-              style={{ width: 34, height: 34, objectFit: 'contain', borderRadius: 8, background: 'rgba(255,255,255,0.15)', padding: 4 }}
+              style={{ width: 34, height: 34, objectFit: 'contain', borderRadius: 8, background: '#FFFFFF', border: '1px solid rgba(4, 120, 87, 0.2)', padding: 3 }}
               onError={(e) => {
                 const el = e.target as HTMLImageElement
                 el.style.display = 'none'
@@ -385,7 +399,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             />
             <div
               style={{
-                width: 34, height: 34, borderRadius: 8, background: 'rgba(255,255,255,0.15)',
+                width: 34, height: 34, borderRadius: 8, background: STAGEWAY_THEME.primary,
                 color: '#fff', display: 'none', alignItems: 'center', justifyContent: 'center',
                 fontWeight: 700, fontSize: 16,
               }}
@@ -393,27 +407,27 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
               S
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
+              <div style={{ fontWeight: 800, fontSize: 16, color: STAGEWAY_THEME.primary, letterSpacing: '-0.02em' }}>
                 Stageway
               </div>
-              <div style={{ fontSize: 10, color: '#A7F3D0', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 10, color: STAGEWAY_THEME.secondary, letterSpacing: '0.04em', textTransform: 'uppercase', fontWeight: 600 }}>
                 Organizer Portal
               </div>
             </div>
           </div>
 
           {/* Org Profile Pill */}
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(4, 120, 87, 0.12)' }}>
+            <div style={{ fontSize: 10, color: STAGEWAY_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
               PROMOTER
             </div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: STAGEWAY_THEME.textPrimary, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {profile.organizationName || displayName}
             </div>
           </div>
 
           {/* Nav List */}
-          <nav style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <nav style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
             {navItems.map(item => {
               const active = activeTab === item.id
               return (
@@ -425,17 +439,18 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     alignItems: 'center',
                     padding: '8px 12px',
                     borderRadius: 6,
-                    background: active ? '#FFFFFF' : 'transparent',
-                    color: active ? STAGEWAY_THEME.primary : '#E8F5EF',
+                    background: active ? STAGEWAY_THEME.primary : 'transparent',
+                    color: active ? '#FFFFFF' : STAGEWAY_THEME.textSecondary,
                     border: 'none',
                     fontSize: 13,
-                    fontWeight: active ? 700 : 400,
+                    fontWeight: active ? 700 : 500,
                     cursor: 'pointer',
                     textAlign: 'left',
-                    transition: 'all 0.1s ease',
+                    boxShadow: active ? '0 2px 6px rgba(4, 120, 87, 0.25)' : 'none',
+                    transition: 'all 0.12s ease',
                     width: '100%',
                   }}
-                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)' }}
+                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(4, 120, 87, 0.08)' }}
                   onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
                 >
                   {item.label}
@@ -446,21 +461,24 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         </div>
 
         {/* Bottom Actions */}
-        <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+        <div style={{ padding: '16px', borderTop: '1px solid rgba(4, 120, 87, 0.12)' }}>
           <button
             onClick={() => setShowCreateModal(true)}
             style={{
               width: '100%',
-              background: STAGEWAY_THEME.secondary,
+              background: STAGEWAY_THEME.primary,
               color: '#FFFFFF',
               border: 'none',
               borderRadius: 6,
               padding: '9px 12px',
-              fontSize: 12,
+              fontSize: 12.5,
               fontWeight: 600,
               cursor: 'pointer',
               marginBottom: 8,
+              boxShadow: '0 2px 6px rgba(4, 120, 87, 0.2)',
             }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = STAGEWAY_THEME.secondary }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = STAGEWAY_THEME.primary }}
           >
             + Create Event
           </button>
@@ -469,13 +487,27 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             onClick={handleLogout}
             style={{
               width: '100%',
-              background: 'transparent',
-              color: '#E8F5EF',
-              border: '1px solid rgba(232, 245, 239, 0.35)',
+              background: '#FFFFFF',
+              color: STAGEWAY_THEME.textSecondary,
+              border: '1px solid rgba(4, 120, 87, 0.25)',
               borderRadius: 6,
               padding: '7px 12px',
               fontSize: 12,
+              fontWeight: 500,
               cursor: 'pointer',
+              transition: 'all 0.12s ease',
+            }}
+            onMouseEnter={e => {
+              const el = e.currentTarget as HTMLButtonElement
+              el.style.background = '#FEE2E2'
+              el.style.color = '#DC2626'
+              el.style.borderColor = 'rgba(220, 38, 38, 0.3)'
+            }}
+            onMouseLeave={e => {
+              const el = e.currentTarget as HTMLButtonElement
+              el.style.background = '#FFFFFF'
+              el.style.color = STAGEWAY_THEME.textSecondary
+              el.style.borderColor = 'rgba(4, 120, 87, 0.25)'
             }}
           >
             Sign Out

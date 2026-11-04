@@ -42,10 +42,10 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
       }
 
       const session = { ...data.user, token: data.token } as UserSession
-      localStorage.removeItem('littx_user')
-      localStorage.removeItem('littx_token')
       sessionStorage.setItem('littx_user', JSON.stringify(session))
       sessionStorage.setItem('littx_token', data.token)
+      localStorage.setItem('littx_user', JSON.stringify(session))
+      localStorage.setItem('littx_token', data.token)
       if (data.cookieSession) {
         sessionStorage.removeItem('ft_admin_key')
         localStorage.removeItem('ft_admin_key')

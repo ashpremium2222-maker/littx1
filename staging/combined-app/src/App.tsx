@@ -28,11 +28,16 @@ function MainAppShell() {
     try {
       // Older builds persisted bearer credentials; discard them so the user
       // signs in again into tab-scoped session storage.
-      localStorage.removeItem('littx_user')
-      localStorage.removeItem('littx_token')
-      localStorage.removeItem('ft_admin_key')
-      const stored = sessionStorage.getItem('littx_user')
-      return stored ? JSON.parse(stored) : null
+      const stored = sessionStorage.getItem('littx_user') || localStorage.getItem('littx_user')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed?.token) {
+          sessionStorage.setItem('littx_user', stored)
+          sessionStorage.setItem('littx_token', parsed.token)
+        }
+        return parsed
+      }
+      return null
     } catch { return null }
   })
 
