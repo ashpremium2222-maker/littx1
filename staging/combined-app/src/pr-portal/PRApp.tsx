@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 
 // ==================== TYPES ====================
 interface PRUser {
@@ -12,8 +12,12 @@ const API = ''
 interface PRTicketCategory { id: string; name: string; price: number; currency: string; status: string; remainingAvailability: number | null }
 interface PREvent { id: string; name: string; slug: string; ticketCategories: PRTicketCategory[] }
 
+function getPRToken(): string {
+  return sessionStorage.getItem('pr_token') || localStorage.getItem('pr_token') || ''
+}
+
 function prAuthHeaders(json = false): HeadersInit {
-  const token = sessionStorage.getItem('pr_token') || ''
+  const token = getPRToken()
   return { ...(json ? { 'Content-Type': 'application/json' } : {}), 'X-Auth-Token': token }
 }
 
@@ -39,6 +43,8 @@ function LoginPage({ onLogin }: { onLogin: (user: PRUser) => void }) {
       const user: PRUser = { id: data.user.userId, username: username.trim(), displayName: data.user.displayName }
       sessionStorage.setItem('pr_user', JSON.stringify(user))
       sessionStorage.setItem('pr_token', data.token)
+      localStorage.setItem('pr_user', JSON.stringify(user))
+      localStorage.setItem('pr_token', data.token)
       onLogin(user)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in.')
@@ -721,16 +727,20 @@ export default function PRApp() {
 
   const [prUser, setPrUser] = useState<PRUser | null>(() => {
     try {
-      const saved = sessionStorage.getItem('pr_user')
-      return saved && sessionStorage.getItem('pr_token') ? JSON.parse(saved) : null
+      const saved = sessionStorage.getItem('pr_user') || localStorage.getItem('pr_user')
+      const token = sessionStorage.getItem('pr_token') || localStorage.getItem('pr_token')
+      if (!saved || !token || !token.includes('.')) return null
+      return JSON.parse(saved)
     } catch { return null }
   })
 
   function handleLogout() {
-    const token = sessionStorage.getItem('pr_token') || ''
+    const token = getPRToken()
     void fetch('/api/auth/logout', { method: 'POST', headers: { 'x-auth-token': token } }).catch(() => {})
     sessionStorage.removeItem('pr_user')
     sessionStorage.removeItem('pr_token')
+    localStorage.removeItem('pr_user')
+    localStorage.removeItem('pr_token')
     setPrUser(null)
   }
 
