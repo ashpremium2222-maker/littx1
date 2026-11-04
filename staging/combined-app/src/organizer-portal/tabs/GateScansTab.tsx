@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { OrganizerEvent } from '../types'
+import { STAGEWAY_THEME } from '../theme'
 
 interface GateScansTabProps {
   events: OrganizerEvent[]
@@ -21,12 +22,12 @@ export default function GateScansTab({
     return (
       <div
         style={{
-          background: '#14161C',
-          border: '1px dashed #282C36',
+          background: STAGEWAY_THEME.light,
+          border: `1px dashed ${STAGEWAY_THEME.borderMedium}`,
           borderRadius: 10,
           padding: 48,
           textAlign: 'center',
-          color: '#555962',
+          color: STAGEWAY_THEME.textMuted,
         }}
       >
         No events available. Create an event first to monitor gate scan traffic.
@@ -54,25 +55,25 @@ export default function GateScansTab({
           alignItems: 'center',
           gap: 16,
           flexWrap: 'wrap',
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: 16,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase' }}>
+          <label style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted, textTransform: 'uppercase' }}>
             Production:
           </label>
           <select
             value={activeEvent.eventId}
             onChange={e => onSelectEventId(e.target.value)}
             style={{
-              background: '#0E1013',
-              border: '1px solid #282C36',
+              background: '#F8FCFA',
+              border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 6,
               padding: '8px 12px',
-              color: '#EDEDEF',
+              color: STAGEWAY_THEME.textPrimary,
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
@@ -88,15 +89,15 @@ export default function GateScansTab({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
+          <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted }}>
             Scanner sync active
           </span>
           <button
             onClick={onRefresh}
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              color: '#EDEDEF',
-              border: '1px solid rgba(255,255,255,0.12)',
+              background: STAGEWAY_THEME.light,
+              color: STAGEWAY_THEME.textSecondary,
+              border: `1px solid ${STAGEWAY_THEME.border}`,
               borderRadius: 6,
               padding: '7px 14px',
               fontSize: 12,
@@ -119,44 +120,44 @@ export default function GateScansTab({
         {/* Admission Progress */}
         <div
           style={{
-            background: '#14161C',
-            border: '1px solid #20232B',
+            background: STAGEWAY_THEME.surface,
+            border: `1px solid ${STAGEWAY_THEME.border}`,
             borderRadius: 10,
             padding: 18,
           }}
         >
-          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Admission Progress
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 8 }}>
-            <span style={{ fontSize: 26, fontWeight: 700, color: '#EDEDEF', letterSpacing: '-0.02em' }}>
+            <span style={{ fontSize: 26, fontWeight: 700, color: STAGEWAY_THEME.primary, letterSpacing: '-0.02em' }}>
               {checkInRate}%
             </span>
-            <span style={{ fontSize: 13, color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>
+            <span style={{ fontSize: 13, color: STAGEWAY_THEME.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>
               ({admissionsCheckedIn}/{totalAdmissionsExpected})
             </span>
           </div>
-          <div style={{ height: 4, background: '#1E2026', borderRadius: 999, marginTop: 12, overflow: 'hidden' }}>
-            <div style={{ width: `${checkInRate}%`, height: '100%', background: '#EDEDEF', borderRadius: 999 }} />
+          <div style={{ height: 4, background: STAGEWAY_THEME.light, borderRadius: 999, marginTop: 12, overflow: 'hidden' }}>
+            <div style={{ width: `${checkInRate}%`, height: '100%', background: STAGEWAY_THEME.primary, borderRadius: 999 }} />
           </div>
         </div>
 
-        {/* Verified Passes */}
+        {/* Verified Scans */}
         <div
           style={{
-            background: '#14161C',
-            border: '1px solid #20232B',
+            background: STAGEWAY_THEME.surface,
+            border: `1px solid ${STAGEWAY_THEME.border}`,
             borderRadius: 10,
             padding: 18,
           }}
         >
-          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Verified Scans
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: '#EDEDEF', marginTop: 8, letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 8, letterSpacing: '-0.02em' }}>
             {scans.accepted}
           </div>
-          <div style={{ fontSize: 12, color: '#8B909A', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, marginTop: 4 }}>
             Digital QR passes admitted through gate
           </div>
         </div>
@@ -164,19 +165,19 @@ export default function GateScansTab({
         {/* Duplicate Scan Attempts */}
         <div
           style={{
-            background: '#14161C',
-            border: scans.duplicate > 0 ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid #20232B',
+            background: STAGEWAY_THEME.surface,
+            border: scans.duplicate > 0 ? '1px solid rgba(239, 68, 68, 0.4)' : `1px solid ${STAGEWAY_THEME.border}`,
             borderRadius: 10,
             padding: 18,
           }}
         >
-          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: scans.duplicate > 0 ? '#EF4444' : '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: scans.duplicate > 0 ? '#EF4444' : STAGEWAY_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Duplicate Scan Attempts
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: scans.duplicate > 0 ? '#EF4444' : '#EDEDEF', marginTop: 8, letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: scans.duplicate > 0 ? '#EF4444' : STAGEWAY_THEME.primary, marginTop: 8, letterSpacing: '-0.02em' }}>
             {scans.duplicate}
           </div>
-          <div style={{ fontSize: 12, color: scans.duplicate > 0 ? '#EF4444' : '#8B909A', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: scans.duplicate > 0 ? '#EF4444' : STAGEWAY_THEME.textMuted, marginTop: 4 }}>
             {scans.duplicate > 0 ? 'Duplicate / reused passes intercepted' : 'Zero duplicate fraud detected'}
           </div>
         </div>
@@ -184,19 +185,19 @@ export default function GateScansTab({
         {/* Remaining Guests */}
         <div
           style={{
-            background: '#14161C',
-            border: '1px solid #20232B',
+            background: STAGEWAY_THEME.surface,
+            border: `1px solid ${STAGEWAY_THEME.border}`,
             borderRadius: 10,
             padding: 18,
           }}
         >
-          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Unchecked Attendees
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: '#EDEDEF', marginTop: 8, letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 8, letterSpacing: '-0.02em' }}>
             {Math.max(0, totalAdmissionsExpected - admissionsCheckedIn)}
           </div>
-          <div style={{ fontSize: 12, color: '#8B909A', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, marginTop: 4 }}>
             Ticket holders yet to present pass
           </div>
         </div>
@@ -205,18 +206,18 @@ export default function GateScansTab({
       {/* SCAN AUDIT FEED */}
       <div
         style={{
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: 20,
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h3 style={{ fontSize: 15, fontWeight: 600, color: '#EDEDEF', margin: 0 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: STAGEWAY_THEME.textPrimary, margin: 0 }}>
               Live Gate Scan Stream
             </h3>
-            <div style={{ fontSize: 12, color: '#8B909A', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, marginTop: 2 }}>
               Verified door transactions recorded by gate devices
             </div>
           </div>
@@ -227,11 +228,11 @@ export default function GateScansTab({
             value={ticketSearch}
             onChange={e => setTicketSearch(e.target.value)}
             style={{
-              background: '#0E1013',
-              border: '1px solid #282C36',
+              background: '#F8FCFA',
+              border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 6,
               padding: '7px 12px',
-              color: '#EDEDEF',
+              color: STAGEWAY_THEME.textPrimary,
               fontSize: 12,
               fontFamily: 'JetBrains Mono, monospace',
               minWidth: 200,
@@ -240,7 +241,7 @@ export default function GateScansTab({
         </div>
 
         {recentScans.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#555962', fontSize: 13 }}>
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: STAGEWAY_THEME.textMuted, fontSize: 13 }}>
             No recent gate scans logged for this production.
           </div>
         ) : (
@@ -260,11 +261,11 @@ export default function GateScansTab({
                     borderRadius: 6,
                     background: isDuplicate
                       ? 'rgba(239, 68, 68, 0.06)'
-                      : '#0E1013',
+                      : STAGEWAY_THEME.light,
                     border: '1px solid',
                     borderColor: isDuplicate
                       ? 'rgba(239, 68, 68, 0.25)'
-                      : '#1C1F26',
+                      : STAGEWAY_THEME.border,
                     flexWrap: 'wrap',
                     gap: 12,
                   }}
@@ -278,26 +279,26 @@ export default function GateScansTab({
                         padding: '2px 7px',
                         borderRadius: 4,
                         background: isAccepted
-                          ? 'rgba(16, 185, 129, 0.1)'
+                          ? 'rgba(16, 165, 121, 0.12)'
                           : 'rgba(239, 68, 68, 0.1)',
-                        color: isAccepted ? '#10B981' : '#EF4444',
-                        border: `1px solid ${isAccepted ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
+                        color: isAccepted ? STAGEWAY_THEME.secondary : '#EF4444',
+                        border: `1px solid ${isAccepted ? 'rgba(16, 165, 121, 0.3)' : 'rgba(239, 68, 68, 0.25)'}`,
                         textTransform: 'uppercase',
                       }}
                     >
                       {scan.result}
                     </span>
                     <div>
-                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 500, color: '#EDEDEF' }}>
+                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 500, color: STAGEWAY_THEME.textPrimary }}>
                         {scan.ticketId}
                       </div>
-                      <div style={{ fontSize: 11, color: '#8B909A', marginTop: 1 }}>
+                      <div style={{ fontSize: 11, color: STAGEWAY_THEME.textMuted, marginTop: 1 }}>
                         {scan.admissionCount} admission{scan.admissionCount === 1 ? '' : 's'}
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ fontSize: 11, color: '#555962', fontFamily: 'JetBrains Mono, monospace' }}>
+                  <div style={{ fontSize: 11, color: STAGEWAY_THEME.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>
                     {scan.timestamp ? new Date(scan.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Just now'}
                   </div>
                 </div>

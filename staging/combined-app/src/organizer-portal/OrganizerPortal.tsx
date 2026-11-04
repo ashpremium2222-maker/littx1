@@ -1,5 +1,6 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { OrganizerCategory, OrganizerEvent, OrganizerProfile, OrganizerTab } from './types'
+import { STAGEWAY_THEME } from './theme'
 import OverviewTab from './tabs/OverviewTab'
 import EventsTab from './tabs/EventsTab'
 import TicketTiersTab from './tabs/TicketTiersTab'
@@ -148,7 +149,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         setSelectedEventId(newId)
         // Automatically open Event Settings for the new event!
         try {
-          const freshRes = await fetch('/api/organizer/overview', { headers: { 'x-auth-token': token }, cache: 'no-store' })
+          const freshRes = await fetch('/api/organizer/overview', { headers: { 'x-auth-token': sessionStorage.getItem('littx_token') || '' }, cache: 'no-store' })
           const freshData = await freshRes.json()
           const matched = (freshData.events || []).find((ev: any) => ev.eventId === newId || ev.id === newId)
           if (matched) {
@@ -280,13 +281,35 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
     onLogout()
   }
 
+  // Shared input style for modals
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    background: '#F8FCFA',
+    border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
+    borderRadius: 6,
+    padding: '8px 12px',
+    color: STAGEWAY_THEME.textPrimary,
+    fontSize: 13,
+    boxSizing: 'border-box',
+    outline: 'none',
+  }
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 600,
+    color: STAGEWAY_THEME.textMuted,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  }
+
   if (loading) {
     return (
       <div
         style={{
           minHeight: '100vh',
-          background: '#0B0C0E',
-          color: '#EDEDEF',
+          background: STAGEWAY_THEME.light,
+          color: STAGEWAY_THEME.textPrimary,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -294,10 +317,9 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           gap: 12,
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>Stageway</div>
-        <div style={{ fontSize: 12, color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>
-          Loading dashboardâ€¦
-        </div>
+        <img src="/stageway-logo.png" alt="StageWay" style={{ width: 44, height: 44, objectFit: 'contain', borderRadius: 10, background: STAGEWAY_THEME.primary, padding: 6 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+        <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em', color: STAGEWAY_THEME.primary }}>Stageway</div>
+        <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted }}>Loading dashboard...</div>
       </div>
     )
   }
@@ -319,17 +341,16 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
       style={{
         display: 'flex',
         minHeight: '100vh',
-        background: '#0B0C0E',
-        color: '#EDEDEF',
+        background: STAGEWAY_THEME.light,
+        color: STAGEWAY_THEME.textPrimary,
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      {/* PROFESSIONAL SIDEBAR */}
+      {/* ── SIDEBAR ── */}
       <aside
         style={{
           width: 240,
-          background: '#101216',
-          borderRight: '1px solid #1E2026',
+          background: STAGEWAY_THEME.primary,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
@@ -345,44 +366,48 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           <div
             style={{
               padding: '20px',
-              borderBottom: '1px solid #1E2026',
+              borderBottom: '1px solid rgba(255,255,255,0.12)',
               display: 'flex',
               alignItems: 'center',
               gap: 10,
             }}
           >
+            <img
+              src="/stageway-logo.png"
+              alt="StageWay"
+              style={{ width: 34, height: 34, objectFit: 'contain', borderRadius: 8, background: 'rgba(255,255,255,0.15)', padding: 4 }}
+              onError={(e) => {
+                const el = e.target as HTMLImageElement
+                el.style.display = 'none'
+                const fb = el.nextSibling as HTMLElement
+                if (fb) fb.style.display = 'flex'
+              }}
+            />
             <div
               style={{
-                width: 26,
-                height: 26,
-                borderRadius: 6,
-                background: '#EDEDEF',
-                color: '#0B0C0E',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: 14,
+                width: 34, height: 34, borderRadius: 8, background: 'rgba(255,255,255,0.15)',
+                color: '#fff', display: 'none', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 700, fontSize: 16,
               }}
             >
               S
             </div>
             <div>
-              <div style={{ fontWeight: 600, fontSize: 14, color: '#EDEDEF', letterSpacing: '-0.01em' }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
                 Stageway
               </div>
-              <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 10, color: '#A7F3D0', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                 Organizer Portal
               </div>
             </div>
           </div>
 
           {/* Org Profile Pill */}
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #1E2026' }}>
-            <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#555962', textTransform: 'uppercase' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
               PROMOTER
             </div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#EDEDEF', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {profile.organizationName || displayName}
             </div>
           </div>
@@ -400,15 +425,18 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     alignItems: 'center',
                     padding: '8px 12px',
                     borderRadius: 6,
-                    background: active ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-                    color: active ? '#EDEDEF' : '#8B909A',
+                    background: active ? '#FFFFFF' : 'transparent',
+                    color: active ? STAGEWAY_THEME.primary : '#E8F5EF',
                     border: 'none',
                     fontSize: 13,
-                    fontWeight: active ? 600 : 400,
+                    fontWeight: active ? 700 : 400,
                     cursor: 'pointer',
                     textAlign: 'left',
                     transition: 'all 0.1s ease',
+                    width: '100%',
                   }}
+                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)' }}
+                  onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
                 >
                   {item.label}
                 </button>
@@ -418,13 +446,13 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         </div>
 
         {/* Bottom Actions */}
-        <div style={{ padding: '16px', borderTop: '1px solid #1E2026' }}>
+        <div style={{ padding: '16px', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
           <button
             onClick={() => setShowCreateModal(true)}
             style={{
               width: '100%',
-              background: '#EDEDEF',
-              color: '#0B0C0E',
+              background: STAGEWAY_THEME.secondary,
+              color: '#FFFFFF',
               border: 'none',
               borderRadius: 6,
               padding: '9px 12px',
@@ -442,8 +470,8 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             style={{
               width: '100%',
               background: 'transparent',
-              color: '#8B909A',
-              border: '1px solid #20232B',
+              color: '#E8F5EF',
+              border: '1px solid rgba(232, 245, 239, 0.35)',
               borderRadius: 6,
               padding: '7px 12px',
               fontSize: 12,
@@ -455,14 +483,14 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         </div>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
+      {/* ── MAIN CONTENT AREA ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* TOP STATUS BAR */}
         <header
           style={{
             height: 60,
-            borderBottom: '1px solid #1E2026',
-            background: '#101216',
+            borderBottom: `1px solid ${STAGEWAY_THEME.border}`,
+            background: '#FFFFFF',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -473,13 +501,13 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <h1 style={{ fontSize: 15, fontWeight: 600, color: '#EDEDEF', margin: 0 }}>
+            <h1 style={{ fontSize: 15, fontWeight: 700, color: STAGEWAY_THEME.textPrimary, margin: 0 }}>
               {navItems.find(i => i.id === activeTab)?.label}
             </h1>
 
             {events.length > 0 && (
-              <span style={{ fontSize: 12, color: '#555962', fontFamily: 'JetBrains Mono, monospace' }}>
-                Â· {events.length} production{events.length === 1 ? '' : 's'}
+              <span style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted }}>
+                · {events.length} production{events.length === 1 ? '' : 's'}
               </span>
             )}
           </div>
@@ -490,13 +518,12 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                 value={selectedEventId || ''}
                 onChange={e => setSelectedEventId(e.target.value)}
                 style={{
-                  background: '#0E1013',
-                  border: '1px solid #282C36',
+                  background: '#FFFFFF',
+                  border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                   borderRadius: 6,
                   padding: '6px 10px',
-                  color: '#EDEDEF',
+                  color: STAGEWAY_THEME.textPrimary,
                   fontSize: 12,
-                  fontFamily: 'JetBrains Mono, monospace',
                   cursor: 'pointer',
                   maxWidth: 220,
                 }}
@@ -512,12 +539,13 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             <button
               onClick={() => void loadData()}
               style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid #20232B',
-                color: '#8B909A',
+                background: STAGEWAY_THEME.light,
+                border: `1px solid ${STAGEWAY_THEME.secondary}`,
+                color: STAGEWAY_THEME.primary,
                 borderRadius: 6,
-                padding: '6px 10px',
+                padding: '6px 12px',
                 fontSize: 12,
+                fontWeight: 600,
                 cursor: 'pointer',
               }}
               title="Refresh"
@@ -534,9 +562,9 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
               margin: '16px 24px 0',
               padding: '12px 16px',
               borderRadius: 6,
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.25)',
-              color: '#EF4444',
+              background: 'rgba(220, 38, 38, 0.08)',
+              border: '1px solid rgba(220, 38, 38, 0.25)',
+              color: '#DC2626',
               fontSize: 13,
               display: 'flex',
               justifyContent: 'space-between',
@@ -549,7 +577,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                 <button
                   onClick={handleLogout}
                   style={{
-                    background: '#EF4444',
+                    background: '#DC2626',
                     color: '#FFF',
                     border: 'none',
                     borderRadius: 4,
@@ -564,7 +592,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
               ) : (
                 <button
                   onClick={() => void loadData()}
-                  style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', textDecoration: 'underline' }}
+                  style={{ background: 'transparent', border: 'none', color: '#DC2626', cursor: 'pointer', textDecoration: 'underline' }}
                 >
                   Retry
                 </button>
@@ -574,7 +602,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         )}
 
         {/* TAB BODY */}
-        <main style={{ padding: '24px clamp(16px, 3vw, 36px)', flex: 1, minHeight: 0 }}>
+        <main style={{ padding: '24px clamp(16px, 3vw, 36px)', flex: 1, minHeight: 0, background: STAGEWAY_THEME.light }}>
           {activeTab === 'overview' && (
             <OverviewTab
               events={events}
@@ -643,7 +671,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         </main>
       </div>
 
-      {/* CREATE EVENT DRAFT MODAL */}
+      {/* ── CREATE EVENT DRAFT MODAL ── */}
       {showCreateModal && (
         <div
           role="dialog"
@@ -652,245 +680,7 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
             position: 'fixed',
             inset: 0,
             zIndex: 100,
-            background: 'rgba(0,0,0,0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            overflowY: 'auto',
-          }}
-        >
-          <div
-            style={{
-              background: '#14161C',
-              border: '1px solid #282C36',
-              borderRadius: 10,
-              width: '100%',
-              maxWidth: 600,
-              padding: 24,
-              boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16,
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ fontSize: 16, fontWeight: 600, margin: 0, color: '#EDEDEF' }}>
-                  Create Event Draft
-                </h2>
-                <div style={{ fontSize: 12, color: '#8B909A', marginTop: 2 }}>
-                  Set up event venue and timing details. You can configure ticket tiers next.
-                </div>
-              </div>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                style={{ background: 'transparent', border: 'none', color: '#8B909A', fontSize: 18, cursor: 'pointer' }}
-              >
-                âœ•
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateDraft} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                  EVENT TITLE *
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Saturday Night Session"
-                  value={draftForm.name}
-                  onChange={e => setDraftForm(prev => ({ ...prev, name: e.target.value }))}
-                  required
-                  style={{
-                    width: '100%',
-                    background: '#0E1013',
-                    border: '1px solid #282C36',
-                    borderRadius: 6,
-                    padding: '8px 12px',
-                    color: '#EDEDEF',
-                    fontSize: 13,
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                    CITY *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Mumbai"
-                    value={draftForm.city}
-                    onChange={e => setDraftForm(prev => ({ ...prev, city: e.target.value }))}
-                    required
-                    style={{
-                      width: '100%',
-                      background: '#0E1013',
-                      border: '1px solid #282C36',
-                      borderRadius: 6,
-                      padding: '8px 12px',
-                      color: '#EDEDEF',
-                      fontSize: 13,
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                    VENUE
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Blue Frog"
-                    value={draftForm.venue}
-                    onChange={e => setDraftForm(prev => ({ ...prev, venue: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      background: '#0E1013',
-                      border: '1px solid #282C36',
-                      borderRadius: 6,
-                      padding: '8px 12px',
-                      color: '#EDEDEF',
-                      fontSize: 13,
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                    START DATE & TIME
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={draftForm.startsAt}
-                    onChange={e => setDraftForm(prev => ({ ...prev, startsAt: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      background: '#0E1013',
-                      border: '1px solid #282C36',
-                      borderRadius: 6,
-                      padding: '8px 12px',
-                      color: '#EDEDEF',
-                      fontSize: 12,
-                      fontFamily: 'JetBrains Mono, monospace',
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                    END DATE & TIME
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={draftForm.endsAt}
-                    onChange={e => setDraftForm(prev => ({ ...prev, endsAt: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      background: '#0E1013',
-                      border: '1px solid #282C36',
-                      borderRadius: 6,
-                      padding: '8px 12px',
-                      color: '#EDEDEF',
-                      fontSize: 12,
-                      fontFamily: 'JetBrains Mono, monospace',
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                  POSTER IMAGE URL
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://..."
-                  value={draftForm.posterUrl}
-                  onChange={e => setDraftForm(prev => ({ ...prev, posterUrl: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    background: '#0E1013',
-                    border: '1px solid #282C36',
-                    borderRadius: 6,
-                    padding: '8px 12px',
-                    color: '#EDEDEF',
-                    fontSize: 13,
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                  EVENT DESCRIPTION
-                </label>
-                <textarea
-                  placeholder="Lineup, entry requirements, age limit..."
-                  value={draftForm.description}
-                  onChange={e => setDraftForm(prev => ({ ...prev, description: e.target.value }))}
-                  rows={3}
-                  style={{
-                    width: '100%',
-                    background: '#0E1013',
-                    border: '1px solid #282C36',
-                    borderRadius: 6,
-                    padding: '8px 12px',
-                    color: '#EDEDEF',
-                    fontSize: 13,
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    color: '#8B909A',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 6,
-                    padding: '8px 16px',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creatingDraft}
-                  style={{
-                    background: '#EDEDEF',
-                    color: '#0B0C0E',
-                    border: 'none',
-                    borderRadius: 6,
-                    padding: '8px 20px',
-                    fontWeight: 600,
-                    fontSize: 12,
-                    cursor: creatingDraft ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {creatingDraft ? 'Savingâ€¦' : 'Save Draft'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* COMPREHENSIVE EVENT SETTINGS MODAL */}
-      {editingEvent && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 100,
-            background: 'rgba(0,0,0,0.75)',
+            background: 'rgba(15, 23, 42, 0.5)',
             backdropFilter: 'blur(4px)',
             display: 'flex',
             alignItems: 'center',
@@ -901,45 +691,224 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
         >
           <div
             style={{
-              background: '#14161C',
-              border: '1px solid #282C36',
+              background: '#FFFFFF',
+              border: `1px solid ${STAGEWAY_THEME.border}`,
               borderRadius: 12,
               width: '100%',
-              maxWidth: 760,
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              padding: '24px 28px',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.7)',
+              maxWidth: 600,
+              padding: 28,
+              boxShadow: '0 20px 60px rgba(4, 120, 87, 0.12)',
               display: 'flex',
               flexDirection: 'column',
               gap: 20,
             }}
           >
             {/* Modal Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #1E2026', paddingBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `1px solid ${STAGEWAY_THEME.border}`, paddingBottom: 16 }}>
+              <div>
+                <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: STAGEWAY_THEME.primary }}>
+                  Create Event Draft
+                </h2>
+                <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, marginTop: 3 }}>
+                  Set up event venue and timing. Configure ticket tiers next.
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                style={{ background: 'transparent', border: 'none', color: STAGEWAY_THEME.textMuted, fontSize: 20, cursor: 'pointer', padding: '0 4px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateDraft} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={labelStyle}>EVENT TITLE *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Saturday Night Session"
+                  value={draftForm.name}
+                  onChange={e => setDraftForm(prev => ({ ...prev, name: e.target.value }))}
+                  required
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>CITY *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Mumbai"
+                    value={draftForm.city}
+                    onChange={e => setDraftForm(prev => ({ ...prev, city: e.target.value }))}
+                    required
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>VENUE</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Blue Frog"
+                    value={draftForm.venue}
+                    onChange={e => setDraftForm(prev => ({ ...prev, venue: e.target.value }))}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>START DATE & TIME</label>
+                  <input
+                    type="datetime-local"
+                    value={draftForm.startsAt}
+                    onChange={e => setDraftForm(prev => ({ ...prev, startsAt: e.target.value }))}
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>END DATE & TIME</label>
+                  <input
+                    type="datetime-local"
+                    value={draftForm.endsAt}
+                    onChange={e => setDraftForm(prev => ({ ...prev, endsAt: e.target.value }))}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>POSTER IMAGE URL</label>
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={draftForm.posterUrl}
+                  onChange={e => setDraftForm(prev => ({ ...prev, posterUrl: e.target.value }))}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>EVENT DESCRIPTION</label>
+                <textarea
+                  placeholder="Lineup, entry requirements, age limit..."
+                  value={draftForm.description}
+                  onChange={e => setDraftForm(prev => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  style={{ ...inputStyle, resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  style={{
+                    background: STAGEWAY_THEME.light,
+                    color: STAGEWAY_THEME.textSecondary,
+                    border: `1px solid ${STAGEWAY_THEME.border}`,
+                    borderRadius: 6,
+                    padding: '8px 18px',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingDraft}
+                  style={{
+                    background: creatingDraft ? STAGEWAY_THEME.secondary : STAGEWAY_THEME.primary,
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '8px 22px',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: creatingDraft ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {creatingDraft ? 'Saving...' : 'Save Draft'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── EVENT SETTINGS MODAL ── */}
+      {editingEvent && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            background: 'rgba(15, 23, 42, 0.55)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            overflowY: 'auto',
+          }}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              border: `1px solid ${STAGEWAY_THEME.border}`,
+              borderRadius: 14,
+              width: '100%',
+              maxWidth: 760,
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '28px 32px',
+              boxShadow: '0 24px 64px rgba(4, 120, 87, 0.14)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 22,
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `1px solid ${STAGEWAY_THEME.border}`, paddingBottom: 18 }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#EDEDEF', letterSpacing: '-0.01em' }}>
+                  <h2 style={{ fontSize: 19, fontWeight: 700, margin: 0, color: STAGEWAY_THEME.primary, letterSpacing: '-0.01em' }}>
                     Event Settings
                   </h2>
                   <span
                     style={{
                       fontSize: 10,
-                      fontFamily: 'JetBrains Mono, monospace',
-                      fontWeight: 600,
+                      fontWeight: 700,
                       textTransform: 'uppercase',
-                      padding: '2px 8px',
-                      borderRadius: 4,
-                      background: editingEvent.status === 'published' ? 'rgba(16, 185, 129, 0.1)' : editingEvent.status === 'pending_review' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                      color: editingEvent.status === 'published' ? '#10B981' : editingEvent.status === 'pending_review' ? '#F59E0B' : '#8B909A',
-                      border: `1px solid ${editingEvent.status === 'published' ? 'rgba(16, 185, 129, 0.25)' : editingEvent.status === 'pending_review' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255, 255, 255, 0.1)'}`,
+                      letterSpacing: '0.05em',
+                      padding: '3px 9px',
+                      borderRadius: 20,
+                      background:
+                        editingEvent.status === 'published' ? 'rgba(16, 165, 121, 0.12)'
+                        : editingEvent.status === 'pending_review' ? 'rgba(217, 119, 6, 0.12)'
+                        : STAGEWAY_THEME.light,
+                      color:
+                        editingEvent.status === 'published' ? STAGEWAY_THEME.secondary
+                        : editingEvent.status === 'pending_review' ? '#D97706'
+                        : STAGEWAY_THEME.textMuted,
+                      border: `1px solid ${
+                        editingEvent.status === 'published' ? STAGEWAY_THEME.borderMedium
+                        : editingEvent.status === 'pending_review' ? 'rgba(217, 119, 6, 0.3)'
+                        : STAGEWAY_THEME.border}`,
                     }}
                   >
-                    â— {editingEvent.status.replace('_', ' ')}
+                    {editingEvent.status.replace('_', ' ')}
                   </span>
                 </div>
-                <div style={{ fontSize: 12.5, color: '#8B909A', marginTop: 4 }}>
-                  Configure core details, dates, venue, ticket tiers, and promotional partners for <strong style={{ color: '#EDEDEF' }}>{editingEvent.name}</strong>
+                <div style={{ fontSize: 12.5, color: STAGEWAY_THEME.textMuted, marginTop: 5 }}>
+                  Configure core details, dates, venue, ticket tiers, and promotional partners for{' '}
+                  <strong style={{ color: STAGEWAY_THEME.textPrimary }}>{editingEvent.name}</strong>
                 </div>
               </div>
 
@@ -953,17 +922,17 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     setActiveTab('tiers')
                   }}
                   style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    color: '#EDEDEF',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: STAGEWAY_THEME.light,
+                    color: STAGEWAY_THEME.primary,
+                    border: `1px solid ${STAGEWAY_THEME.border}`,
                     borderRadius: 6,
                     padding: '6px 12px',
                     fontSize: 11.5,
                     cursor: 'pointer',
-                    fontWeight: 500,
+                    fontWeight: 600,
                   }}
                 >
-                  Manage Tiers â†’
+                  Manage Tiers →
                 </button>
                 <button
                   type="button"
@@ -974,96 +943,65 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     setActiveTab('pr')
                   }}
                   style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    color: '#EDEDEF',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: STAGEWAY_THEME.light,
+                    color: STAGEWAY_THEME.primary,
+                    border: `1px solid ${STAGEWAY_THEME.border}`,
                     borderRadius: 6,
                     padding: '6px 12px',
                     fontSize: 11.5,
                     cursor: 'pointer',
-                    fontWeight: 500,
+                    fontWeight: 600,
                   }}
                 >
-                  PR Partners â†’
+                  PR Partners →
                 </button>
                 <button
                   onClick={() => setEditingEvent(null)}
-                  style={{ background: 'transparent', border: 'none', color: '#8B909A', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}
+                  style={{ background: 'transparent', border: 'none', color: STAGEWAY_THEME.textMuted, fontSize: 20, cursor: 'pointer', padding: '0 4px' }}
                 >
-                  âœ•
+                  ✕
                 </button>
               </div>
             </div>
 
             {/* Event Settings Form */}
-            <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <form onSubmit={handleSaveEdit} style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+
               {/* SECTION 1: GENERAL INFORMATION */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  1. GENERAL INFORMATION
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: STAGEWAY_THEME.primary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  1. General Information
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      EVENT TITLE *
-                    </label>
+                    <label style={labelStyle}>EVENT TITLE *</label>
                     <input
                       type="text"
                       value={editForm.name}
                       onChange={e => setEditForm(prev => ({ ...prev, name: e.target.value }))}
                       required
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 13,
-                      }}
+                      style={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      PUBLIC URL SLUG
-                    </label>
+                    <label style={labelStyle}>PUBLIC URL SLUG</label>
                     <input
                       type="text"
                       placeholder="e.g. saturday-night-live"
                       value={editForm.slug}
                       onChange={e => setEditForm(prev => ({ ...prev, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') }))}
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 13,
-                        fontFamily: 'JetBrains Mono, monospace',
-                      }}
+                      style={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      CATEGORY
-                    </label>
+                    <label style={labelStyle}>CATEGORY</label>
                     <select
                       value={editForm.category}
                       onChange={e => setEditForm(prev => ({ ...prev, category: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 13,
-                        cursor: 'pointer',
-                      }}
+                      style={{ ...inputStyle, cursor: 'pointer' }}
                     >
                       <option value="">Select category</option>
                       <option value="Music">Music / Concert</option>
@@ -1080,232 +1018,126 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                    DESCRIPTION
-                  </label>
+                  <label style={labelStyle}>DESCRIPTION</label>
                   <textarea
                     value={editForm.description}
                     onChange={e => setEditForm(prev => ({ ...prev, description: e.target.value }))}
                     rows={3}
                     placeholder="Enter artist lineup, event bio, dress code, age restrictions, and entry policies..."
-                    style={{
-                      width: '100%',
-                      background: '#0E1013',
-                      border: '1px solid #282C36',
-                      borderRadius: 6,
-                      padding: '8px 12px',
-                      color: '#EDEDEF',
-                      fontSize: 13,
-                      lineHeight: 1.5,
-                    }}
+                    style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
                   />
                 </div>
               </div>
 
               {/* SECTION 2: DATE & VENUE */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 14, borderTop: '1px solid #1E2026' }}>
-                <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  2. DATE, TIME & VENUE
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 16, borderTop: `1px solid ${STAGEWAY_THEME.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: STAGEWAY_THEME.primary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  2. Date, Time & Venue
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      CITY *
-                    </label>
+                    <label style={labelStyle}>CITY *</label>
                     <input
                       type="text"
                       placeholder="e.g. Mumbai, Delhi, Bengaluru"
                       value={editForm.city}
                       onChange={e => setEditForm(prev => ({ ...prev, city: e.target.value }))}
                       required
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 13,
-                      }}
+                      style={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      VENUE NAME
-                    </label>
+                    <label style={labelStyle}>VENUE NAME</label>
                     <input
                       type="text"
                       placeholder="e.g. Dome NSCI, Worli"
                       value={editForm.venue}
                       onChange={e => setEditForm(prev => ({ ...prev, venue: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 13,
-                      }}
+                      style={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      FULL ADDRESS
-                    </label>
+                    <label style={labelStyle}>FULL ADDRESS</label>
                     <input
                       type="text"
                       placeholder="Street address, landmarks..."
                       value={editForm.address}
                       onChange={e => setEditForm(prev => ({ ...prev, address: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 13,
-                      }}
+                      style={inputStyle}
                     />
                   </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      EVENT START *
-                    </label>
+                    <label style={labelStyle}>EVENT START *</label>
                     <input
                       type="datetime-local"
                       value={editForm.startsAt}
                       onChange={e => setEditForm(prev => ({ ...prev, startsAt: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 12,
-                        fontFamily: 'JetBrains Mono, monospace',
-                      }}
+                      style={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      EVENT END
-                    </label>
+                    <label style={labelStyle}>EVENT END</label>
                     <input
                       type="datetime-local"
                       value={editForm.endsAt}
                       onChange={e => setEditForm(prev => ({ ...prev, endsAt: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 12,
-                        fontFamily: 'JetBrains Mono, monospace',
-                      }}
+                      style={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      TICKET SALES START
-                    </label>
+                    <label style={labelStyle}>TICKET SALES START</label>
                     <input
                       type="datetime-local"
                       value={editForm.salesStartAt}
                       onChange={e => setEditForm(prev => ({ ...prev, salesStartAt: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 12,
-                        fontFamily: 'JetBrains Mono, monospace',
-                      }}
+                      style={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      TICKET SALES END
-                    </label>
+                    <label style={labelStyle}>TICKET SALES END</label>
                     <input
                       type="datetime-local"
                       value={editForm.salesEndAt}
                       onChange={e => setEditForm(prev => ({ ...prev, salesEndAt: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 12,
-                        fontFamily: 'JetBrains Mono, monospace',
-                      }}
+                      style={inputStyle}
                     />
                   </div>
                 </div>
               </div>
 
               {/* SECTION 3: MEDIA & VISIBILITY */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 14, borderTop: '1px solid #1E2026' }}>
-                <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  3. MEDIA & VISIBILITY
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 16, borderTop: `1px solid ${STAGEWAY_THEME.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: STAGEWAY_THEME.primary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  3. Media & Visibility
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      POSTER IMAGE URL
-                    </label>
+                    <label style={labelStyle}>POSTER IMAGE URL</label>
                     <input
                       type="url"
                       placeholder="https://..."
                       value={editForm.posterUrl}
                       onChange={e => setEditForm(prev => ({ ...prev, posterUrl: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 13,
-                      }}
+                      style={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
-                      VISIBILITY
-                    </label>
+                    <label style={labelStyle}>VISIBILITY</label>
                     <select
                       value={editForm.visibility}
                       onChange={e => setEditForm(prev => ({ ...prev, visibility: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #282C36',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        color: '#EDEDEF',
-                        fontSize: 13,
-                        cursor: 'pointer',
-                      }}
+                      style={{ ...inputStyle, cursor: 'pointer' }}
                     >
                       <option value="public">Public (Visible on Stageway)</option>
                       <option value="unlisted">Unlisted (Direct Link Only)</option>
@@ -1315,13 +1147,13 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                 </div>
               </div>
 
-              {/* SECTION 4: PR PARTNERS FOR THIS EVENT */}
+              {/* SECTION 4: PR PARTNERS */}
               <div
                 style={{
-                  background: '#0E1013',
-                  border: '1px solid #1C1F26',
-                  borderRadius: 8,
-                  padding: 16,
+                  background: STAGEWAY_THEME.light,
+                  border: `1px solid ${STAGEWAY_THEME.border}`,
+                  borderRadius: 10,
+                  padding: 18,
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -1330,10 +1162,10 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                 }}
               >
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#EDEDEF' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: STAGEWAY_THEME.primary }}>
                     Promotional Partners (PR)
                   </div>
-                  <div style={{ fontSize: 11.5, color: '#8B909A', marginTop: 2 }}>
+                  <div style={{ fontSize: 11.5, color: STAGEWAY_THEME.textMuted, marginTop: 3 }}>
                     Create login IDs for partners to sell and generate passes directly for this event on the PR Panel (/pr).
                   </div>
                 </div>
@@ -1347,17 +1179,17 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     setActiveTab('pr')
                   }}
                   style={{
-                    background: '#EDEDEF',
-                    color: '#0B0C0E',
+                    background: STAGEWAY_THEME.primary,
+                    color: '#FFFFFF',
                     border: 'none',
                     borderRadius: 6,
-                    padding: '7px 14px',
-                    fontSize: 11.5,
-                    fontWeight: 600,
+                    padding: '8px 16px',
+                    fontSize: 12,
+                    fontWeight: 700,
                     cursor: 'pointer',
                   }}
                 >
-                  + Add PR Partner for this Event
+                  + Add PR Partner
                 </button>
               </div>
 
@@ -1367,8 +1199,8 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  paddingTop: 16,
-                  borderTop: '1px solid #1E2026',
+                  paddingTop: 18,
+                  borderTop: `1px solid ${STAGEWAY_THEME.border}`,
                   flexWrap: 'wrap',
                   gap: 12,
                 }}
@@ -1381,12 +1213,12 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                       setEditingEvent(null)
                     }}
                     style={{
-                      background: 'rgba(245, 158, 11, 0.1)',
-                      color: '#F59E0B',
-                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      background: 'rgba(217, 119, 6, 0.08)',
+                      color: '#D97706',
+                      border: '1px solid rgba(217, 119, 6, 0.3)',
                       borderRadius: 6,
-                      padding: '8px 16px',
-                      fontSize: 12,
+                      padding: '8px 18px',
+                      fontSize: 13,
                       fontWeight: 600,
                       cursor: 'pointer',
                     }}
@@ -1402,12 +1234,13 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     type="button"
                     onClick={() => setEditingEvent(null)}
                     style={{
-                      background: 'rgba(255,255,255,0.04)',
-                      color: '#8B909A',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      background: STAGEWAY_THEME.light,
+                      color: STAGEWAY_THEME.textSecondary,
+                      border: `1px solid ${STAGEWAY_THEME.border}`,
                       borderRadius: 6,
-                      padding: '8px 18px',
-                      fontSize: 12,
+                      padding: '8px 20px',
+                      fontSize: 13,
+                      fontWeight: 500,
                       cursor: 'pointer',
                     }}
                   >
@@ -1418,17 +1251,17 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     type="submit"
                     disabled={savingEdit}
                     style={{
-                      background: '#EDEDEF',
-                      color: '#0B0C0E',
+                      background: savingEdit ? STAGEWAY_THEME.secondary : STAGEWAY_THEME.primary,
+                      color: '#FFFFFF',
                       border: 'none',
                       borderRadius: 6,
-                      padding: '8px 22px',
-                      fontWeight: 600,
-                      fontSize: 12,
+                      padding: '8px 24px',
+                      fontWeight: 700,
+                      fontSize: 13,
                       cursor: savingEdit ? 'not-allowed' : 'pointer',
                     }}
                   >
-                    {savingEdit ? 'Savingâ€¦' : 'Save Event Settings'}
+                    {savingEdit ? 'Saving...' : 'Save Event Settings'}
                   </button>
                 </div>
               </div>

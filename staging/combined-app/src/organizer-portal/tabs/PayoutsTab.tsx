@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { PayoutSummary, PayoutDetails } from '../types'
+import { STAGEWAY_THEME } from '../theme'
 
 export default function PayoutsTab() {
   const [data, setData] = useState<PayoutSummary | null>(null)
@@ -75,7 +76,7 @@ export default function PayoutsTab() {
   }
 
   if (loading) {
-    return <div style={{ color: '#8B909A', padding: 32 }}>Loading payout & settlement records…</div>
+    return <div style={{ color: STAGEWAY_THEME.textMuted, padding: 32 }}>Loading payout &amp; settlement records...</div>
   }
 
   const grossRevenue = data?.grossRevenue || 0
@@ -89,57 +90,57 @@ export default function PayoutsTab() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
         <div
           style={{
-            background: '#14161C',
-            border: '1px solid #20232B',
+            background: STAGEWAY_THEME.surface,
+            border: `1px solid ${STAGEWAY_THEME.border}`,
             borderRadius: 10,
             padding: 20,
           }}
         >
-          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Gross Verified Revenue
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: '#EDEDEF', marginTop: 8, letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 8, letterSpacing: '-0.02em' }}>
             ₹{grossRevenue.toLocaleString()}
           </div>
-          <div style={{ fontSize: 12, color: '#8B909A', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, marginTop: 4 }}>
             From {data?.totalOrders || 0} confirmed ticket transactions
           </div>
         </div>
 
         <div
           style={{
-            background: '#14161C',
-            border: '1px solid #20232B',
+            background: STAGEWAY_THEME.surface,
+            border: `1px solid ${STAGEWAY_THEME.border}`,
             borderRadius: 10,
             padding: 20,
           }}
         >
-          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Platform Fee ({feePercentage}%)
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: '#EDEDEF', marginTop: 8, letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 8, letterSpacing: '-0.02em' }}>
             ₹{platformFee.toLocaleString()}
           </div>
-          <div style={{ fontSize: 12, color: '#8B909A', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, marginTop: 4 }}>
             Direct payment processing, QR tickets, gate scanners
           </div>
         </div>
 
         <div
           style={{
-            background: '#14161C',
-            border: '1px solid #20232B',
+            background: STAGEWAY_THEME.surface,
+            border: `1px solid ${STAGEWAY_THEME.border}`,
             borderRadius: 10,
             padding: 20,
           }}
         >
-          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Estimated Net Payout
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: '#EDEDEF', marginTop: 8, letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 8, letterSpacing: '-0.02em' }}>
             ₹{netPayout.toLocaleString()}
           </div>
-          <div style={{ fontSize: 12, color: '#8B909A', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, marginTop: 4 }}>
             Calculated post-event net balance for remittance
           </div>
         </div>
@@ -152,7 +153,7 @@ export default function PayoutsTab() {
       )}
 
       {success && (
-        <div role="status" style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 8, padding: '12px 16px', color: '#10B981', fontSize: 13 }}>
+        <div role="status" style={{ background: 'rgba(16, 165, 121, 0.12)', border: '1px solid rgba(16, 165, 121, 0.3)', borderRadius: 8, padding: '12px 16px', color: STAGEWAY_THEME.secondary, fontSize: 13 }}>
           {success}
         </div>
       )}
@@ -160,18 +161,18 @@ export default function PayoutsTab() {
       {/* BANK ACCOUNT & SETTLEMENT DETAILS */}
       <div
         style={{
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: 24,
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: '#EDEDEF', margin: 0 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: STAGEWAY_THEME.textPrimary, margin: 0 }}>
               Settlement Bank Account
             </h3>
-            <div style={{ fontSize: 12, color: '#8B909A', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, marginTop: 2 }}>
               Bank account for automated NEFT/RTGS disbursements
             </div>
           </div>
@@ -184,18 +185,18 @@ export default function PayoutsTab() {
               textTransform: 'uppercase',
               padding: '3px 8px',
               borderRadius: 4,
-              background: form.status === 'verified' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-              color: form.status === 'verified' ? '#10B981' : '#F59E0B',
-              border: `1px solid ${form.status === 'verified' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
+              background: form.status === 'verified' ? 'rgba(16, 165, 121, 0.12)' : 'rgba(217, 119, 6, 0.12)',
+              color: form.status === 'verified' ? STAGEWAY_THEME.secondary : STAGEWAY_THEME.warning,
+              border: `1px solid ${form.status === 'verified' ? 'rgba(16, 165, 121, 0.3)' : 'rgba(217, 119, 6, 0.3)'}`,
             }}
           >
-            ● {form.status.replace('_', ' ')}
+            &bull; {form.status.replace('_', ' ')}
           </span>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, marginBottom: 6 }}>
               LEGAL ENTITY / BENEFICIARY NAME *
             </label>
             <input
@@ -206,18 +207,18 @@ export default function PayoutsTab() {
               required
               style={{
                 width: '100%',
-                background: '#0E1013',
-                border: '1px solid #282C36',
+                background: '#F8FCFA',
+                border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                 borderRadius: 6,
                 padding: '9px 12px',
-                color: '#EDEDEF',
+                color: STAGEWAY_THEME.textPrimary,
                 fontSize: 13,
               }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, marginBottom: 6 }}>
               BANK INSTITUTION NAME
             </label>
             <input
@@ -227,18 +228,18 @@ export default function PayoutsTab() {
               onChange={e => setForm(prev => ({ ...prev, bankName: e.target.value }))}
               style={{
                 width: '100%',
-                background: '#0E1013',
-                border: '1px solid #282C36',
+                background: '#F8FCFA',
+                border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                 borderRadius: 6,
                 padding: '9px 12px',
-                color: '#EDEDEF',
+                color: STAGEWAY_THEME.textPrimary,
                 fontSize: 13,
               }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, marginBottom: 6 }}>
               ACCOUNT NUMBER {form.accountNumberMasked ? `(Current: ${form.accountNumberMasked})` : ''}
             </label>
             <input
@@ -248,11 +249,11 @@ export default function PayoutsTab() {
               onChange={e => setForm(prev => ({ ...prev, accountNumber: e.target.value }))}
               style={{
                 width: '100%',
-                background: '#0E1013',
-                border: '1px solid #282C36',
+                background: '#F8FCFA',
+                border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                 borderRadius: 6,
                 padding: '9px 12px',
-                color: '#EDEDEF',
+                color: STAGEWAY_THEME.textPrimary,
                 fontSize: 13,
                 fontFamily: 'JetBrains Mono, monospace',
               }}
@@ -260,7 +261,7 @@ export default function PayoutsTab() {
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, marginBottom: 6 }}>
               IFSC CODE
             </label>
             <input
@@ -271,11 +272,11 @@ export default function PayoutsTab() {
               maxLength={11}
               style={{
                 width: '100%',
-                background: '#0E1013',
-                border: '1px solid #282C36',
+                background: '#F8FCFA',
+                border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                 borderRadius: 6,
                 padding: '9px 12px',
-                color: '#EDEDEF',
+                color: STAGEWAY_THEME.textPrimary,
                 fontSize: 13,
                 fontFamily: 'JetBrains Mono, monospace',
               }}
@@ -283,7 +284,7 @@ export default function PayoutsTab() {
           </div>
 
           <div style={{ gridColumn: '1 / -1' }}>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, marginBottom: 6 }}>
               BUSINESS UPI VPA (OPTIONAL FAST SETTLEMENT)
             </label>
             <input
@@ -293,11 +294,11 @@ export default function PayoutsTab() {
               onChange={e => setForm(prev => ({ ...prev, upiId: e.target.value }))}
               style={{
                 width: '100%',
-                background: '#0E1013',
-                border: '1px solid #282C36',
+                background: '#F8FCFA',
+                border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                 borderRadius: 6,
                 padding: '9px 12px',
-                color: '#EDEDEF',
+                color: STAGEWAY_THEME.textPrimary,
                 fontSize: 13,
                 fontFamily: 'JetBrains Mono, monospace',
               }}
@@ -309,8 +310,8 @@ export default function PayoutsTab() {
               type="submit"
               disabled={saving}
               style={{
-                background: '#EDEDEF',
-                color: '#0B0C0E',
+                background: STAGEWAY_THEME.primary,
+                color: '#FFFFFF',
                 border: 'none',
                 padding: '10px 22px',
                 borderRadius: 6,
@@ -319,7 +320,7 @@ export default function PayoutsTab() {
                 cursor: saving ? 'not-allowed' : 'pointer',
               }}
             >
-              {saving ? 'Updating…' : 'Save Settlement Details'}
+              {saving ? 'Updating...' : 'Save Settlement Details'}
             </button>
           </div>
         </form>
@@ -328,17 +329,17 @@ export default function PayoutsTab() {
       {/* DISBURSEMENT TIMELINE */}
       <div
         style={{
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.light,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: 20,
         }}
       >
-        <h4 style={{ fontSize: 14, fontWeight: 600, color: '#EDEDEF', margin: '0 0 6px' }}>
-          Settlement Policy & Schedule
+        <h4 style={{ fontSize: 14, fontWeight: 600, color: STAGEWAY_THEME.textPrimary, margin: '0 0 6px' }}>
+          Settlement Policy &amp; Schedule
         </h4>
-        <p style={{ fontSize: 13, color: '#8B909A', lineHeight: 1.6, margin: 0 }}>
-          Stageway processes event payouts within 24–48 hours following event closure. Payout amounts reflect total confirmed admissions minus the standard platform commission fee. Bank verification is required prior to initial release.
+        <p style={{ fontSize: 13, color: STAGEWAY_THEME.textSecondary, lineHeight: 1.6, margin: 0 }}>
+          Stageway processes event payouts within 24-48 hours following event closure. Payout amounts reflect total confirmed admissions minus the standard platform commission fee. Bank verification is required prior to initial release.
         </p>
       </div>
     </div>

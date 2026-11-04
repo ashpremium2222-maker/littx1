@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { OrganizerEvent } from '../types'
+import { STAGEWAY_THEME } from '../theme'
 
 interface EventsTabProps {
   events: OrganizerEvent[]
@@ -49,8 +50,8 @@ export default function EventsTab({
           alignItems: 'center',
           gap: 16,
           flexWrap: 'wrap',
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: 16,
         }}
@@ -62,11 +63,11 @@ export default function EventsTab({
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             style={{
-              background: '#0E1013',
-              border: '1px solid #282C36',
+              background: '#F8FCFA',
+              border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 6,
               padding: '8px 12px',
-              color: '#EDEDEF',
+              color: STAGEWAY_THEME.textPrimary,
               fontSize: 13,
               minWidth: 240,
             }}
@@ -78,10 +79,9 @@ export default function EventsTab({
                 key={status}
                 onClick={() => setFilterStatus(status)}
                 style={{
-                  background: filterStatus === status ? '#EDEDEF' : 'rgba(255,255,255,0.04)',
-                  color: filterStatus === status ? '#0B0C0E' : '#8B909A',
-                  border: '1px solid',
-                  borderColor: filterStatus === status ? '#EDEDEF' : 'rgba(255,255,255,0.08)',
+                  background: filterStatus === status ? STAGEWAY_THEME.primary : '#FFFFFF',
+                  color: filterStatus === status ? '#FFFFFF' : STAGEWAY_THEME.textSecondary,
+                  border: `1px solid ${filterStatus === status ? STAGEWAY_THEME.primary : STAGEWAY_THEME.border}`,
                   borderRadius: 6,
                   padding: '6px 12px',
                   fontSize: 11,
@@ -100,8 +100,8 @@ export default function EventsTab({
         <button
           onClick={onOpenCreateDraft}
           style={{
-            background: '#EDEDEF',
-            color: '#0B0C0E',
+            background: STAGEWAY_THEME.primary,
+            color: '#FFFFFF',
             border: 'none',
             fontWeight: 600,
             fontSize: 12,
@@ -118,12 +118,12 @@ export default function EventsTab({
       {filteredEvents.length === 0 ? (
         <div
           style={{
-            background: '#14161C',
-            border: '1px dashed #282C36',
+            background: STAGEWAY_THEME.light,
+            border: `1px dashed ${STAGEWAY_THEME.borderMedium}`,
             borderRadius: 10,
             padding: 48,
             textAlign: 'center',
-            color: '#555962',
+            color: STAGEWAY_THEME.textMuted,
           }}
         >
           No events match the selected criteria.
@@ -142,8 +142,8 @@ export default function EventsTab({
               <div
                 key={event.eventId}
                 style={{
-                  background: '#14161C',
-                  border: '1px solid #20232B',
+                  background: STAGEWAY_THEME.surface,
+                  border: `1px solid ${STAGEWAY_THEME.border}`,
                   borderRadius: 10,
                   overflow: 'hidden',
                   display: 'flex',
@@ -155,7 +155,7 @@ export default function EventsTab({
                 <div
                   style={{
                     padding: '16px 20px',
-                    borderBottom: '1px solid #1E2026',
+                    borderBottom: `1px solid ${STAGEWAY_THEME.border}`,
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
@@ -170,23 +170,23 @@ export default function EventsTab({
                       padding: '2px 8px',
                       borderRadius: 4,
                       background: isLive
-                        ? 'rgba(16, 185, 129, 0.1)'
+                        ? 'rgba(16, 165, 121, 0.12)'
                         : isReview
-                        ? 'rgba(245, 158, 11, 0.1)'
-                        : 'rgba(255, 255, 255, 0.05)',
-                      color: isLive ? '#10B981' : isReview ? '#F59E0B' : '#8B909A',
+                        ? 'rgba(217, 119, 6, 0.12)'
+                        : STAGEWAY_THEME.light,
+                      color: isLive ? '#10A579' : isReview ? '#D97706' : STAGEWAY_THEME.textMuted,
                       border: `1px solid ${
                         isLive
-                          ? 'rgba(16, 185, 129, 0.25)'
+                          ? 'rgba(16, 165, 121, 0.3)'
                           : isReview
-                          ? 'rgba(245, 158, 11, 0.25)'
-                          : 'rgba(255, 255, 255, 0.1)'
+                          ? 'rgba(217, 119, 6, 0.3)'
+                          : STAGEWAY_THEME.border
                       }`,
                     }}
                   >
                     ● {event.status.replace('_', ' ')}
                   </span>
-                  <span style={{ fontSize: 12, color: '#8B909A' }}>
+                  <span style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted }}>
                     {event.city || 'India'}
                   </span>
                 </div>
@@ -194,17 +194,17 @@ export default function EventsTab({
                 {/* Event Details */}
                 <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
                   <div>
-                    <h3 style={{ fontSize: 17, fontWeight: 600, margin: '0 0 6px', color: '#EDEDEF' }}>
+                    <h3 style={{ fontSize: 17, fontWeight: 600, margin: '0 0 6px', color: STAGEWAY_THEME.textPrimary }}>
                       {event.name}
                     </h3>
-                    <div style={{ fontSize: 12, color: '#8B909A', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                       <span>📍 {event.venue || 'Venue TBD'}</span>
                       <span>🗓️ {event.startsAt ? new Date(event.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Date TBD'}</span>
                     </div>
                   </div>
 
                   {event.description && (
-                    <p style={{ fontSize: 12, color: '#8B909A', lineHeight: 1.5, margin: 0, maxHeight: 48, overflow: 'hidden' }}>
+                    <p style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, lineHeight: 1.5, margin: 0, maxHeight: 48, overflow: 'hidden' }}>
                       {event.description}
                     </p>
                   )}
@@ -215,41 +215,41 @@ export default function EventsTab({
                       display: 'grid',
                       gridTemplateColumns: 'repeat(3, 1fr)',
                       gap: 8,
-                      background: '#0E1013',
-                      border: '1px solid #1C1F26',
+                      background: STAGEWAY_THEME.light,
+                      border: `1px solid ${STAGEWAY_THEME.border}`,
                       padding: '10px 12px',
                       borderRadius: 6,
                       marginTop: 'auto',
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: 9.5, color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>VERIFIED SALES</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#EDEDEF', marginTop: 2 }}>
+                      <div style={{ fontSize: 9.5, color: STAGEWAY_THEME.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>VERIFIED SALES</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 2 }}>
                         ₹{Number(event.sales.verifiedRevenue || 0).toLocaleString()}
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 9.5, color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>PASSES</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#EDEDEF', marginTop: 2 }}>
+                      <div style={{ fontSize: 9.5, color: STAGEWAY_THEME.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>PASSES</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 2 }}>
                         {event.sales.ticketsIssued} QR
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 9.5, color: '#8B909A', fontFamily: 'JetBrains Mono, monospace' }}>CHECK-IN</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#EDEDEF', marginTop: 2 }}>
+                      <div style={{ fontSize: 9.5, color: STAGEWAY_THEME.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>CHECK-IN</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 2 }}>
                         {scanPercent}% ({admissionsScanned})
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ fontSize: 12, color: '#8B909A', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>{event.ticketCategories.length} Ticket Categories configured</span>
                     <button
                       onClick={() => onSelectEvent(event.eventId, 'tiers')}
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        color: '#EDEDEF',
+                        color: STAGEWAY_THEME.primary,
                         fontSize: 11,
                         fontFamily: 'JetBrains Mono, monospace',
                         cursor: 'pointer',
@@ -265,8 +265,8 @@ export default function EventsTab({
                 <div
                   style={{
                     padding: '12px 20px',
-                    background: '#0E1013',
-                    borderTop: '1px solid #1E2026',
+                    background: STAGEWAY_THEME.light,
+                    borderTop: `1px solid ${STAGEWAY_THEME.border}`,
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
@@ -278,8 +278,8 @@ export default function EventsTab({
                     <button
                       onClick={() => onEditEvent(event)}
                       style={{
-                        background: '#EDEDEF',
-                        color: '#0B0C0E',
+                        background: STAGEWAY_THEME.primary,
+                        color: '#FFFFFF',
                         border: 'none',
                         padding: '6px 12px',
                         borderRadius: 6,
@@ -293,9 +293,9 @@ export default function EventsTab({
                     <button
                       onClick={() => onSelectEvent(event.eventId, 'pr')}
                       style={{
-                        background: 'rgba(255,255,255,0.04)',
-                        color: '#EDEDEF',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: '#FFFFFF',
+                        color: STAGEWAY_THEME.textSecondary,
+                        border: `1px solid ${STAGEWAY_THEME.border}`,
                         padding: '6px 12px',
                         borderRadius: 6,
                         fontSize: 12,
@@ -308,9 +308,9 @@ export default function EventsTab({
                     <button
                       onClick={() => onSelectEvent(event.eventId, 'tiers')}
                       style={{
-                        background: 'rgba(255,255,255,0.04)',
-                        color: '#EDEDEF',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: '#FFFFFF',
+                        color: STAGEWAY_THEME.textSecondary,
+                        border: `1px solid ${STAGEWAY_THEME.border}`,
                         padding: '6px 12px',
                         borderRadius: 6,
                         fontSize: 12,
@@ -327,8 +327,8 @@ export default function EventsTab({
                       onClick={() => handleSubmitReview(event)}
                       disabled={submittingId === event.eventId}
                       style={{
-                        background: '#EDEDEF',
-                        color: '#0B0C0E',
+                        background: STAGEWAY_THEME.primary,
+                        color: '#FFFFFF',
                         border: 'none',
                         padding: '6px 14px',
                         borderRadius: 6,
@@ -337,12 +337,12 @@ export default function EventsTab({
                         cursor: 'pointer',
                       }}
                     >
-                      {submittingId === event.eventId ? 'Submitting…' : 'Submit for Review'}
+                      {submittingId === event.eventId ? 'Submitting...' : 'Submit for Review'}
                     </button>
                   )}
 
                   {event.status === 'pending_review' && (
-                    <span style={{ fontSize: 11, color: '#F59E0B', fontFamily: 'JetBrains Mono, monospace' }}>
+                    <span style={{ fontSize: 11, color: '#D97706', fontFamily: 'JetBrains Mono, monospace' }}>
                       ⏳ Under review
                     </span>
                   )}

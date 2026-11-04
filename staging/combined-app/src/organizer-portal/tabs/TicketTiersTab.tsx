@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { OrganizerCategory, OrganizerEvent } from '../types'
+import { STAGEWAY_THEME } from '../theme'
 
 interface TicketTiersTabProps {
   events: OrganizerEvent[]
@@ -32,12 +33,12 @@ export default function TicketTiersTab({
     return (
       <div
         style={{
-          background: '#14161C',
-          border: '1px dashed #282C36',
+          background: STAGEWAY_THEME.light,
+          border: `1px dashed ${STAGEWAY_THEME.borderMedium}`,
           borderRadius: 10,
           padding: 48,
           textAlign: 'center',
-          color: '#555962',
+          color: STAGEWAY_THEME.textMuted,
         }}
       >
         No events found. Please create an event draft first to configure ticket categories.
@@ -105,25 +106,25 @@ export default function TicketTiersTab({
           alignItems: 'center',
           gap: 16,
           flexWrap: 'wrap',
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: '14px 18px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase' }}>
+          <label style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, textTransform: 'uppercase' }}>
             Event:
           </label>
           <select
             value={activeEvent.eventId}
             onChange={e => onSelectEventId(e.target.value)}
             style={{
-              background: '#0E1013',
-              border: '1px solid #282C36',
+              background: '#F8FCFA',
+              border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 6,
               padding: '8px 12px',
-              color: '#EDEDEF',
+              color: STAGEWAY_THEME.textPrimary,
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
@@ -144,9 +145,9 @@ export default function TicketTiersTab({
               fontWeight: 600,
               padding: '2px 8px',
               borderRadius: 4,
-              background: 'rgba(255,255,255,0.05)',
-              color: '#8B909A',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: STAGEWAY_THEME.light,
+              color: STAGEWAY_THEME.textMuted,
+              border: `1px solid ${STAGEWAY_THEME.border}`,
             }}
           >
             {activeEvent.status}
@@ -157,9 +158,9 @@ export default function TicketTiersTab({
           type="button"
           onClick={addCategory}
           style={{
-            background: 'rgba(255,255,255,0.06)',
-            color: '#EDEDEF',
-            border: '1px solid rgba(255,255,255,0.12)',
+            background: STAGEWAY_THEME.primary,
+            color: '#FFFFFF',
+            border: 'none',
             borderRadius: 6,
             padding: '7px 14px',
             fontSize: 12,
@@ -175,11 +176,11 @@ export default function TicketTiersTab({
         <div
           role="alert"
           style={{
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.25)',
+            background: 'rgba(220, 38, 38, 0.08)',
+            border: '1px solid rgba(220, 38, 38, 0.25)',
             borderRadius: 8,
             padding: '12px 16px',
-            color: '#EF4444',
+            color: STAGEWAY_THEME.danger,
             fontSize: 13,
           }}
         >
@@ -191,11 +192,11 @@ export default function TicketTiersTab({
         <div
           role="status"
           style={{
-            background: 'rgba(16, 185, 129, 0.1)',
-            border: '1px solid rgba(16, 185, 129, 0.25)',
+            background: 'rgba(16, 165, 121, 0.1)',
+            border: '1px solid rgba(16, 165, 121, 0.25)',
             borderRadius: 8,
             padding: '12px 16px',
-            color: '#10B981',
+            color: STAGEWAY_THEME.secondary,
             fontSize: 13,
           }}
         >
@@ -208,22 +209,22 @@ export default function TicketTiersTab({
         {categories.length === 0 ? (
           <div
             style={{
-              background: '#14161C',
-              border: '1px dashed #282C36',
+              background: STAGEWAY_THEME.light,
+              border: `1px dashed ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 10,
               padding: 40,
               textAlign: 'center',
             }}
           >
-            <p style={{ color: '#8B909A', margin: '0 0 16px', fontSize: 13 }}>
+            <p style={{ color: STAGEWAY_THEME.textMuted, margin: '0 0 16px', fontSize: 13 }}>
               No ticket tiers created for {activeEvent.name}.
             </p>
             <button
               type="button"
               onClick={addCategory}
               style={{
-                background: '#EDEDEF',
-                color: '#0B0C0E',
+                background: STAGEWAY_THEME.primary,
+                color: '#FFFFFF',
                 border: 'none',
                 padding: '10px 20px',
                 borderRadius: 6,
@@ -247,8 +248,8 @@ export default function TicketTiersTab({
                 <div
                   key={cat.id || index}
                   style={{
-                    background: '#14161C',
-                    border: '1px solid #20232B',
+                    background: STAGEWAY_THEME.surface,
+                    border: `1px solid ${STAGEWAY_THEME.border}`,
                     borderRadius: 10,
                     padding: 18,
                     display: 'flex',
@@ -259,7 +260,7 @@ export default function TicketTiersTab({
                   {/* Grid Fields */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'center' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, marginBottom: 4 }}>
                         TIER NAME
                       </label>
                       <input
@@ -270,11 +271,11 @@ export default function TicketTiersTab({
                         required
                         style={{
                           width: '100%',
-                          background: '#0E1013',
-                          border: '1px solid #282C36',
+                          background: '#F8FCFA',
+                          border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                           borderRadius: 6,
                           padding: '8px 12px',
-                          color: '#EDEDEF',
+                          color: STAGEWAY_THEME.textPrimary,
                           fontWeight: 500,
                           fontSize: 13,
                         }}
@@ -282,7 +283,7 @@ export default function TicketTiersTab({
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, marginBottom: 4 }}>
                         PRICE ({cat.currency || 'INR'})
                       </label>
                       <input
@@ -294,11 +295,11 @@ export default function TicketTiersTab({
                         required
                         style={{
                           width: '100%',
-                          background: '#0E1013',
-                          border: '1px solid #282C36',
+                          background: '#F8FCFA',
+                          border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                           borderRadius: 6,
                           padding: '8px 12px',
-                          color: '#EDEDEF',
+                          color: STAGEWAY_THEME.textPrimary,
                           fontFamily: 'JetBrains Mono, monospace',
                           fontWeight: 600,
                           fontSize: 13,
@@ -307,7 +308,7 @@ export default function TicketTiersTab({
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, marginBottom: 4 }}>
                         TOTAL CAPACITY
                       </label>
                       <input
@@ -318,11 +319,11 @@ export default function TicketTiersTab({
                         onChange={e => updateCategory(index, { totalInventory: e.target.value === '' ? null : Number(e.target.value) })}
                         style={{
                           width: '100%',
-                          background: '#0E1013',
-                          border: '1px solid #282C36',
+                          background: '#F8FCFA',
+                          border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                           borderRadius: 6,
                           padding: '8px 12px',
-                          color: '#EDEDEF',
+                          color: STAGEWAY_THEME.textPrimary,
                           fontFamily: 'JetBrains Mono, monospace',
                           fontSize: 13,
                         }}
@@ -330,7 +331,7 @@ export default function TicketTiersTab({
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, marginBottom: 4 }}>
                         ADMISSIONS / QR
                       </label>
                       <input
@@ -341,11 +342,11 @@ export default function TicketTiersTab({
                         onChange={e => updateCategory(index, { groupSize: Number(e.target.value) })}
                         style={{
                           width: '100%',
-                          background: '#0E1013',
-                          border: '1px solid #282C36',
+                          background: '#F8FCFA',
+                          border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                           borderRadius: 6,
                           padding: '8px 12px',
-                          color: '#EDEDEF',
+                          color: STAGEWAY_THEME.textPrimary,
                           fontFamily: 'JetBrains Mono, monospace',
                           fontSize: 13,
                         }}
@@ -353,7 +354,7 @@ export default function TicketTiersTab({
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4 }}>
+                      <label style={{ display: 'block', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, marginBottom: 4 }}>
                         STATUS
                       </label>
                       <select
@@ -361,11 +362,11 @@ export default function TicketTiersTab({
                         onChange={e => updateCategory(index, { status: e.target.value })}
                         style={{
                           width: '100%',
-                          background: '#0E1013',
-                          border: '1px solid #282C36',
+                          background: '#F8FCFA',
+                          border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
                           borderRadius: 6,
                           padding: '8px 12px',
-                          color: cat.status === 'active' ? '#10B981' : cat.status === 'sold_out' ? '#EF4444' : '#F59E0B',
+                          color: cat.status === 'active' ? STAGEWAY_THEME.secondary : cat.status === 'sold_out' ? STAGEWAY_THEME.danger : STAGEWAY_THEME.warning,
                           fontFamily: 'JetBrains Mono, monospace',
                           fontWeight: 500,
                           fontSize: 13,
@@ -383,9 +384,9 @@ export default function TicketTiersTab({
                         type="button"
                         onClick={() => removeCategory(index)}
                         style={{
-                          background: 'rgba(239, 68, 68, 0.08)',
-                          color: '#EF4444',
-                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                          background: 'rgba(220, 38, 38, 0.08)',
+                          color: STAGEWAY_THEME.danger,
+                          border: '1px solid rgba(220, 38, 38, 0.2)',
                           borderRadius: 6,
                           padding: '7px 12px',
                           fontSize: 11,
@@ -400,12 +401,12 @@ export default function TicketTiersTab({
                   {/* Capacity Bar */}
                   {cat.totalInventory !== null && (
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#8B909A', marginBottom: 4, fontFamily: 'JetBrains Mono, monospace' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: STAGEWAY_THEME.textMuted, marginBottom: 4, fontFamily: 'JetBrains Mono, monospace' }}>
                         <span>Capacity: {sold} sold / {total} total</span>
                         <span>{cat.remainingInventory ?? total} remaining ({percentSold}% sold)</span>
                       </div>
-                      <div style={{ height: 4, background: '#1E2026', borderRadius: 999, overflow: 'hidden' }}>
-                        <div style={{ width: `${percentSold}%`, height: '100%', background: percentSold > 80 ? '#F59E0B' : '#10B981', borderRadius: 999 }} />
+                      <div style={{ height: 4, background: STAGEWAY_THEME.light, borderRadius: 999, overflow: 'hidden' }}>
+                        <div style={{ width: `${percentSold}%`, height: '100%', background: percentSold > 80 ? STAGEWAY_THEME.warning : STAGEWAY_THEME.secondary, borderRadius: 999 }} />
                       </div>
                     </div>
                   )}
@@ -419,12 +420,12 @@ export default function TicketTiersTab({
                       onChange={e => updateCategory(index, { description: e.target.value })}
                       style={{
                         width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #1E2026',
+                        background: '#F8FCFA',
+                        border: `1px solid ${STAGEWAY_THEME.border}`,
                         borderRadius: 6,
                         padding: '6px 10px',
                         fontSize: 12,
-                        color: '#8B909A',
+                        color: STAGEWAY_THEME.textMuted,
                       }}
                     />
                     <input
@@ -441,12 +442,12 @@ export default function TicketTiersTab({
                       }
                       style={{
                         width: '100%',
-                        background: '#0E1013',
-                        border: '1px solid #1E2026',
+                        background: '#F8FCFA',
+                        border: `1px solid ${STAGEWAY_THEME.border}`,
                         borderRadius: 6,
                         padding: '6px 10px',
                         fontSize: 12,
-                        color: '#8B909A',
+                        color: STAGEWAY_THEME.textMuted,
                       }}
                     />
                   </div>
@@ -461,23 +462,23 @@ export default function TicketTiersTab({
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 padding: '16px 20px',
-                background: '#14161C',
-                border: '1px solid #20232B',
+                background: STAGEWAY_THEME.surface,
+                border: `1px solid ${STAGEWAY_THEME.border}`,
                 borderRadius: 10,
                 position: 'sticky',
                 bottom: 16,
                 zIndex: 10,
               }}
             >
-              <div style={{ fontSize: 12, color: '#8B909A' }}>
+              <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted }}>
                 Price updates apply to future customer orders. Existing orders remain locked.
               </div>
               <button
                 type="submit"
                 disabled={saving}
                 style={{
-                  background: '#EDEDEF',
-                  color: '#0B0C0E',
+                  background: STAGEWAY_THEME.primary,
+                  color: '#FFFFFF',
                   border: 'none',
                   padding: '10px 24px',
                   borderRadius: 6,
@@ -486,7 +487,7 @@ export default function TicketTiersTab({
                   cursor: 'pointer',
                 }}
               >
-                {saving ? 'Saving…' : 'Save Changes'}
+                {saving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>

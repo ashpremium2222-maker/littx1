@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { OrganizerEvent, OrganizerOrder } from '../types'
+import { STAGEWAY_THEME } from '../theme'
 
 interface SalesOrdersTabProps {
   events: OrganizerEvent[]
@@ -87,8 +88,8 @@ export default function SalesOrdersTab({
           alignItems: 'center',
           gap: 14,
           flexWrap: 'wrap',
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: 16,
         }}
@@ -98,11 +99,11 @@ export default function SalesOrdersTab({
             value={selectedEventId || 'all'}
             onChange={e => onSelectEventId(e.target.value)}
             style={{
-              background: '#0E1013',
-              border: '1px solid #282C36',
+              background: '#F8FCFA',
+              border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 6,
               padding: '8px 12px',
-              color: '#EDEDEF',
+              color: STAGEWAY_THEME.textPrimary,
               fontSize: 13,
               fontWeight: 500,
               cursor: 'pointer',
@@ -122,11 +123,11 @@ export default function SalesOrdersTab({
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             style={{
-              background: '#0E1013',
-              border: '1px solid #282C36',
+              background: '#F8FCFA',
+              border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 6,
               padding: '8px 12px',
-              color: '#EDEDEF',
+              color: STAGEWAY_THEME.textPrimary,
               fontSize: 13,
               minWidth: 240,
             }}
@@ -138,10 +139,9 @@ export default function SalesOrdersTab({
                 key={ch}
                 onClick={() => setChannelFilter(ch)}
                 style={{
-                  background: channelFilter === ch ? '#EDEDEF' : 'rgba(255,255,255,0.04)',
-                  color: channelFilter === ch ? '#0B0C0E' : '#8B909A',
-                  border: '1px solid',
-                  borderColor: channelFilter === ch ? '#EDEDEF' : 'rgba(255,255,255,0.08)',
+                  background: channelFilter === ch ? STAGEWAY_THEME.primary : '#FFFFFF',
+                  color: channelFilter === ch ? '#FFFFFF' : STAGEWAY_THEME.textSecondary,
+                  border: `1px solid ${channelFilter === ch ? STAGEWAY_THEME.primary : STAGEWAY_THEME.border}`,
                   borderRadius: 6,
                   padding: '6px 12px',
                   fontSize: 11,
@@ -160,11 +160,11 @@ export default function SalesOrdersTab({
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
             style={{
-              background: '#0E1013',
-              border: '1px solid #282C36',
+              background: '#F8FCFA',
+              border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 6,
               padding: '8px 12px',
-              color: '#EDEDEF',
+              color: STAGEWAY_THEME.textPrimary,
               fontSize: 12,
               fontFamily: 'JetBrains Mono, monospace',
               cursor: 'pointer',
@@ -181,9 +181,9 @@ export default function SalesOrdersTab({
           onClick={exportCSV}
           disabled={!filteredOrders.length}
           style={{
-            background: 'rgba(255,255,255,0.06)',
-            color: '#EDEDEF',
-            border: '1px solid rgba(255,255,255,0.12)',
+            background: STAGEWAY_THEME.light,
+            color: STAGEWAY_THEME.textSecondary,
+            border: `1px solid ${STAGEWAY_THEME.border}`,
             borderRadius: 6,
             padding: '8px 14px',
             fontSize: 12,
@@ -202,41 +202,41 @@ export default function SalesOrdersTab({
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: 12,
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: '14px 18px',
         }}
       >
         <div>
-          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
+          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted }}>
             FILTERED REVENUE
           </div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#EDEDEF', marginTop: 4 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 4 }}>
             ₹{totalAmount.toLocaleString()}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
+          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted }}>
             TOTAL ORDERS
           </div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#EDEDEF', marginTop: 4 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 4 }}>
             {filteredOrders.length}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
+          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted }}>
             ADMISSIONS
           </div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#EDEDEF', marginTop: 4 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: STAGEWAY_THEME.primary, marginTop: 4 }}>
             {totalAdmissions} pax
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
+          <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted }}>
             CHANNELS
           </div>
-          <div style={{ fontSize: 13, color: '#8B909A', marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>
+          <div style={{ fontSize: 13, color: STAGEWAY_THEME.textMuted, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>
             {onlineCount} Online · {offlineCount} Offline/PR
           </div>
         </div>
@@ -245,14 +245,14 @@ export default function SalesOrdersTab({
       {/* DATA TABLE */}
       <div
         style={{
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           overflow: 'hidden',
         }}
       >
         {filteredOrders.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 20px', color: '#555962', fontSize: 13 }}>
+          <div style={{ textAlign: 'center', padding: '48px 20px', color: STAGEWAY_THEME.textMuted, fontSize: 13 }}>
             No orders match the filter criteria.
           </div>
         ) : (
@@ -261,9 +261,9 @@ export default function SalesOrdersTab({
               <thead>
                 <tr
                   style={{
-                    borderBottom: '1px solid #20232B',
-                    background: '#0E1013',
-                    color: '#8B909A',
+                    borderBottom: `1px solid ${STAGEWAY_THEME.border}`,
+                    background: STAGEWAY_THEME.light,
+                    color: STAGEWAY_THEME.textPrimary,
                     fontFamily: 'JetBrains Mono, monospace',
                     fontSize: 11,
                   }}
@@ -287,20 +287,20 @@ export default function SalesOrdersTab({
                   return (
                     <tr
                       key={order.orderId}
-                      style={{ borderBottom: '1px solid #1A1D24' }}
+                      style={{ borderBottom: `1px solid ${STAGEWAY_THEME.border}` }}
                     >
                       <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, color: '#EDEDEF' }}>
+                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, color: STAGEWAY_THEME.textPrimary }}>
                           {order.orderId}
                         </div>
-                        <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#555962', marginTop: 2 }}>
-                          {order.ticketId ? `QR: ${order.ticketId.slice(0, 16)}…` : 'No QR'}
+                        <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textMuted, marginTop: 2 }}>
+                          {order.ticketId ? `QR: ${order.ticketId.slice(0, 16)}...` : 'No QR'}
                         </div>
                       </td>
-                      <td style={{ padding: '12px 14px', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#8B909A' }}>
+                      <td style={{ padding: '12px 14px', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: STAGEWAY_THEME.textSecondary }}>
                         {order.eventName}
                       </td>
-                      <td style={{ padding: '12px 14px', color: '#EDEDEF', fontWeight: 500 }}>
+                      <td style={{ padding: '12px 14px', color: STAGEWAY_THEME.textPrimary, fontWeight: 500 }}>
                         {order.ticketType}
                       </td>
                       <td style={{ padding: '12px 14px' }}>
@@ -313,17 +313,17 @@ export default function SalesOrdersTab({
                             padding: '2px 8px',
                             borderRadius: 4,
                             background: isConfirmed
-                              ? 'rgba(16, 185, 129, 0.1)'
+                              ? 'rgba(16, 165, 121, 0.12)'
                               : isPending
-                              ? 'rgba(245, 158, 11, 0.1)'
-                              : 'rgba(239, 68, 68, 0.1)',
-                            color: isConfirmed ? '#10B981' : isPending ? '#F59E0B' : '#EF4444',
+                              ? 'rgba(217, 119, 6, 0.12)'
+                              : 'rgba(220, 38, 38, 0.1)',
+                            color: isConfirmed ? '#10A579' : isPending ? '#D97706' : '#DC2626',
                             border: `1px solid ${
                               isConfirmed
-                                ? 'rgba(16, 185, 129, 0.25)'
+                                ? 'rgba(16, 165, 121, 0.3)'
                                 : isPending
-                                ? 'rgba(245, 158, 11, 0.25)'
-                                : 'rgba(239, 68, 68, 0.25)'
+                                ? 'rgba(217, 119, 6, 0.3)'
+                                : 'rgba(220, 38, 38, 0.25)'
                             }`,
                           }}
                         >
@@ -337,38 +337,38 @@ export default function SalesOrdersTab({
                             fontFamily: 'JetBrains Mono, monospace',
                             padding: '2px 6px',
                             borderRadius: 4,
-                            background: order.channel === 'online' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                            color: order.channel === 'online' ? '#60A5FA' : '#8B909A',
-                            border: `1px solid ${order.channel === 'online' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
+                            background: order.channel === 'online' ? 'rgba(59, 130, 246, 0.1)' : STAGEWAY_THEME.light,
+                            color: order.channel === 'online' ? '#3B82F6' : STAGEWAY_THEME.textMuted,
+                            border: `1px solid ${order.channel === 'online' ? 'rgba(59, 130, 246, 0.2)' : STAGEWAY_THEME.border}`,
                             textTransform: 'uppercase',
                           }}
                         >
                           {order.channel}
                         </span>
                         {order.sellerName && (
-                          <div style={{ fontSize: 10, color: '#8B909A', marginTop: 2 }}>
+                          <div style={{ fontSize: 10, color: STAGEWAY_THEME.textMuted, marginTop: 2 }}>
                             {order.sellerName}
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: '12px 14px', fontFamily: 'JetBrains Mono, monospace', color: '#8B909A' }}>
+                      <td style={{ padding: '12px 14px', fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.textSecondary }}>
                         {order.admissions} pax
                       </td>
-                      <td style={{ padding: '12px 14px', fontWeight: 600, color: '#EDEDEF' }}>
+                      <td style={{ padding: '12px 14px', fontWeight: 600, color: STAGEWAY_THEME.textPrimary }}>
                         {order.amount !== null ? `₹${Number(order.amount).toLocaleString()}` : 'Unverified'}
                       </td>
                       <td style={{ padding: '12px 14px' }}>
                         {order.scannedAdmissions > 0 ? (
-                          <span style={{ fontSize: 11, color: '#10B981', fontFamily: 'JetBrains Mono, monospace' }}>
+                          <span style={{ fontSize: 11, color: '#10A579', fontFamily: 'JetBrains Mono, monospace' }}>
                             ✓ {order.scannedAdmissions}/{order.admissions} checked in
                           </span>
                         ) : (
-                          <span style={{ fontSize: 11, color: '#555962', fontFamily: 'JetBrains Mono, monospace' }}>
+                          <span style={{ fontSize: 11, color: STAGEWAY_THEME.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>
                             Unscanned
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: '12px 14px', fontSize: 11, color: '#555962', fontFamily: 'JetBrains Mono, monospace' }}>
+                      <td style={{ padding: '12px 14px', fontSize: 11, color: STAGEWAY_THEME.textMuted, fontFamily: 'JetBrains Mono, monospace' }}>
                         {order.createdAt ? new Date(order.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
                       </td>
                     </tr>

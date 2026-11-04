@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { OrganizerEvent } from '../types'
+import { STAGEWAY_THEME } from '../theme'
 
 interface TeamPRTabProps {
   events: OrganizerEvent[]
@@ -156,7 +157,7 @@ export default function TeamPRTab({
 
   if (!activeEvent) {
     return (
-      <div style={{ background: '#14161C', border: '1px dashed #282C36', borderRadius: 10, padding: 48, textAlign: 'center', color: '#555962' }}>
+      <div style={{ background: STAGEWAY_THEME.light, border: `1px dashed ${STAGEWAY_THEME.borderMedium}`, borderRadius: 10, padding: 48, textAlign: 'center', color: STAGEWAY_THEME.textMuted }}>
         No events available. Create an event first to manage team coordinators.
       </div>
     )
@@ -172,25 +173,25 @@ export default function TeamPRTab({
           alignItems: 'center',
           gap: 16,
           flexWrap: 'wrap',
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: 16,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', textTransform: 'uppercase' }}>
+          <label style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: STAGEWAY_THEME.primary, textTransform: 'uppercase' }}>
             Production Team For:
           </label>
           <select
             value={activeEvent.eventId}
             onChange={e => onSelectEventId(e.target.value)}
             style={{
-              background: '#0E1013',
-              border: '1px solid #282C36',
+              background: '#F8FCFA',
+              border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 6,
               padding: '8px 12px',
-              color: '#EDEDEF',
+              color: STAGEWAY_THEME.textPrimary,
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
@@ -205,19 +206,19 @@ export default function TeamPRTab({
           </select>
         </div>
 
-        <div style={{ fontSize: 12, color: '#8B909A' }}>
+        <div style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted }}>
           {team.length} Active Member{team.length === 1 ? '' : 's'} · {invitations.filter(i => i.status === 'pending').length} Pending Link{invitations.filter(i => i.status === 'pending').length === 1 ? '' : 's'}
         </div>
       </div>
 
       {error && (
-        <div role="alert" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 8, padding: '12px 16px', color: '#EF4444', fontSize: 13 }}>
+        <div role="alert" style={{ background: 'rgba(220, 38, 38, 0.08)', border: '1px solid rgba(220, 38, 38, 0.25)', borderRadius: 8, padding: '12px 16px', color: STAGEWAY_THEME.danger, fontSize: 13 }}>
           {error}
         </div>
       )}
 
       {message && (
-        <div role="status" style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 8, padding: '12px 16px', color: '#10B981', fontSize: 13 }}>
+        <div role="status" style={{ background: 'rgba(16, 165, 121, 0.08)', border: `1px solid rgba(16, 165, 121, 0.25)`, borderRadius: 8, padding: '12px 16px', color: STAGEWAY_THEME.secondary, fontSize: 13 }}>
           {message}
         </div>
       )}
@@ -225,16 +226,16 @@ export default function TeamPRTab({
       {/* INVITE FORM */}
       <div
         style={{
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: 20,
         }}
       >
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: '#EDEDEF', margin: '0 0 4px' }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: STAGEWAY_THEME.textPrimary, margin: '0 0 4px' }}>
           Assign Authorized Seller or PR Representative
         </h3>
-        <p style={{ fontSize: 12, color: '#8B909A', margin: '0 0 16px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 12, color: STAGEWAY_THEME.textMuted, margin: '0 0 16px', lineHeight: 1.5 }}>
           Sellers can issue direct door tickets. PR coordinators receive exclusive tracked referral links to earn attribution on customer sales.
         </p>
 
@@ -243,11 +244,11 @@ export default function TeamPRTab({
             value={role}
             onChange={e => setRole(e.target.value as 'seller' | 'pr')}
             style={{
-              background: '#0E1013',
-              border: '1px solid #282C36',
+              background: '#F8FCFA',
+              border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 6,
               padding: '9px 12px',
-              color: '#EDEDEF',
+              color: STAGEWAY_THEME.textPrimary,
               fontSize: 13,
             }}
           >
@@ -264,11 +265,11 @@ export default function TeamPRTab({
             style={{
               flex: 1,
               minWidth: 260,
-              background: '#0E1013',
-              border: '1px solid #282C36',
+              background: '#F8FCFA',
+              border: `1px solid ${STAGEWAY_THEME.borderMedium}`,
               borderRadius: 6,
               padding: '9px 12px',
-              color: '#EDEDEF',
+              color: STAGEWAY_THEME.textPrimary,
               fontSize: 13,
             }}
           />
@@ -277,8 +278,8 @@ export default function TeamPRTab({
             type="submit"
             disabled={busy}
             style={{
-              background: '#EDEDEF',
-              color: '#0B0C0E',
+              background: STAGEWAY_THEME.primary,
+              color: '#FFFFFF',
               border: 'none',
               padding: '9px 18px',
               borderRadius: 6,
@@ -287,7 +288,7 @@ export default function TeamPRTab({
               cursor: busy ? 'not-allowed' : 'pointer',
             }}
           >
-            {busy ? 'Sending…' : 'Send Invitation'}
+            {busy ? 'Sending...' : 'Send Invitation'}
           </button>
         </form>
       </div>
@@ -295,18 +296,18 @@ export default function TeamPRTab({
       {/* ACTIVE TEAM ROSTER */}
       <div
         style={{
-          background: '#14161C',
-          border: '1px solid #20232B',
+          background: STAGEWAY_THEME.surface,
+          border: `1px solid ${STAGEWAY_THEME.border}`,
           borderRadius: 10,
           padding: 20,
         }}
       >
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: '#EDEDEF', margin: '0 0 14px' }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: STAGEWAY_THEME.textPrimary, margin: '0 0 14px' }}>
           Active Team Members ({team.length})
         </h3>
 
         {team.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '30px 0', color: '#555962', fontSize: 13 }}>
+          <div style={{ textAlign: 'center', padding: '30px 0', color: STAGEWAY_THEME.textMuted, fontSize: 13 }}>
             No sellers or PR coordinators actively assigned to {activeEvent.name}.
           </div>
         ) : (
@@ -320,8 +321,8 @@ export default function TeamPRTab({
                   alignItems: 'center',
                   padding: '11px 16px',
                   borderRadius: 6,
-                  background: '#0E1013',
-                  border: '1px solid #1C1F26',
+                  background: STAGEWAY_THEME.light,
+                  border: `1px solid ${STAGEWAY_THEME.border}`,
                   flexWrap: 'wrap',
                   gap: 12,
                 }}
@@ -335,14 +336,14 @@ export default function TeamPRTab({
                       fontWeight: 600,
                       padding: '2px 7px',
                       borderRadius: 4,
-                      background: member.role === 'seller' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                      color: member.role === 'seller' ? '#60A5FA' : '#8B909A',
-                      border: `1px solid ${member.role === 'seller' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.1)'}`,
+                      background: member.role === 'seller' ? 'rgba(4, 120, 87, 0.12)' : STAGEWAY_THEME.light,
+                      color: member.role === 'seller' ? STAGEWAY_THEME.primary : STAGEWAY_THEME.textMuted,
+                      border: `1px solid ${member.role === 'seller' ? STAGEWAY_THEME.borderMedium : STAGEWAY_THEME.border}`,
                     }}
                   >
                     {member.role === 'seller' ? 'Seller' : 'PR Coordinator'}
                   </span>
-                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#EDEDEF', fontWeight: 500 }}>
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: STAGEWAY_THEME.textPrimary, fontWeight: 500 }}>
                     {member.principalId}
                   </span>
                 </div>
@@ -351,9 +352,9 @@ export default function TeamPRTab({
                   onClick={() => removeMember(member)}
                   disabled={busy}
                   style={{
-                    background: 'rgba(239, 68, 68, 0.08)',
-                    color: '#EF4444',
-                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    background: 'rgba(220, 38, 38, 0.08)',
+                    color: STAGEWAY_THEME.danger,
+                    border: '1px solid rgba(220, 38, 38, 0.2)',
                     borderRadius: 6,
                     padding: '5px 12px',
                     fontSize: 11,
@@ -372,13 +373,13 @@ export default function TeamPRTab({
       {invitations.length > 0 && (
         <div
           style={{
-            background: '#14161C',
-            border: '1px solid #20232B',
+            background: STAGEWAY_THEME.surface,
+            border: `1px solid ${STAGEWAY_THEME.border}`,
             borderRadius: 10,
             padding: 20,
           }}
         >
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: '#EDEDEF', margin: '0 0 14px' }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: STAGEWAY_THEME.textPrimary, margin: '0 0 14px' }}>
             Invitation Requests
           </h3>
 
@@ -396,8 +397,8 @@ export default function TeamPRTab({
                     alignItems: 'center',
                     padding: '11px 16px',
                     borderRadius: 6,
-                    background: '#0E1013',
-                    border: '1px solid #1C1F26',
+                    background: STAGEWAY_THEME.light,
+                    border: `1px solid ${STAGEWAY_THEME.border}`,
                     flexWrap: 'wrap',
                     gap: 12,
                   }}
@@ -409,19 +410,20 @@ export default function TeamPRTab({
                         fontFamily: 'JetBrains Mono, monospace',
                         padding: '2px 6px',
                         borderRadius: 4,
-                        background: 'rgba(255,255,255,0.04)',
-                        color: '#8B909A',
+                        background: STAGEWAY_THEME.light,
+                        color: STAGEWAY_THEME.textMuted,
                         textTransform: 'uppercase',
+                        border: `1px solid ${STAGEWAY_THEME.border}`,
                       }}
                     >
                       {inv.role}
                     </span>
-                    <span style={{ fontSize: 13, color: '#EDEDEF' }}>{inv.recipientEmail}</span>
+                    <span style={{ fontSize: 13, color: STAGEWAY_THEME.textPrimary }}>{inv.recipientEmail}</span>
                     <span
                       style={{
                         fontSize: 10,
                         fontFamily: 'JetBrains Mono, monospace',
-                        color: isPending ? '#10B981' : isExpired ? '#EF4444' : '#8B909A',
+                        color: isPending ? STAGEWAY_THEME.secondary : isExpired ? STAGEWAY_THEME.danger : STAGEWAY_THEME.textMuted,
                       }}
                     >
                       ({inv.status} {isPending ? `· expires ${new Date(inv.expiresAt).toLocaleDateString()}` : ''})
@@ -435,9 +437,9 @@ export default function TeamPRTab({
                           onClick={() => resendInvitation(inv.invitationId)}
                           disabled={busy}
                           style={{
-                            background: 'rgba(255,255,255,0.04)',
-                            color: '#EDEDEF',
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            background: STAGEWAY_THEME.light,
+                            color: STAGEWAY_THEME.textSecondary,
+                            border: `1px solid ${STAGEWAY_THEME.border}`,
                             borderRadius: 6,
                             padding: '5px 10px',
                             fontSize: 11,
@@ -450,9 +452,9 @@ export default function TeamPRTab({
                           onClick={() => revokeInvitation(inv.invitationId)}
                           disabled={busy}
                           style={{
-                            background: 'rgba(239, 68, 68, 0.08)',
-                            color: '#EF4444',
-                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                            background: 'rgba(220, 38, 38, 0.08)',
+                            color: STAGEWAY_THEME.danger,
+                            border: '1px solid rgba(220, 38, 38, 0.2)',
                             borderRadius: 6,
                             padding: '5px 10px',
                             fontSize: 11,
@@ -468,9 +470,9 @@ export default function TeamPRTab({
                         onClick={() => resendInvitation(inv.invitationId)}
                         disabled={busy}
                         style={{
-                          background: 'rgba(255,255,255,0.04)',
-                          color: '#EDEDEF',
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          background: STAGEWAY_THEME.light,
+                          color: STAGEWAY_THEME.textSecondary,
+                          border: `1px solid ${STAGEWAY_THEME.border}`,
                           borderRadius: 6,
                           padding: '5px 10px',
                           fontSize: 11,
