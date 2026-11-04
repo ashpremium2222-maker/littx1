@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import Dashboard from './Dashboard'
 import Orders from './Orders'
 import Tickets from './Tickets'
 import Events from './Events'
 import PRApprovals from './PRApprovals'
 import QRScans from './QRScans'
+import { customerTotal, isConfirmedSale } from '../reporting'
 
 interface CompanyPortalProps {
   companyId: string
   companyName?: string
+  adminKey: string
   userRole?: string
 }
 
@@ -31,43 +33,46 @@ function normalizeSellerId(value: any) {
 function saleCompanyId(sale: any) {
   if (sale?.companyId) return sale.companyId
   const seller = normalizeSellerId(sale?.sellerId || sale?.generatedBy || sale?.prUserId)
-  if (seller === 'LITTLANE' || seller === 'SELLER-A') return 'littlane'
+  if (seller === 'LITTLANE' || seller === 'SELLER-A') return 'stageway'
   if (seller === 'NITRO' || seller === 'SELLER-B') return 'nitro'
   if (seller === '7TH-HEAVEN' || seller === 'SELLER-C') return '7th-heaven'
   if (seller === 'PARTNER-SLOT-1') return 'partner-slot-1'
   if (seller === 'PARTNER-SLOT-2') return 'partner-slot-2'
-  return seller ? seller.toLowerCase() : 'littlane'
+  return seller ? seller.toLowerCase() : 'stageway'
 }
 
-export default function CompanyPortal({ companyId = 'littlane', companyName = 'Littlane Ent' }: CompanyPortalProps) {
+function eventIdentifier(event: any) {
+  return String(event?.eventId || event?.id || event?._id || '')
+}
+
+export default function CompanyPortal({ companyId = 'stageway', companyName = 'Stageway Productions', adminKey }: CompanyPortalProps) {
   const [activeTab, setActiveTab] = useState<CompanyTab>('overview')
-  const [selectedEventName, setSelectedEventName] = useState<string>('all')
+  const [selectedEventId, setSelectedEventId] = useState('all')
   const [events, setEvents] = useState<any[]>([])
   const [sales, setSales] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   const fetchCompanyData = async () => {
     setLoading(true)
+    setLoadError('')
     try {
+      if (!adminKey) throw new Error('Your administrator session is unavailable. Sign in again.')
+      const headers = { 'x-auth-token': adminKey }
       const [eventsRes, salesRes] = await Promise.all([
-        fetch('/api/master/companies/' + companyId + '/control-center'),
-        fetch('/api/admin/sales')
+        fetch('/api/master/companies/' + encodeURIComponent(companyId) + '/control-center', { headers, cache: 'no-store' }),
+        fetch('/api/admin/sales', { headers, cache: 'no-store' })
       ])
 
-      const eventsData = await eventsRes.json()
-      const salesData = await salesRes.json()
-
-      if (eventsData.success) {
-        setEvents(eventsData.events || [])
-      }
-
-      if (salesData.success) {
-        // Filter sales by companyId
-        const companySales = (salesData.sales || []).filter((s: any) => saleCompanyId(s) === companyId)
-        setSales(companySales)
-      }
+      const [eventsData, salesData] = await Promise.all([eventsRes.json(), salesRes.json()])
+      if (!eventsRes.ok || !eventsData.success) throw new Error(eventsData.message || 'Company event data could not be loaded.')
+      if (!salesRes.ok || !salesData.success) throw new Error(salesData.message || 'Company sales data could not be loaded.')
+      setEvents(eventsData.events || [])
+      setSales((salesData.sales || []).filter((sale: any) => saleCompanyId(sale) === companyId))
     } catch (err) {
-      console.error('Failed to load company portal data:', err)
+      const message = err instanceof Error ? err.message : 'Company workspace data could not be loaded.'
+      setLoadError(message)
+      console.error('Failed to load company portal data:', message)
     } finally {
       setLoading(false)
     }
@@ -75,17 +80,35 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
 
   useEffect(() => {
     fetchCompanyData()
-  }, [companyId])
+  }, [companyId, adminKey])
+
+  const resendTicket = async (ticketId: string) => {
+    try {
+      const response = await fetch(`/api/admin/tickets/${encodeURIComponent(ticketId)}/resend`, {
+        method: 'POST', headers: { 'x-auth-token': adminKey }
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Ticket email could not be resent.')
+      window.alert(data.message || 'Ticket email resent.')
+      await fetchCompanyData()
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Ticket email could not be resent.')
+    }
+  }
 
   // Filter sales dynamically based on Event Switcher selection
-  const filteredSales = selectedEventName === 'all'
+  const selectedEvent = events.find(event => eventIdentifier(event) === selectedEventId)
+  const sameNameEventCount = selectedEvent ? events.filter(event => String(event.name || '').toLowerCase() === String(selectedEvent.name || '').toLowerCase()).length : 0
+  const filteredSales = selectedEventId === 'all'
     ? sales
-    : sales.filter(s => (s.event || '').toLowerCase() === selectedEventName.toLowerCase())
+    : sales.filter(sale => sale.eventId
+      ? String(sale.eventId) === selectedEventId
+      : sameNameEventCount === 1 && String(sale.event || '').toLowerCase() === String(selectedEvent?.name || '').toLowerCase())
   const ticketedSales = filteredSales.filter(s => !isApprovalOnlySale(s))
   const ticketedAllSales = sales.filter(s => !isApprovalOnlySale(s))
 
-  const paidSales = ticketedSales.filter(s => ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status))
-  const totalRevenue = paidSales.reduce((acc, s) => acc + (Number(s.customerTotal ?? s.amount ?? 0) || 0), 0)
+  const paidSales = ticketedSales.filter(isConfirmedSale)
+  const totalRevenue = paidSales.reduce((acc, s) => acc + customerTotal(s), 0)
 
   const summary = {
     totalOrders: paidSales.length,
@@ -96,11 +119,12 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
   }
 
   if (loading) {
-    return <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>Loading Company Workspace…</div>
+    return <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>Loading Company Workspaceâ€¦</div>
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {loadError && <div role="alert" className="card" style={{ color: 'var(--red)' }}>{loadError} <button className="btn-secondary" onClick={() => { void fetchCompanyData() }}>Retry</button></div>}
       {/* Header bar with EVENT SWITCHER */}
       <div
         className="card"
@@ -130,7 +154,7 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
               fontSize: '1.2rem'
             }}
           >
-            🏢
+            ðŸ¢
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -145,8 +169,8 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--volt)', textTransform: 'uppercase' }}>EVENT SWITCHER:</span>
           <select
-            value={selectedEventName}
-            onChange={(e) => setSelectedEventName(e.target.value)}
+            value={selectedEventId}
+            onChange={(e) => setSelectedEventId(e.target.value)}
             style={{
               background: 'var(--panel-2)',
               border: '1px solid var(--volt)',
@@ -159,10 +183,10 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
               cursor: 'pointer'
             }}
           >
-            <option value="all">🌐 All Company Events ({events.length})</option>
+            <option value="all">ðŸŒ All Company Events ({events.length})</option>
             {events.map((e) => (
-              <option key={e._id || e.name} value={e.name}>
-                🎟️ {e.name}
+              <option key={eventIdentifier(e) || e.name} value={eventIdentifier(e)}>
+                ðŸŽŸï¸ {e.name}
               </option>
             ))}
           </select>
@@ -204,15 +228,15 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
       )}
 
       {activeTab === 'events' && (
-        <Events sales={ticketedSales} adminKey="littx-admin" onNavigateToTickets={() => setActiveTab('tickets')} />
+        <Events sales={ticketedSales} adminKey={adminKey} onNavigateToTickets={() => setActiveTab('tickets')} />
       )}
 
       {activeTab === 'tickets' && (
         <Tickets
           sales={ticketedSales}
           allSales={ticketedAllSales}
-          onResend={async () => {}}
-          adminKey="littx-admin"
+          onResend={resendTicket}
+          adminKey={adminKey}
           onReload={fetchCompanyData}
           globalSearch=""
           isPresentation={false}
@@ -222,11 +246,11 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
       )}
 
       {activeTab === 'orders' && (
-        <Orders sales={ticketedSales} onResend={async () => {}} globalSearch="" isPresentation={false} adminKey="littx-admin" onReload={fetchCompanyData} />
+        <Orders sales={ticketedSales} onResend={resendTicket} globalSearch="" isPresentation={false} adminKey={adminKey} onReload={fetchCompanyData} />
       )}
 
       {activeTab === 'prs' && (
-        <PRApprovals sales={filteredSales} adminKey="littx-admin" isPresentation={false} />
+        <PRApprovals sales={filteredSales} adminKey={adminKey} isPresentation={false} />
       )}
 
       {activeTab === 'scans' && (

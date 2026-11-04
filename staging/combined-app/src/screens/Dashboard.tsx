@@ -16,6 +16,7 @@ interface Props {
 }
 
 export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, rejectedScans, onGenerateTicket, sellerId }: Props) {
+  void onOpenTicket
   const { tickets } = useStore()
   const [activeTab, setActiveTab] = useState<'scanned' | 'failed'>('scanned')
   const [search, setSearch] = useState('')
@@ -28,7 +29,10 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
     let active = true
     const loadStats = async () => {
       try {
-        const res = await fetch('/api/scan-stats')
+        const scannerToken = sessionStorage.getItem('littx_scanner_token')
+        const res = await fetch('/api/scan-stats', {
+          headers: scannerToken ? { Authorization: `Bearer ${scannerToken}` } : {},
+        })
         const data = await res.json()
         if (active && res.ok && data.success) {
           setDatabaseStats({ accepted: data.accepted || 0, failed: data.failed || 0 })
@@ -240,11 +244,13 @@ export default function Dashboard({ dark, onOpenTicket, onScan, onToggleTheme, r
               const badgeStyle =
                 item.reason === 'cancelled'
                   ? 'bg-[#F59E0B]/15 text-[#F59E0B]'
+                  : item.reason === 'manual_review'
+                  ? 'bg-[#F59E0B]/15 text-[#F59E0B]'
                   : item.reason === 'invalid'
                   ? 'bg-[#6B7280]/15 text-[#9CA3AF]'
                   : 'bg-[#EF4444]/15 text-[#EF4444]'
               const badgeLabel =
-                item.reason === 'cancelled' ? 'Cancelled' : item.reason === 'invalid' ? 'Invalid' : 'Duplicate'
+                item.reason === 'cancelled' ? 'Cancelled' : item.reason === 'manual_review' ? 'Manual review' : item.reason === 'invalid' ? 'Invalid' : 'Duplicate'
               const ordinal = (n: number) => {
                 const s = n + 1
                 const sfx = s === 1 ? 'st' : s === 2 ? 'nd' : s === 3 ? 'rd' : 'th'

@@ -1,4 +1,4 @@
-# LITTX Seller Native Android
+# Stageway Seller Native Android
 
 This is a standalone Kotlin/Jetpack Compose Android application. It does not contain a WebView, Capacitor, React, browser runtime, or dynamically executed code. It does not modify `staging/`, the existing seller web portal, the existing API, or the database.
 

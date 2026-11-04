@@ -48,11 +48,11 @@ class SellerViewModel(activity: ComponentActivity) : ViewModel() {
             state = state.copy(loading = false, error = e.message ?: "Secure sign-in failed.")
         }
     }
-    fun submitTicket(name: String, email: String, phone: String, ticketType: String, quantity: Int, commissionPercentage: Double, event: String) = viewModelScope.launch {
+    fun submitTicket(name: String, email: String, phone: String, ticketType: String, quantity: Int, commissionPercentage: Double, event: String, nickname: String?) = viewModelScope.launch {
         val partner = state.partner ?: return@launch
         state = state.copy(loading = true, error = null, message = null)
         try {
-            val response = repository.createTicket(TicketRequest(name, email, phone, ticketType, ticketType, quantity, commissionPercentage, event, partner.name, partner.id))
+            val response = repository.createTicket(TicketRequest(name, email, phone, ticketType, ticketType, quantity, commissionPercentage, event, partner.name, partner.id, nickname?.trim()?.takeIf { it.isNotEmpty() }))
             val confirmation = response.ticket?.id?.let { "Ticket #$it issued successfully." }
             state = state.copy(loading = false, message = confirmation ?: response.message ?: if (response.success) "Ticket generated and submitted to the server." else "Ticket generation failed.", successTicketId = if (response.success) response.ticket?.id else null, formResetNonce = if (response.success) state.formResetNonce + 1 else state.formResetNonce, error = if (response.success) null else response.message)
         } catch (e: Exception) { handleRequestError(e, "Network error.") }
@@ -62,15 +62,14 @@ class SellerViewModel(activity: ComponentActivity) : ViewModel() {
         try { val response = repository.sales(); state = state.copy(loading = false, sales = response.sales, error = if (response.success) null else response.message) }
         catch (e: Exception) { handleRequestError(e, "Could not load history.") }
     }
-    fun loadConfig() = viewModelScope.launch {
+    fun loadConfig(eventId: String? = state.config?.event?.id) = viewModelScope.launch {
         try {
-            val response = repository.config()
+            val response = repository.config(eventId)
             if (!response.success || response.config == null) {
                 state = state.copy(error = response.message ?: "Seller configuration is unavailable.")
                 return@launch
             }
-            val pricing = repository.pricing(response.config.event.name)
-            state = state.copy(config = response.config, pricing = pricing.takeIf { it.success }, error = if (pricing.success) null else pricing.message)
+            state = state.copy(config = response.config, pricing = null, error = null)
         } catch (e: Exception) { handleRequestError(e, "Could not refresh seller configuration.") }
     }
     fun checkForUpdate() = viewModelScope.launch {

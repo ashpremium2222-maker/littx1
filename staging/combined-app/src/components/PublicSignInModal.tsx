@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+﻿import React, { useState } from 'react'
 
 interface PublicSignInModalProps {
   onClose: () => void
@@ -29,6 +29,10 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
       if (data.success && data.user) {
         sessionStorage.setItem('littx_user', JSON.stringify(data.user))
         sessionStorage.setItem('littx_token', data.token)
+        if (data.cookieSession) {
+          sessionStorage.removeItem('ft_admin_key')
+          localStorage.removeItem('ft_admin_key')
+        }
         onLoginSuccess(data.user)
       } else {
         setError(data.message || 'Invalid login credentials.')
@@ -38,11 +42,6 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
     } finally {
       setLoading(false)
     }
-  }
-
-  const quickFill = (u: string, p: string) => {
-    setUsername(u)
-    setPassword(p)
   }
 
   return (
@@ -79,12 +78,12 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
         {/* Header */}
         <div style={{ padding: '20px 24px', background: 'var(--panel-2)', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img src="/logo.png" alt="LITTX" style={{ height: '24px', width: 'auto' }} />
+            <img src="/logo.png" alt="Stageway" style={{ height: '24px', width: 'auto' }} />
             <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--ink)' }}>
-              {loginType === 'select' ? 'SIGN IN TO LITTX' : loginType === 'company' ? 'Event Company Portal' : 'PR Partner Portal'}
+              {loginType === 'select' ? 'SIGN IN TO STAGEWAY' : loginType === 'company' ? 'Event Company Portal' : 'PR Partner Portal'}
             </h3>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--ink-faint)', cursor: 'pointer', fontSize: '1.3rem' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--ink-faint)', cursor: 'pointer', fontSize: '1.3rem' }}>âœ•</button>
         </div>
 
         {/* Body */}
@@ -113,7 +112,7 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
                 }}
               >
                 <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'var(--volt-dim)', border: '1px solid rgba(216,255,63,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--volt)', fontSize: '1.3rem' }}>
-                  🏢
+                  ðŸ¢
                 </div>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--ink)' }}>Event Company</div>
@@ -139,7 +138,7 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
                 }}
               >
                 <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(245, 185, 66, 0.15)', border: '1px solid rgba(245, 185, 66, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F5B942', fontSize: '1.3rem' }}>
-                  🤝
+                  ðŸ¤
                 </div>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--ink)' }}>PR Partner</div>
@@ -166,7 +165,7 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
                 }}
               >
                 <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(61,220,132,0.12)', border: '1px solid rgba(61,220,132,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3DDC84', fontSize: '1.3rem' }}>
-                  🎟
+                  ðŸŽŸ
                 </div>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--ink)' }}>Customer / Attendee</div>
@@ -180,12 +179,12 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
                 onClick={() => setLoginType('select')}
                 style={{ background: 'none', border: 'none', color: 'var(--volt)', cursor: 'pointer', fontSize: '11px', fontWeight: 700, marginBottom: '16px', padding: 0 }}
               >
-                ← Back to Portal Options
+                â† Back to Portal Options
               </button>
 
               {error && (
                 <div style={{ background: 'rgba(255,107,107,0.15)', border: '1px solid rgba(255,107,107,0.3)', color: 'var(--red)', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, marginBottom: '16px' }}>
-                  ⚠️ {error}
+                  âš ï¸ {error}
                 </div>
               )}
 
@@ -194,7 +193,7 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
                   <label>{loginType === 'company' ? 'COMPANY ADMIN EMAIL / USERNAME' : 'PR USERNAME'}</label>
                   <input
                     type="text"
-                    placeholder={loginType === 'company' ? 'admin@littlane.in' : 'partner1'}
+                    placeholder={loginType === 'company' ? 'organizer@stageway.in' : 'partner1'}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     required
@@ -206,7 +205,7 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
                   <label>PASSWORD</label>
                   <input
                     type="password"
-                    placeholder="••••••••••••••••"
+                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -214,25 +213,10 @@ export default function PublicSignInModal({ onClose, onLoginSuccess }: PublicSig
                 </div>
 
                 <button type="submit" className="btn btn-primary" disabled={loading} style={{ padding: '14px', marginTop: '6px', fontSize: '14px' }}>
-                  {loading ? 'Authenticating…' : `Sign in to ${loginType === 'company' ? 'Company' : 'PR'} Portal`}
+                  {loading ? 'Authenticatingâ€¦' : `Sign in to ${loginType === 'company' ? 'Company' : 'PR'} Portal`}
                 </button>
               </form>
 
-              {/* Demo Fill Helper */}
-              <div style={{ marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--line)' }}>
-                <div style={{ fontSize: '9px', fontWeight: 800, color: 'var(--ink-faint)', textTransform: 'uppercase', marginBottom: '8px' }}>
-                  Demo Credentials
-                </div>
-                {loginType === 'company' ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => quickFill('admin@littlane.in', 'littlane-2026')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '4px 8px' }}>Littlane Admin</button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => quickFill('partner1', 'ftpr@001')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '4px 8px' }}>Partner One</button>
-                  </div>
-                )}
-              </div>
             </div>
           )}
         </div>

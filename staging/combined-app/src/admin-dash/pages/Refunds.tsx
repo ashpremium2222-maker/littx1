@@ -161,7 +161,7 @@ export default function Refunds({ sales = [] }: Props) {
                         <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.name}</div>
                         <div style={{ fontSize: '10.5px', color: 'var(--ink-faint)' }}>{r.email}</div>
                       </td>
-                      <td>{r.event || 'DHOLIDA GARBA ROYALE'}</td>
+                      <td>{r.event || 'Event details unavailable'}</td>
                       <td
                         style={{
                           fontWeight: 700,

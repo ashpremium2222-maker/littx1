@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+﻿import { useState, useMemo, useRef, useEffect } from 'react'
 
 interface PRApprovalsProps {
   adminKey: string
@@ -28,7 +28,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
   const companyId = (sale: any) => {
     const raw = String(sale?.companyId || sale?.sellerId || sale?.generatedBy || sale?.prUserId || '').trim().toLowerCase()
     const aliases: Record<string, string> = {
-      'seller-a': 'littlane', littlane: 'littlane',
+      'seller-a': 'stageway', littlane: 'stageway',
       'seller-b': 'nitro', nitro: 'nitro',
       'seller-c': '7th-heaven', '7th-heaven': '7th-heaven',
     }
@@ -38,7 +38,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
   const companyName = (sale: any) => {
     const id = companyId(sale)
     const names: Record<string, string> = {
-      littlane: 'Littlane Ent',
+      stageway: 'Stageway Productions',
       nitro: 'DGR',
       '7th-heaven': '7th Heaven',
       wolfera: 'Wolfera',
@@ -87,7 +87,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
 
   const approvalSales = useMemo(() => {
     const rowsById = new Map<string, any>()
-    ;[...sales, ...queuedSales].filter((sale: any) => !['littlane', 'nitro'].includes(companyId(sale)) && (
+    ;[...sales, ...queuedSales].filter((sale: any) => !['stageway', 'nitro'].includes(companyId(sale)) && (
       isPendingApproval(sale) ||
       ['APPROVED', 'REJECTED'].includes(String(sale.approvalStatus || '').toUpperCase()) ||
       (sale.paymentMethod === 'cash' && sale.status !== 'created')
@@ -354,7 +354,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
         </div>
 
         <div style={{ padding: '12px 18px', color: 'var(--ink-faint)', fontSize: 12, borderBottom: '1px solid var(--border)' }}>
-          {filteredRows.length} {filteredRows.length === 1 ? 'ticket' : 'tickets'}{companyFilter !== 'all' ? ` · ${companyCards.find(company => company.id === companyFilter)?.name || 'Company'}` : ''}{statusFilter !== 'all' ? ` · ${statusFilter === 'approved' ? 'Accepted' : statusFilter[0].toUpperCase() + statusFilter.slice(1)}` : ''}
+          {filteredRows.length} {filteredRows.length === 1 ? 'ticket' : 'tickets'}{companyFilter !== 'all' ? ` Â· ${companyCards.find(company => company.id === companyFilter)?.name || 'Company'}` : ''}{statusFilter !== 'all' ? ` Â· ${statusFilter === 'approved' ? 'Accepted' : statusFilter[0].toUpperCase() + statusFilter.slice(1)}` : ''}
         </div>
         {!isPresentation && selectableRows.length > 0 && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '11px 18px', borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,.018)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink-faint)', fontSize: 13 }}>
@@ -379,10 +379,10 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
                 const busy = rowAction?.status === 'approving' || rowAction?.status === 'rejecting'
                 return <tr key={id} className={rowAction?.status === 'approved' ? 'approval-done' : ''} style={{ opacity: busy ? 0.72 : 1 }}>
                   {!isPresentation && <td><input type="checkbox" aria-label={`Select ${sale.name || sale.ticketId || 'ticket'}`} checked={selectedIds.includes(String(id))} disabled={status !== 'pending' || busy || Boolean(bulkAction)} onChange={event => setSelectedIds(previous => event.target.checked ? [...new Set([...previous, String(id)])] : previous.filter(selectedId => selectedId !== String(id)))} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} /></td>}
-                  <td><div style={{ fontWeight: 700 }}>{companyName(sale)}</div><div style={{ marginTop: 4 }}>{sale.name || 'Unknown attendee'}</div><div className="cell-sub">{sale.email || 'No email'} · {sale.ticketId || sale.orderId}</div></td>
+                  <td><div style={{ fontWeight: 700 }}>{companyName(sale)}</div><div style={{ marginTop: 4 }}>{sale.name || 'Unknown attendee'}</div><div className="cell-sub">{sale.email || 'No email'} Â· {sale.ticketId || sale.orderId}</div></td>
                   <td>{sale.ticketType || `${sale.gender || 'General'} Pass`}</td>
-                  <td style={{ fontWeight: 750 }}>₹{Number(sale.amount || 0).toLocaleString('en-IN')}</td>
-                  <td style={{ color: 'var(--ink-faint)', fontSize: 13 }}>{sale.createdAt ? new Date(sale.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                  <td style={{ fontWeight: 750 }}>â‚¹{Number(sale.amount || 0).toLocaleString('en-IN')}</td>
+                  <td style={{ color: 'var(--ink-faint)', fontSize: 13 }}>{sale.createdAt ? new Date(sale.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'â€”'}</td>
                   <td>{status === 'pending' && !isPresentation ? <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                     <button type="button" onClick={() => handleApprove(id)} disabled={busy || Boolean(bulkAction)} style={{ background: 'rgba(34,197,94,.12)', border: '1px solid rgba(34,197,94,.34)', color: '#4ade80', borderRadius: 7, padding: '7px 10px', fontWeight: 700, cursor: busy || bulkAction ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{rowAction?.status === 'approving' ? <><span className="approval-spinner" /> Sending</> : 'Approve'}</button>
                     <button type="button" onClick={() => handleReject(id)} disabled={busy || Boolean(bulkAction)} style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.28)', color: '#fca5a5', borderRadius: 7, padding: '7px 10px', fontWeight: 700, cursor: busy || bulkAction ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{rowAction?.status === 'rejecting' ? <><span className="approval-spinner" /> Rejecting</> : 'Reject'}</button>

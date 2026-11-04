@@ -1,6 +1,4 @@
-import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import LittixLogo from '../components/LittixLogo'
+import { motion } from 'framer-motion'
 import QRCode from '../components/QRCode'
 import type { Ticket } from '../lib/store'
 
@@ -11,7 +9,6 @@ interface Props {
 }
 
 export default function TicketCard({ dark, ticket, onBack }: Props) {
-  const [sendState, setSendState] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
   const bg = dark ? 'bg-[#0D0D0D]' : 'bg-[#F9F9FB]'
   const navBg = dark ? 'bg-[#0D0D0D] border-[#1E1E1E]' : 'bg-[#F9F9FB] border-[#EBEBEB]'
   const cardBg = dark ? 'bg-[#1A1A1A] border-[#2A2A2A]' : 'bg-white border-[#EBEBEB]'
@@ -21,22 +18,8 @@ export default function TicketCard({ dark, ticket, onBack }: Props) {
 
   const isScanned = ticket.status === 'scanned'
 
-  async function handleSendEmail() {
-    if (sendState !== 'idle') return
-    setSendState('loading')
-    try {
-      const res = await fetch(`/api/ticket/${ticket.id}/resend`, { method: 'POST' })
-      const data = await res.json()
-      if (data.success || res.ok) {
-        setSendState('sent')
-      } else {
-        setSendState('error')
-        setTimeout(() => setSendState('idle'), 3000)
-      }
-    } catch {
-      setSendState('error')
-      setTimeout(() => setSendState('idle'), 3000)
-    }
+  function handleSendEmail() {
+    window.location.assign('/bookings')
   }
 
   return (
@@ -71,14 +54,10 @@ export default function TicketCard({ dark, ticket, onBack }: Props) {
           transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
         >
           <div className="relative overflow-hidden">
-            <motion.img
-              src={ticket.event && ticket.event.toUpperCase().includes('AURA') ? "/aura-genesis-banner.jpg" : "/images/freshers-takeover-banner.png"}
-              alt={ticket.event || "Banner"}
-              className="w-full object-cover"
-              style={{ height: 180 }}
-              initial={{ scale: 1.15, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+            <div
+              aria-label={ticket.event || 'Ticket'}
+              className="w-full"
+              style={{ height: 180, background: 'radial-gradient(circle at 75% 15%, rgba(168,85,247,.36), transparent 48%), linear-gradient(135deg, #17121f, #08080c)' }}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <motion.div
@@ -110,19 +89,13 @@ export default function TicketCard({ dark, ticket, onBack }: Props) {
             transition={{ delay: 0.2, duration: 0.5 }}
           >
             <h2 className={`text-lg font-black uppercase tracking-tight ${text}`}>{ticket.event}</h2>
-            <p className="text-sm font-semibold text-[#A855F7] mt-0.5">Main Stage · {ticket.ticketType} Admission</p>
+            <p className="text-sm font-semibold text-[#A855F7] mt-0.5">{ticket.ticketType} Admission</p>
 
             <div className="flex gap-2 mt-3 flex-wrap">
-              {(ticket.event && ticket.event.toUpperCase().includes('AURA')
-                ? [
-                    { icon: '📅', label: ticket.dateLabel.split('·')[0]?.trim() || ticket.dateLabel },
-                  ]
-                : [
-                    { icon: '📅', label: ticket.dateLabel.split('·')[0]?.trim() || ticket.dateLabel },
-                    { icon: '⏰', label: ticket.dateLabel.split('·')[1]?.trim() || '' },
-                    { icon: '📍', label: ticket.venue },
-                  ]
-              ).filter((c) => c.label).map(({ icon, label }, i) => (
+              {[
+                { icon: '📅', label: ticket.dateLabel },
+                { icon: '📍', label: ticket.venue },
+              ].filter((c) => c.label).map(({ icon, label }, i) => (
                 <motion.div
                   key={label}
                   initial={{ opacity: 0, y: 8 }}
@@ -204,7 +177,7 @@ export default function TicketCard({ dark, ticket, onBack }: Props) {
               >
                 <QRCode value={`LITTIX:${ticket.id}`} size={144} />
               </motion.div>
-              <p className={`text-xs font-black tracking-wider ${dark ? 'text-white' : 'text-black'}`}>LITTX</p>
+              <p className={`text-xs font-black tracking-wider ${dark ? 'text-white' : 'text-black'}`}>Stageway</p>
             </div>
           </motion.div>
         </motion.div>
@@ -218,54 +191,18 @@ export default function TicketCard({ dark, ticket, onBack }: Props) {
       >
         <motion.button
           onClick={handleSendEmail}
-          disabled={sendState !== 'idle'}
-          whileHover={sendState === 'idle' ? { scale: 1.015 } : {}}
-          whileTap={sendState === 'idle' ? { scale: 0.97 } : {}}
+          whileHover={{ scale: 1.015 }}
+          whileTap={{ scale: 0.97 }}
           className={`w-full py-3.5 rounded-2xl text-sm font-bold border flex items-center justify-center gap-2 ${
             dark ? 'bg-[#1A1A1A] border-[#2A2A2A] text-white' : 'bg-white border-[#E4E4E7] text-[#111] shadow-sm'
           }`}
         >
-          <AnimatePresence mode="wait" initial={false}>
-            {sendState === 'sent' ? (
-              <motion.span
-                key="sent"
-                initial={{ opacity: 0, scale: 0.7 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.7 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-                className="flex items-center gap-2"
-              >
-                <motion.svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <motion.path d="M2 8l4 4 8-8" stroke="#22C55E" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-                    initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4 }} />
-                </motion.svg>
-                Sent to {ticket.email}
-              </motion.span>
-            ) : sendState === 'loading' ? (
-              <motion.span key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2">
-                <motion.span className="w-4 h-4 rounded-full border-2 border-current/30 border-t-current inline-block"
-                  animate={{ rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }} />
-                Sending…
-              </motion.span>
-            ) : sendState === 'error' ? (
-              <motion.span key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 text-red-500">
-                ✕ Failed — try again
-              </motion.span>
-            ) : (
-              <motion.span
-                key="send"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center gap-2"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M2 8l6-6 6 6M8 2v10M4 14h8" stroke={dark ? '#A855F7' : '#7C3AED'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Send to Email
-              </motion.span>
-            )}
-          </AnimatePresence>
+          <span className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M2 8l6-6 6 6M8 2v10M4 14h8" stroke={dark ? '#A855F7' : '#7C3AED'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Recover ticket with email verification
+          </span>
         </motion.button>
       </motion.div>
     </div>

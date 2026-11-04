@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
+import { customerTotal, isConfirmedSale } from '../reporting'
 
 interface DashboardProps {
   sales: any[]
@@ -17,31 +18,28 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ sales = [], summary = {}, testMode, onManualGenerate, scanStats }: DashboardProps) {
+  void [summary, testMode, onManualGenerate]
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
-  const [chartMode, setChartMode] = useState<'actual' | 'forecast'>('actual')
   const [popupEvent, setPopupEvent] = useState<{ name: string; top: number; left: number } | null>(null)
-  const [expandedSeller, setExpandedSeller] = useState<string | null>(null)
 
-  const paidSales = sales.filter(s =>
-    ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
-  )
+  const paidSales = sales.filter(isConfirmedSale)
   const revenueSales = paidSales.filter(
     s => !s.gender || !String(s.gender).toLowerCase().includes('exclusive')
   )
 
-  const totalRevenue = revenueSales.reduce((acc, s) => acc + (s.amount || 0), 0)
+  const totalRevenue = revenueSales.reduce((acc, s) => acc + customerTotal(s), 0)
   const totalTickets = paidSales.reduce((acc, s) => acc + (s.quantity || 1), 0)
 
   const todayStr = new Date().toDateString()
   const todayRevenue = revenueSales
     .filter(s => s.createdAt && new Date(s.createdAt).toDateString() === todayStr)
-    .reduce((acc, s) => acc + (s.amount || 0), 0)
+    .reduce((acc, s) => acc + customerTotal(s), 0)
 
   const manualSales = revenueSales.filter(s => s.paymentId === 'manual' || s.paymentMethod === 'manual' || s.paymentMethod === 'cash')
-  const cashSales = revenueSales // all sales are cash/manual now
+  const cashSales = manualSales
 
-  const manualRevenue = manualSales.reduce((acc, s) => acc + (s.amount || 0), 0)
-  const cashRevenue = totalRevenue // all revenue is cash
+  const manualRevenue = manualSales.reduce((acc, s) => acc + customerTotal(s), 0)
+  const cashRevenue = manualRevenue
 
   const emailFailures = sales.filter(s => s.emailStatus === 'failed').length
   const ticketFailures = sales.filter(s => s.status === 'ticket_generation_failed').length
@@ -68,12 +66,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       const label = sale.ticketType || sale.gender || 'Pass'
       map.set(label, (map.get(label) || 0) + (Number(sale.quantity) || 1))
     })
-    const fallback = [
-      { name: 'GA Single', color: 'var(--grad-violet)' },
-      { name: 'VIP Single', color: 'var(--grad-teal)' },
-      { name: 'Group Passes', color: 'var(--grad-gold)' },
-      { name: 'Invites', color: 'var(--grad-orange)' },
-    ]
     const colors = ['var(--grad-violet)', 'var(--grad-teal)', 'var(--grad-gold)', 'var(--grad-orange)']
     const rows = Array.from(map.entries()).map(([name, count], index) => ({
       name,
@@ -81,18 +73,12 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       pct: Math.round((count / grandTotal) * 100),
       color: colors[index % colors.length],
     }))
-    return rows.length
-      ? rows.slice(0, 4)
-      : fallback.map(item => ({ ...item, count: 0, pct: 0 }))
+    return rows.slice(0, 4)
   }, [paidSales, grandTotal])
 
   // ==================== SELLER BREAKDOWN ====================
-  const KNOWN_SELLERS = ['SELLER-A', 'SELLER-B', 'SELLER-C', 'Admin']
   const sellerSummary = useMemo(() => {
     const map: Record<string, { sellerId: string; ticketCount: number; revenue: number; lastSale: string | null; sales: any[] }> = {}
-    for (const sid of KNOWN_SELLERS) {
-      map[sid] = { sellerId: sid, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
-    }
     for (const s of paidSales) {
       const who = s.generatedBy || s.prUserId || 'Admin'
       if (!map[who]) map[who] = { sellerId: who, ticketCount: 0, revenue: 0, lastSale: null, sales: [] }
@@ -107,6 +93,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
     }
     return Object.values(map).sort((a, b) => b.revenue - a.revenue)
   }, [paidSales])
+  void sellerSummary
 
   const getChartData = () => {
     const chartData = []
@@ -117,7 +104,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
       
-      const dateKeyMap = new Map<string, { label: string; revenue: number; orders: number; forecast: number }>()
+      const dateKeyMap = new Map<string, { label: string; revenue: number; orders: number }>()
       for (let i = daysCount; i >= 0; i--) {
         const d = new Date(now)
         d.setDate(d.getDate() - i)
@@ -131,7 +118,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
           label = `${months[d.getMonth()]} ${d.getDate()}`
         }
         
-        dateKeyMap.set(dateKey, { label, revenue: 0, orders: 0, forecast: 0 })
+        dateKeyMap.set(dateKey, { label, revenue: 0, orders: 0 })
       }
       paidSales.forEach(s => {
         const raw = s.paidAt || s.createdAt
@@ -148,12 +135,11 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         time: v.label,
         revenue: v.revenue,
         orders: v.orders,
-        forecast: v.revenue > 0 ? Math.round(v.revenue * 1.25 + 1200) : 0,
       })))
     } else {
       const blocks = ['12am', '3am', '6am', '9am', '12pm', '3pm', '6pm', '9pm']
-      const blockMap = new Map<string, { revenue: number; orders: number; forecast: number }>()
-      blocks.forEach(b => blockMap.set(b, { revenue: 0, orders: 0, forecast: 0 }))
+      const blockMap = new Map<string, { revenue: number; orders: number }>()
+      blocks.forEach(b => blockMap.set(b, { revenue: 0, orders: 0 }))
 
       paidSales.forEach(s => {
         const raw = s.paidAt || s.createdAt
@@ -167,7 +153,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             const cur = blockMap.get(key)!
             cur.revenue += s.amount || 0
             cur.orders += 1
-            cur.forecast = Math.round(cur.revenue * 1.2 + 500)
           }
         }
       })
@@ -195,7 +180,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         id: `created-${sale.orderId}`,
         type: 'purchase',
         title: `${sale.name || 'Attendee'} booked a pass`,
-        sub: `${sale.event || 'DHOLIDA GARBA ROYALE'} · ₹${sale.amount || 0}`,
+        sub: `${sale.event || 'Event details unavailable'} · ₹${sale.amount || 0}`,
         time: timeLabel,
         badge: <span className="badge badge-blue"><span className="badge-dot" />New</span>,
       })
@@ -255,7 +240,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gutter)' }}>
       <div className="kpi-row">
         <div className="tile tile-orange">
-          <div className="tile-label">REVENUE MTD</div>
+          <div className="tile-label">GROSS CONFIRMED CUSTOMER TOTAL</div>
           <div className="tile-value">₹{totalRevenue.toLocaleString()}</div>
           <div className="tile-sub">From {paidSales.length} paid passes</div>
           <div className="tile-delta">
@@ -273,9 +258,9 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         </div>
 
         <div className="tile tile-violet">
-          <div className="tile-label">CASH COLLECTED</div>
-          <div className="tile-value">₹{totalRevenue.toLocaleString()}</div>
-          <div className="tile-sub">All manual / cash sales</div>
+          <div className="tile-label">CONFIRMED OFFLINE CUSTOMER TOTAL</div>
+          <div className="tile-value">₹{cashRevenue.toLocaleString()}</div>
+          <div className="tile-sub">Attributed manual/cash orders only</div>
           <div className="tile-delta">
             <span>💵</span> {cashSales.length} manual transactions
           </div>
@@ -286,7 +271,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
           <div className="tile-value">{paidSales.length}</div>
           <div className="tile-sub">Tickets successfully issued</div>
           <div className="tile-delta">
-            <span>✓</span> Cash-only mode
+            <span>✓</span> Confirmed collection state
           </div>
         </div>
 
@@ -347,20 +332,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                     Today
                   </button>
                 </div>
-                <div className="pill-toggle" style={{ marginLeft: '6px' }}>
-                  <button
-                    className={chartMode === 'actual' ? 'active' : ''}
-                    onClick={() => setChartMode('actual')}
-                  >
-                    Actual
-                  </button>
-                  <button
-                    className={chartMode === 'forecast' ? 'active' : ''}
-                    onClick={() => setChartMode('forecast')}
-                  >
-                    Forecast
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -371,10 +342,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                     <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#7C5CFA" stopOpacity={0.4} />
                       <stop offset="95%" stopColor="#7C5CFA" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="forecastGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#38D9C4" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#38D9C4" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <XAxis
@@ -399,15 +366,15 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                       color: '#F5F4F8',
                       fontSize: '12px',
                     }}
-                    formatter={(val: any) => [`₹${val}`, chartMode === 'actual' ? 'Revenue' : 'Forecast']}
+                    formatter={(val: any) => [`₹${val}`, 'Revenue']}
                   />
                   <Area
                     type="monotone"
-                    dataKey={chartMode === 'actual' ? 'revenue' : 'forecast'}
-                    stroke={chartMode === 'actual' ? '#7C5CFA' : '#38D9C4'}
+                    dataKey="revenue"
+                    stroke="#7C5CFA"
                     strokeWidth={2.5}
                     fillOpacity={1}
-                    fill={`url(#${chartMode === 'actual' ? 'areaGrad' : 'forecastGrad'})`}
+                    fill="url(#areaGrad)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -614,17 +581,11 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--ink)' }}>
-                  {popupEvent.name === 'freshers male' ? '🎉 Dholida Garba Royale (Male)' : popupEvent.name === 'freshers female' ? '👩 Dholida Garba Royale (Female)' : popupEvent.name === 'aura genesis' ? '✨ Aura Genesis' : '⭐ FT Lineup Invite'} — Buyers
+                  {popupEvent.name} — Buyers
                 </h3>
                 <div style={{ fontSize: '11px', color: 'var(--ink-soft)', marginTop: '4px' }}>
                   {(() => {
-                    const list = popupEvent.name === 'freshers male'
-                       ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male')))
-                       : popupEvent.name === 'freshers female'
-                       ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female')))
-                       : popupEvent.name === 'aura genesis'
-                       ? paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
-                       : paidSales.filter(s => (s.gender || '').toLowerCase().includes('exclusive') || (s.ticketType || '').toLowerCase().includes('exclusive'))
+                    const list = paidSales.filter(s => s.event === popupEvent.name)
                     return `${list.length} ticket buyers`
                   })()}
                 </div>
@@ -652,13 +613,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
             {/* Buyer List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {(() => {
-                const list = popupEvent.name === 'freshers male'
-                  ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'male' || (s.ticketType || '').toLowerCase().includes('male')))
-                  : popupEvent.name === 'freshers female'
-                  ? paidSales.filter(s => !(s.gender || '').toLowerCase().includes('exclusive') && !(s.event || '').toUpperCase().includes('AURA') && (s.gender === 'female' || (s.ticketType || '').toLowerCase().includes('female')))
-                  : popupEvent.name === 'aura genesis'
-                  ? paidSales.filter(s => (s.event || '').toUpperCase().includes('AURA'))
-                  : paidSales.filter(s => (s.gender || '').toLowerCase().includes('exclusive') || (s.ticketType || '').toLowerCase().includes('exclusive'))
+                const list = paidSales.filter(s => s.event === popupEvent.name)
 
                 if (list.length === 0) {
                   return (
@@ -686,7 +641,7 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
                         width: '32px',
                         height: '32px',
                         borderRadius: '9px',
-                        background: popupEvent.name === 'freshers male' ? 'var(--grad-violet)' : popupEvent.name === 'freshers female' ? 'linear-gradient(135deg, #EC4899 0%, #F43F5E 100%)' : popupEvent.name === 'aura genesis' ? 'var(--grad-teal)' : 'var(--grad-gold)',
+                        background: 'var(--grad-violet)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',

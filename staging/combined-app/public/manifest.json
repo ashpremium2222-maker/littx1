@@ -1,8 +1,8 @@
 {
   "id": "in.littx.seller",
-  "short_name": "LITTX Seller",
-  "name": "LITTX Seller Portal",
-  "description": "LITTX Partner & Seller Portal for Fast Ticket Issuance & Device Lock Security",
+  "short_name": "Stageway Seller",
+  "name": "Stageway Seller Portal",
+  "description": "Stageway partner and seller portal for ticket issuance and device security.",
   "icons": [
     {
       "src": "/logo.png",

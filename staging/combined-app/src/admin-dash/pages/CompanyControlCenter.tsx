@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import ChangePreviewModal from './ChangePreviewModal'
 
 interface CompanyStats {
@@ -57,9 +57,10 @@ type TabType =
 
 export default function CompanyControlCenter() {
   const [companies, setCompanies] = useState<CompanyData[]>([])
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('littlane')
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('stageway')
   const [company, setCompany] = useState<CompanyData | null>(null)
   const [effectiveConfig, setEffectiveConfig] = useState<any>(null)
+  void effectiveConfig
   const [events, setEvents] = useState<any[]>([])
   const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [loading, setLoading] = useState<boolean>(true)
@@ -141,9 +142,9 @@ export default function CompanyControlCenter() {
     checkDiff('Manual Approval Workflow', 'PAYMENT', company.manualPaymentConfig?.approvalWorkflow, draftConfig.manualPaymentConfig?.approvalWorkflow, 'Changes approval requirement for cash ticket issuance')
     checkDiff('PR Portal Feature', 'FEATURES', company.features?.prPortal?.enabled, draftConfig.features?.prPortal?.enabled, 'Toggles PR login portal access')
     checkDiff('PR Ticket Sales', 'FEATURES', company.features?.prSales?.enabled, draftConfig.features?.prSales?.enabled, 'Blocks PR partners from issuing tickets')
-    checkDiff('Platform Fee Type', 'COMMERCIALS', company.commercials?.feeType, draftConfig.commercials?.feeType, 'Changes LITTX platform commission calculation')
+    checkDiff('Platform Fee Type', 'COMMERCIALS', company.commercials?.feeType, draftConfig.commercials?.feeType, 'Changes Stageway platform commission calculation')
     checkDiff('Percentage Fee %', 'COMMERCIALS', company.commercials?.percentageFee, draftConfig.commercials?.percentageFee, 'Updates percentage split on gross sales')
-    checkDiff('Fixed Fee ₹', 'COMMERCIALS', company.commercials?.fixedFeePerTicket, draftConfig.commercials?.fixedFeePerTicket, 'Updates fixed per-ticket platform charge')
+    checkDiff('Fixed Fee â‚¹', 'COMMERCIALS', company.commercials?.fixedFeePerTicket, draftConfig.commercials?.fixedFeePerTicket, 'Updates fixed per-ticket platform charge')
 
     if (diffs.length === 0) {
       alert('No configuration changes detected.')
@@ -174,7 +175,7 @@ export default function CompanyControlCenter() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           updates,
-          adminUser: 'LITTX Master Admin',
+          adminUser: 'Stageway Master Admin',
           reason: changeReason || 'Configuration update via Control Center'
         })
       })
@@ -195,7 +196,7 @@ export default function CompanyControlCenter() {
 
   // Emergency Trigger
   const handleEmergencyAction = async (action: string, label: string) => {
-    if (!confirm(`🚨 EMERGENCY ACTION: Are you sure you want to execute "${label}" for ${company?.name}?`)) return
+    if (!confirm(`ðŸš¨ EMERGENCY ACTION: Are you sure you want to execute "${label}" for ${company?.name}?`)) return
     try {
       const res = await fetch(`/api/master/companies/${selectedCompanyId}/emergency`, {
         method: 'POST',
@@ -203,7 +204,7 @@ export default function CompanyControlCenter() {
         body: JSON.stringify({
           action,
           statusReason: `Emergency override triggered: ${label}`,
-          adminUser: 'LITTX Master Admin'
+          adminUser: 'Stageway Master Admin'
         })
       })
       const data = await res.json()
@@ -217,7 +218,7 @@ export default function CompanyControlCenter() {
   }
 
   if (loading && !company) {
-    return <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>Loading Company Control Center…</div>
+    return <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>Loading Company Control Centerâ€¦</div>
   }
 
   return (
@@ -227,11 +228,11 @@ export default function CompanyControlCenter() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'var(--volt-dim)', border: '1px solid rgba(216,255,63,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--volt)', fontSize: '1.4rem' }}>
-              🏛️
+              ðŸ›ï¸
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span className="badge-pro" style={{ background: 'var(--volt)', color: '#0A0912', fontWeight: 900 }}>LITTX MASTER ADMIN</span>
+                <span className="badge-pro" style={{ background: 'var(--volt)', color: '#0A0912', fontWeight: 900 }}>STAGEWAY MASTER ADMIN</span>
                 <span style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>Platform Governance Center</span>
               </div>
               <h2 style={{ margin: '4px 0 0', fontSize: '1.4rem', color: 'var(--ink)' }}>Company Control & Override Console</h2>
@@ -280,7 +281,7 @@ export default function CompanyControlCenter() {
                     border: `1px solid ${company.status === 'ACTIVE' ? 'rgba(61,220,132,0.3)' : 'rgba(255,107,107,0.3)'}`
                   }}
                 >
-                  ● {company.status}
+                  â— {company.status}
                 </span>
               </div>
             )}
@@ -300,7 +301,7 @@ export default function CompanyControlCenter() {
           { id: 'checkin', label: 'Check-in Rules' },
           { id: 'features', label: 'Feature Access' },
           { id: 'commercials', label: 'Platform Fees' },
-          { id: 'emergency', label: '🚨 Emergency Controls' },
+          { id: 'emergency', label: 'ðŸš¨ Emergency Controls' },
           { id: 'permissions', label: 'User Roles' },
           { id: 'audit', label: 'Audit Trail' }
         ].map((t) => (
@@ -403,7 +404,7 @@ export default function CompanyControlCenter() {
                         razorpayConfig: { ...draftConfig.razorpayConfig, lockedByMaster: e.target.checked }
                       })}
                     />
-                    <span style={{ fontSize: '11px', color: 'var(--volt)', fontWeight: 700 }}>🔒 Lock for Company Admin</span>
+                    <span style={{ fontSize: '11px', color: 'var(--volt)', fontWeight: 700 }}>ðŸ”’ Lock for Company Admin</span>
                   </div>
                 </div>
 
@@ -433,7 +434,7 @@ export default function CompanyControlCenter() {
                         manualPaymentConfig: { ...draftConfig.manualPaymentConfig, lockedByMaster: e.target.checked }
                       })}
                     />
-                    <span style={{ fontSize: '11px', color: 'var(--volt)', fontWeight: 700 }}>🔒 Lock for Company Admin</span>
+                    <span style={{ fontSize: '11px', color: 'var(--volt)', fontWeight: 700 }}>ðŸ”’ Lock for Company Admin</span>
                   </div>
                 </div>
               </div>
@@ -450,7 +451,7 @@ export default function CompanyControlCenter() {
                 >
                   <option value="AUTO">Automatic Approval (Instant Pass Generation)</option>
                   <option value="COMPANY_APPROVAL">Company Admin Approval Required</option>
-                  <option value="MASTER_APPROVAL">LITTX Master Admin Approval Required</option>
+                  <option value="MASTER_APPROVAL">Stageway Master Admin Approval Required</option>
                 </select>
               </div>
             </div>
@@ -479,7 +480,7 @@ export default function CompanyControlCenter() {
                   <label>Razorpay Secret Key (Masked)</label>
                   <input
                     type="password"
-                    value={draftConfig.razorpayConfig?.keySecret || '••••••••••••••••'}
+                    value={draftConfig.razorpayConfig?.keySecret || 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢'}
                     onChange={(e) => setDraftConfig({
                       ...draftConfig,
                       razorpayConfig: { ...draftConfig.razorpayConfig, keySecret: e.target.value }
@@ -502,7 +503,7 @@ export default function CompanyControlCenter() {
                 <div className="field">
                   <label>Webhook Status</label>
                   <div style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', padding: '10px 14px', borderRadius: '8px', fontSize: '12px', color: 'var(--green)', fontWeight: 700 }}>
-                    ✓ Connected & Active
+                    âœ“ Connected & Active
                   </div>
                 </div>
               </div>
@@ -527,11 +528,11 @@ export default function CompanyControlCenter() {
                     })}
                   >
                     <option value="PERCENTAGE">Percentage of Sale (%)</option>
-                    <option value="FIXED">Fixed Amount per Ticket (₹)</option>
+                    <option value="FIXED">Fixed Amount per Ticket (â‚¹)</option>
                   </select>
                 </div>
                 <div className="field">
-                  <label>Commission Value ({draftConfig.prSettings?.commissionType === 'PERCENTAGE' ? '%' : '₹'})</label>
+                  <label>Commission Value ({draftConfig.prSettings?.commissionType === 'PERCENTAGE' ? '%' : 'â‚¹'})</label>
                   <input
                     type="number"
                     value={draftConfig.prSettings?.commissionValue ?? 10}
@@ -571,17 +572,17 @@ export default function CompanyControlCenter() {
                         <td>{e.date || 'TBD'}</td>
                         <td>
                           <span className="badge badge-volt">
-                            {e.overrides?.razorpayEnabled ?? draftConfig.razorpayConfig?.enabled ? '✓ Enabled' : '✕ Disabled'}
+                            {e.overrides?.razorpayEnabled ?? draftConfig.razorpayConfig?.enabled ? 'âœ“ Enabled' : 'âœ• Disabled'}
                           </span>
                         </td>
                         <td>
                           <span className="badge badge-volt">
-                            {e.overrides?.manualPaymentEnabled ?? draftConfig.manualPaymentConfig?.enabled ? '✓ Enabled' : '✕ Disabled'}
+                            {e.overrides?.manualPaymentEnabled ?? draftConfig.manualPaymentConfig?.enabled ? 'âœ“ Enabled' : 'âœ• Disabled'}
                           </span>
                         </td>
                         <td>
                           <span className="badge badge-green">
-                            {e.overrides?.prSalesEnabled ?? draftConfig.features?.prSales?.enabled ? '✓ Enabled' : '✕ Disabled'}
+                            {e.overrides?.prSalesEnabled ?? draftConfig.features?.prSales?.enabled ? 'âœ“ Enabled' : 'âœ• Disabled'}
                           </span>
                         </td>
                         <td style={{ fontSize: '10.5px', color: 'var(--ink-faint)' }}>
@@ -657,7 +658,7 @@ export default function CompanyControlCenter() {
           {activeTab === 'commercials' && (
             <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div className="card-head">
-                <h3>LITTX Platform Commercials & Fee Calculator</h3>
+                <h3>Stageway Platform Commercials & Fee Calculator</h3>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
@@ -671,7 +672,7 @@ export default function CompanyControlCenter() {
                     })}
                   >
                     <option value="PERCENTAGE">Percentage of Revenue (%)</option>
-                    <option value="FIXED">Fixed Fee per Ticket (₹)</option>
+                    <option value="FIXED">Fixed Fee per Ticket (â‚¹)</option>
                     <option value="HYBRID">Hybrid (% + Fixed Fee)</option>
                   </select>
                 </div>
@@ -687,7 +688,7 @@ export default function CompanyControlCenter() {
                   />
                 </div>
                 <div className="field">
-                  <label>Fixed Fee per Ticket (₹)</label>
+                  <label>Fixed Fee per Ticket (â‚¹)</label>
                   <input
                     type="number"
                     value={draftConfig.commercials?.fixedFeePerTicket ?? 0}
@@ -705,15 +706,15 @@ export default function CompanyControlCenter() {
                   <div>
                     <div style={{ fontSize: '11px', color: 'var(--volt)', fontWeight: 800 }}>COMMERCIAL SPLIT SIMULATION</div>
                     <div style={{ fontSize: '13px', color: 'var(--ink)', marginTop: '4px' }}>
-                      Gross: <strong>₹{company.stats.grossRevenue.toLocaleString()}</strong> ({company.stats.ticketCount} tickets)
+                      Gross: <strong>â‚¹{company.stats.grossRevenue.toLocaleString()}</strong> ({company.stats.ticketCount} tickets)
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '13px', color: 'var(--volt)', fontWeight: 800 }}>
-                      LITTX Platform Fee: ₹{company.stats.platformFee.toLocaleString()}
+                      Stageway Platform Fee: â‚¹{company.stats.platformFee.toLocaleString()}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--ink-faint)', marginTop: '2px' }}>
-                      Company Net: ₹{company.stats.netCompanyRevenue.toLocaleString()}
+                      Company Net: â‚¹{company.stats.netCompanyRevenue.toLocaleString()}
                     </div>
                   </div>
                 </div>
@@ -725,7 +726,7 @@ export default function CompanyControlCenter() {
           {activeTab === 'emergency' && (
             <div className="card" style={{ border: '1px solid rgba(255,107,107,0.3)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div className="card-head">
-                <h3 style={{ color: 'var(--red)' }}>🚨 Emergency Overrides & Account Locks</h3>
+                <h3 style={{ color: 'var(--red)' }}>ðŸš¨ Emergency Overrides & Account Locks</h3>
                 <div className="muted-sm">Immediate kill-switches for platform security</div>
               </div>
 
@@ -735,28 +736,28 @@ export default function CompanyControlCenter() {
                   onClick={() => handleEmergencyAction('SUSPEND_COMPANY', 'Suspend Company Account')}
                   style={{ background: 'rgba(255,107,107,0.15)', color: 'var(--red)', border: '1px solid rgba(255,107,107,0.3)', padding: '14px', fontWeight: 800, borderRadius: '10px' }}
                 >
-                  ⛔ Suspend Entire Company
+                  â›” Suspend Entire Company
                 </button>
                 <button
                   className="btn"
                   onClick={() => handleEmergencyAction('ACTIVATE_COMPANY', 'Re-Activate Company Account')}
                   style={{ background: 'rgba(61,220,132,0.15)', color: 'var(--green)', border: '1px solid rgba(61,220,132,0.3)', padding: '14px', fontWeight: 800, borderRadius: '10px' }}
                 >
-                  ✅ Re-Activate Company
+                  âœ… Re-Activate Company
                 </button>
                 <button
                   className="btn"
                   onClick={() => handleEmergencyAction('DISABLE_ONLINE_PAYMENTS', 'Disable Online Payments')}
                   style={{ background: 'var(--panel-2)', color: 'var(--ink)', border: '1px solid var(--line)', padding: '14px', fontWeight: 700, borderRadius: '10px' }}
                 >
-                  💳 Disable Online Payments
+                  ðŸ’³ Disable Online Payments
                 </button>
                 <button
                   className="btn"
                   onClick={() => handleEmergencyAction('DISABLE_PR_SALES', 'Freeze PR Partner Sales')}
                   style={{ background: 'var(--panel-2)', color: 'var(--ink)', border: '1px solid var(--line)', padding: '14px', fontWeight: 700, borderRadius: '10px' }}
                 >
-                  🛑 Freeze PR Partner Sales
+                  ðŸ›‘ Freeze PR Partner Sales
                 </button>
               </div>
             </div>
@@ -795,7 +796,7 @@ export default function CompanyControlCenter() {
                         <td style={{ color: 'var(--green)', fontFamily: 'monospace', fontSize: '11px', fontWeight: 700 }}>
                           {JSON.stringify(log.newValue)}
                         </td>
-                        <td style={{ fontSize: '11.5px', color: 'var(--ink-soft)' }}>{log.reason || '—'}</td>
+                        <td style={{ fontSize: '11.5px', color: 'var(--ink-soft)' }}>{log.reason || 'â€”'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -824,7 +825,7 @@ export default function CompanyControlCenter() {
               Working on <strong>{company.name}</strong> configuration
             </div>
             <button className="btn btn-primary" onClick={handleInitiateSave} style={{ padding: '10px 24px', fontSize: '13px' }}>
-              ✓ Save Configuration Changes
+              âœ“ Save Configuration Changes
             </button>
           </div>
 

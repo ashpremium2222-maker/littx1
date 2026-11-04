@@ -15,14 +15,8 @@ function fmtIST(date: Date | string | null | undefined): string {
   return `${months[ist.getUTCMonth()]} ${ist.getUTCDate()}, ${h12}:${m} ${ampm}`
 }
 
-export type TicketType =
-  | 'GA Single'
-  | 'GA Group of 5'
-  | 'GA Group of 10'
-  | 'VIP Single'
-  | 'VIP Group of 5'
-  | 'VIP Group of 10'
-export type TicketStatus = 'pending' | 'scanned'
+export type TicketType = string
+export type TicketStatus = 'pending' | 'scanned' | 'cancelled'
 
 export interface Ticket {
   id: string
@@ -35,6 +29,7 @@ export interface Ticket {
   ticketType: TicketType
   price: string
   qty: number
+  admissionCount?: number
   generatedBy: string
   generatedAt: string
   status: TicketStatus
@@ -57,7 +52,7 @@ interface StoreValue {
     dateLabel: string
     ticketType: TicketType
   }) => Promise<Ticket>
-  scanTicket: (idOrRaw: string, scannedBy: string) => Promise<{ result: 'success' | 'rejected' | 'not_found' | 'error'; ticket?: Ticket }>
+  scanTicket: (idOrRaw: string, scannedBy: string) => Promise<{ result: 'success' | 'rejected' | 'manual_review' | 'not_found' | 'error'; ticket?: Ticket }>
   findTicket: (id: string) => Ticket | undefined
 }
 
@@ -79,13 +74,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState<boolean>(false)
 
   const adminKey = useMemo(() => {
-    return localStorage.getItem('ft_admin_key') || sessionStorage.getItem('ft_admin_key') || 'change-me-admin-key'
+    return sessionStorage.getItem('ft_admin_key') || ''
   }, [])
 
   const refreshTickets = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/sales?key=${adminKey}`)
+      const token = sessionStorage.getItem('littx_token') || ''
+      const res = await fetch('/api/admin/sales', { headers: { ...(adminKey ? { 'x-admin-key': adminKey } : {}), ...(token ? { 'x-auth-token': token } : {}) } })
       if (res.ok) {
         const data = await res.json()
         if (data.success && data.sales) {
@@ -94,13 +90,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const isScanned = sale.status === 'scanned' || !!sale.scannedAt
             return {
               id: sale.ticketId || sale.orderId,
-              event: sale.event || 'DHOLIDA GARBA ROYALE',
+              event: sale.event || 'Event details unavailable',
               attendee: sale.name,
               email: sale.email,
               phone: sale.phone || '',
               dateLabel: fmtIST(sale.generatedAt),
-              venue: 'Pethkar Ground, Kothrud, Pune',
-              ticketType: (sale.ticketType as any) || 'GA Single',
+              venue: sale.venue || '',
+              ticketType: (sale.ticketType as any) || 'Ticket',
               price: `₹${sale.amount}`,
               qty: sale.quantity || 1,
               generatedBy: 'Admin',
@@ -142,7 +138,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-key': adminKey
+          ...(adminKey ? { 'x-admin-key': adminKey } : {}),
+          ...(sessionStorage.getItem('littx_token') ? { 'x-auth-token': sessionStorage.getItem('littx_token') || '' } : {})
         },
         body: JSON.stringify({
           name: input.attendee,
@@ -171,7 +168,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         attendee: data.ticket.attendee,
         email: data.ticket.email,
         dateLabel: new Date(data.ticket.generatedAt).toLocaleString(),
-        venue: 'Pethkar Ground, Kothrud, Pune',
+        venue: data.ticket.venue || '',
         ticketType: data.ticket.ticketType,
         price: `₹${data.ticket.price}`,
         qty: data.ticket.qty,
@@ -184,7 +181,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const cleanId = idOrRaw.trim()
       try {
         const scannerToken = sessionStorage.getItem('littx_scanner_token')
-        const sellerToken = localStorage.getItem('littx_seller_token') || sessionStorage.getItem('littx_seller_token')
+        const sellerToken = sessionStorage.getItem('littx_seller_token')
         const res = await fetch('/api/scan-ticket', {
           method: 'POST',
           headers: {
@@ -213,16 +210,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // Build a fully-resolved ticket directly from server response
           const resolvedTicket: Ticket = {
             id: t.id,
-            event: t.event || 'DHOLIDA GARBA ROYALE',
+            event: t.event || 'Event details unavailable',
             attendee: t.attendee || t.name || '—',
             email: t.email || '—',
             phone: t.phone || 'N/A',
             dateLabel: t.generatedAt ? new Date(t.generatedAt).toLocaleString() : 'TBA',
-            venue: 'Pethkar Ground, Kothrud, Pune',
-            ticketType: (t.ticketType as TicketType) || 'GA Single',
+            venue: t.venue || '',
+            ticketType: (t.ticketType as TicketType) || 'Ticket',
             price: `₹${t.amount || '—'}`,
             qty: t.quantity || 1,
-            generatedBy: t.generatedBy || 'LITTX',
+            admissionCount: t.admissionCount || t.scannedAdmissionCount || 1,
+            generatedBy: t.generatedBy || 'Stageway',
             generatedAt: fmtIST(t.generatedAt),
             status: 'scanned',
             scannedBy: t.scannedBy || scannedBy || 'Gate Staff',
@@ -230,23 +228,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           setTickets(prev => prev.map(ticket => ticket.id === resolvedTicket.id ? resolvedTicket : ticket))
           return { result: 'success', ticket: resolvedTicket }
-        } else if (data.result === 'rejected') {
+        } else if (data.result === 'rejected' || data.result === 'manual_review') {
           const t = data.ticket
           // Server sends name as attendee field; map all fields correctly
           const matchedTicket: Ticket = {
             id: t.id || t.ticketId || cleanId,
-            event: t.event || 'DHOLIDA GARBA ROYALE',
+            event: t.event || 'Event details unavailable',
             attendee: t.attendee || t.name || '—',
             email: t.email || '—',
             phone: t.phone || 'N/A',
             dateLabel: fmtIST(t.generatedAt),
-            venue: 'Pethkar Ground, Kothrud, Pune',
-            ticketType: (t.ticketType as TicketType) || 'GA Single',
+            venue: t.venue || '',
+            ticketType: (t.ticketType as TicketType) || 'Ticket',
             price: `₹${t.amount || '—'}`,
             qty: t.quantity || 1,
-            generatedBy: t.generatedBy || 'LITTX',
+            generatedBy: t.generatedBy || 'Stageway',
             generatedAt: fmtIST(t.generatedAt),
-            status: (t.status === 'cancelled' ? 'scanned' : 'scanned') as any,
+            status: t.status === 'scanned' || t.status === 'cancelled' ? 'scanned' : 'pending',
             scannedBy: t.scannedBy || undefined,
             scannedAt: t.scannedAt || undefined,
             // Carry cancelled marker for the UI to detect
@@ -254,7 +252,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           // Override with live store data if we have it (most up-to-date)
           const liveTicket = tickets.find(tk => tk.id === (t.id || t.ticketId || cleanId))
-          return { result: 'rejected', ticket: liveTicket || matchedTicket, serverTicket: t }
+          return { result: data.result === 'manual_review' ? 'manual_review' : 'rejected', ticket: liveTicket || matchedTicket, serverTicket: t }
 
         }
       } catch (err) {

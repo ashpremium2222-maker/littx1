@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import Dashboard from './pages/Dashboard'
+import { customerTotal, isConfirmedSale } from './reporting'
 import Orders from './pages/Orders'
 import Customers from './pages/Customers'
 import Events from './pages/Events'
@@ -34,14 +35,7 @@ interface NavItemDef {
 
 type ManualPass = { id?: string; name: string; price: number; gender?: string }
 
-const DEFAULT_MANUAL_PASSES: ManualPass[] = [
-  { id: 'ga-single', name: 'GA Single', price: 499, gender: 'ga' },
-  { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'group' },
-  { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'group' },
-  { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'vip' },
-  { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'vip' },
-  { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'vip' },
-]
+type ManualEvent = { id: string; name: string; tiers: ManualPass[] }
 
 const navItems: NavItemDef[] = [
   {
@@ -168,14 +162,12 @@ export default function App({ isPresentation = false }: AppProps) {
   const [dark, setDark] = useState(true)
   const [search, setSearch] = useState('')
   const [adminKey, setAdminKey] = useState(
-    sessionStorage.getItem('littx_token') || localStorage.getItem('littx_token') ||
-    sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key') || ''
+    sessionStorage.getItem('littx_token') || sessionStorage.getItem('ft_admin_key') || ''
   )
   const [keyInput, setKeyInput] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     // Auto-authenticate if we have a session token from LoginPage
-    return !!(sessionStorage.getItem('littx_token') || localStorage.getItem('littx_token') ||
-              sessionStorage.getItem('ft_admin_key') || localStorage.getItem('ft_admin_key'))
+    return !!(sessionStorage.getItem('littx_token') || sessionStorage.getItem('ft_admin_key'))
   })
   const [authChecking, setAuthChecking] = useState(true)
   const [authError, setAuthError] = useState('')
@@ -201,13 +193,13 @@ export default function App({ isPresentation = false }: AppProps) {
   const [manualName, setManualName] = useState('')
   const [manualEmail, setManualEmail] = useState('')
   const [manualPhone, setManualPhone] = useState('')
-  const [manualTicketType, setManualTicketType] = useState('GA Single')
+  const [manualTicketType, setManualTicketType] = useState('')
   const [manualQty, setManualQty] = useState('1')
-  const [manualAmount, setManualAmount] = useState('499')
-  const [manualPasses, setManualPasses] = useState<ManualPass[]>(DEFAULT_MANUAL_PASSES)
-  const [manualEvent, setManualEvent] = useState('DHOLIDA GARBA ROYALE')
+  const [manualAmount, setManualAmount] = useState('')
+  const [manualPasses, setManualPasses] = useState<ManualPass[]>([])
+  const [manualEvents, setManualEvents] = useState<ManualEvent[]>([])
+  const [manualEvent, setManualEvent] = useState('')
   const [manualPartner, setManualPartner] = useState('littlane')
-  const [manualPartnerPassword, setManualPartnerPassword] = useState('')
 
   const fetchSales = async (keyToUse = adminKey) => {
     if (!keyToUse) {
@@ -216,16 +208,16 @@ export default function App({ isPresentation = false }: AppProps) {
       return false
     }
     try {
-      // Prefer sending as x-auth-token (unified auth) but fall back to ?key= for legacy ADMIN_KEY
+      // Prefer the persisted session token; pass legacy keys only in headers.
       const isToken = keyToUse.length > 40 // tokens are 64-char hex; legacy keys are shorter
       const query = new URLSearchParams()
+      // Normal dashboard uses the complete admin sales set. Visibility rules are
+      // only applied by the dedicated presentation view / visibility tools.
       if (isPresentation) query.set('pres', 'true')
-      else query.set('dashboardView', 'true')
-      const url = isToken
-        ? `/api/admin/sales?${query.toString()}`
-        : `/api/admin/sales?key=${encodeURIComponent(keyToUse)}&${query.toString()}`
+      const url = `/api/admin/sales?${query.toString()}`
       const headers: Record<string, string> = {}
       if (isToken) headers['x-auth-token'] = keyToUse
+      else headers['x-admin-key'] = keyToUse
 
       const res = await fetch(url, { headers })
       const data = await res.json().catch(() => ({}))
@@ -241,12 +233,10 @@ export default function App({ isPresentation = false }: AppProps) {
 
       let activeSummary = data.summary
       if (isPresentation) {
-        const countableSales = filteredSales.filter((s: any) => !isApprovalOnlySale(s))
-        const totalOrders = countableSales.length
-        const paidOrders = countableSales.filter((s: any) => s.status === 'paid').length
-        const totalRevenue = countableSales
-          .filter((s: any) => s.status === 'paid')
-          .reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0)
+        const countableSales = filteredSales.filter(isConfirmedSale)
+        const totalOrders = filteredSales.length
+        const paidOrders = countableSales.length
+        const totalRevenue = countableSales.reduce((sum: number, s: any) => sum + customerTotal(s), 0)
 
         activeSummary = {
           totalOrders,
@@ -272,11 +262,11 @@ export default function App({ isPresentation = false }: AppProps) {
     }
   }
 
-  const fetchAdminConfig = async (keyToUse = adminKey) => {
-    if (!keyToUse) return
+  const fetchAdminConfig = async (keyToUse = adminKey, eventId = manualEvent) => {
+    if (!keyToUse || !eventId) { setManualPasses([]); setManualTicketType(''); setManualAmount(''); return }
     try {
       const isToken = keyToUse.length > 40
-      const url = isToken ? '/api/admin/config' : `/api/admin/config?key=${encodeURIComponent(keyToUse)}`
+      const url = `/api/admin/config?event=${encodeURIComponent(eventId)}`
       const headers: Record<string, string> = { 'x-admin-key': keyToUse }
       if (isToken) headers['x-auth-token'] = keyToUse
       const res = await fetch(url, { headers })
@@ -290,25 +280,33 @@ export default function App({ isPresentation = false }: AppProps) {
           gender: pass.gender || 'unisex'
         }))
         .filter((pass: ManualPass) => pass.name && Number.isFinite(pass.price) && pass.price >= 0)
-      if (!passes.length) return
+      if (!passes.length) { setManualPasses([]); setManualTicketType(''); setManualAmount(''); return }
       setManualPasses(passes)
-      const selected = passes.find((pass: ManualPass) => pass.name === manualTicketType || pass.id === manualTicketType)
-      if (selected) {
-        setManualTicketType(selected.name)
-        setManualAmount(String(selected.price))
-      } else {
-        setManualTicketType(passes[0].name)
-        setManualAmount(String(passes[0].price))
-      }
+      setManualTicketType('')
+      setManualAmount('')
     } catch (err) {
       console.warn('Unable to load admin pricing config', err)
     }
   }
 
+  const fetchAdminEvents = async (keyToUse = adminKey) => {
+    if (!keyToUse) return
+    try {
+      const headers: Record<string, string> = { 'x-admin-key': keyToUse }
+      if (keyToUse.length > 40) headers['x-auth-token'] = keyToUse
+      const response = await fetch('/api/admin/pricing', { headers, cache: 'no-store' })
+      const data = await response.json().catch(() => ({}))
+      const events = Array.isArray(data.events) ? data.events.filter((event: any) => event.id && event.name && !event.archived && event.active !== false && !['private', 'unlisted'].includes(event.visibility) && (event.status === 'published' || !event.status)) : []
+      setManualEvents(events)
+      setManualEvent(current => events.some((event: ManualEvent) => event.id === current) ? current : '')
+      if (!events.some((event: ManualEvent) => event.id === manualEvent)) { setManualPasses([]); setManualTicketType(''); setManualAmount('') }
+    } catch { setManualEvents([]); setManualPasses([]) }
+  }
+
   useEffect(() => {
     if (adminKey) {
       fetchSales(adminKey)
-      fetchAdminConfig(adminKey)
+      fetchAdminEvents(adminKey)
       const interval = setInterval(() => fetchSales(adminKey), 10000)
       return () => clearInterval(interval)
     } else {
@@ -329,15 +327,28 @@ export default function App({ isPresentation = false }: AppProps) {
     if (!trimmed) return
     setAuthChecking(true)
     setAuthError('')
-    const ok = await fetchSales(trimmed)
-    if (ok) {
-      sessionStorage.setItem('ft_admin_key', trimmed)
-      localStorage.setItem('ft_admin_key', trimmed)
-      setAdminKey(trimmed)
+    try {
+      const response = await fetch('/api/portal-auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portal: 'admin', password: trimmed }) })
+      const data = await response.json()
+      if (!response.ok || !data.success || !data.token) throw new Error(data.message || 'Administrator sign in failed.')
+      sessionStorage.setItem('littx_token', data.token)
+      if (data.user) sessionStorage.setItem('littx_user', JSON.stringify(data.user))
+      sessionStorage.removeItem('ft_admin_key'); localStorage.removeItem('ft_admin_key')
+      setKeyInput('')
+      setAdminKey(data.token)
+    } catch (error) {
+      setAuthChecking(false)
+      setAuthError(error instanceof Error ? error.message : 'Administrator sign in failed.')
     }
   }
 
   const handleLogout = (errMsg = '') => {
+    const token = sessionStorage.getItem('littx_token') || adminKey
+    void fetch('/api/auth/logout', { method: 'POST', headers: token ? { 'x-auth-token': token } : {} }).catch(() => {})
+    sessionStorage.removeItem('littx_token')
+    sessionStorage.removeItem('littx_user')
+    localStorage.removeItem('littx_token')
+    localStorage.removeItem('littx_user')
     sessionStorage.removeItem('ft_admin_key')
     localStorage.removeItem('ft_admin_key')
     setAdminKey('')
@@ -349,7 +360,7 @@ export default function App({ isPresentation = false }: AppProps) {
 
   const handleResend = async (ticketId: string) => {
     try {
-      const res = await fetch(`/api/ticket/${ticketId}/resend?key=${adminKey}`, { method: 'POST' })
+      const res = await fetch(`/api/admin/tickets/${encodeURIComponent(ticketId)}/resend`, { method: 'POST', headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
       const data = await res.json()
       alert(data.message)
       fetchSales()
@@ -363,17 +374,6 @@ export default function App({ isPresentation = false }: AppProps) {
     if (isManualSubmitting) return
     if (!manualName.trim() || !manualEmail.trim()) {
       alert('Name and Email are required')
-      return
-    }
-
-    const partnerPassMap: Record<string, string> = {
-      'littlane': 'littlane2026',
-      'nitro': 'nitro2026',
-      '7th-heaven': '7thheaven2026'
-    }
-    const expectedPass = partnerPassMap[manualPartner] || 'littlane2026'
-    if (manualPartnerPassword !== expectedPass && manualPartnerPassword !== 'dash-2026' && manualPartnerPassword !== 'littx-master-2026') {
-      alert('Invalid Partner Authorization Password for selected partner.')
       return
     }
 
@@ -411,7 +411,6 @@ export default function App({ isPresentation = false }: AppProps) {
         setManualName('')
         setManualEmail('')
         setManualPhone('')
-        setManualPartnerPassword('')
         setTimeout(() => {
           setManualSuccessMsg(null)
         }, 3000)
@@ -449,8 +448,8 @@ export default function App({ isPresentation = false }: AppProps) {
         {/* Left Art Panel */}
         <div className="login-art">
           <div className="brand">
-            <div className="mark"><img src="/logo.png" alt="LITTX" style={{ height: 24, width: 'auto', filter: 'brightness(0) invert(1)' }} /></div>
-            <span style={{ fontSize: '15px', fontWeight: 800 }}>LITTX</span>
+            <div className="mark"><img src="/logo.png" alt="Stageway" style={{ height: 24, width: 'auto', filter: 'brightness(0) invert(1)' }} /></div>
+            <span style={{ fontSize: '15px', fontWeight: 800 }}>Stageway</span>
           </div>
 
           <div style={{ margin: 'auto 0' }}>
@@ -545,7 +544,7 @@ export default function App({ isPresentation = false }: AppProps) {
             globalSearch={search}
             isPresentation={isPresentation}
             adminKey={adminKey}
-            onReload={() => fetchSales(adminKey)}
+            onReload={async () => { await fetchSales(adminKey) }}
           />
         )
       case 'tickets':
@@ -555,7 +554,7 @@ export default function App({ isPresentation = false }: AppProps) {
             allSales={ticketedAllSales}
             onResend={handleResend}
             adminKey={adminKey}
-            onReload={() => fetchSales(adminKey)}
+            onReload={async () => { await fetchSales(adminKey) }}
             globalSearch={search}
             isPresentation={isPresentation}
             eventFilter={ticketEventFilter}
@@ -578,7 +577,7 @@ export default function App({ isPresentation = false }: AppProps) {
         return <Analytics sales={ticketedSales} />
       case 'settings':
       case 'admins':
-        return <Settings sales={sales} adminKey={adminKey} testMode={testMode} />
+        return <Settings adminKey={adminKey} />
       default:
         return (
           <Dashboard
@@ -660,7 +659,7 @@ export default function App({ isPresentation = false }: AppProps) {
               Atharva <span className="badge-pro">PRO</span>
             </div>
             <div className="handle">
-              {currentPageObj?.label || 'Dashboard'} · Pune Ops
+              {currentPageObj?.label || 'Dashboard'} Â· Pune Ops
             </div>
           </div>
         </div>
@@ -716,6 +715,7 @@ export default function App({ isPresentation = false }: AppProps) {
             </svg>
             New ticket
           </button>
+          {!isPresentation && <button className="tb-icon-btn" onClick={() => handleLogout()} title="Sign out" aria-label="Sign out">Sign out</button>}
         </div>
       </header>
 
@@ -746,12 +746,12 @@ export default function App({ isPresentation = false }: AppProps) {
             }}
           >
             <div className="card-head">
-              <h3>🎟 Generate & Email Ticket</h3>
+              <h3>ðŸŽŸ Generate & Email Ticket</h3>
               <button
                 className="icon-btn"
                 onClick={() => setShowManualModal(false)}
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -760,9 +760,9 @@ export default function App({ isPresentation = false }: AppProps) {
                 <label>SELECT EVENT</label>
                 <select
                   value={manualEvent}
-                  onChange={(e) => setManualEvent(e.target.value)}
+                  onChange={(e) => { const selectedEvent = e.target.value; setManualEvent(selectedEvent); setManualTicketType(''); setManualAmount(''); setManualPasses([]); void fetchAdminConfig(adminKey, selectedEvent) }}
                 >
-                  <option value="DHOLIDA GARBA ROYALE">DHOLIDA GARBA ROYALE</option>
+                  <option value="">Select an event</option>{manualEvents.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}
                 </select>
               </div>
 
@@ -805,9 +805,10 @@ export default function App({ isPresentation = false }: AppProps) {
                     value={manualTicketType}
                     onChange={(e) => handleManualTicketTypeChange(e.target.value)}
                   >
+                    <option value="">Select a ticket category</option>
                     {manualPasses.map(pass => (
                       <option key={pass.id || pass.name} value={pass.name}>
-                        {pass.name} — ₹{pass.price}
+                        {pass.name} â€” â‚¹{pass.price}
                       </option>
                     ))}
                   </select>
@@ -831,30 +832,20 @@ export default function App({ isPresentation = false }: AppProps) {
                     value={manualPartner}
                     onChange={(e) => setManualPartner(e.target.value)}
                   >
-                    <option value="littlane">Littlane Ent</option>
-                    <option value="nitro">DGR</option>
-                    <option value="7th-heaven">7th Heaven</option>
+                    <option value="stageway">Stageway Productions</option>
+                    
+                    
                   </select>
-                </div>
-                <div className="field">
-                  <label>AUTH PASSWORD</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Enter auth key"
-                    value={manualPartnerPassword}
-                    onChange={(e) => setManualPartnerPassword(e.target.value)}
-                  />
                 </div>
               </div>
               <div style={{ marginTop: '16px' }}>
                 <button
                   type="submit"
-                  disabled={isManualSubmitting}
+                  disabled={isManualSubmitting || !manualEvent || !manualTicketType || !manualPasses.length}
                   className="btn-primary"
                   style={{ width: '100%', padding: '14px', fontSize: '14px' }}
                 >
-                  {isManualSubmitting ? 'Generating...' : manualSuccessMsg || 'Generate & Send →'}
+                  {isManualSubmitting ? 'Generating...' : manualSuccessMsg || 'Generate & Send â†’'}
                 </button>
                 {manualSuccessMsg && (
                   <div style={{ marginTop: '10px', fontSize: '11.5px', fontWeight: 700, color: 'var(--ink-soft)', textAlign: 'center' }}>

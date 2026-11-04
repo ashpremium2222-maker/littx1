@@ -1,4 +1,4 @@
-# LITTX
+# Stageway
 
 A full-stack event ticketing application with role-based access for Sellers, Partners, and Admins.
 
@@ -20,7 +20,7 @@ A full-stack event ticketing application with role-based access for Sellers, Par
 1. Clone the repository and navigate to the project directory:
    ```bash
    git clone <your-repo-url>
-   cd LITTX
+   cd littx1
    ```
 
 2. Setup the Server:
@@ -84,11 +84,28 @@ supported for existing links and passkeys during the migration.
 
 Deployments from the `main` branch are production releases.
 
-The gate scanner now authenticates with the server. Configure `SCANNER_PASSWORD`
+The gate scanner authenticates with the server. Configure `SCANNER_PASSWORD`
 (a unique password of at least 12 characters) and `SCANNER_SESSION_SECRET` (an
 independent random value of at least 32 characters) in the server environment
-before deploying; the scanner login fails closed when either value is missing.
-Keep both values out of frontend and Android build configuration.
+before deploying. Both browser and native scanner sign-in require the password;
+the session secret signs short-lived scanner sessions. Keep both values out of
+frontend and Android build configuration.
+Set `SCANNER_EVENT_NAMES` to the exact comma-separated event names each shared
+scanner credential may validate, and `SCANNER_COMPANY_ID` to their owning
+company. Scanner login fails closed until both assignment values are configured.
+
+For production, set `CORS_ORIGINS` to the comma-separated HTTPS origins of the
+web frontends, and set `BASE_URL` to the canonical public API URL. Local payment
+simulation requires `NODE_ENV=development` and `PAYMENT_TEST_MODE=true`; the
+test-mode shortcut is unavailable in production and online payments fail closed
+until Razorpay credentials are configured.
+
+Privileged and partner passwords must be configured through deployment secrets.
+Do not use values copied from older releases or account defaults. At minimum,
+configure `ADMIN_KEY`, `PORTAL_ADMIN_KEY`, `PORTAL_DASHBOARD_KEY`, seller/partner
+credentials, Razorpay credentials, and the webhook secret for the services you
+enable. `MASTER_PASS` and `COMPANY_ADMIN_PASS` are only used when creating seed
+user records in a new empty user collection; existing accounts are not rewritten.
 
 No WhatsApp values belong in source control or frontend variables. In the Meta
 developer dashboard, use the endpoint above as the callback URL and subscribe

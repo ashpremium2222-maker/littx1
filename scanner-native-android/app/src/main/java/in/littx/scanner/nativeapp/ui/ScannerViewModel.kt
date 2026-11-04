@@ -17,14 +17,17 @@ import com.littx.scanner.nativeapp.update.ScannerUpdate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 data class ScannerState(
     val loading: Boolean = false,
+    val sessionConnecting: Boolean = false,
     val authenticated: Boolean = false,
     val scannerName: String = "Gate Staff",
     val accepted: Int = 0,
     val failed: Int = 0,
+    val statsLoading: Boolean = false,
+    val statsAvailable: Boolean = false,
+    val statsError: Boolean = false,
     val history: List<ScanEntry> = emptyList(),
     val latest: ScanEntry? = null,
     val update: ScannerUpdate? = null,
@@ -51,22 +54,33 @@ class ScannerViewModel(context: Context) : ViewModel() {
     var state by mutableStateOf(ScannerState(authenticated = !prefs.getString("token", null).isNullOrBlank(), scannerName = prefs.getString("name", "Gate Staff") ?: "Gate Staff", history = loadHistory()))
         private set
 
-    init { checkForUpdate(); verifySession() }
+    init {
+        checkForUpdate()
+        if (!prefs.getString("token", null).isNullOrBlank()) verifySession()
+    }
 
-    fun login(password: String) {
-        if (password.isBlank() || state.loading) return
+    fun retrySession(password: String) = openAppSession(password)
+
+    private fun openAppSession(password: String) {
+        if (state.sessionConnecting) return
         viewModelScope.launch {
-            state = state.copy(loading = true, error = null)
+            state = state.copy(sessionConnecting = true, error = null)
             try {
-                val response = repository.login(password)
+                val response = repository.openAppSession(password)
                 val token = response.token
-                if (!response.success || token.isNullOrBlank()) throw IllegalStateException(response.message ?: "Unable to log in.")
+                if (!response.success || token.isNullOrBlank()) {
+                    throw IllegalStateException(response.message ?: "Scanner service is unavailable.")
+                }
                 prefs.edit().putString("token", token).apply()
                 val name = response.scannerName ?: "Gate Staff"
                 prefs.edit().putString("name", name).apply()
-                state = state.copy(loading = false, authenticated = true, scannerName = name, error = null)
+                state = state.copy(sessionConnecting = false, authenticated = true, scannerName = name, error = null)
             } catch (e: Exception) {
-                state = state.copy(loading = false, authenticated = false, error = readableError(e, "Unable to log in."))
+                state = state.copy(
+                    sessionConnecting = false,
+                    authenticated = false,
+                    error = e.message?.takeIf { it.isNotBlank() } ?: "Unable to reach scanner service. Check your connection and retry."
+                )
             }
         }
     }
@@ -75,13 +89,17 @@ class ScannerViewModel(context: Context) : ViewModel() {
         val token = prefs.getString("token", null) ?: return@launch
         runCatching { repository.verifySession(token) }
             .onSuccess { response ->
-                if (!response.success) prefs.edit().remove("token").apply()
-                state = state.copy(authenticated = response.success, scannerName = response.scannerName ?: state.scannerName)
+                if (response.success) {
+                    state = state.copy(authenticated = true, scannerName = response.scannerName ?: state.scannerName)
+                } else {
+                    prefs.edit().remove("token").apply()
+                    state = state.copy(authenticated = false)
+                }
             }
             .onFailure { error ->
                 if (error is retrofit2.HttpException && error.code() == 401) {
                     prefs.edit().remove("token").apply()
-                    state = state.copy(authenticated = false, error = "Scanner session expired. Log in again.")
+                    state = state.copy(authenticated = false)
                 }
                 // Keep a cached session during network/server errors; each scan still requires server confirmation.
             }
@@ -116,23 +134,25 @@ class ScannerViewModel(context: Context) : ViewModel() {
     }
 
     fun refreshStats() = viewModelScope.launch {
-        runCatching { repository.stats() }.getOrNull()?.takeIf { it.success }?.let { stats ->
-            state = state.copy(accepted = stats.accepted, failed = stats.failed)
+        if (state.statsLoading) return@launch
+        state = state.copy(statsLoading = true, statsError = false)
+        val token = prefs.getString("token", null)
+        if (token.isNullOrBlank()) {
+            state = state.copy(statsLoading = false, statsError = true)
+            return@launch
+        }
+        runCatching { repository.stats(token) }.onSuccess { stats ->
+            if (stats.success) state = state.copy(accepted = stats.accepted, failed = stats.failed, statsLoading = false, statsAvailable = true, statsError = false)
+            else state = state.copy(statsLoading = false, statsError = true)
+        }.onFailure {
+            state = state.copy(statsLoading = false, statsError = true)
         }
     }
-    private fun readableError(error: Exception, fallback: String): String {
-        if (error is retrofit2.HttpException) {
-            val responseMessage = runCatching {
-                JSONObject(error.response()?.errorBody()?.string().orEmpty()).optString("message")
-            }.getOrNull()
-            if (!responseMessage.isNullOrBlank()) return responseMessage
-            return when (error.code()) {
-                401 -> "Invalid scanner password. Check the password and try again."
-                503 -> "Scanner login is not configured on the server. Contact the administrator."
-                else -> "Login failed (HTTP ${error.code()}). Please try again."
-            }
-        }
-        return error.message?.takeIf { it.isNotBlank() } ?: fallback
+    fun logout() = viewModelScope.launch {
+        val token = prefs.getString("token", null)
+        if (!token.isNullOrBlank()) runCatching { repository.logout(token) }
+        prefs.edit().remove("token").apply()
+        state = state.copy(authenticated = false, latest = null, error = null)
     }
     fun setScannerName(name: String) { if (name.isNotBlank()) { prefs.edit().putString("name", name.trim()).apply(); state = state.copy(scannerName = name.trim()) } }
     fun clearLatest() { state = state.copy(latest = null, error = null) }

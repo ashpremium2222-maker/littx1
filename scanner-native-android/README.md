@@ -1,4 +1,4 @@
-# LITTX Scanner Native Android
+# Stageway Scanner Native Android
 
 Standalone native Kotlin/Jetpack Compose scanner application. It is a different
 Android app from the seller application and does not use a WebView or Capacitor.
@@ -16,7 +16,7 @@ Android app from the seller application and does not use a WebView or Capacitor.
 ## Local build
 
 Copy `local.properties.example` to `local.properties`, add the Android SDK path,
-and point `SCANNER_API_BASE_URL` to the HTTPS LITTX API.
+and point `SCANNER_API_BASE_URL` to the HTTPS Stageway API.
 Set `SCANNER_UPDATE_REPOSITORY` to the public `owner/repository` that hosts
 `scanner-vX.Y.Z` releases.
 

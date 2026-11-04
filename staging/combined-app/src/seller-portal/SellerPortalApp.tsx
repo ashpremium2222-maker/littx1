@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 
 export interface PartnerOption {
@@ -6,6 +6,17 @@ export interface PartnerOption {
   name: string
   active: boolean
   configured: boolean
+}
+
+function getSellerSessionValue(key: string) {
+  const current = sessionStorage.getItem(key)
+  if (current) return current
+  const legacy = localStorage.getItem(key)
+  if (legacy) {
+    sessionStorage.setItem(key, legacy)
+    localStorage.removeItem(key)
+  }
+  return legacy
 }
 
 const DEFAULT_PARTNERS: PartnerOption[] = [
@@ -28,9 +39,16 @@ interface SellerTicketRecord {
   name?: string
   email?: string
   phone?: string
+  nickname?: string
   ticketType?: string
   gender?: string
   amount?: number
+  officialRate?: number
+  customerTotal?: number
+  passUnitPrice?: number
+  commissionPercentage?: number
+  commissionAmount?: number
+  rateAfterCommission?: number
   quantity?: number
   status?: string
   approvalStatus?: string
@@ -38,6 +56,15 @@ interface SellerTicketRecord {
   createdAt?: string
   generatedAt?: string
   deliveredAt?: string
+}
+
+interface SellerEventOption {
+  id: string
+  slug: string
+  name: string
+  city?: string
+  venue?: string
+  startsAt?: string | null
 }
 
 function sellerTicketState(ticket: SellerTicketRecord) {
@@ -56,27 +83,30 @@ function sellerTicketState(ticket: SellerTicketRecord) {
 export default function SellerPortalApp() {
   const [partners, setPartners] = useState<PartnerOption[]>(DEFAULT_PARTNERS)
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>('partner-slot-1')
+  const [invitedPartnerId, setInvitedPartnerId] = useState<string>('')
   const [passwordInput, setPasswordInput] = useState<string>('')
   
   const [authenticatedPartner, setAuthenticatedPartner] = useState<PartnerSessionData | null>(() => {
     try {
-      const saved = localStorage.getItem('littx_seller_partner')
+      const saved = getSellerSessionValue('littx_seller_partner')
       return saved ? JSON.parse(saved) : null
     } catch {
       return null
     }
   })
 
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('littx_seller_token'))
+  const [token, setToken] = useState<string | null>(() => getSellerSessionValue('littx_seller_token'))
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loginLoading, setLoginLoading] = useState<boolean>(false)
   const [webauthnStatus, setWebauthnStatus] = useState<string | null>(null)
 
   // Ticket generation form state
-  const [event, setEvent] = useState('DHOLIDA GARBA ROYALE')
+  const [event, setEvent] = useState('Event details unavailable')
+  const [sellerEvents, setSellerEvents] = useState<SellerEventOption[]>([])
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [nickname, setNickname] = useState('')
   const [ticketType, setTicketType] = useState('')
   const [quantity, setQuantity] = useState('1')
   const [passes, setPasses] = useState<Array<{ id: string; name: string; price: number }>>([])
@@ -93,6 +123,7 @@ export default function SellerPortalApp() {
   const [ticketsError, setTicketsError] = useState<string | null>(null)
 
   const currentPartner = partners.find((p) => p.id === selectedPartnerId) || partners[0]
+  const commissionIsUncapped = currentPartner?.id === 'stageway' || currentPartner?.name.toLowerCase().includes('astex')
   const selectedPass = passes.find((pass) => pass.name === ticketType)
   const ticketQuantity = Math.max(1, Math.min(20, Number.parseInt(quantity, 10) || 1))
   const customerTotal = (selectedPass?.price || 0) * ticketQuantity
@@ -106,8 +137,8 @@ export default function SellerPortalApp() {
     ? (customerTotal > 0 ? (commissionAmount / customerTotal) * 100 : 0)
     : Number(commissionChoice)
   const commissionInvalid = commissionChoice === 'custom'
-    ? !hasValidCustomCommissionAmount || customCommissionAmount < 0 || commissionPercentage > 20
-    : !Number.isFinite(commissionPercentage) || commissionPercentage < 0 || commissionPercentage > 20
+    ? !hasValidCustomCommissionAmount || customCommissionAmount < 0 || (!commissionIsUncapped && commissionPercentage > 20)
+    : !Number.isFinite(commissionPercentage) || commissionPercentage < 0 || (!commissionIsUncapped && commissionPercentage > 20)
   const rateAfterCommission = customerTotal - commissionAmount
   const displayedCommissionPercentage = Number.isFinite(commissionPercentage)
     ? commissionPercentage.toFixed(2).replace(/\.00$/, '')
@@ -122,11 +153,26 @@ export default function SellerPortalApp() {
       else acc.pending += 1
       return acc
     },
-    { total: 0, approved: 0, pending: 0, rejected: 0 }
+    { total: 0, approved: 0, pending: 0, rejected: 0, qrCodes: 0, admissions: 0 }
   )
+  const sellerSalesSummary = sellerTickets.reduce(
+    (acc, ticket) => {
+      const state = sellerTicketState(ticket).key
+      if (state !== 'approved') return acc
+      const gross = Number(ticket.customerTotal ?? ticket.amount ?? 0)
+      const commission = Number(ticket.commissionAmount ?? (gross * Number(ticket.commissionPercentage || 0)) / 100)
+      const net = Number(ticket.rateAfterCommission ?? (gross - commission))
+      acc.passes += Math.max(0, Number(ticket.quantity) || 1)
+      acc.gross += Number.isFinite(gross) ? gross : 0
+      acc.net += Number.isFinite(net) ? net : 0
+      return acc
+    },
+    { passes: 0, gross: 0, net: 0 }
+  )
+  void sellerSalesSummary
 
   const loadSellerTickets = async () => {
-    const activeToken = localStorage.getItem('littx_seller_token') || token || ''
+    const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
     if (!activeToken) return
     setTicketsLoading(true)
     setTicketsError(null)
@@ -167,14 +213,32 @@ export default function SellerPortalApp() {
 
   useEffect(() => {
     if (!authenticatedPartner) return
+    const loadEvents = async () => {
+      const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
+      try {
+        const response = await fetch('/api/seller/events', { headers: { 'x-seller-token': activeToken }, cache: 'no-store' })
+        const data = await response.json()
+        if (!response.ok || !data.success) throw new Error(data.message || 'Assigned events could not be loaded.')
+        const available = Array.isArray(data.events) ? data.events : []
+        setSellerEvents(available)
+        setEvent(current => available.some((item: SellerEventOption) => item.slug === current || item.id === current) ? current : (available[0]?.slug || available[0]?.id || ''))
+        if (!available.length) setFeedback({ type: 'error', msg: 'There are no published public events available to this seller.' })
+      } catch (error) {
+        setFeedback({ type: 'error', msg: error instanceof Error ? error.message : 'Assigned events could not be loaded.' })
+      }
+    }
+    void loadEvents()
+  }, [authenticatedPartner, token])
+
+  useEffect(() => {
+    if (!authenticatedPartner || !event) return
     const loadPricing = async () => {
       setPricingLoading(true)
       try {
-        const activeToken = localStorage.getItem('littx_seller_token') || token || ''
+        const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
         const response = await fetch(`/api/seller/pricing?event=${encodeURIComponent(event)}`, { headers: { 'x-seller-token': activeToken } })
         const data = await response.json()
         if (response.ok && data.success) {
-          setEvent(data.event)
           setPasses(data.passes)
           setTicketType(current => data.passes.some((pass: any) => pass.name === current) ? current : data.passes[0]?.name || '')
         } else {
@@ -187,7 +251,7 @@ export default function SellerPortalApp() {
       }
     }
     loadPricing()
-  }, [authenticatedPartner, token])
+  }, [authenticatedPartner, token, event])
 
   useEffect(() => {
     if (!authenticatedPartner) return
@@ -199,8 +263,8 @@ export default function SellerPortalApp() {
   // Silent session re-validation on app load / refresh
   // RULE: Log out if session is invalid (401), but keep cached session on network errors.
   useEffect(() => {
-    const existingToken = localStorage.getItem('littx_seller_token')
-    const cachedPartner = localStorage.getItem('littx_seller_partner')
+    const existingToken = getSellerSessionValue('littx_seller_token')
+    const cachedPartner = getSellerSessionValue('littx_seller_partner')
     if (!existingToken || !cachedPartner) return
 
     const verifySession = async () => {
@@ -213,13 +277,15 @@ export default function SellerPortalApp() {
         if (res.ok && data.success) {
           // Normal: server confirmed session
           setAuthenticatedPartner(data.partner)
-          localStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
+          sessionStorage.setItem('littx_seller_partner', JSON.stringify(data.partner))
         } else if (res.status === 401 || res.status === 403) {
           // Only an explicit authorization denial means the Master Admin
           // revoked or blocked this seller. Transient server errors retain login.
           console.warn('[Seller] Session revoked by server:', data.message)
           localStorage.removeItem('littx_seller_token')
+          sessionStorage.removeItem('littx_seller_token')
           localStorage.removeItem('littx_seller_partner')
+          sessionStorage.removeItem('littx_seller_partner')
           setAuthenticatedPartner(null)
           setToken(null)
         } else {
@@ -239,19 +305,20 @@ export default function SellerPortalApp() {
     setLoginError(null)
     setWebauthnStatus(null)
     setLoginLoading(true)
+    const requestedPartnerId = invitedPartnerId.trim() || selectedPartnerId
 
     try {
       // Step 1: Validate Password & Get WebAuthn Options
       const step1Res = await fetch('/api/seller/login-step1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partnerId: selectedPartnerId, password: passwordInput })
+        body: JSON.stringify({ partnerId: requestedPartnerId, password: passwordInput })
       })
 
       const step1Data = await step1Res.json()
 
       if (!step1Res.ok || !step1Data.success) {
-        if (step1Res.status === 403 && selectedPartnerId.startsWith('partner-slot-')) setActivationNotice(true)
+        if (step1Res.status === 403 && requestedPartnerId.startsWith('partner-slot-')) setActivationNotice(true)
         setLoginError(step1Data.message || 'Password authentication failed.')
         setLoginLoading(false)
         return
@@ -261,7 +328,7 @@ export default function SellerPortalApp() {
 
       if (step1Data.isRegistration) {
         // FIRST LOGIN: Bind device WebAuthn Passkey
-        setWebauthnStatus('🔑 Registering Hardware Device Passkey... Touch TouchID / FaceID / YubiKey')
+        setWebauthnStatus('ðŸ”‘ Registering Hardware Device Passkey... Touch TouchID / FaceID / YubiKey')
         try {
           webauthnResponse = await startRegistration({ optionsJSON: step1Data.options })
         } catch (err: any) {
@@ -273,7 +340,7 @@ export default function SellerPortalApp() {
         }
       } else {
         // RECURRING LOGIN: Verify WebAuthn Hardware Passkey Signature
-        setWebauthnStatus('🔒 Verifying Hardware Passkey Device Signature...')
+        setWebauthnStatus('ðŸ”’ Verifying Hardware Passkey Device Signature...')
         try {
           webauthnResponse = await startAuthentication({ optionsJSON: step1Data.options })
         } catch (err: any) {
@@ -286,11 +353,11 @@ export default function SellerPortalApp() {
       }
 
       // Step 2: Send WebAuthn Response to Server for Cryptographic Signature Verification
-      setWebauthnStatus('🛡️ Verifying Cryptographic Proof on Server...')
+      setWebauthnStatus('ðŸ›¡ï¸ Verifying Cryptographic Proof on Server...')
       const step2Res = await fetch('/api/seller/login-step2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partnerId: selectedPartnerId, loginId: step1Data.loginId, response: webauthnResponse })
+        body: JSON.stringify({ partnerId: requestedPartnerId, loginId: step1Data.loginId, response: webauthnResponse })
       })
 
       const step2Data = await step2Res.json()
@@ -298,8 +365,10 @@ export default function SellerPortalApp() {
       if (step2Res.ok && step2Data.success) {
         setAuthenticatedPartner(step2Data.partner)
         setToken(step2Data.token)
-        localStorage.setItem('littx_seller_token', step2Data.token)
-        localStorage.setItem('littx_seller_partner', JSON.stringify(step2Data.partner))
+        sessionStorage.setItem('littx_seller_token', step2Data.token)
+        localStorage.removeItem('littx_seller_token')
+        sessionStorage.setItem('littx_seller_partner', JSON.stringify(step2Data.partner))
+        localStorage.removeItem('littx_seller_partner')
         setPasswordInput('')
       } else {
         setLoginError(step2Data.message || 'ACCESS DENIED: WebAuthn device verification failed.')
@@ -319,6 +388,27 @@ export default function SellerPortalApp() {
   const handleEventChange = (newEvent: string) => {
     setEvent(newEvent)
   }
+  void handleEventChange
+
+  const handleLogout = async () => {
+    const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
+    try {
+      await fetch('/api/seller/logout', {
+        method: 'POST',
+        headers: activeToken ? { 'x-seller-token': activeToken } : {},
+      })
+    } catch {
+      // Always clear local UI state; the server session remains bounded by its
+      // existing 12-hour expiry if the device cannot reach the API to revoke it.
+    } finally {
+      localStorage.removeItem('littx_seller_token')
+      sessionStorage.removeItem('littx_seller_token')
+      localStorage.removeItem('littx_seller_partner')
+      sessionStorage.removeItem('littx_seller_partner')
+      setToken(null)
+      setAuthenticatedPartner(null)
+    }
+  }
 
   const handleGenerateTicket = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -327,7 +417,7 @@ export default function SellerPortalApp() {
       return
     }
     if (commissionInvalid) {
-      setFeedback({ type: 'error', msg: 'Enter a valid commission amount that is no more than 20% of the official total.' })
+      setFeedback({ type: 'error', msg: commissionIsUncapped ? 'Enter a valid non-negative commission amount.' : 'Enter a valid commission amount that is no more than 20% of the official total.' })
       return
     }
 
@@ -335,7 +425,7 @@ export default function SellerPortalApp() {
     setFeedback(null)
 
     try {
-      const activeToken = localStorage.getItem('littx_seller_token') || token || ''
+      const activeToken = getSellerSessionValue('littx_seller_token') || token || ''
       const res = await fetch('/api/admin/generate-ticket', {
         method: 'POST',
         headers: {
@@ -346,6 +436,7 @@ export default function SellerPortalApp() {
           name,
           email,
           phone,
+          nickname: nickname.trim(),
           gender: ticketType,
           ticketType,
           quantity: parseInt(quantity, 10) || 1,
@@ -365,6 +456,7 @@ export default function SellerPortalApp() {
         setName('')
         setEmail('')
         setPhone('')
+        setNickname('')
       } else {
         setFeedback({ type: 'error', msg: data.message || 'Failed to generate ticket.' })
       }
@@ -390,12 +482,12 @@ export default function SellerPortalApp() {
         )}
         <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl">
           <div className="flex items-center justify-center gap-3 mb-6">
-            <img src="/logo.png" alt="LITTX Logo" className="h-8 w-auto brightness-200" />
+            <img src="/logo.png" alt="Stageway logo" className="h-8 w-auto brightness-200" />
             <span className="text-xl font-extrabold tracking-wider text-violet-400">SELLER PORTAL</span>
           </div>
 
           <div className="inline-block bg-violet-500/10 border border-violet-500/30 text-violet-300 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md mb-3 text-center w-full">
-            🔐 WEBAUTHN HARDWARE DEVICE LOCK ACTIVE
+            ðŸ” WEBAUTHN HARDWARE DEVICE LOCK ACTIVE
           </div>
 
           <h2 className="text-lg font-bold text-center mb-1">Partner Authentication</h2>
@@ -404,7 +496,7 @@ export default function SellerPortalApp() {
           {loginError && (
             <div className="bg-red-500/15 border-2 border-red-500/40 text-red-300 text-xs p-4 rounded-xl mb-6 text-center font-medium leading-relaxed shadow-lg">
               <div className="text-sm font-bold text-red-400 mb-1 flex items-center justify-center gap-1.5">
-                <span>⛔</span> ACCESS DENIED
+                <span>â›”</span> ACCESS DENIED
               </div>
               {loginError}
             </div>
@@ -436,10 +528,16 @@ export default function SellerPortalApp() {
                     }`}
                   >
                     <span>{p.name}</span>
-                    {p.active ? selectedPartnerId === p.id && <span className="text-violet-400 text-xs font-bold">● Selected</span> : <span className="text-slate-600 text-xs font-bold">Unavailable</span>}
+                    {p.active ? selectedPartnerId === p.id && <span className="text-violet-400 text-xs font-bold">â— Selected</span> : <span className="text-slate-600 text-xs font-bold">Unavailable</span>}
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Invited account email or legacy ID (optional)</label>
+              <input type="text" value={invitedPartnerId} onChange={event => setInvitedPartnerId(event.target.value)} placeholder="Use the email that received your event invitation" autoComplete="username" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500" />
+              <div className="mt-1 text-xs text-slate-500">Seller accounts continue to use password plus a registered passkey. The invited email is private and is not listed publicly.</div>
             </div>
 
             <div>
@@ -465,7 +563,7 @@ export default function SellerPortalApp() {
                 'Verifying Passkey Device...'
               ) : (
                 <>
-                  <span>🔐 Log In & Verify Hardware Passkey</span>
+                  <span>ðŸ” Log In & Verify Hardware Passkey</span>
                 </>
               )}
             </button>
@@ -475,13 +573,13 @@ export default function SellerPortalApp() {
     )
   }
 
-  // AUTHENTICATED SELLER PORTAL — NO LOGOUT BUTTON ANYWHERE (PER SPEC)
+  // AUTHENTICATED SELLER PORTAL
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="LITTX Logo" className="h-6 w-auto brightness-200" />
+          <img src="/logo.png" alt="Stageway logo" className="h-6 w-auto brightness-200" />
           <span className="font-black text-sm tracking-wider text-violet-400">SELLER PORTAL</span>
         </div>
 
@@ -494,11 +592,14 @@ export default function SellerPortalApp() {
           {/* Read-only Device & Passkey Lock Indicator */}
           {authenticatedPartner.webauthnCredentialId && (
             <div className="hidden sm:flex text-[11px] text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg items-center gap-1.5">
-              <span>🔐 WebAuthn Bound</span>
-              <span className="text-slate-500">•</span>
+              <span>ðŸ” WebAuthn Bound</span>
+              <span className="text-slate-500">â€¢</span>
               <span className="font-mono text-violet-400">{authenticatedPartner.registeredDeviceId || 'Passkey Device'}</span>
             </div>
           )}
+          <button type="button" onClick={handleLogout} className="text-xs font-semibold text-slate-300 hover:text-white border border-slate-700 rounded-lg px-3 py-2">
+            Sign out
+          </button>
         </div>
       </header>
 
@@ -530,9 +631,10 @@ export default function SellerPortalApp() {
           <form onSubmit={handleGenerateTicket} className="space-y-4">
             <div>
               <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Event</label>
-              <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white font-semibold">
-                DHOLIDA GARBA ROYALE — 17 Oct 2026 · Pethkar Ground, Kothrud, Pune
-              </div>
+              <select aria-label="Event" value={event} onChange={change => { setEvent(change.target.value); setTicketType(''); setPasses([]); setFeedback(null) }} required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white font-semibold" disabled={!sellerEvents.length || pricingLoading}>
+                {!sellerEvents.length && <option value="">No published public company events</option>}
+                {sellerEvents.map(item => <option key={item.id} value={item.slug || item.id}>{item.name}{item.city ? ` Â· ${item.city}` : ''}{item.venue ? ` Â· ${item.venue}` : ''}</option>)}
+              </select>
             </div>
 
             <div>
@@ -590,7 +692,7 @@ export default function SellerPortalApp() {
                     <div className={`text-[10px] mt-0.5 ${
                       ticketType === pass.name ? 'text-violet-400' : 'text-slate-600'
                     }`}>
-                      ₹{pass.price}
+                      â‚¹{pass.price}
                     </div>
                   </button>
                 ))}
@@ -626,7 +728,7 @@ export default function SellerPortalApp() {
                 </div>
                 {commissionChoice === 'custom' && (
                   <div className="mt-3">
-                    <label className="mb-1.5 block text-[11px] font-bold text-slate-400">Custom commission amount (₹)</label>
+                    <label className="mb-1.5 block text-[11px] font-bold text-slate-400">Custom commission amount (â‚¹)</label>
                     <input
                       autoFocus
                       type="number"
@@ -634,13 +736,25 @@ export default function SellerPortalApp() {
                       step="0.01"
                       value={customCommission}
                       onChange={(event) => setCustomCommission(event.target.value)}
-                      placeholder="Enter amount"
+                      placeholder={commissionIsUncapped ? 'Enter any amount' : 'Enter amount'}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
                     />
-                    {commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">Enter a valid amount up to 20% of the official total.</p>}
+                    {commissionInvalid && <p className="mt-1.5 text-xs font-semibold text-red-400">{commissionIsUncapped ? 'Enter a valid non-negative amount.' : 'Enter a valid amount up to 20% of the official total.'}</p>}
                   </div>
                 )}
               </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Ticket Nickname <span className="normal-case tracking-normal text-slate-600">(optional)</span></label>
+              <input
+                type="text"
+                maxLength={60}
+                placeholder="Short label to help identify this ticket"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
+              />
             </div>
 
             <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2 text-sm">
@@ -659,7 +773,7 @@ export default function SellerPortalApp() {
                 'Generating Ticket...'
               ) : (
                 <>
-                  <span>✨ Generate & Issue Pass</span>
+                  <span>âœ¨ Generate & Issue Pass</span>
                 </>
               )}
             </button>
@@ -702,6 +816,14 @@ export default function SellerPortalApp() {
               <div className="text-[10px] font-bold uppercase tracking-widest text-red-300/80">Rejected</div>
               <div className="mt-1 text-2xl font-black text-red-300">{ticketStats.rejected}</div>
             </div>
+            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-violet-300/80">QR codes issued</div>
+              <div className="mt-1 text-2xl font-black text-violet-300">{ticketStats.qrCodes}</div>
+            </div>
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-cyan-300/80">Admissions sold</div>
+              <div className="mt-1 text-2xl font-black text-cyan-300">{ticketStats.admissions}</div>
+            </div>
           </div>
 
           {ticketsError && (
@@ -725,6 +847,7 @@ export default function SellerPortalApp() {
                       <div className="min-w-0">
                         <div className="truncate text-sm font-extrabold text-white">{ticket.name || 'Guest'}</div>
                         <div className="truncate text-xs text-slate-500">{ticket.email || ticket.phone || 'No contact'}</div>
+                        {ticket.nickname && <div className="mt-1 truncate text-[11px] font-semibold text-violet-300">Nickname Â· {ticket.nickname}</div>}
                       </div>
                       <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${state.className}`}>
                         {state.label}
@@ -758,7 +881,7 @@ export default function SellerPortalApp() {
       {successTicket && (
         <div role="dialog" aria-modal="true" aria-labelledby="ticket-success-title" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm animate-[fadeInUp_.28s_ease-out] rounded-3xl border border-emerald-400/25 bg-slate-900 p-7 text-center shadow-2xl">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400 text-3xl font-black text-slate-950 shadow-lg shadow-emerald-500/20">✓</div>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400 text-3xl font-black text-slate-950 shadow-lg shadow-emerald-500/20">âœ“</div>
             <h2 id="ticket-success-title" className="mt-5 text-xl font-black text-white">
               {successTicket.approvalRequired ? 'Ticket Sent to Dashboard for Approval' : 'Ticket Sent Successfully'}
             </h2>

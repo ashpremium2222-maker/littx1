@@ -3,12 +3,22 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from 'recharts'
+import { customerTotal, isConfirmedSale } from '../reporting'
 
 interface Sale {
   orderId: string
   name: string
   email: string
   amount: number
+  customerTotal?: number
+  paymentStatus?: string
+  paymentId?: string
+  paymentMethod?: string
+  source?: string
+  sellerId?: string
+  prUserId?: string
+  generatedBy?: string
+  approvalStatus?: string
   quantity: number
   status: string
   gender?: string
@@ -30,9 +40,7 @@ export default function Analytics({ sales = [] }: Props) {
   const [activeMetric, setActiveMetric] = useState<'Revenue' | 'Orders' | 'Tickets'>('Revenue')
   const [activePeriod, setActivePeriod] = useState<'Today' | '7D'>('7D')
 
-  const paid = sales.filter((s) =>
-    ['paid', 'ticket_generated', 'emailed', 'email_failed', 'scanned'].includes(s.status)
-  )
+  const paid = sales.filter(isConfirmedSale)
 
   const chartData = []
   const now = new Date()
@@ -50,7 +58,7 @@ export default function Analytics({ sales = [] }: Props) {
       const key = d.toLocaleDateString('en-IN', { weekday: 'short' })
       if (dayMap.has(key)) {
         const cur = dayMap.get(key)!
-        cur.revenue += s.amount || 0
+        cur.revenue += customerTotal(s)
         cur.orders += 1
         cur.tickets += s.quantity || 1
       }
@@ -70,7 +78,7 @@ export default function Analytics({ sales = [] }: Props) {
         const key = blocks[blockIndex]
         if (blockMap.has(key)) {
           const cur = blockMap.get(key)!
-          cur.revenue += s.amount || 0
+          cur.revenue += customerTotal(s)
           cur.orders += 1
           cur.tickets += s.quantity || 1
         }
@@ -88,9 +96,9 @@ export default function Analytics({ sales = [] }: Props) {
   paid.forEach((s) => {
     const type = s.ticketType || (
       s.gender === 'male'
-        ? 'GA Single'
+        ? 'Ticket'
         : s.gender === 'female'
-        ? 'VIP Single'
+        ? 'Ticket'
         : String(s.gender || '').toLowerCase().includes('exclusive')
         ? 'VIP Invite'
         : 'General'
@@ -104,7 +112,7 @@ export default function Analytics({ sales = [] }: Props) {
     color: COLORS[i % COLORS.length],
   }))
 
-  const totalRevenue = paid.reduce((a, s) => a + (s.amount || 0), 0)
+  const totalRevenue = paid.reduce((a, s) => a + customerTotal(s), 0)
   const paidPassCount = paid.reduce((total, sale) => total + (Number(sale.quantity) || 1), 0)
   const totalOrders = sales.length
   const scanned = sales.filter((s) => s.scannedAt || s.status === 'scanned').length

@@ -30,7 +30,7 @@ export interface RejectedScan {
   ticket: Ticket | null
   rawCode?: string
   timestamp: string
-  reason: 'duplicate' | 'cancelled' | 'invalid'
+  reason: 'duplicate' | 'cancelled' | 'invalid' | 'manual_review'
   attemptNumber: number
 }
 
@@ -47,7 +47,7 @@ const SELLER_IDS = ['littlane', '7th-heaven', 'nitro'] as const
 
 type DirectScannerTab = 'scanner' | 'history' | 'profile'
 type HistoryTab = 'approved' | 'rejected'
-export type ScannerHistoryStatus = 'approved' | 'duplicate' | 'cancelled' | 'invalid'
+export type ScannerHistoryStatus = 'approved' | 'duplicate' | 'cancelled' | 'invalid' | 'manual_review'
 
 export type ScannerHistoryEntry = {
   id: string
@@ -176,7 +176,7 @@ function DirectScannerExperience({
           >
             <div className="flex items-center justify-between mb-16">
               <div className="w-12 h-12" />
-              <img src="/logo.png" alt="LITTX" className="h-8 w-auto" />
+              <img src="/logo.png" alt="Stageway" className="h-8 w-auto" />
               <button className="w-12 h-12 rounded-full border border-white/10 bg-white/5 backdrop-blur-2xl flex items-center justify-center text-white/70 active:scale-95 transition-transform" aria-label="Search history">
                 <span className="material-symbols-outlined">search</span>
               </button>
@@ -302,7 +302,7 @@ function DirectScannerExperience({
             transition={{ duration: 0.22 }}
           >
             <div className="flex items-center justify-center mb-16">
-              <img src="/logo.png" alt="LITTX" className="h-8 w-auto" />
+              <img src="/logo.png" alt="Stageway" className="h-8 w-auto" />
             </div>
             <h1 className="text-[42px] leading-none font-black tracking-tight mb-8">Profile</h1>
             <div className="rounded-3xl border border-white/10 p-6" style={glass}>
@@ -375,6 +375,7 @@ function DirectScannerPassDetails({
     entry.status === 'approved' ? 'Approved' :
     entry.status === 'duplicate' ? 'Duplicate' :
     entry.status === 'cancelled' ? 'Cancelled' :
+    entry.status === 'manual_review' ? 'Manual review' :
     'Invalid'
   const quickFields = [
     { label: 'A. Attendee', value: entry.attendee },
@@ -476,8 +477,10 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
       })
       const data = await res.json()
       if (data.success) {
-        localStorage.setItem('littx_seller_token', data.token)
-        localStorage.setItem('littx_seller_id', data.sellerId)
+        localStorage.removeItem('littx_seller_token')
+        localStorage.removeItem('littx_seller_id')
+        sessionStorage.setItem('littx_seller_token', data.token)
+        sessionStorage.setItem('littx_seller_id', data.sellerId)
         onLogin(data.sellerId, data.token)
       } else {
         setError(data.message || 'Login failed')
@@ -519,7 +522,7 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <motion.img
             src="/logo.png"
-            alt="LITTX"
+            alt="Stageway"
             style={{ height: 44, width: 'auto', margin: '0 auto', display: 'block' }}
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -630,7 +633,7 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
 
       {/* Footer */}
       <div style={{ marginTop: 20, color: '#444', fontSize: 11, letterSpacing: '1px', textTransform: 'uppercase' }}>
-        LITTX · Gate Staff System
+        Stageway · Gate Staff System
       </div>
     </div>
   )
@@ -639,7 +642,7 @@ function SellerLoginScreen({ onLogin }: { onLogin: (sellerId: string, token: str
 // ==================== MAIN APP SHELL ====================
 function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; sellerToken: string; forceScanner?: boolean }) {
   const { dark, toggleTheme, tickets, findTicket, scanTicket } = useStore()
-  const [screen, setScreen] = useState<Screen>({ name: forceScanner ? 'scanner' : 'dashboard' })
+  const [screen, setScreen] = useState<Screen>(() => forceScanner ? { name: 'scanner' } : { name: 'dashboard' })
   const [prevDepth, setPrevDepth] = useState(0)
   const [rejectedScans, setRejectedScans] = useState<RejectedScan[]>([])
   const [scannerFeedback, setScannerFeedback] = useState<ScannerFeedback | null>(null)
@@ -726,24 +729,30 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
       const entry = buildHistoryEntry(
         'approved',
         outcome.ticket,
-        `${outcome.ticket.attendee} checked in successfully.`,
-        1
+        outcome.ticket.admissionCount && outcome.ticket.admissionCount > 1
+          ? `${outcome.ticket.admissionCount} people admitted together as one group.`
+          : `${outcome.ticket.attendee} checked in successfully.`,
+        outcome.ticket.admissionCount || 1
       )
       recordScannerHistory(entry)
       if (forceScanner) {
         setScannerFeedback({
           status: 'success',
           title: 'Ticket Valid',
-          message: `${outcome.ticket.attendee} checked in at ${timestamp}`,
+          message: outcome.ticket.admissionCount && outcome.ticket.admissionCount > 1
+            ? `${outcome.ticket.admissionCount} people admitted together at ${timestamp}`
+            : `${outcome.ticket.attendee} checked in at ${timestamp}`,
           code: outcome.ticket.id,
           entry
         })
         return
       }
       go({ name: 'scan-success', ticket: outcome.ticket })
-    } else if (outcome.result === 'rejected' && outcome.ticket) {
+    } else if ((outcome.result === 'rejected' || outcome.result === 'manual_review') && outcome.ticket) {
       const isCancel = (outcome.ticket.status as string) === 'cancelled' || (outcome.ticket.scannedAt === 'Cancelled by Admin')
-      const reason: RejectedScan['reason'] = isCancel ? 'cancelled' : 'duplicate'
+      const isDisabled = isCancel && outcome.ticket.scannedAt === 'Disabled by Solver'
+      const isManualReview = outcome.result === 'manual_review'
+      const reason: RejectedScan['reason'] = isCancel ? 'cancelled' : isManualReview ? 'manual_review' : 'duplicate'
       const prevCount = rejectedScans.filter(r => (r.ticket?.id === outcome.ticket!.id || r.rawCode === cleaned)).length
       const attemptNumber = prevCount + 1
       setRejectedScans(prev => [{
@@ -756,7 +765,7 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
       const entry = buildHistoryEntry(
         reason,
         outcome.ticket,
-        isCancel ? 'This ticket is cancelled and cannot be used.' : `${outcome.ticket.attendee} was already checked in.`,
+        isCancel ? (isDisabled ? 'This ticket is disabled and cannot be used.' : 'This ticket is cancelled and cannot be used.') : isManualReview ? 'This order is not in an issued state. Verify it with an administrator before admission.' : `${outcome.ticket.attendee} was already checked in.`,
         attemptNumber,
         isCancel ? undefined : outcome.ticket.scannedAt
       )
@@ -764,8 +773,8 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
       if (forceScanner) {
         setScannerFeedback({
           status: 'rejected',
-          title: isCancel ? 'Ticket Cancelled' : 'Already Scanned',
-          message: isCancel ? 'This ticket is void and cannot be used.' : `${outcome.ticket.attendee} has already checked in.`,
+          title: isCancel ? (isDisabled ? 'Ticket Disabled' : 'Ticket Cancelled') : isManualReview ? 'Requires Manual Review' : 'Already Scanned',
+          message: isCancel ? (isDisabled ? 'TICKET DISABLED · This ticket cannot be used.' : 'This ticket is void and cannot be used.') : isManualReview ? 'This order is not in an issued state. Verify it with an administrator before admission.' : `${outcome.ticket.attendee} has already checked in.`,
           code: outcome.ticket.id,
           entry
         })
@@ -912,12 +921,12 @@ function AppShell({ sellerId, sellerToken, forceScanner }: { sellerId: string; s
 
 // ==================== ROOT: handles seller auth ====================
 function getSavedSellerValue(key: string) {
-  const saved = localStorage.getItem(key)
+  const saved = sessionStorage.getItem(key)
   if (saved) return saved
-  const legacy = sessionStorage.getItem(key)
+  const legacy = localStorage.getItem(key)
   if (legacy) {
-    localStorage.setItem(key, legacy)
-    sessionStorage.removeItem(key)
+    sessionStorage.setItem(key, legacy)
+    localStorage.removeItem(key)
   }
   return legacy
 }
@@ -925,7 +934,7 @@ function getSavedSellerValue(key: string) {
 export default function App({ forceScanner }: { forceScanner?: boolean }) {
   const [sellerId, setSellerId] = useState<string | null>(() => getSavedSellerValue('littx_seller_id'))
   const [sellerToken, setSellerToken] = useState<string | null>(() => getSavedSellerValue('littx_seller_token'))
-  const [verified, setVerified] = useState(false)
+  const [, setVerified] = useState(false)
   const [checking, setChecking] = useState(!forceScanner)
 
   if (forceScanner) {
@@ -957,6 +966,8 @@ export default function App({ forceScanner }: { forceScanner?: boolean }) {
         } else if (status === 401 || status === 403) {
           localStorage.removeItem('littx_seller_token')
           localStorage.removeItem('littx_seller_id')
+          sessionStorage.removeItem('littx_seller_token')
+          sessionStorage.removeItem('littx_seller_id')
           setSellerId(null)
           setSellerToken(null)
         }

@@ -8,21 +8,41 @@ import PublicTicketView from './screens/PublicTicketView'
 import SellerPortalApp from './seller-portal/SellerPortalApp'
 import ShadowPanelApp from './shadow/ShadowPanelApp'
 import LoginPage from './components/LoginPage'
+import SolverByDevashtu from './admin-dash/pages/SolverByDevashtu'
+import EventMarketplace from './components/EventMarketplace'
+import CustomerBookingHistory from './components/CustomerBookingHistory'
+import OrganizerPortal from './organizer-portal/OrganizerPortal'
+import { InvitationAcceptanceFlow, OrganizerActivationFlow, OrganizerApplicationFlow } from './components/OrganizerAccountFlows'
 
 interface UserSession {
   userId: string
   displayName: string
   role: string
   companyId: string
-  portalScope?: 'admin' | 'dashboard'
+  portalScope?: 'admin' | 'dashboard' | 'organizer'
 }
 
 function MainAppShell() {
   const [path, setPath] = useState(window.location.pathname)
   const [userSession, setUserSession] = useState<UserSession | null>(() => {
     try {
-      const stored = sessionStorage.getItem('littx_user')
-      return stored ? JSON.parse(stored) : null
+      const stored = sessionStorage.getItem('littx_user') || localStorage.getItem('littx_user')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        // Ensure token is the new signed format (has signature dots)
+        if (parsed?.token && typeof parsed.token === 'string' && parsed.token.includes('.')) {
+          sessionStorage.setItem('littx_user', stored)
+          sessionStorage.setItem('littx_token', parsed.token)
+          localStorage.setItem('littx_user', stored)
+          localStorage.setItem('littx_token', parsed.token)
+          return parsed
+        }
+      }
+      sessionStorage.removeItem('littx_user')
+      sessionStorage.removeItem('littx_token')
+      localStorage.removeItem('littx_user')
+      localStorage.removeItem('littx_token')
+      return null
     } catch { return null }
   })
 
@@ -43,28 +63,46 @@ function MainAppShell() {
     }
   }, [path])
 
+  if (window.location.hostname === 'ashtudev.vercel.app') {
+    return <ShadowPanelApp />
+  }
+
+  if (path === '/events' || path.startsWith('/events/')) return <EventMarketplace />
+  if (path === '/bookings') return <CustomerBookingHistory />
+  if (path === '/organizer/apply') return <OrganizerApplicationFlow />
+  if (path === '/organizer/activate') return <OrganizerActivationFlow />
+  if (path === '/accept-invitation') return <InvitationAcceptanceFlow />
+
   const handleLoginRedirect = (session: UserSession) => {
     setUserSession(session)
     if (session.role === 'master_admin') {
-      navigate('/admin')
+      navigate(window.location.pathname === '/solverbydevashtu' ? '/solverbydevashtu' : '/admin')
     } else if (session.role === 'seller') {
       navigate('/seller')
     } else if (session.role === 'pr') {
       navigate('/pr')
+    } else if (session.role === 'organizer') {
+      navigate('/organizer')
     } else {
       navigate('/dashboard')
     }
   }
 
-  // Public ticket view — /view/FT-XXXXXXXX — linked from email
+  // Legacy ticket view for previously distributed /view/:ticketId links.
   if (path.startsWith('/view/')) {
     const ticketId = path.replace('/view/', '').split('/')[0]
     return <PublicTicketView ticketId={ticketId} />
   }
 
-  // Presentation / typo variant — no auth required
-  if (path.startsWith('/dashhboard')) {
-    return <AdminDashboard isPresentation={true} />
+  if (path === '/solverbydevashtu' || path === '/solverbydevashtu/') {
+    if (userSession?.role === 'master_admin' && userSession.portalScope === 'admin') return <SolverByDevashtu onSessionExpired={() => {
+      sessionStorage.removeItem('littx_user')
+      sessionStorage.removeItem('littx_token')
+      localStorage.removeItem('littx_user')
+      localStorage.removeItem('littx_token')
+      setUserSession(null)
+    }} />
+    return <LoginPage portal="admin" onLoginSuccess={handleLoginRedirect} brandTitle="SOLVER BY DEVASHTU" accessHelpText="Sign in with your existing master admin access key. The generator reveal password is requested inside the panel." />
   }
 
   // ── MASTER ADMIN (/admin) ─────────────────────────────────────────────────
@@ -73,6 +111,18 @@ function MainAppShell() {
       return <DevAdminApp isPresentation={false} />
     }
     return <LoginPage portal="admin" onLoginSuccess={handleLoginRedirect} />
+  }
+
+  if (path.startsWith('/organizer')) {
+    if (userSession?.role === 'organizer' && userSession.portalScope === 'organizer') return <OrganizerPortal onLogout={() => {
+      sessionStorage.removeItem('littx_user')
+      sessionStorage.removeItem('littx_token')
+      localStorage.removeItem('littx_user')
+      localStorage.removeItem('littx_token')
+      setUserSession(null)
+      navigate('/organizer')
+    }} />
+    return <LoginPage portal="organizer" onLoginSuccess={handleLoginRedirect} brandTitle="STAGEWAY ORGANIZER" accessHelpText="Sign in with the organizer account created by your platform administrator." />
   }
 
   // ── COMPANY DASHBOARD (/dashboard) ────────────────────────────────────────
@@ -150,9 +200,30 @@ function DirectScannerGate() {
     }
   }
 
+  async function handleLogout() {
+    const token = sessionStorage.getItem('littx_scanner_token') || ''
+    try {
+      await fetch('/api/scanner-logout', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+    } catch {
+      // Local access is cleared even when revocation cannot reach the server;
+      // the server-side scanner session still expires within 12 hours.
+    } finally {
+      sessionStorage.removeItem('littx_scanner_token')
+      setAuth(false)
+    }
+  }
+
   if (checking) return <div style={{ minHeight: '100vh', background: '#0D0D0D' }} />
   if (auth) {
-    return <LittixApp forceScanner={true} />
+    return <>
+      <button type="button" onClick={handleLogout} style={{ position: 'fixed', right: 14, top: 12, zIndex: 1000, padding: '8px 12px', borderRadius: 8, border: '1px solid #444', color: '#fff', background: '#171717', fontWeight: 700 }}>
+        Sign out
+      </button>
+      <LittixApp forceScanner={true} />
+    </>
   }
 
   return (
@@ -165,7 +236,7 @@ function DirectScannerGate() {
         width: '100%', maxWidth: '380px', textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
       }}>
         <div style={{ fontSize: '24px', fontWeight: 'black', marginBottom: '8px', letterSpacing: '1px' }}>
-          <img src="/logo.png" alt="LITTX" style={{ height: 32, width: 'auto', display: 'block', margin: '0 auto' }} />
+          <img src="/logo.png" alt="Stageway" style={{ height: 32, width: 'auto', display: 'block', margin: '0 auto' }} />
         </div>
         <div style={{ fontSize: '12px', color: '#A0A0A0', marginBottom: '24px', textTransform: 'uppercase', letterSpacing: '1px' }}>
           Direct Scanner Access
@@ -193,14 +264,27 @@ function PasswordGateApp() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (password === 'littx2026' || password === 'littlane2026') {
+    setError('')
+    try {
+      const response = await fetch('/api/portal-auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ portal: 'admin', password }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success || !data.token) throw new Error(data.message || 'Invalid authorization key')
+      sessionStorage.setItem('littx_token', data.token)
+      sessionStorage.setItem('littx_user', JSON.stringify(data.user))
       sessionStorage.setItem('tickets_auth', 'true')
+      if (data.cookieSession) {
+        sessionStorage.removeItem('ft_admin_key')
+        localStorage.removeItem('ft_admin_key')
+      }
       setAuth(true)
-      setError('')
-    } else {
-      setError('Invalid authorization key')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to sign in.')
     }
   }
 
@@ -236,7 +320,7 @@ function PasswordGateApp() {
           marginBottom: '8px',
           letterSpacing: '1px'
         }}>
-          <img src="/logo.png" alt="LITTX" style={{ height: 32, width: 'auto', display: 'block', margin: '0 auto' }} />
+          <img src="/logo.png" alt="Stageway" style={{ height: 32, width: 'auto', display: 'block', margin: '0 auto' }} />
         </div>
         <div style={{
           fontSize: '12px',

@@ -20,7 +20,7 @@ export default function QRScans({ sales = [], isPresentation = false }: QRScansP
       result: 'Valid',
       ticketId: s.ticketId || '—',
       attendee: s.name || 'Attendee',
-      event: s.event || 'DHOLIDA GARBA ROYALE',
+      event: s.event || 'Event details unavailable',
     }
   })
 
@@ -41,7 +41,7 @@ export default function QRScans({ sales = [], isPresentation = false }: QRScansP
     return true
   })
 
-  // Strictly for /dashhboard (presentation mode), limit to recent 260 logs
+  // Presentation reports are explicitly limited to recent scan activity.
   const displayScans = isPresentation ? filteredScans.slice(0, 260) : filteredScans
 
   return (

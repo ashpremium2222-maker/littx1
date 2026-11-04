@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 
 interface CustomerUser {
   email: string
@@ -169,14 +169,7 @@ function BookModal({
                 </div>
               )}
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-                <a
-                  href={success.downloadUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-download"
-                >
-                  Download PDF Pass
-                </a>
+                <a href="/bookings" className="btn-download">Recover PDF with email verification</a>
                 <button onClick={onClose} className="btn-secondary">
                   Done
                 </button>
@@ -282,7 +275,7 @@ function EventCard({ event, onBook }: { event: Event; onBook: () => void }) {
 
   // Event category color generator
   const getBrandColors = (companyId: string) => {
-    if (companyId === 'littlane') return { glow: 'rgba(216,255,63,0.3)', line: '#D8FF3F' }
+    if (companyId === 'stageway') return { glow: 'rgba(216,255,63,0.3)', line: '#D8FF3F' }
     return { glow: 'rgba(236,72,153,0.3)', line: '#EC4899' }
   }
 
@@ -393,10 +386,8 @@ function BookingRow({ booking }: { booking: Booking }) {
       {/* Download Button */}
       {booking.ticketId && (
         <a
-          href={`/api/ticket/${booking.ticketId}/download`}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Download ticket PDF file"
+          href="/bookings"
+          title="Verify your booking to recover the ticket PDF"
           className="ticket-download-link-btn"
         >
           {"\u2B07\uFE0F"}
@@ -419,7 +410,7 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
   const [bookModal, setBookModal] = useState<Event | null>(null)
   const [eventsError, setEventsError] = useState('')
   const [bookingsError, setBookingsError] = useState('')
-  const [newBookingIds, setNewBookingIds] = useState<Set<string>>(new Set())
+  const [, setNewBookingIds] = useState<Set<string>>(new Set())
 
   const fetchEvents = useCallback(async () => {
     setLoadingEvents(true)
@@ -475,8 +466,8 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
       {/* Top Header */}
       <header className="dash-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <img src="/logo.png" alt="LITTX Logo" style={{ height: 32, width: 'auto' }} />
-          <span className="logo-text">LITTX</span>
+          <img src="/logo.png" alt="Stageway logo" style={{ height: 32, width: 'auto' }} />
+          <span className="logo-text">Stageway</span>
           <span className="logo-badge-pill">Customer</span>
         </div>
 
@@ -511,7 +502,7 @@ export default function CustomerDashboard({ user, onLogout }: CustomerDashboardP
           <div className="banner-content">
             <h1 className="banner-title">Welcome Back, {user.name.split(' ')[0]}! {"\uD83D\uDC4B"}</h1>
             <p className="banner-subtitle">
-              Your digital hub for bookings and passes to the hottest freshers takeovers and premium events.
+              Your digital hub for bookings and passes to live events and experiences.
             </p>
             
             {/* Quick Metrics */}

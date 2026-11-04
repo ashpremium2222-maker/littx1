@@ -2,13 +2,60 @@ const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 
 // A Vercel function can be cold-started for any request. Keep one connection
 // promise on the Node global so every request waits for the same MongoDB
 // connection instead of issuing a buffered query while Mongoose is connecting.
-const HAS_CONFIGURED_MONGODB = Boolean(process.env.MONGODB_URI);
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/littx';
+const DEFAULT_ATLAS_URI = 'mongodb+srv://atharvarrrr7_db_user:KYZ6Ej2htIjL4f4w@littx.mrxmg1s.mongodb.net/littx?retryWrites=true&w=majority&appName=LITTX';
+const MONGODB_URI = process.env.MONGODB_URI || DEFAULT_ATLAS_URI;
+const HAS_CONFIGURED_MONGODB = true;
 const MONGO_PROMISE_KEY = '__littxMongoConnectionPromise';
+
+const SESSION_SIGN_SECRET = process.env.SESSION_SIGNING_SECRET || process.env.SCANNER_SESSION_SECRET || 'stageway-unified-session-secret-2026-secure-persistent';
+
+function createSignedSessionToken(payload) {
+    if (!payload || !payload.userId) {
+        return crypto.randomBytes(32).toString('base64url');
+    }
+    const head = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    const body = Buffer.from(JSON.stringify({
+        userId: payload.userId,
+        role: payload.role || 'organizer',
+        companyId: payload.companyId || 'stageway',
+        displayName: payload.displayName || payload.userId,
+        loginAt: payload.loginAt || new Date().toISOString(),
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600 // 7 days TTL
+    })).toString('base64url');
+    const sig = crypto.createHmac('sha256', SESSION_SIGN_SECRET).update(`${head}.${body}`).digest('base64url');
+    return `${head}.${body}.${sig}`;
+}
+
+function verifySignedSessionToken(token) {
+    if (!token || typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [head, body, sig] = parts;
+    const expected = crypto.createHmac('sha256', SESSION_SIGN_SECRET).update(`${head}.${body}`).digest('base64url');
+    if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+        return null;
+    }
+    try {
+        const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+        if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+        return {
+            userId: payload.userId,
+            role: payload.role,
+            companyId: payload.companyId || 'stageway',
+            displayName: payload.displayName || payload.userId,
+            loginAt: payload.loginAt,
+            token: token
+        };
+    } catch (_) {
+        return null;
+    }
+}
 
 async function connectDb() {
     if (mongoose.connection.readyState === 1) return mongoose.connection;
@@ -19,8 +66,18 @@ async function connectDb() {
             serverSelectionTimeoutMS: 8000,
             connectTimeoutMS: 8000,
         }).then(async connection => {
-            console.log('✅ Connected to MongoDB');
+            console.log('[MongoDB] Connected successfully to Atlas/Mongo');
+            try {
+                const usersCol = mongoose.connection.db.collection('users');
+                await usersCol.updateMany({ sellerSlot: null }, { $unset: { sellerSlot: '' } }).catch(() => {});
+                await usersCol.dropIndex('sellerSlot_1').catch(() => {});
+                await usersCol.createIndex(
+                    { sellerSlot: 1 },
+                    { unique: true, partialFilterExpression: { sellerSlot: { $type: 'string' } } }
+                ).catch(() => {});
+            } catch (_) {}
             await seedDefaultUsers();
+            await purgeLegacyData();
             return connection;
         }).catch(err => {
             // Do not retain a rejected promise: a later serverless request can
@@ -35,13 +92,19 @@ async function connectDb() {
 
 // Retain the convenient local-development behaviour, but do not let a failed
 // local MongoDB instance prevent the JSON mock fallback from being used.
-connectDb().catch(err => console.error('❌ MongoDB Connection Error:', err.message));
+if (process.env.NODE_ENV !== 'test') {
+    connectDb().catch(err => console.error('âŒ MongoDB Connection Error:', err.message));
+}
 
 // ==================== SCHEMAS ====================
 
 const EventSchema = new mongoose.Schema({
-    name: { type: String, required: true, unique: true },
-    companyId: { type: String, default: 'littlane' },
+    name: { type: String, required: true, trim: true },
+    slug: { type: String, trim: true, lowercase: true },
+    legacyNames: [{ type: String }],
+    companyId: { type: String, default: 'stageway' },
+    organizerId: { type: String, index: true },
+    organizerUserIds: { type: [String], default: [] },
     // Custom string ID (for frontend reference)
     id: { type: String },
     date: { type: String },
@@ -49,13 +112,25 @@ const EventSchema = new mongoose.Schema({
     venue: { type: String },
     stage: { type: String },
     description: { type: String },
+    category: { type: String, trim: true },
+    images: [{ type: String }],
+    city: { type: String, trim: true },
+    address: { type: String, trim: true },
+    timezone: { type: String, default: 'Asia/Kolkata' },
+    startsAt: { type: Date },
+    endsAt: { type: Date },
+    salesStartAt: { type: Date },
+    salesEndAt: { type: Date },
+    status: { type: String, enum: ['draft', 'pending_review', 'published', 'cancelled', 'postponed', 'completed'], default: 'draft', index: true },
+    visibility: { type: String, enum: ['public', 'unlisted', 'private'], default: 'public' },
+    publishedAt: { type: Date },
     tagline: { type: String },
-    icon: { type: String, default: '🎉' },
+    icon: { type: String, default: 'ðŸŽ‰' },
     gradient: { type: String },
     active: { type: Boolean, default: true },
     isVip: { type: Boolean, default: false },
     archived: { type: Boolean, default: false },
-    // Tiers (VIP, Normal, Male Pass, etc.) — used by admin/seller/shadow portals
+    // Tiers (VIP, Normal, Male Pass, etc.) â€” used by admin/seller/shadow portals
     tiers: [{
         id: { type: String },
         name: { type: String },
@@ -64,9 +139,47 @@ const EventSchema = new mongoose.Schema({
         description: { type: String }
     }],
     ticketTypes: [{
+        id: { type: String },
         name: { type: String }, // e.g. "Male Pass", "Female Pass"
         price: { type: Number },
-        gender: { type: String } // "male", "female", "unisex"
+        gender: { type: String }, // "male", "female", "unisex"
+        description: { type: String },
+        currency: { type: String, default: 'INR' },
+        totalInventory: { type: Number, default: null },
+        remainingAvailability: { type: Number, default: null },
+        salesStartAt: { type: Date },
+        salesEndAt: { type: Date },
+        maxPerCustomer: { type: Number, default: 20 },
+        status: { type: String, enum: ['active', 'paused', 'sold_out'], default: 'active' },
+        groupSize: { type: Number, default: 1 },
+        inclusions: [{ type: String }]
+    }],
+    ticketCategories: [{
+        id: { type: String, required: true },
+        name: { type: String, required: true },
+        description: { type: String, default: '' },
+        price: { type: Number, required: true, min: 0 },
+        currency: { type: String, default: 'INR' },
+        totalInventory: { type: Number, default: null, min: 0 },
+        remainingAvailability: { type: Number, default: null, min: 0 },
+        salesStartAt: { type: Date },
+        salesEndAt: { type: Date },
+        maxPerCustomer: { type: Number, default: 20, min: 1, max: 20 },
+        status: { type: String, enum: ['active', 'paused', 'sold_out'], default: 'active' },
+        groupSize: { type: Number, default: 1, min: 1 },
+        inclusions: [{ type: String }]
+    }],
+    // Short-lived reservations live with the event inventory document so
+    // category counter changes and reservation state transitions are atomic.
+    // Only active/consuming entries are retained; settled reservations are
+    // removed after the corresponding Sale transition is durable.
+    inventoryReservations: [{
+        reservationId: { type: String, required: true },
+        categoryId: { type: String, required: true },
+        admissionCount: { type: Number, required: true, min: 1 },
+        expiresAt: { type: Date, required: true },
+        status: { type: String, enum: ['active', 'consuming'], default: 'active' },
+        createdAt: { type: Date, default: Date.now }
     }],
     overrides: {
         razorpayEnabled: { type: Boolean, default: null }, // null = inherit company default
@@ -78,42 +191,58 @@ const EventSchema = new mongoose.Schema({
     },
     createdAt: { type: String }
 });
+EventSchema.index({ slug: 1 }, { unique: true, sparse: true });
+EventSchema.index({ companyId: 1, status: 1, active: 1 });
+EventSchema.index({ organizerId: 1, createdAt: -1 });
+EventSchema.index({ organizerUserIds: 1, updatedAt: -1 });
 
 const UserSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
-    companyId: { type: String, default: 'littlane' },
-    password: { type: String, required: true },
+    companyId: { type: String, default: 'stageway' },
+    email: { type: String, lowercase: true, trim: true },
+    emailVerifiedAt: { type: Date, default: null },
+    accountStatus: { type: String, enum: ['pending_activation', 'active', 'suspended'], default: null },
+    // null/absent means the account still uses its documented legacy
+    // company-wide scope; [] means an explicit event-scoped account with no access.
+    assignedEventIds: { type: [String], default: undefined },
+    password: { type: String, required: false },
     displayName: { type: String },
-    role: { type: String, enum: ['master_admin', 'company_admin', 'seller', 'pr'], default: 'pr' },
+    role: { type: String, enum: ['master_admin', 'company_admin', 'organizer', 'seller', 'pr'], default: 'pr' },
     // New accounts use passwordHash. `password` remains for legacy seeded users
     // while they are migrated through the existing admin flow.
     passwordHash: { type: String, default: null },
     active: { type: Boolean, default: true },
-    sellerSlot: { type: String, default: null, sparse: true, unique: true },
+    sellerSlot: { type: String, default: undefined, sparse: true },
     blocked: { type: Boolean, default: false },
     allowedPasses: [{
         eventId: { type: String }, // Can store Event ID or Event Name
         passName: { type: String }  // e.g. "Male Pass"
     }]
 });
+UserSchema.index({ email: 1 }, { sparse: true });
 
 const SellerSessionSchema = new mongoose.Schema({
     sellerId: { type: String, required: true, unique: true },
     token: { type: String, required: true },
     loginAt: { type: String },
-    ip: { type: String }
+    ip: { type: String },
+    clientKind: { type: String, enum: ['browser', 'native'] }
 });
 
 // ==================== SCAN LOG SCHEMA ====================
 // Written on EVERY scan attempt (accepted, duplicate, cancelled, invalid).
-// Fire-and-forget from the gate endpoint — never blocks the gate response.
+// Fire-and-forget from the gate endpoint â€” never blocks the gate response.
 const ScanLogSchema = new mongoose.Schema({
     ticketId: { type: String, required: true },
-    result: { type: String, enum: ['accepted', 'duplicate', 'cancelled', 'invalid'], required: true },
+    result: { type: String, enum: ['accepted', 'duplicate', 'cancelled', 'invalid', 'manual_review'], required: true },
     scannedBy: { type: String, default: 'Gate Staff' },
+    scannerUserId: { type: String },
     ip: { type: String, default: 'unknown' },
-    companyId: { type: String, default: 'littlane' },
+    companyId: { type: String, default: 'stageway' },
     event: { type: String },
+    orderId: { type: String },
+    admissionCount: { type: Number, min: 1 },
+    gate: { type: String },
     timestamp: { type: Date, default: Date.now }
 });
 ScanLogSchema.index({ timestamp: -1 });
@@ -122,25 +251,66 @@ ScanLogSchema.index({ result: 1 });
 ScanLogSchema.index({ ticketId: 1 });
 
 // ==================== UNIFIED USER SESSION SCHEMA ====================
-// One active session per userId — enforces strict one-device-per-user for all roles.
+// One active session per userId â€” enforces strict one-device-per-user for all roles.
 // Mirrors SellerSessionSchema but covers every role: master_admin, company_admin, seller, pr.
 const UserSessionSchema = new mongoose.Schema({
-    userId: { type: String, required: true, unique: true },
-    token: { type: String, required: true },
+    userId: { type: String, required: true, index: true },
+    token: { type: String, required: true, unique: true },
     ip: { type: String, default: 'unknown' },
     loginAt: { type: String },
     role: { type: String },
     companyId: { type: String },
-    displayName: { type: String }
+    displayName: { type: String },
+    eventNames: [{ type: String }],
+    expiresAt: { type: Date },
+    clientKind: { type: String, enum: ['browser', 'native'] }
 });
 
 const SaleSchema = new mongoose.Schema({
     orderId: { type: String, required: true, unique: true },
-    companyId: { type: String, default: 'littlane' },
+    companyId: { type: String, default: 'stageway' },
     event: { type: String },
+    // Additive canonical references. Keep `event` as the immutable legacy label
+    // so historical ticket links and reports remain readable during migration.
+    eventId: { type: String, index: true },
+    ticketCategoryId: { type: String },
+    inventoryReserved: { type: Boolean, default: false },
+    inventoryLimited: { type: Boolean, default: false },
+    reservationExpiresAt: { type: Date },
+    reservationStatus: { type: String, enum: ['not_required', 'active', 'consuming', 'consumed', 'released', 'expired'] },
+    admissionCount: { type: Number, min: 0 },
+    scannedAdmissionCount: { type: Number, min: 1 },
+    amountMinor: { type: Number, min: 0 },
+    paymentStatus: { type: String, enum: ['pending', 'processing', 'paid', 'failed', 'expired', 'cancelled', 'exception', 'refund_pending', 'refunded'] },
+    paymentProcessingLeaseUntil: { type: Date },
+    paymentException: { type: String },
+    paymentVerificationSource: { type: String },
+    paymentVerifiedBy: { type: String },
+    paymentVerifiedAt: { type: String },
+    lastPaymentAttemptId: { type: String },
+    lastPaymentAttemptStatus: { type: String },
+    lastPaymentAttemptAt: { type: Date },
+    fulfillmentStatus: { type: String, enum: ['pending', 'generating', 'ticketed', 'delivery_pending', 'delivered', 'failed', 'inventory_conflict'] },
+    ticketGenerationLeaseUntil: { type: Date },
+    ticketGenerationError: { type: String },
+    refundStatus: { type: String, enum: ['none', 'requested', 'approved', 'rejected', 'processing', 'failed', 'refunded'], default: 'none' },
+    refundRequestId: { type: String },
+    refundRequesterHash: { type: String },
+    refundRequestedAt: { type: Date },
+    refundDecidedAt: { type: Date },
+    refundDecidedBy: { type: String },
+    refundDecisionReason: { type: String },
+    refundReason: { type: String },
+    refundProviderReference: { type: String },
+    refundError: { type: String },
+    refundHistory: [{ from: { type: String }, to: { type: String }, actor: { type: String }, reason: { type: String }, at: { type: Date } }],
+    razorpayEventIds: [{ type: String }],
+    checkoutRequestId: { type: String },
+    checkoutRequestHash: { type: String },
     name: { type: String },
     email: { type: String },
     phone: { type: String },
+    nickname: { type: String, trim: true, maxlength: 60 },
     gender: { type: String },
     ticketType: { type: String },
     quantity: { type: Number },
@@ -148,6 +318,10 @@ const SaleSchema = new mongoose.Schema({
     // official event rate; commission is seller-internal settlement data.
     officialRate: { type: Number },
     customerTotal: { type: Number },
+    // Exact price of the selected pass at issuance time. This allows public
+    // ticket views to remain correct even when older records had a stale
+    // generic `amount` value.
+    passUnitPrice: { type: Number },
     commissionPercentage: { type: Number, default: 0 },
     commissionAmount: { type: Number, default: 0 },
     rateAfterCommission: { type: Number },
@@ -155,6 +329,7 @@ const SaleSchema = new mongoose.Schema({
     currency: { type: String },
     status: { type: String },
     paymentId: { type: String },
+    providerPaymentId: { type: String },
     ticketId: { type: String },
     emailStatus: { type: String },
     emailError: { type: String },
@@ -186,6 +361,14 @@ const SaleSchema = new mongoose.Schema({
     prName: { type: String },
     paymentMethod: { type: String },
     shadowPaymentStatus: { type: String, enum: ['paid', 'free_chai_pani'] },
+    disabledAt: { type: String },
+    disabledBy: { type: String },
+    disabledPreviousStatus: { type: String },
+    reactivatedAt: { type: String },
+    solverOriginalTier: { type: String },
+    solverUpgradedAt: { type: String },
+    solverUpgradedBy: { type: String },
+    solverUpgradeDifference: { type: Number },
     source: { type: String },
     isShadow: { type: Boolean, default: false },
     slots: [{
@@ -198,6 +381,8 @@ const SaleSchema = new mongoose.Schema({
 // Gate lookups and the atomic claim both filter by ticketId. Keep this index
 // non-unique so existing legacy records are not rejected during index builds.
 SaleSchema.index({ ticketId: 1 });
+SaleSchema.index({ checkoutRequestId: 1 }, { unique: true, sparse: true });
+SaleSchema.index({ providerPaymentId: 1 }, { unique: true, partialFilterExpression: { providerPaymentId: { $type: 'string' } } });
 SaleSchema.index({ status: 1, isShadow: 1, source: 1 });
 
 const CompanySchema = new mongoose.Schema({
@@ -214,10 +399,10 @@ const CompanySchema = new mongoose.Schema({
 
     razorpayConfig: {
         enabled: { type: Boolean, default: true },
-        keyId: { type: String, default: 'rzp_live_demoKey12345' },
-        keySecret: { type: String, default: 'demo_secret_key_12345' },
-        webhookSecret: { type: String, default: 'whsec_demo_12345' },
-        mode: { type: String, enum: ['TEST', 'LIVE'], default: 'LIVE' },
+        keyId: { type: String, default: '' },
+        keySecret: { type: String, default: '' },
+        webhookSecret: { type: String, default: '' },
+        mode: { type: String, enum: ['TEST', 'LIVE'], default: 'TEST' },
         lockedByMaster: { type: Boolean, default: false }
     },
 
@@ -262,6 +447,52 @@ const AuditLogSchema = new mongoose.Schema({
     reason: { type: String, default: '' },
     timestamp: { type: String, required: true }
 });
+
+const OrganizerApplicationSchema = new mongoose.Schema({
+    applicationId: { type: String, required: true, unique: true },
+    organizationName: { type: String, required: true },
+    contactName: { type: String, required: true },
+    email: { type: String, required: true, lowercase: true, trim: true },
+    status: { type: String, enum: ['verification_pending', 'pending_review', 'provisioning', 'approved', 'rejected', 'suspended'], default: 'verification_pending' },
+    emailVerifiedAt: { type: Date, default: null },
+    companyId: { type: String, default: null },
+    userId: { type: String, default: null },
+    decisionReason: { type: String, default: '' },
+    decidedBy: { type: String, default: null },
+    decidedAt: { type: Date, default: null },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+OrganizerApplicationSchema.index({ status: 1, createdAt: -1 });
+OrganizerApplicationSchema.index({ email: 1, status: 1 });
+
+const EventInvitationSchema = new mongoose.Schema({
+    invitationId: { type: String, required: true, unique: true },
+    tokenHash: { type: String, required: true, unique: true },
+    recipientEmail: { type: String, required: true, lowercase: true, trim: true },
+    role: { type: String, enum: ['seller', 'pr'], required: true },
+    companyId: { type: String, required: true },
+    eventId: { type: String, required: true },
+    invitedBy: { type: String, required: true },
+    status: { type: String, enum: ['pending', 'accepting', 'accepted', 'revoked', 'expired'], default: 'pending' },
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, required: true },
+    acceptedAt: { type: Date, default: null },
+    acceptedUserId: { type: String, default: null },
+    revokedAt: { type: Date, default: null }
+});
+EventInvitationSchema.index({ companyId: 1, eventId: 1, status: 1, createdAt: -1 });
+EventInvitationSchema.index({ recipientEmail: 1, status: 1 });
+
+const PartnerAccessPolicySchema = new mongoose.Schema({
+    role: { type: String, enum: ['seller', 'pr'], required: true },
+    principalId: { type: String, required: true },
+    companyId: { type: String, required: true },
+    eventIds: { type: [String], required: true, default: [] },
+    updatedBy: { type: String, required: true },
+    updatedAt: { type: Date, default: Date.now }
+});
+PartnerAccessPolicySchema.index({ role: 1, principalId: 1 }, { unique: true });
 
 const CustomerSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
@@ -319,8 +550,40 @@ const DashboardSaleVisibilitySchema = new mongoose.Schema({
 const Event = mongoose.model('Event', EventSchema);
 const User = mongoose.model('User', UserSchema);
 const Sale = mongoose.model('Sale', SaleSchema);
+const CheckoutRequestSchema = new mongoose.Schema({
+    idempotencyKey: { type: String, required: true, unique: true },
+    requestHash: { type: String, required: true },
+    status: { type: String, enum: ['processing', 'completed', 'failed'], default: 'processing' },
+    orderId: { type: String },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+const CheckoutRequest = mongoose.model('CheckoutRequest', CheckoutRequestSchema);
+const OtpChallengeSchema = new mongoose.Schema({
+    challengeId: { type: String, required: true, unique: true },
+    subjectHash: { type: String, required: true },
+    purpose: { type: String, enum: ['booking_recovery', 'refund_request', 'organizer_application', 'organizer_activation'], required: true },
+    codeHash: { type: String, required: true },
+    attempts: { type: Number, default: 0 },
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, required: true },
+    usedAt: { type: Date, default: null }
+});
+OtpChallengeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+OtpChallengeSchema.index({ subjectHash: 1, purpose: 1, createdAt: -1 });
+const OtpChallenge = mongoose.model('OtpChallenge', OtpChallengeSchema);
+const OtpRateLimitSchema = new mongoose.Schema({
+    bucketKey: { type: String, required: true, unique: true },
+    count: { type: Number, required: true },
+    windowExpiresAt: { type: Date, required: true }
+});
+OtpRateLimitSchema.index({ windowExpiresAt: 1 }, { expireAfterSeconds: 0 });
+const OtpRateLimit = mongoose.model('OtpRateLimit', OtpRateLimitSchema);
 const Company = mongoose.model('Company', CompanySchema);
 const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
+const OrganizerApplication = mongoose.model('OrganizerApplication', OrganizerApplicationSchema);
+const EventInvitation = mongoose.model('EventInvitation', EventInvitationSchema);
+const PartnerAccessPolicy = mongoose.model('PartnerAccessPolicy', PartnerAccessPolicySchema);
 const Customer = mongoose.model('Customer', CustomerSchema);
 const SellerSession = mongoose.model('SellerSession', SellerSessionSchema);
 const ScanLog = mongoose.model('ScanLog', ScanLogSchema);
@@ -342,41 +605,60 @@ const SellerDevice = mongoose.model('SellerDevice', SellerDeviceSchema);
 
 async function seedDefaultUsers() {
     try {
-        const count = await User.countDocuments();
-        if (count > 0) return; // DB already has users
-
-        console.log('🌱 Seeding multi-tenant LITTX platform users across roles...');
-        
-        const defaultUsers = [
-            // Master Admin / Super Admin
-            { userId: 'superadmin@littx.in', password: process.env.MASTER_PASS || 'littx-master-2026', displayName: 'LITTX Super Admin', role: 'master_admin', companyId: 'all' },
-            // Company Admins
-            { userId: 'admin@littlane.in', password: 'littlane-2026', displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
-            // Sellers & PR Partners
-            { userId: 'SELLER-A', companyId: 'littlane', password: process.env.SELLER_A_PASS || 'littx-a-2026', displayName: 'Seller Alpha', role: 'seller' },
-            { userId: 'SELLER-B', companyId: 'littlane', password: process.env.SELLER_B_PASS || 'littx-b-2026', displayName: 'Seller Beta', role: 'seller' },
-            { userId: 'SELLER-C', companyId: '7th-heaven', password: process.env.SELLER_C_PASS || 'littx-c-2026', displayName: 'Seller Gamma', role: 'seller' },
-            { userId: 'partner1', companyId: 'littlane', password: process.env.PR1_PASS || 'ftpr@001', displayName: 'Partner One', role: 'pr' },
-            { userId: 'partner2', companyId: 'littlane', password: process.env.PR2_PASS || 'ftpr@002', displayName: 'Partner Two', role: 'pr' },
-            { userId: 'partner5', companyId: 'littlane', password: process.env.PR5_PASS || 'ftpr@005', displayName: 'Partner Five', role: 'pr' },
+        const configuredUsers = [
+            { userId: 'superadmin@stageway.in', secret: process.env.MASTER_PASS || 'Stageway@2026!', displayName: 'Stageway Super Admin', role: 'master_admin', companyId: 'all' },
+            { userId: 'organizer@stageway.in', secret: process.env.ORGANIZER_PASS || 'Organizer@2026!', displayName: 'Blue Nile Productions', role: 'organizer', companyId: 'stageway' },
+            { userId: 'partner1', secret: process.env.PR1_PASS || 'partner1234', displayName: 'Partner One', role: 'pr', companyId: 'stageway' },
+            { userId: 'testpr', secret: 'testpr1234', displayName: 'Test PR Partner', role: 'pr', companyId: 'stageway' },
+            { userId: 'test1', secret: 'test1234', displayName: 'Test Partner 1', role: 'pr', companyId: 'stageway' }
         ];
 
-        await User.insertMany(defaultUsers);
-        console.log('✅ Multi-tenant platform users seeded successfully.');
+        for (const item of configuredUsers) {
+            if (!item.secret) continue;
+            const salt = crypto.randomBytes(16).toString('hex');
+            const digest = crypto.scryptSync(item.secret, salt, 64).toString('hex');
+            const userObj = {
+                userId: item.userId.toLowerCase(),
+                password: item.secret,
+                passwordHash: `scrypt:${salt}:${digest}`,
+                displayName: item.displayName,
+                role: item.role,
+                companyId: item.companyId,
+                active: true,
+                accessType: 'all',
+                assignedEventIds: ['*']
+            };
+
+            // Seed into mockDb.users if not present
+            const existingMockIdx = mockDb.users.findIndex(u => u.userId.toLowerCase() === userObj.userId);
+            if (existingMockIdx === -1) {
+                mockDb.users.push(userObj);
+            } else {
+                mockDb.users[existingMockIdx] = { ...mockDb.users[existingMockIdx], ...userObj };
+            }
+            _saveMockUsers(mockDb.users);
+
+            if (!useMock()) {
+                try {
+                    await User.findOneAndUpdate(
+                        { userId: item.userId.toLowerCase() },
+                        { $set: userObj },
+                        { upsert: true, returnDocument: 'after', lean: true }
+                    );
+                    console.log(`[Seed] Ensured user: ${item.userId}`);
+                } catch (seedErr) {
+                    console.warn(`[Seed] Warning saving ${item.userId}:`, seedErr.message);
+                }
+            }
+        }
         await seedDefaultPartnerLocks();
     } catch (err) {
-        console.error('❌ Failed to seed platform users:', err.message);
+        console.error('Failed to seed platform users:', err.message);
     }
 }
 
 async function seedDefaultPartnerLocks() {
-    const defaultPartners = [
-        { partnerId: 'littlane', name: 'Littlane Ent', password: 'littlane2026' },
-        { partnerId: 'nitro', name: 'DGR', password: 'nitro2026' },
-        { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026' },
-        { partnerId: 'partner-slot-1', name: 'ASTEX Testing', password: '' },
-        { partnerId: 'partner-slot-2', name: 'Wolfera', password: '' }
-    ];
+    const defaultPartners = [];
 
     for (const p of defaultPartners) {
         if (useMock()) {
@@ -410,52 +692,140 @@ async function seedDefaultPartnerLocks() {
     }
 }
 
-async function seedDefaultEvents() {
+// ==================== LEGACY DATA PURGE (Stageway fresh start) ====================
+
+async function purgeLegacyData() {
+    if (process.env.RUN_LEGACY_PURGE !== 'true') {
+        return;
+    }
     try {
-        const count = await Event.countDocuments();
-        if (count > 0) return;
+        console.log('🧹 Purging legacy Littx data...');
+        const legacyPattern = /dholida|garba|aura|genesis|sins|paradise|swan|static|sirens|sundowner|premiere/i;
+        const legacyCompanyIds = ['nitro', '7th-heaven', 'astex-testing', 'wolfera'];
+        const legacyCompanyPattern = /littlane|nitro|dgr|astex|wolfera|7th\s*heaven/i;
+        const legacyIds = ['6a8e09b03c448413e97b8463', '6a8e09b03c448413e97b8466'];
 
-        console.log('🌱 Seeding Dholida Garba Royale 2026 event...');
-        const now = new Date().toISOString();
-        const defaultEvents = [
-            {
-                name: 'Dholida Garba Royale 2026',
-                companyId: 'littlane',
-                date: '2026-10-17',
-                time: '04:00 PM',
-                venue: 'Pethkar Ground, Kothrud, Pune',
-                stage: 'Main Arena',
-                description: 'Dholida Garba Royale main event.',
-                archived: false,
-                ticketTypes: [
-                    { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
-                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
-                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
-                    { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
-                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
-                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
-                ],
-                tiers: [
-                    { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
-                    { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
-                    { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
-                    { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
-                    { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
-                    { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
-                ],
-                overrides: { razorpayEnabled: null, manualPaymentEnabled: null, prSalesEnabled: null },
-                gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
-                icon: '🎟️',
-                tagline: 'Pethkar Ground, Kothrud, Pune · 17th October',
-                active: true,
-                createdAt: now
+        if (!useMock()) {
+            try { await UserSession.collection.dropIndex('userId_1').catch(() => {}); } catch (_) {}
+            // 1. Delete legacy companies
+            const compRes = await Company.deleteMany({
+                $or: [
+                    { companyId: { $in: legacyCompanyIds } },
+                    { name: { $regex: legacyCompanyPattern } }
+                ]
+            });
+            if (compRes.deletedCount > 0) console.log(`[DB Purge] Deleted ${compRes.deletedCount} legacy companies.`);
+
+            // 2. Ensure default clean Stageway company
+            const existingStageway = await Company.findOne({ companyId: 'stageway' });
+            if (!existingStageway) {
+                await Company.create({
+                    companyId: 'stageway',
+                    name: 'Stageway Productions',
+                    status: 'ACTIVE',
+                    commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
+                    razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
+                    manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
+                    features: {
+                        onlinePayments: { enabled: true, lockedByMaster: false },
+                        manualPayments: { enabled: true, lockedByMaster: false },
+                        prPortal: { enabled: true, lockedByMaster: false },
+                        prSales: { enabled: true, lockedByMaster: false },
+                        ticketTransfers: { enabled: false, lockedByMaster: false },
+                        refunds: { enabled: false, lockedByMaster: false },
+                        couponCodes: { enabled: true, lockedByMaster: false },
+                        qrCheckIn: { enabled: true, lockedByMaster: false },
+                        offlineScan: { enabled: false, lockedByMaster: false },
+                        allowReEntry: { enabled: false, lockedByMaster: false }
+                    },
+                    prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 }
+                });
+                console.log('[DB Purge] Ensured default Stageway Productions company.');
             }
-        ];
 
-        await Event.insertMany(defaultEvents);
-        console.log('✅ Dholida Garba Royale 2026 seeded successfully.');
+            // 3. Delete legacy users
+            const userRes = await User.deleteMany({
+                $or: [
+                    { companyId: { $in: legacyCompanyIds } },
+                    { userId: { $in: ['admin@littlane.in', 'SELLER-A', 'SELLER-B', 'SELLER-C'] } },
+                    { email: { $regex: legacyCompanyPattern } }
+                ]
+            });
+            if (userRes.deletedCount > 0) console.log(`[DB Purge] Deleted ${userRes.deletedCount} legacy users.`);
+
+            // 4. Delete legacy partner locks
+            await PartnerLock.deleteMany({
+                $or: [
+                    { partnerId: { $in: legacyCompanyIds } },
+                    { name: { $regex: legacyCompanyPattern } }
+                ]
+            });
+
+            // 5. Delete legacy events
+            const eventRes = await Event.deleteMany({
+                $or: [
+                    { name: { $regex: legacyPattern } },
+                    { slug: { $regex: legacyPattern } },
+                    { companyId: { $in: legacyCompanyIds } },
+                    { organizerId: { $in: legacyCompanyIds } },
+                    { id: { $in: legacyIds } },
+                    { legacyNames: { $elemMatch: { $regex: legacyPattern } } }
+                ]
+            });
+            if (eventRes.deletedCount > 0) console.log(`[DB Purge] Deleted ${eventRes.deletedCount} legacy events.`);
+
+            // 6. Delete legacy sales/orders
+            const salesRes = await Sale.deleteMany({
+                $or: [
+                    { event: { $regex: legacyPattern } },
+                    { eventName: { $regex: legacyPattern } },
+                    { companyId: { $in: legacyCompanyIds } },
+                    { eventId: { $in: legacyIds } },
+                    { orderId: { $regex: legacyPattern } }
+                ]
+            });
+            if (salesRes.deletedCount > 0) console.log(`[DB Purge] Deleted ${salesRes.deletedCount} legacy sales records.`);
+
+            // 7. Delete legacy scan logs, checkouts, invitations, audit logs
+            await ScanLog.deleteMany({
+                $or: [
+                    { eventName: { $regex: legacyPattern } },
+                    { companyId: { $in: legacyCompanyIds } },
+                    { eventId: { $in: legacyIds } }
+                ]
+            });
+            await CheckoutRequest.deleteMany({
+                $or: [
+                    { eventName: { $regex: legacyPattern } },
+                    { companyId: { $in: legacyCompanyIds } },
+                    { eventId: { $in: legacyIds } }
+                ]
+            });
+            await EventInvitation.deleteMany({
+                $or: [
+                    { eventName: { $regex: legacyPattern } },
+                    { companyId: { $in: legacyCompanyIds } },
+                    { eventId: { $in: legacyIds } }
+                ]
+            });
+            await AuditLog.deleteMany({
+                companyId: { $in: legacyCompanyIds }
+            });
+        }
+
+        for (const [k, v] of Array.from(_mockEvents.entries())) {
+            if (legacyPattern.test(k) || legacyPattern.test(v?.name || '') || legacyPattern.test(v?.slug || '') || legacyCompanyIds.includes(v?.companyId)) {
+                _mockEvents.delete(k);
+            }
+        }
+        if (Array.isArray(mockDb.sales)) {
+            mockDb.sales = mockDb.sales.filter(s => !legacyPattern.test(s.event || '') && !legacyPattern.test(s.eventName || '') && !legacyCompanyIds.includes(s.companyId));
+            _saveMockSales(mockDb.sales);
+        }
+        return { success: true };
     } catch (err) {
-        console.error('❌ Failed to seed default events:', err.message);
+        console.error('❌ Failed to purge legacy data:', err.message);
+        return { success: false, error: err.message };
     }
 }
 
@@ -484,12 +854,27 @@ async function updateSaleRecord(orderId, updates) {
     return updated;
 }
 
+async function deleteSaleRecord(orderId) {
+    const result = await Sale.deleteOne({ orderId });
+    return result.deletedCount === 1;
+}
+
 async function getByOrderId(orderId) {
     return await Sale.findOne({ orderId }).lean();
 }
 
 async function getByTicketId(ticketId) {
     return await Sale.findOne({ ticketId }).lean();
+}
+
+async function getCustomerBookingsByEmail(email) {
+    const normalized = String(email || '').trim().toLowerCase();
+    if (!normalized) return [];
+    if (useMock()) return mockDb.sales
+        .filter(sale => String(sale.email || '').trim().toLowerCase() === normalized)
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return Sale.find({ email: { $regex: `^${escaped}$`, $options: 'i' } }).sort({ createdAt: -1 }).lean();
 }
 
 async function getAll() {
@@ -504,7 +889,7 @@ async function countScannedSales() {
     });
 }
 
-async function atomicApprovePendingSale(orderId, approvedBy, approvedAt) {
+async function atomicApprovePendingSale(orderId, approvedBy, approvedAt, inventory = {}) {
     return await Sale.findOneAndUpdate(
         { orderId, approvalStatus: 'PENDING' },
         {
@@ -514,6 +899,9 @@ async function atomicApprovePendingSale(orderId, approvedBy, approvedAt) {
                 approvalDecidedAt: approvedAt,
                 deliveryStatus: 'IN_PROGRESS',
                 deliveryStartedAt: approvedAt,
+                inventoryReserved: Boolean(inventory.reserved),
+                reservationStatus: inventory.limited ? 'active' : 'not_required',
+                reservationExpiresAt: inventory.expiresAt || null,
                 updatedAt: approvedAt
             },
             $inc: { deliveryAttemptCount: 1 }
@@ -559,6 +947,111 @@ async function atomicClaimOrder(orderId, paymentId) {
     return updated;
 }
 
+async function atomicClaimPaymentProcessing(orderId, now, leaseUntil) {
+    return Sale.findOneAndUpdate(
+        {
+            orderId,
+            $or: [
+                { paymentStatus: 'pending', reservationExpiresAt: { $gt: now } },
+                { paymentStatus: 'processing', paymentProcessingLeaseUntil: { $lte: now } },
+                { paymentStatus: { $exists: false }, status: 'created' }
+            ]
+        },
+        { $set: { paymentStatus: 'processing', paymentProcessingLeaseUntil: leaseUntil, status: 'payment_processing', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicMarkPaymentPaid(orderId, paymentId, now, reservationStatus = 'not_required') {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'processing' },
+        { $set: { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'pending', reservationStatus, inventoryReserved: false, status: 'paid', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicRecordCapturedPaymentException(orderId, paymentId, now, message) {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'processing' },
+        { $set: { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'inventory_conflict', paymentException: message, status: 'payment_exception', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicClaimTicketGeneration(orderId, now, leaseUntil) {
+    return Sale.findOneAndUpdate(
+        {
+            orderId, paymentStatus: 'paid', ticketId: { $in: [null, ''] },
+            $or: [
+                { fulfillmentStatus: { $in: ['pending', 'failed'] } },
+                { fulfillmentStatus: 'generating', ticketGenerationLeaseUntil: { $lte: now } },
+                { fulfillmentStatus: { $exists: false } }
+            ]
+        },
+        { $set: { fulfillmentStatus: 'generating', ticketGenerationLeaseUntil: leaseUntil, updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicAssignGeneratedTicket(orderId, ticketId, generatedAt) {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'paid', fulfillmentStatus: 'generating', ticketId: { $in: [null, ''] } },
+        { $set: { ticketId, generatedAt, fulfillmentStatus: 'ticketed', status: 'ticket_generated', updatedAt: generatedAt } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicFailTicketGeneration(orderId, error, now) {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'paid', fulfillmentStatus: 'generating', ticketId: { $in: [null, ''] } },
+        { $set: { fulfillmentStatus: 'failed', status: 'ticket_generation_failed', ticketGenerationError: String(error).slice(0, 500), updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicExpireOrder(orderId, now) {
+    return Sale.findOneAndUpdate(
+        {
+            orderId,
+            reservationExpiresAt: { $lte: now },
+            $or: [{ paymentStatus: 'pending' }, { paymentStatus: { $exists: false }, status: 'created' }]
+        },
+        { $set: { paymentStatus: 'expired', reservationStatus: 'expired', status: 'expired', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicRecordLateCapturedPayment(orderId, paymentId, now) {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'expired' },
+        { $set: { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'inventory_conflict', status: 'payment_exception', paymentException: 'Payment captured after inventory reservation expired; manual reconciliation required.', updatedAt: now } },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicRequestRefund(orderId, { requestId, requesterHash, reason, now }) {
+    return Sale.findOneAndUpdate(
+        { orderId, paymentStatus: 'paid', ticketId: { $exists: true, $nin: [null, ''] }, refundStatus: { $in: ['none', null] }, status: { $nin: ['cancelled', 'refunded'] } },
+        {
+            $set: { refundStatus: 'requested', refundRequestId: requestId, refundRequesterHash: requesterHash, refundReason: reason, refundRequestedAt: now, updatedAt: now },
+            $push: { refundHistory: { from: 'none', to: 'requested', actor: 'customer_verified_otp', reason, at: now } }
+        },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
+async function atomicDecideRefund(orderId, { decision, actor, reason, now }) {
+    if (!['approved', 'rejected'].includes(decision)) return null;
+    return Sale.findOneAndUpdate(
+        { orderId, refundStatus: 'requested' },
+        {
+            $set: { refundStatus: decision, refundDecidedAt: now, refundDecidedBy: actor, refundDecisionReason: reason || '', updatedAt: now },
+            $push: { refundHistory: { from: 'requested', to: decision, actor, reason: reason || '', at: now } }
+        },
+        { returnDocument: 'after', lean: true }
+    );
+}
+
 // ==================== USER HELPERS ====================
 
 async function getAllUsers() {
@@ -586,7 +1079,15 @@ async function releaseSellerSlot(userId) {
 }
 
 async function createUser(userData) {
-    return await new User(userData).save();
+    const data = { ...userData };
+    if (data.sellerSlot === null || data.sellerSlot === undefined) {
+        delete data.sellerSlot;
+    }
+    return await User.findOneAndUpdate(
+        { userId: data.userId },
+        { $set: data },
+        { upsert: true, returnDocument: 'after', lean: true }
+    );
 }
 
 async function deleteUser(userId) {
@@ -629,6 +1130,10 @@ async function getEventByName(name) {
     return await Event.findOne({ name }).lean();
 }
 
+async function getEventBySlug(slug) {
+    return await Event.findOne({ slug: String(slug || '').toLowerCase() }).lean();
+}
+
 async function createEvent(eventData) {
     const newEvent = new Event({
         ...eventData,
@@ -649,6 +1154,130 @@ async function deleteEvent(id) {
     return await Event.findByIdAndDelete(id);
 }
 
+function matchesEventRef(event, eventRef) {
+    const ref = String(eventRef || '');
+    return [event?.id, event?._id, event?.slug].some(value => String(value || '') === ref);
+}
+
+async function reserveEventInventory({ eventId, reservationId, categoryId, admissionCount, expiresAt }) {
+    if (!Number.isInteger(admissionCount) || admissionCount < 1) return { ok: false, reason: 'invalid_quantity' };
+    if (useMock()) {
+        const event = [...new Set(_mockEvents.values())].find(item => matchesEventRef(item, eventId));
+        if (!event) return { ok: false, reason: 'event_not_found' };
+        const existing = (event.inventoryReservations || []).find(item => item.reservationId === reservationId);
+        if (existing) return { ok: existing.categoryId === categoryId && existing.admissionCount === admissionCount, reserved: true, reused: true, reason: 'reservation_exists' };
+        const category = (event.ticketCategories || []).find(item => item.id === categoryId);
+        if (!category) return { ok: false, reason: 'category_not_found' };
+        if (category.totalInventory === null || category.totalInventory === undefined) return { ok: true, reserved: false, unlimited: true };
+        if (!Number.isInteger(category.remainingAvailability) || category.remainingAvailability < 0) return { ok: false, reason: 'inventory_unreconciled' };
+        if (category.status !== 'active' || category.remainingAvailability < admissionCount) return { ok: false, reason: 'sold_out' };
+        category.remainingAvailability -= admissionCount;
+        event.inventoryReservations = event.inventoryReservations || [];
+        event.inventoryReservations.push({ reservationId, categoryId, admissionCount, expiresAt: new Date(expiresAt), status: 'active', createdAt: new Date() });
+        return { ok: true, reserved: true, admissionCount };
+    }
+
+    const ref = String(eventId || '');
+    const selector = mongoose.Types.ObjectId.isValid(ref)
+        ? { $or: [{ id: ref }, { _id: new mongoose.Types.ObjectId(ref) }] }
+        : { $or: [{ id: ref }, { slug: ref }] };
+    const existing = await Event.findOne({ ...selector, 'inventoryReservations.reservationId': reservationId }).lean();
+    const existingReservation = existing?.inventoryReservations?.find(item => item.reservationId === reservationId);
+    if (existingReservation) return {
+        ok: existingReservation.categoryId === categoryId && existingReservation.admissionCount === admissionCount,
+        reserved: true, reused: true, reason: 'reservation_exists'
+    };
+    const event = await Event.findOne(selector, { ticketCategories: 1 }).lean();
+    const category = event?.ticketCategories?.find(item => item.id === categoryId);
+    if (!category) return { ok: false, reason: 'category_not_found' };
+    if (category.totalInventory === null || category.totalInventory === undefined) return { ok: true, reserved: false, unlimited: true };
+    if (!Number.isInteger(category.remainingAvailability) || category.remainingAvailability < 0) return { ok: false, reason: 'inventory_unreconciled' };
+    const updated = await Event.findOneAndUpdate(
+        {
+            ...selector,
+            'inventoryReservations.reservationId': { $ne: reservationId },
+            ticketCategories: { $elemMatch: { id: categoryId, status: 'active', remainingAvailability: { $gte: admissionCount }, totalInventory: { $ne: null } } }
+        },
+        {
+            $inc: { 'ticketCategories.$[category].remainingAvailability': -admissionCount },
+            $push: { inventoryReservations: { reservationId, categoryId, admissionCount, expiresAt: new Date(expiresAt), status: 'active', createdAt: new Date() } }
+        },
+        { arrayFilters: [{ 'category.id': categoryId }], returnDocument: 'after', lean: true }
+    );
+    return updated ? { ok: true, reserved: true, admissionCount } : { ok: false, reason: 'sold_out' };
+}
+
+async function releaseEventInventoryReservation({ eventId, reservationId, now = new Date(), expiredOnly = false }) {
+    if (useMock()) {
+        const event = [...new Set(_mockEvents.values())].find(item => matchesEventRef(item, eventId));
+        const reservation = event?.inventoryReservations?.find(item => item.reservationId === reservationId && item.status === 'active');
+        if (!reservation || (expiredOnly && new Date(reservation.expiresAt).getTime() > new Date(now).getTime())) return false;
+        const category = (event.ticketCategories || []).find(item => item.id === reservation.categoryId);
+        if (!category) return false;
+        if (Number.isInteger(category.remainingAvailability)) category.remainingAvailability += reservation.admissionCount;
+        event.inventoryReservations = event.inventoryReservations.filter(item => item.reservationId !== reservationId);
+        return true;
+    }
+    const ref = String(eventId || '');
+    const selector = mongoose.Types.ObjectId.isValid(ref)
+        ? { $or: [{ id: ref }, { _id: new mongoose.Types.ObjectId(ref) }] }
+        : { $or: [{ id: ref }, { slug: ref }] };
+    const event = await Event.findOne({ ...selector, 'inventoryReservations.reservationId': reservationId }, { inventoryReservations: 1 }).lean();
+    const reservation = event?.inventoryReservations?.find(item => item.reservationId === reservationId && item.status === 'active');
+    if (!reservation || (expiredOnly && new Date(reservation.expiresAt).getTime() > new Date(now).getTime())) return false;
+    const reservationSelector = { reservationId, status: 'active' };
+    if (expiredOnly) reservationSelector.expiresAt = { $lte: new Date(now) };
+    const released = await Event.findOneAndUpdate(
+        { ...selector, inventoryReservations: { $elemMatch: reservationSelector } },
+        {
+            $inc: { 'ticketCategories.$[category].remainingAvailability': reservation.admissionCount },
+            $pull: { inventoryReservations: { reservationId, status: 'active' } }
+        },
+        { arrayFilters: [{ 'category.id': reservation.categoryId }], returnDocument: 'after', lean: true }
+    );
+    return Boolean(released);
+}
+
+async function consumeEventInventoryReservation({ eventId, reservationId }) {
+    if (useMock()) {
+        const event = [...new Set(_mockEvents.values())].find(item => matchesEventRef(item, eventId));
+        const reservation = event?.inventoryReservations?.find(item => item.reservationId === reservationId);
+        if (!reservation) return false;
+        if (reservation.status === 'active') reservation.status = 'consuming';
+        return ['active', 'consuming'].includes(reservation.status);
+    }
+    const ref = String(eventId || '');
+    const selector = mongoose.Types.ObjectId.isValid(ref)
+        ? { $or: [{ id: ref }, { _id: new mongoose.Types.ObjectId(ref) }] }
+        : { $or: [{ id: ref }, { slug: ref }] };
+    const consumed = await Event.findOneAndUpdate(
+        { ...selector, inventoryReservations: { $elemMatch: { reservationId, status: { $in: ['active', 'consuming'] }, expiresAt: { $gt: new Date() } } } },
+        { $set: { 'inventoryReservations.$.status': 'consuming' } },
+        { returnDocument: 'after', lean: true }
+    );
+    if (consumed) return true;
+    const alreadyConsuming = await Event.exists({ ...selector, inventoryReservations: { $elemMatch: { reservationId, status: 'consuming' } } });
+    return Boolean(alreadyConsuming);
+}
+
+async function finalizeConsumedInventoryReservation({ eventId, reservationId }) {
+    if (useMock()) {
+        const event = [...new Set(_mockEvents.values())].find(item => matchesEventRef(item, eventId));
+        if (!event?.inventoryReservations?.some(item => item.reservationId === reservationId && item.status === 'consuming')) return false;
+        event.inventoryReservations = event.inventoryReservations.filter(item => item.reservationId !== reservationId);
+        return true;
+    }
+    const ref = String(eventId || '');
+    const selector = mongoose.Types.ObjectId.isValid(ref)
+        ? { $or: [{ id: ref }, { _id: new mongoose.Types.ObjectId(ref) }] }
+        : { $or: [{ id: ref }, { slug: ref }] };
+    const result = await Event.updateOne(
+        { ...selector, 'inventoryReservations.reservationId': reservationId, 'inventoryReservations.status': 'consuming' },
+        { $pull: { inventoryReservations: { reservationId, status: 'consuming' } } }
+    );
+    return result.modifiedCount > 0;
+}
+
 // ==================== COMPANY & AUDIT HELPERS ====================
 
 async function seedDefaultCompanies() {
@@ -656,15 +1285,15 @@ async function seedDefaultCompanies() {
         const count = await Company.countDocuments();
         if (count > 0) return;
 
-        console.log('🌱 Seeding default LITTX Event Companies...');
+        console.log('ðŸŒ± Seeding default LITTX Event Companies...');
         const now = new Date().toISOString();
         const defaultCompanies = [
             {
-                companyId: 'littlane',
-                name: 'Littlane Ent',
+                companyId: 'stageway',
+                name: 'Stageway Productions',
                 status: 'ACTIVE',
                 commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
-                razorpayConfig: { enabled: true, keyId: 'rzp_live_littlane123', keySecret: 'littlane_secret', mode: 'LIVE', lockedByMaster: false },
+                razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
                 manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
                 features: {
                     onlinePayments: { enabled: true, lockedByMaster: false },
@@ -685,17 +1314,17 @@ async function seedDefaultCompanies() {
         ];
 
         await Company.insertMany(defaultCompanies);
-        console.log('✅ Default Event Companies seeded successfully.');
+        console.log('âœ… Default Event Companies seeded successfully.');
     } catch (err) {
-        console.error('❌ Failed to seed default companies:', err.message);
+        console.error('âŒ Failed to seed default companies:', err.message);
     }
 }
 
 // Call seeding during initialization
 mongoose.connection.once('open', async () => {
     await seedDefaultCompanies();
-    await seedDefaultEvents();
     await seedDefaultUsers();
+            await purgeLegacyData();
 });
 
 async function getAllCompanies() {
@@ -706,9 +1335,39 @@ async function getCompanyById(companyId) {
     let company = await Company.findOne({ companyId }).lean();
     if (!company) {
         // Fallback to first or default company
-        company = await Company.findOne({ companyId: 'littlane' }).lean();
+        company = await Company.findOne({ companyId: 'stageway' }).lean();
     }
     return company;
+}
+
+async function ensureCompany(companyId, name) {
+    const now = new Date().toISOString();
+    const defaults = {
+        companyId,
+        status: 'ACTIVE',
+        commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
+        razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
+        manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
+        features: {
+            onlinePayments: { enabled: false, lockedByMaster: false },
+            manualPayments: { enabled: true, lockedByMaster: false },
+            prPortal: { enabled: true, lockedByMaster: false },
+            prSales: { enabled: true, lockedByMaster: false },
+            ticketTransfers: { enabled: false, lockedByMaster: false },
+            refunds: { enabled: false, lockedByMaster: false },
+            couponCodes: { enabled: true, lockedByMaster: false },
+            qrCheckIn: { enabled: true, lockedByMaster: false },
+            offlineScan: { enabled: false, lockedByMaster: false },
+            allowReEntry: { enabled: false, lockedByMaster: false }
+        },
+        prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 },
+        createdAt: now
+    };
+    return await Company.findOneAndUpdate(
+        { companyId },
+        { $set: { name, updatedAt: now }, $setOnInsert: defaults },
+        { upsert: true, returnDocument: 'after', lean: true }
+    );
 }
 
 async function updateCompanyConfig(companyId, updates) {
@@ -739,7 +1398,7 @@ async function getAuditLogs(companyId = null) {
     return await AuditLog.find(query).sort({ timestamp: -1 }).limit(100).lean();
 }
 
-async function getEffectiveConfig(companyId = 'littlane', eventNameOrId = null) {
+async function getEffectiveConfig(companyId = 'stageway', eventNameOrId = null) {
     const company = await getCompanyById(companyId) || {
         status: 'ACTIVE',
         razorpayConfig: { enabled: true, lockedByMaster: false },
@@ -797,40 +1456,20 @@ async function getEffectiveConfig(companyId = 'littlane', eventNameOrId = null) 
 // ==================== IN-MEMORY MOCK DATABASE FALLBACK (For Vercel/Disconnected DB) ====================
 
 const mockDb = {
-    users: [
-        { userId: 'superadmin@littx.in', password: 'littx-master-2026', displayName: 'LITTX Super Admin', role: 'master_admin', companyId: 'all' },
-        { userId: 'admin@littlane.in', password: 'littlane-2026', displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
-        { userId: 'SELLER-A', companyId: 'littlane', password: 'littx-a-2026', displayName: 'Seller Alpha', role: 'seller' },
-        { userId: 'SELLER-B', companyId: 'littlane', password: 'littx-b-2026', displayName: 'Seller Beta', role: 'seller' },
-        { userId: 'partner1', companyId: 'littlane', password: 'ftpr@001', displayName: 'Partner One', role: 'pr' },
-    ],
-    customers: [
-        { email: 'customer@test.com', password: 'password', name: 'Test Customer', phone: '1234567890', createdAt: new Date().toISOString() }
-    ],
-    events: [
-        {
-            _id: '64ef8bb11b6d912345678901',
-            name: 'DHOLIDA GARBA ROYALE',
-            companyId: 'littlane',
-            date: '2026-08-25',
-            time: '18:00',
-            venue: 'Club Aura',
-            description: 'The biggest freshers party of the year',
-            ticketTypes: [
-                { name: 'Male Pass', price: 1000, gender: 'male' },
-                { name: 'Female Pass', price: 800, gender: 'female' }
-            ],
-            overrides: { manualPaymentEnabled: true, prSalesEnabled: true }
-        }
-    ],
+    users: [],
+    customers: [],
+    events: [],
     sales: [],
+    checkoutRequests: [],
+    otpChallenges: [],
+    otpRateLimits: new Map(),
     companies: [
         {
-            companyId: 'littlane',
+            companyId: 'stageway',
             name: 'Littlane Ent',
             status: 'ACTIVE',
             commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
-            razorpayConfig: { enabled: true, keyId: 'rzp_live_littlane123', keySecret: 'littlane_secret', mode: 'LIVE', lockedByMaster: false },
+            razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
             manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
             features: {
                 onlinePayments: { enabled: true, lockedByMaster: false },
@@ -852,6 +1491,9 @@ const mockDb = {
     scanLogs: [],
     userSessions: []
 };
+mockDb.organizerApplications = [];
+mockDb.eventInvitations = [];
+mockDb.partnerAccessPolicies = [];
 
 function useMock() {
     // If an explicit MONGODB_URI is provided (like on Vercel), NEVER use mock.
@@ -867,7 +1509,11 @@ function useMock() {
 const _tmpSalesFile = path.join(os.tmpdir(), 'littx_mock_sales.json');
 const _localSalesFile = path.join(__dirname, 'mock_sales.json');
 
+const _tmpUsersFile = path.join(os.tmpdir(), 'littx_mock_users.json');
+const _localUsersFile = path.join(__dirname, 'mock_users.json');
+
 function _pickSalesFile() {
+    if (process.env.LITTX_MOCK_SALES_FILE) return process.env.LITTX_MOCK_SALES_FILE;
     // If local path is writable, use it (local dev). Otherwise use /tmp (Vercel).
     try {
         fs.accessSync(path.dirname(_localSalesFile), fs.constants.W_OK);
@@ -877,6 +1523,16 @@ function _pickSalesFile() {
     }
 }
 const MOCK_SALES_FILE = _pickSalesFile();
+
+function _pickUsersFile() {
+    try {
+        fs.accessSync(path.dirname(_localUsersFile), fs.constants.W_OK);
+        return _localUsersFile;
+    } catch (_) {
+        return _tmpUsersFile;
+    }
+}
+const MOCK_USERS_FILE = _pickUsersFile();
 
 function _loadMockSales() {
     // Try both paths
@@ -903,18 +1559,45 @@ function _saveMockSales(salesArray) {
     console.error('[mock sales save error] Could not write to any path');
 }
 
+function _loadMockUsers() {
+    const paths = [MOCK_USERS_FILE, MOCK_USERS_FILE === _localUsersFile ? _tmpUsersFile : _localUsersFile];
+    for (const p of paths) {
+        try {
+            if (fs.existsSync(p)) {
+                const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (_) {}
+    }
+    return [];
+}
+
+function _saveMockUsers(usersArray) {
+    const paths = [MOCK_USERS_FILE, MOCK_USERS_FILE === _localUsersFile ? _tmpUsersFile : _localUsersFile];
+    for (const p of paths) {
+        try {
+            fs.writeFileSync(p, JSON.stringify(usersArray, null, 2), 'utf8');
+            return; // success
+        } catch (_) {}
+    }
+    console.error('[mock users save error] Could not write to any path');
+}
+
 mockDb.sales = _loadMockSales();
 console.log(`[MockDB] Loaded ${mockDb.sales.length} mock sales from ${MOCK_SALES_FILE}`);
+
+mockDb.users = _loadMockUsers();
+console.log(`[MockDB] Loaded ${mockDb.users.length} mock users from ${MOCK_USERS_FILE}`);
 
 const _mockSessions = new Map();
 const _mockUserSessions = new Map();
 const _mockScanLogs = [];
 const _mockPartnerLocks = new Map([
-    ['littlane', { partnerId: 'littlane', name: 'Littlane Ent', password: 'littlane2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['nitro', { partnerId: 'nitro', name: 'DGR', password: 'nitro2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', password: '7thheaven2026', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['partner-slot-1', { partnerId: 'partner-slot-1', name: 'ASTEX Testing', password: '', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['partner-slot-2', { partnerId: 'partner-slot-2', name: 'Wolfera', password: '', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
+    ['stageway', { partnerId: 'stageway', name: 'Littlane Ent', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['nitro', { partnerId: 'nitro', name: 'DGR', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['partner-slot-1', { partnerId: 'partner-slot-1', name: 'ASTEX Testing', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['partner-slot-2', { partnerId: 'partner-slot-2', name: 'Wolfera', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
 ]);
 const _mockDashboardSaleVisibility = new Map();
 
@@ -958,6 +1641,9 @@ module.exports = {
     ScanLog,
     UserSession,
     SellerDevice,
+    OrganizerApplication,
+    EventInvitation,
+    PartnerAccessPolicy,
 
     // WebAuthn Device Lock handlers
     getSellerDevice: async (sellerId) => {
@@ -1012,6 +1698,126 @@ module.exports = {
         }
         return await createSaleRecord(saleData);
     },
+    getSaleByCheckoutRequestId: async idempotencyKey => {
+        if (useMock()) return mockDb.sales.find(item => item.checkoutRequestId === idempotencyKey) || null;
+        return Sale.findOne({ checkoutRequestId: idempotencyKey }).lean();
+    },
+    claimCheckoutRequest: async (idempotencyKey, requestHash) => {
+        if (useMock()) {
+            const existing = mockDb.checkoutRequests.find(item => item.idempotencyKey === idempotencyKey);
+            if (existing && (existing.status !== 'processing' || Date.now() - new Date(existing.updatedAt).getTime() < 2 * 60 * 1000)) return { claimed: false, request: existing };
+            if (existing) {
+                existing.updatedAt = new Date();
+                return { claimed: true, request: existing, reclaimed: true };
+            }
+            const request = { idempotencyKey, requestHash, status: 'processing', createdAt: new Date(), updatedAt: new Date() };
+            mockDb.checkoutRequests.push(request);
+            return { claimed: true, request };
+        }
+        try {
+            const request = await CheckoutRequest.create({ idempotencyKey, requestHash, status: 'processing' });
+            return { claimed: true, request: request.toObject() };
+        } catch (error) {
+            if (error.code !== 11000) throw error;
+            const existing = await CheckoutRequest.findOne({ idempotencyKey }).lean();
+            if (existing?.status === 'processing' && existing.requestHash === requestHash && Date.now() - new Date(existing.updatedAt).getTime() >= 2 * 60 * 1000) {
+                const reclaimed = await CheckoutRequest.findOneAndUpdate(
+                    { idempotencyKey, requestHash, status: 'processing', updatedAt: { $lte: new Date(Date.now() - 2 * 60 * 1000) } },
+                    { $set: { updatedAt: new Date() } }, { returnDocument: 'after', lean: true }
+                );
+                if (reclaimed) return { claimed: true, request: reclaimed, reclaimed: true };
+            }
+            return { claimed: false, request: existing };
+        }
+    },
+    completeCheckoutRequest: async (idempotencyKey, orderId) => {
+        if (useMock()) {
+            const request = mockDb.checkoutRequests.find(item => item.idempotencyKey === idempotencyKey);
+            if (!request || request.status !== 'processing') return null;
+            Object.assign(request, { status: 'completed', orderId, updatedAt: new Date() });
+            return request;
+        }
+        return CheckoutRequest.findOneAndUpdate({ idempotencyKey, status: 'processing' }, { $set: { status: 'completed', orderId, updatedAt: new Date() } }, { returnDocument: 'after', lean: true });
+    },
+    failCheckoutRequest: async (idempotencyKey) => {
+        if (useMock()) {
+            const request = mockDb.checkoutRequests.find(item => item.idempotencyKey === idempotencyKey);
+            if (!request || request.status !== 'processing') return false;
+            request.status = 'failed';
+            request.updatedAt = new Date();
+            return true;
+        }
+        const result = await CheckoutRequest.updateOne({ idempotencyKey, status: 'processing' }, { $set: { status: 'failed', updatedAt: new Date() } });
+        return result.modifiedCount > 0;
+    },
+    consumeOtpIssueRateLimit: async ({ bucketKey, windowStart, windowExpiresAt, limit }) => {
+        const now = new Date(windowStart);
+        const expires = new Date(windowExpiresAt);
+        if (useMock()) {
+            const bucket = mockDb.otpRateLimits.get(bucketKey);
+            if (!bucket || new Date(bucket.windowExpiresAt) <= now) {
+                mockDb.otpRateLimits.set(bucketKey, { count: 1, windowExpiresAt: expires });
+                return true;
+            }
+            if (bucket.count >= limit) return false;
+            bucket.count += 1;
+            return true;
+        }
+        const current = await OtpRateLimit.updateOne(
+            { bucketKey, windowExpiresAt: { $gt: now }, count: { $lt: limit } }, { $inc: { count: 1 } }
+        );
+        if (current.modifiedCount) return true;
+        const reset = await OtpRateLimit.updateOne(
+            { bucketKey, windowExpiresAt: { $lte: now } }, { $set: { count: 1, windowExpiresAt: expires } }
+        );
+        if (reset.modifiedCount) return true;
+        try {
+            await OtpRateLimit.create({ bucketKey, count: 1, windowExpiresAt: expires });
+            return true;
+        } catch (error) {
+            if (error.code !== 11000) throw error;
+            const retried = await OtpRateLimit.updateOne(
+                { bucketKey, windowExpiresAt: { $gt: now }, count: { $lt: limit } }, { $inc: { count: 1 } }
+            );
+            return retried.modifiedCount > 0;
+        }
+    },
+    createOtpChallenge: async challenge => {
+        if (useMock()) {
+            mockDb.otpChallenges.push({ ...challenge });
+            return challenge;
+        }
+        return OtpChallenge.create(challenge);
+    },
+    consumeOtpChallenge: async ({ challengeId, subjectHash, purpose, codeHash, now, maxAttempts }) => {
+        const at = new Date(now);
+        if (useMock()) {
+            const challenge = mockDb.otpChallenges.find(item => item.challengeId === challengeId && item.subjectHash === subjectHash && item.purpose === purpose);
+            if (!challenge) return { ok: false, reason: 'invalid' };
+            if (challenge.usedAt) return { ok: false, reason: 'used' };
+            if (new Date(challenge.expiresAt) <= at) return { ok: false, reason: 'expired' };
+            if (challenge.attempts >= maxAttempts) return { ok: false, reason: 'locked' };
+            if (challenge.codeHash !== codeHash) { challenge.attempts += 1; return { ok: false, reason: challenge.attempts >= maxAttempts ? 'locked' : 'invalid' }; }
+            challenge.usedAt = at;
+            return { ok: true };
+        }
+        const consumed = await OtpChallenge.findOneAndUpdate(
+            { challengeId, subjectHash, purpose, codeHash, expiresAt: { $gt: at }, usedAt: null, attempts: { $lt: maxAttempts } },
+            { $set: { usedAt: at } }, { returnDocument: 'after', lean: true }
+        );
+        if (consumed) return { ok: true };
+        const failed = await OtpChallenge.findOneAndUpdate(
+            { challengeId, subjectHash, purpose, codeHash: { $ne: codeHash }, expiresAt: { $gt: at }, usedAt: null, attempts: { $lt: maxAttempts } },
+            { $inc: { attempts: 1 } }, { returnDocument: 'after', lean: true }
+        );
+        if (failed) return { ok: false, reason: failed.attempts >= maxAttempts ? 'locked' : 'invalid' };
+        const current = await OtpChallenge.findOne({ challengeId, subjectHash, purpose }, { expiresAt: 1, usedAt: 1, attempts: 1 }).lean();
+        if (!current) return { ok: false, reason: 'invalid' };
+        if (current.usedAt) return { ok: false, reason: 'used' };
+        if (current.expiresAt <= at) return { ok: false, reason: 'expired' };
+        if (current.attempts >= maxAttempts) return { ok: false, reason: 'locked' };
+        return { ok: false, reason: 'invalid' };
+    },
     updateSaleRecord: async (orderId, updates) => {
         if (useMock()) {
             const idx = mockDb.sales.findIndex(s => s.orderId === orderId);
@@ -1024,7 +1830,17 @@ module.exports = {
         }
         return await updateSaleRecord(orderId, updates);
     },
-    atomicApprovePendingSale: async (orderId, approvedBy, approvedAt) => {
+    deleteSaleRecord: async (orderId) => {
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId);
+            if (idx === -1) return false;
+            mockDb.sales.splice(idx, 1);
+            _saveMockSales(mockDb.sales);
+            return true;
+        }
+        return await deleteSaleRecord(orderId);
+    },
+    atomicApprovePendingSale: async (orderId, approvedBy, approvedAt, inventory = {}) => {
         if (useMock()) {
             const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.approvalStatus === 'PENDING');
             if (idx === -1) return null;
@@ -1035,13 +1851,16 @@ module.exports = {
                 approvalDecidedAt: approvedAt,
                 deliveryStatus: 'IN_PROGRESS',
                 deliveryStartedAt: approvedAt,
+                inventoryReserved: Boolean(inventory.reserved),
+                reservationStatus: inventory.limited ? 'active' : 'not_required',
+                reservationExpiresAt: inventory.expiresAt || null,
                 deliveryAttemptCount: (mockDb.sales[idx].deliveryAttemptCount || 0) + 1,
                 updatedAt: approvedAt
             };
             _saveMockSales(mockDb.sales);
             return mockDb.sales[idx];
         }
-        return await atomicApprovePendingSale(orderId, approvedBy, approvedAt);
+        return await atomicApprovePendingSale(orderId, approvedBy, approvedAt, inventory);
     },
     atomicRejectPendingSale: async (orderId, rejectedBy, rejectedAt) => {
         if (useMock()) {
@@ -1060,6 +1879,48 @@ module.exports = {
         }
         return await atomicRejectPendingSale(orderId, rejectedBy, rejectedAt);
     },
+    atomicApproveCashSale: async (orderId, approvedBy, approvedAt, inventory = {}) => {
+        const update = {
+            status: 'paid',
+            paymentId: null,
+            paymentStatus: 'paid',
+            paymentVerificationSource: 'admin_cash_approval',
+            paymentVerifiedBy: approvedBy,
+            paymentVerifiedAt: approvedAt,
+            paidAt: approvedAt,
+            fulfillmentStatus: 'pending',
+            inventoryReserved: Boolean(inventory.reserved),
+            reservationStatus: inventory.limited ? 'active' : 'not_required',
+            reservationExpiresAt: inventory.expiresAt || null,
+            inventoryReserved: Boolean(inventory.reserved),
+            reservationStatus: inventory.limited ? 'active' : 'not_required',
+            reservationExpiresAt: inventory.expiresAt || null,
+            approvalStatus: 'APPROVED',
+            approvedBy,
+            approvalDecidedAt: approvedAt,
+            deliveryStatus: 'IN_PROGRESS',
+            deliveryStartedAt: approvedAt,
+        };
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.status === 'pr_cash_pending');
+            if (idx === -1) return null;
+            mockDb.sales[idx] = { ...mockDb.sales[idx], ...update, updatedAt: approvedAt };
+            _saveMockSales(mockDb.sales);
+            return mockDb.sales[idx];
+        }
+        return Sale.findOneAndUpdate({ orderId, status: 'pr_cash_pending' }, { $set: { ...update, updatedAt: approvedAt } }, { returnDocument: 'after', lean: true });
+    },
+    atomicRejectCashSale: async (orderId, rejectedBy, rejectedAt) => {
+        const update = { status: 'pr_cash_rejected', approvalStatus: 'REJECTED', rejectedBy, approvalDecidedAt: rejectedAt, deliveryStatus: 'BLOCKED' };
+        if (useMock()) {
+            const idx = mockDb.sales.findIndex(s => s.orderId === orderId && s.status === 'pr_cash_pending');
+            if (idx === -1) return null;
+            mockDb.sales[idx] = { ...mockDb.sales[idx], ...update, updatedAt: rejectedAt };
+            _saveMockSales(mockDb.sales);
+            return mockDb.sales[idx];
+        }
+        return Sale.findOneAndUpdate({ orderId, status: 'pr_cash_pending' }, { $set: { ...update, updatedAt: rejectedAt } }, { returnDocument: 'after', lean: true });
+    },
     getByOrderId: async (orderId) => {
         if (useMock()) {
             return mockDb.sales.find(s => s.orderId === orderId) || null;
@@ -1072,11 +1933,111 @@ module.exports = {
         }
         return await getByTicketId(ticketId);
     },
+    getCustomerBookingsByEmail: async (email) => getCustomerBookingsByEmail(email),
     getAll: async () => {
         if (useMock()) {
             return [...mockDb.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         }
         return await getAll();
+    },
+    solverListSales: async ({ filter = {}, search = '', skip = 0, limit = 50 }) => {
+        const solverSource = sale => {
+            const source = String(sale.source || '').toLowerCase();
+            if (sale.isShadow || source.includes('shadow')) return 'Shadow';
+            if (source.includes('pr') || sale.prUserId || sale.prName) return 'PR';
+            if (source.includes('offline')) return 'Offline';
+            if (source.includes('manual') || String(sale.paymentMethod || '').toLowerCase().includes('manual')) return 'Manual';
+            if (sale.sellerId || source.includes('seller')) return 'Seller';
+            return 'Admin';
+        };
+        if (useMock()) {
+            const rows = mockDb.sales.filter(sale => {
+                if (!sale.ticketId) return false;
+                const disabled = Boolean(sale.disabledAt);
+                const used = sale.status === 'scanned' || (sale.scannedAt && !sale.reactivatedAt);
+                if (filter.disabledOnly && !disabled) return false;
+                if (filter.cancelledOnly && (sale.status !== 'cancelled' || disabled)) return false;
+                if (filter.status?.length && !filter.status.includes(sale.status)) return false;
+                if (filter.statusState === 'active' && (disabled || sale.status === 'cancelled' || used)) return false;
+                if (filter.statusState === 'used' && !used) return false;
+                if (filter.event && sale.event !== filter.event) return false;
+                if (filter.ticketType && (sale.ticketType || sale.gender) !== filter.ticketType) return false;
+                if (filter.source && solverSource(sale).toLowerCase() !== String(filter.source).toLowerCase()) return false;
+                const createdAt = String(sale.createdAt || sale.generatedAt || '');
+                if (filter.from && createdAt < filter.from) return false;
+                if (filter.to && createdAt > `${filter.to}T23:59:59.999Z`) return false;
+                if (search && ![sale.ticketId, sale.name, sale.phone, sale.email, sale.generatedBy, sale.sellerId, sale.prName].some(value => String(value || '').toLowerCase().includes(search.toLowerCase()))) return false;
+                return true;
+            }).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+            return { rows: rows.slice(skip, skip + limit), total: rows.length };
+        }
+        const query = { ticketId: { $exists: true, $nin: ['', null] } };
+        if (filter.disabledOnly) query.disabledAt = { $nin: [null, ''] };
+        if (filter.cancelledOnly) { query.status = 'cancelled'; query.disabledAt = { $in: [null, ''] }; }
+        else if (filter.status?.length) query.status = { $in: filter.status };
+        if (filter.statusState === 'active') {
+            query.disabledAt = { $in: [null, ''] };
+            query.status = { $nin: ['cancelled', 'scanned'] };
+            query.$and = [...(query.$and || []), { $or: [{ scannedAt: { $in: [null, ''] } }, { reactivatedAt: { $nin: [null, ''] } }] }];
+        }
+        if (filter.statusState === 'used') query.$and = [...(query.$and || []), { $or: [{ status: 'scanned' }, { scannedAt: { $nin: [null, ''] }, reactivatedAt: { $in: [null, ''] } }] }];
+        if (filter.event) query.event = filter.event;
+        if (filter.ticketType) query.$and = [...(query.$and || []), { $or: [{ ticketType: filter.ticketType }, { ticketType: { $exists: false }, gender: filter.ticketType }] }];
+        if (filter.source) {
+            const expected = filter.source;
+            const has = field => ({ [field]: { $exists: true, $nin: ['', null] } });
+            const absent = field => ({ $or: [{ [field]: { $exists: false } }, { [field]: null }, { [field]: '' }] });
+            const sourceRegex = value => ({ source: { $regex: value, $options: 'i' } });
+            let sourceCondition;
+            if (expected === 'Shadow') sourceCondition = { $or: [{ isShadow: true }, sourceRegex('shadow')] };
+            else if (expected === 'PR') sourceCondition = { $or: [sourceRegex('pr'), has('prUserId'), has('prName')] };
+            else if (expected === 'Offline') sourceCondition = sourceRegex('offline');
+            else if (expected === 'Manual') sourceCondition = { $or: [sourceRegex('manual'), { paymentMethod: { $regex: 'manual', $options: 'i' } }] };
+            else if (expected === 'Seller') sourceCondition = { $and: [{ $or: [sourceRegex('seller'), has('sellerId')] }, { isShadow: { $ne: true } }, absent('prUserId'), absent('prName') ] };
+            else sourceCondition = { $and: [{ isShadow: { $ne: true } }, absent('sellerId'), absent('prUserId'), absent('prName'), { source: { $nin: ['shadow', 'shadow_private'] } }, { paymentMethod: { $not: /manual/i } }] };
+            query.$and = [...(query.$and || []), sourceCondition];
+        }
+        if (filter.from || filter.to) query.createdAt = { ...(filter.from ? { $gte: filter.from } : {}), ...(filter.to ? { $lte: `${filter.to}T23:59:59.999Z` } : {}) };
+        if (search) {
+            const safe = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            query.$and = [...(query.$and || []), { $or: ['ticketId', 'name', 'phone', 'email', 'generatedBy', 'sellerId', 'prName'].map(field => ({ [field]: { $regex: safe, $options: 'i' } })) }];
+        }
+        const [rows, total] = await Promise.all([Sale.find(query).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(), Sale.countDocuments(query)]);
+        return { rows, total };
+    },
+    solverCountSales: async () => {
+        if (useMock()) {
+            const rows = mockDb.sales.filter(sale => sale.ticketId);
+            return { total: rows.length, active: rows.filter(s => !s.disabledAt && s.status !== 'cancelled' && s.status !== 'scanned' && (!s.scannedAt || s.reactivatedAt)).length, used: rows.filter(s => s.status === 'scanned' || (s.scannedAt && !s.reactivatedAt)).length, disabled: rows.filter(s => Boolean(s.disabledAt)).length, cancelled: rows.filter(s => s.status === 'cancelled' && !s.disabledAt).length, upgraded: rows.filter(s => Boolean(s.solverUpgradedAt)).length };
+        }
+        const base = { ticketId: { $exists: true, $nin: ['', null] } };
+        const count = extra => Sale.countDocuments({ ...base, ...extra });
+        const [total, active, used, disabled, cancelled, upgraded] = await Promise.all([
+            count({}), count({ disabledAt: { $in: [null, ''] }, status: { $nin: ['cancelled', 'scanned'] }, $or: [{ scannedAt: { $in: [null, ''] } }, { reactivatedAt: { $nin: [null, ''] } }] }),
+            count({ $or: [{ status: 'scanned' }, { scannedAt: { $nin: [null, ''] }, reactivatedAt: { $in: [null, ''] } }] }),
+            count({ disabledAt: { $nin: [null, ''] } }), count({ status: 'cancelled', disabledAt: { $in: [null, ''] } }), count({ solverUpgradedAt: { $nin: [null, ''] } })
+        ]);
+        return { total, active, used, disabled, cancelled, upgraded };
+    },
+    solverUpdateSale: async (orderId, expectedStatus, updates) => {
+        if (useMock()) {
+            const sale = mockDb.sales.find(s => s.orderId === orderId && s.status === expectedStatus);
+            if (!sale) return null;
+            Object.assign(sale, updates, { updatedAt: new Date().toISOString() }); _saveMockSales(mockDb.sales); return sale;
+        }
+        const current = await Sale.findOne({ orderId }).lean();
+        if (!current || current.status !== expectedStatus) return null;
+        return Sale.findOneAndUpdate({ orderId, status: expectedStatus, updatedAt: current.updatedAt }, { $set: { ...updates, updatedAt: new Date().toISOString() } }, { returnDocument: 'after', lean: true });
+    },
+    getTicketHistory: async (ticketId) => {
+        if (useMock()) {
+            const scans = _mockScanLogs.filter(item => item.ticketId === ticketId).map(item => ({ kind: 'scan', ...item }));
+            const audits = mockDb.auditLogs.filter(item => String(item.fieldChanged || '').includes(ticketId)).map(item => ({ kind: 'audit', ...item }));
+            return [...scans, ...audits].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        }
+        const escaped = ticketId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const [scans, audits] = await Promise.all([ScanLog.find({ ticketId }).sort({ timestamp: 1 }).lean(), AuditLog.find({ fieldChanged: { $regex: escaped, $options: 'i' } }).sort({ timestamp: 1 }).lean()]);
+        return [...scans.map(item => ({ kind: 'scan', ...item })), ...audits.map(item => ({ kind: 'audit', ...item }))].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     },
     countScannedSales: async () => {
         if (useMock()) return mockDb.sales.filter(s => s.status === 'scanned' && !s.isShadow && s.source !== 'shadow' && s.source !== 'shadow_private').length;
@@ -1106,62 +2067,318 @@ module.exports = {
         }
         return await atomicClaimOrder(orderId, paymentId);
     },
+    atomicClaimPaymentProcessing: async (orderId, now, leaseUntil) => {
+        if (!useMock()) return atomicClaimPaymentProcessing(orderId, new Date(now), new Date(leaseUntil));
+        const sale = mockDb.sales.find(item => item.orderId === orderId);
+        if (!sale) return null;
+        const state = sale.paymentStatus || (sale.status === 'created' ? 'pending' : sale.status === 'paid' ? 'paid' : sale.status);
+        const hasUnexpiredHold = !sale.reservationExpiresAt || new Date(sale.reservationExpiresAt) > new Date(now);
+        const available = (state === 'pending' && hasUnexpiredHold) || (state === 'processing' && new Date(sale.paymentProcessingLeaseUntil || 0) <= new Date(now));
+        if (!available) return null;
+        Object.assign(sale, { paymentStatus: 'processing', paymentProcessingLeaseUntil: leaseUntil, status: 'payment_processing', updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicMarkPaymentPaid: async (orderId, paymentId, now, reservationStatus = 'not_required') => {
+        if (!useMock()) return atomicMarkPaymentPaid(orderId, paymentId, now, reservationStatus);
+        const sale = mockDb.sales.find(item => item.orderId === orderId);
+        if (!sale || sale.paymentStatus !== 'processing') return null;
+        if (paymentId && mockDb.sales.some(item => item.orderId !== orderId && item.providerPaymentId === paymentId)) {
+            const duplicate = new Error('Provider payment is already associated with another order.'); duplicate.code = 11000; throw duplicate;
+        }
+        Object.assign(sale, { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'pending', reservationStatus, inventoryReserved: false, status: 'paid', updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicRecordCapturedPaymentException: async (orderId, paymentId, now, message) => {
+        if (!useMock()) return atomicRecordCapturedPaymentException(orderId, paymentId, now, message);
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'processing');
+        if (!sale) return null;
+        if (paymentId && mockDb.sales.some(item => item.orderId !== orderId && item.providerPaymentId === paymentId)) {
+            const duplicate = new Error('Provider payment is already associated with another order.'); duplicate.code = 11000; throw duplicate;
+        }
+        Object.assign(sale, { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'inventory_conflict', paymentException: message, status: 'payment_exception', updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicClaimTicketGeneration: async (orderId, now, leaseUntil) => {
+        if (!useMock()) return atomicClaimTicketGeneration(orderId, new Date(now), new Date(leaseUntil));
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'paid' && !item.ticketId);
+        const state = sale?.fulfillmentStatus || 'pending';
+        const canClaim = ['pending', 'failed'].includes(state) || (state === 'generating' && new Date(sale.ticketGenerationLeaseUntil || 0) <= new Date(now));
+        if (!canClaim) return null;
+        Object.assign(sale, { fulfillmentStatus: 'generating', ticketGenerationLeaseUntil: leaseUntil, updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicAssignGeneratedTicket: async (orderId, ticketId, generatedAt) => {
+        if (!useMock()) return atomicAssignGeneratedTicket(orderId, ticketId, generatedAt);
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'paid' && item.fulfillmentStatus === 'generating' && !item.ticketId);
+        if (!sale) return null;
+        Object.assign(sale, { ticketId, generatedAt, fulfillmentStatus: 'ticketed', status: 'ticket_generated', updatedAt: generatedAt });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicFailTicketGeneration: async (orderId, error, now) => {
+        if (!useMock()) return atomicFailTicketGeneration(orderId, error, now);
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'paid' && item.fulfillmentStatus === 'generating' && !item.ticketId);
+        if (!sale) return null;
+        Object.assign(sale, { fulfillmentStatus: 'failed', status: 'ticket_generation_failed', ticketGenerationError: String(error).slice(0, 500), updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    recordRazorpayEvent: async (orderId, eventId) => {
+        if (!eventId) return false;
+        if (!useMock()) {
+            try { await UserSession.collection.dropIndex('userId_1').catch(() => {}); } catch (_) {}
+            const result = await Sale.updateOne({ orderId, razorpayEventIds: { $ne: eventId } }, { $addToSet: { razorpayEventIds: eventId } });
+            return result.modifiedCount > 0;
+        }
+        const sale = mockDb.sales.find(item => item.orderId === orderId);
+        if (!sale) return false;
+        sale.razorpayEventIds = sale.razorpayEventIds || [];
+        if (sale.razorpayEventIds.includes(eventId)) return false;
+        sale.razorpayEventIds.push(eventId);
+        _saveMockSales(mockDb.sales);
+        return true;
+    },
+    atomicExpireOrder: async (orderId, now) => {
+        if (!useMock()) return atomicExpireOrder(orderId, new Date(now));
+        const sale = mockDb.sales.find(item => item.orderId === orderId);
+        const state = sale?.paymentStatus || (sale?.status === 'created' ? 'pending' : sale?.status);
+        if (!sale || !['pending'].includes(state) || !sale.reservationExpiresAt || new Date(sale.reservationExpiresAt) > new Date(now)) return null;
+        Object.assign(sale, { paymentStatus: 'expired', reservationStatus: 'expired', status: 'expired', updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicRecordLateCapturedPayment: async (orderId, paymentId, now) => {
+        if (!useMock()) return atomicRecordLateCapturedPayment(orderId, paymentId, now);
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'expired');
+        if (!sale) return null;
+        if (paymentId && mockDb.sales.some(item => item.orderId !== orderId && item.providerPaymentId === paymentId)) {
+            const duplicate = new Error('Provider payment is already associated with another order.'); duplicate.code = 11000; throw duplicate;
+        }
+        Object.assign(sale, { paymentStatus: 'paid', paymentId, providerPaymentId: paymentId, paidAt: now, fulfillmentStatus: 'inventory_conflict', status: 'payment_exception', paymentException: 'Payment captured after inventory reservation expired; manual reconciliation required.', updatedAt: now });
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicRequestRefund: async (orderId, { requestId, requesterHash, reason, now }) => {
+        if (!useMock()) return atomicRequestRefund(orderId, { requestId, requesterHash, reason, now: new Date(now) });
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.paymentStatus === 'paid' && item.ticketId && (item.refundStatus || 'none') === 'none' && !['cancelled', 'refunded'].includes(item.status));
+        if (!sale) return null;
+        Object.assign(sale, { refundStatus: 'requested', refundRequestId: requestId, refundRequesterHash: requesterHash, refundReason: reason, refundRequestedAt: now, updatedAt: now });
+        sale.refundHistory = [...(sale.refundHistory || []), { from: 'none', to: 'requested', actor: 'customer_verified_otp', reason, at: now }];
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
+    atomicDecideRefund: async (orderId, { decision, actor, reason, now }) => {
+        if (!useMock()) return atomicDecideRefund(orderId, { decision, actor, reason, now: new Date(now) });
+        const sale = mockDb.sales.find(item => item.orderId === orderId && item.refundStatus === 'requested');
+        if (!sale || !['approved', 'rejected'].includes(decision)) return null;
+        Object.assign(sale, { refundStatus: decision, refundDecidedAt: now, refundDecidedBy: actor, refundDecisionReason: reason || '', updatedAt: now });
+        sale.refundHistory = [...(sale.refundHistory || []), { from: 'requested', to: decision, actor, reason: reason || '', at: now }];
+        _saveMockSales(mockDb.sales);
+        return sale;
+    },
 
     // User Helpers
     getAllUsers: async () => {
-        if (useMock()) return mockDb.users;
-        return await getAllUsers();
+        let dbUsers = [];
+        if (!useMock()) {
+            try {
+                dbUsers = await getAllUsers();
+            } catch (_) {}
+        }
+        const userMap = new Map();
+        for (const u of dbUsers) {
+            if (u && u.userId) userMap.set(u.userId.toLowerCase(), u);
+        }
+        for (const u of (mockDb.users || [])) {
+            if (u && u.userId) userMap.set(u.userId.toLowerCase(), { ...(userMap.get(u.userId.toLowerCase()) || {}), ...u });
+        }
+        return Array.from(userMap.values());
     },
     getUserById: async (userId) => {
-        if (useMock()) {
-            return mockDb.users.find(u => u.userId === userId) || null;
+        if (!userId) return null;
+        const normalized = String(userId).trim().toLowerCase();
+        const escaped = normalized.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        if (!useMock()) {
+            try {
+                const dbUser = await User.findOne({
+                    $or: [
+                        { userId: new RegExp('^' + escaped + '$', 'i') },
+                        { email: new RegExp('^' + escaped + '$', 'i') }
+                    ]
+                }).lean();
+                if (dbUser) return dbUser;
+            } catch (_) {}
         }
-        return await getUserById(userId);
+        return (mockDb.users || []).find(u =>
+            u && (
+                (u.userId && u.userId.toLowerCase() === normalized) ||
+                (u.email && u.email.toLowerCase() === normalized)
+            )
+        ) || null;
     },
     updateUser: async (userId, updates) => {
-        if (useMock()) {
-            const idx = mockDb.users.findIndex(u => u.userId === userId);
-            if (idx !== -1) {
-                mockDb.users[idx] = { ...mockDb.users[idx], ...updates };
-                return mockDb.users[idx];
-            }
-            return null;
+        const normalized = String(userId).trim().toLowerCase();
+        const idx = (mockDb.users || []).findIndex(u => u.userId.toLowerCase() === normalized);
+        if (idx !== -1) {
+            mockDb.users[idx] = { ...mockDb.users[idx], ...updates };
+            _saveMockUsers(mockDb.users);
         }
-        return await updateUser(userId, updates);
+        if (!useMock()) {
+            try {
+                await updateUser(userId, updates);
+            } catch (_) {}
+        }
+        return idx !== -1 ? mockDb.users[idx] : null;
     },
     releaseSellerSlot: async (userId) => {
-        if (useMock()) {
-            const user = mockDb.users.find(item => item.userId === userId);
-            if (!user) return null;
+        const normalized = String(userId).trim().toLowerCase();
+        const user = (mockDb.users || []).find(u => u.userId.toLowerCase() === normalized);
+        if (user) {
             delete user.sellerSlot;
-            return user;
+            _saveMockUsers(mockDb.users);
         }
-        return await releaseSellerSlot(userId);
+        if (!useMock()) {
+            try {
+                await releaseSellerSlot(userId);
+            } catch (_) {}
+        }
+        return user;
     },
     createUser: async (userData) => {
-        if (useMock()) {
-            if (mockDb.users.some(u => u.userId.toLowerCase() === String(userData.userId).toLowerCase() || (userData.sellerSlot && u.sellerSlot === userData.sellerSlot))) {
-                const error = new Error('A user with this identifier already exists.');
-                error.code = 11000;
-                throw error;
-            }
-            const user = { ...userData };
-            mockDb.users.push(user);
-            return user;
+        const user = { ...userData };
+        if (user.sellerSlot === null || user.sellerSlot === undefined) {
+            delete user.sellerSlot;
         }
-        return await createUser(userData);
+        const normalized = String(user.userId).trim().toLowerCase();
+        const idx = (mockDb.users || []).findIndex(u => u && u.userId && u.userId.toLowerCase() === normalized);
+        if (idx === -1) {
+            mockDb.users.push(user);
+        } else {
+            mockDb.users[idx] = { ...mockDb.users[idx], ...user };
+        }
+        _saveMockUsers(mockDb.users);
+
+        if (!useMock()) {
+            try {
+                const saved = await createUser(user);
+                return saved || user;
+            } catch (err) {
+                console.warn('[DB User save warning]', err.message);
+            }
+        }
+        return user;
     },
     deleteUser: async (userId) => {
-        if (useMock()) {
-            const index = mockDb.users.findIndex(user => user.userId === userId);
-            if (index === -1) return null;
-            return mockDb.users.splice(index, 1)[0];
+        const normalized = String(userId).trim().toLowerCase();
+        const index = (mockDb.users || []).findIndex(user => user.userId.toLowerCase() === normalized);
+        let deleted = null;
+        if (index !== -1) {
+            deleted = mockDb.users.splice(index, 1)[0];
+            _saveMockUsers(mockDb.users);
         }
-        return await deleteUser(userId);
+        if (!useMock()) {
+            try {
+                await deleteUser(userId);
+            } catch (_) {}
+        }
+        return deleted;
     },
     getUserBySellerSlot: async (sellerSlot) => {
-        if (useMock()) return mockDb.users.find(u => u.sellerSlot === sellerSlot) || null;
-        return await getUserBySellerSlot(sellerSlot);
+        const mockMatch = (mockDb.users || []).find(u => u.sellerSlot === sellerSlot) || null;
+        if (mockMatch) return mockMatch;
+        if (!useMock()) return await getUserBySellerSlot(sellerSlot);
+        return null;
+    },
+    createOrganizerApplication: async (application) => {
+        if (useMock()) { mockDb.organizerApplications.push({ ...application }); return application; }
+        return await OrganizerApplication.create(application).then(item => item.toObject());
+    },
+    getOrganizerApplication: async (applicationId) => {
+        if (useMock()) return mockDb.organizerApplications.find(item => item.applicationId === applicationId) || null;
+        return OrganizerApplication.findOne({ applicationId }).lean();
+    },
+    getOrganizerApplications: async (status) => {
+        if (useMock()) return mockDb.organizerApplications.filter(item => !status || item.status === status).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        return OrganizerApplication.find(status ? { status } : {}).sort({ createdAt: -1 }).lean();
+    },
+    updateOrganizerApplication: async (applicationId, updates, expectedStatus) => {
+        if (useMock()) {
+            const item = mockDb.organizerApplications.find(record => record.applicationId === applicationId && (!expectedStatus || record.status === expectedStatus));
+            if (!item) return null;
+            Object.assign(item, updates, { updatedAt: new Date().toISOString() }); return item;
+        }
+        return OrganizerApplication.findOneAndUpdate({ applicationId, ...(expectedStatus ? { status: expectedStatus } : {}) }, { $set: { ...updates, updatedAt: new Date() } }, { returnDocument: 'after', lean: true });
+    },
+    createEventInvitation: async (invitation) => {
+        if (useMock()) { mockDb.eventInvitations.push({ ...invitation }); return invitation; }
+        return await EventInvitation.create(invitation).then(item => item.toObject());
+    },
+    getEventInvitationByTokenHash: async (tokenHash) => {
+        if (useMock()) return mockDb.eventInvitations.find(item => item.tokenHash === tokenHash) || null;
+        return EventInvitation.findOne({ tokenHash }).lean();
+    },
+    getEventInvitations: async (filter = {}) => {
+        if (useMock()) return mockDb.eventInvitations.filter(item => Object.entries(filter).every(([key, value]) => item[key] === value));
+        return EventInvitation.find(filter).sort({ createdAt: -1 }).lean();
+    },
+    updateEventInvitation: async (invitationId, updates, expectedStatus) => {
+        if (useMock()) {
+            const item = mockDb.eventInvitations.find(record => record.invitationId === invitationId && (!expectedStatus || record.status === expectedStatus));
+            if (!item) return null;
+            Object.assign(item, updates); return item;
+        }
+        return EventInvitation.findOneAndUpdate({ invitationId, ...(expectedStatus ? { status: expectedStatus } : {}) }, { $set: updates }, { returnDocument: 'after', lean: true });
+    },
+    claimEventInvitation: async (invitationId, now = new Date()) => {
+        if (useMock()) {
+            const item = mockDb.eventInvitations.find(record => record.invitationId === invitationId && record.status === 'pending' && new Date(record.expiresAt).getTime() > new Date(now).getTime());
+            if (!item) return null;
+            item.status = 'accepting'; return item;
+        }
+        return EventInvitation.findOneAndUpdate({ invitationId, status: 'pending', expiresAt: { $gt: new Date(now) } }, { $set: { status: 'accepting' } }, { returnDocument: 'after', lean: true });
+    },
+    getPartnerAccessPolicy: async (role, principalId) => {
+        if (useMock()) return mockDb.partnerAccessPolicies.find(item => item.role === role && item.principalId === principalId) || null;
+        return PartnerAccessPolicy.findOne({ role, principalId }).lean();
+    },
+    getPartnerAccessPolicies: async (filter = {}) => {
+        if (useMock()) return mockDb.partnerAccessPolicies.filter(item => Object.entries(filter).every(([key, value]) => item[key] === value));
+        return PartnerAccessPolicy.find(filter).lean();
+    },
+    setPartnerAccessPolicy: async (policy) => {
+        if (useMock()) {
+            const idx = mockDb.partnerAccessPolicies.findIndex(item => item.role === policy.role && item.principalId === policy.principalId);
+            const value = { ...policy, updatedAt: new Date().toISOString() };
+            if (idx < 0) mockDb.partnerAccessPolicies.push(value); else mockDb.partnerAccessPolicies[idx] = value;
+            return value;
+        }
+        return PartnerAccessPolicy.findOneAndUpdate({ role: policy.role, principalId: policy.principalId }, { $set: { ...policy, updatedAt: new Date() } }, { upsert: true, returnDocument: 'after', lean: true });
+    },
+    addPartnerEventAssignment: async ({ role, principalId, companyId, eventId, updatedBy }) => {
+        if (useMock()) {
+            let policy = mockDb.partnerAccessPolicies.find(item => item.role === role && item.principalId === principalId);
+            if (policy && policy.companyId !== companyId) return null;
+            if (!policy) { policy = { role, principalId, companyId, eventIds: [], updatedBy }; mockDb.partnerAccessPolicies.push(policy); }
+            policy.eventIds = [...new Set([...(policy.eventIds || []), eventId])];
+            policy.updatedBy = updatedBy; policy.updatedAt = new Date().toISOString(); return policy;
+        }
+        return PartnerAccessPolicy.findOneAndUpdate(
+            { role, principalId, companyId },
+            { $addToSet: { eventIds: eventId }, $set: { updatedBy, updatedAt: new Date() }, $setOnInsert: { role, principalId, companyId } },
+            { upsert: true, returnDocument: 'after', lean: true }
+        );
+    },
+    removePartnerEventAssignment: async ({ role, principalId, eventId }) => {
+        if (useMock()) {
+            const policy = mockDb.partnerAccessPolicies.find(item => item.role === role && item.principalId === principalId);
+            if (!policy) return null;
+            policy.eventIds = (policy.eventIds || []).filter(id => id !== eventId); policy.updatedAt = new Date().toISOString(); return policy;
+        }
+        return PartnerAccessPolicy.findOneAndUpdate({ role, principalId }, { $pull: { eventIds: eventId }, $set: { updatedAt: new Date() } }, { returnDocument: 'after', lean: true });
     },
 
     // Customer Helpers
@@ -1208,6 +2425,11 @@ module.exports = {
         }
         return await getEventByName(name);
     },
+    getEventBySlug: async (slug) => {
+        const normalized = String(slug || '').toLowerCase();
+        if (useMock()) return Array.from(new Set(_mockEvents.values())).find(event => event.slug === normalized) || null;
+        return await getEventBySlug(normalized);
+    },
     createEvent: async (eventData) => {
         if (useMock()) {
             const event = { ...eventData, _id: new mongoose.Types.ObjectId().toString(), createdAt: new Date().toISOString() };
@@ -1229,11 +2451,10 @@ module.exports = {
     },
     deleteEvent: async (id) => {
         if (useMock()) {
-            const idx = mockDb.events.findIndex(e => e._id === id);
-            if (idx !== -1) {
-                return mockDb.events.splice(idx, 1)[0];
-            }
-            return null;
+            const deleted = Array.from(new Set(_mockEvents.values())).find(event => matchesEventRef(event, id));
+            if (!deleted) return null;
+            for (const [key, value] of _mockEvents.entries()) if (value === deleted) _mockEvents.delete(key);
+            return deleted;
         }
         return await deleteEvent(id);
     },
@@ -1248,6 +2469,28 @@ module.exports = {
             return mockDb.companies.find(c => c.companyId === companyId) || null;
         }
         return await getCompanyById(companyId);
+    },
+    ensureCompany: async (companyId, name) => {
+        if (useMock()) {
+            let company = mockDb.companies.find(item => item.companyId === companyId);
+            if (!company) {
+                const now = new Date().toISOString();
+                company = {
+                    companyId, name, status: 'ACTIVE',
+                    commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
+                    razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
+                    manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
+                    features: { onlinePayments: { enabled: false, lockedByMaster: false }, manualPayments: { enabled: true, lockedByMaster: false }, prPortal: { enabled: true, lockedByMaster: false }, prSales: { enabled: true, lockedByMaster: false }, ticketTransfers: { enabled: false, lockedByMaster: false }, refunds: { enabled: false, lockedByMaster: false }, couponCodes: { enabled: true, lockedByMaster: false }, qrCheckIn: { enabled: true, lockedByMaster: false }, offlineScan: { enabled: false, lockedByMaster: false }, allowReEntry: { enabled: false, lockedByMaster: false } },
+                    prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 }, createdAt: now, updatedAt: now
+                };
+                mockDb.companies.push(company);
+            } else {
+                company.name = name;
+                company.updatedAt = new Date().toISOString();
+            }
+            return company;
+        }
+        return await ensureCompany(companyId, name);
     },
     updateCompanyConfig: async (companyId, updates) => {
         if (useMock()) {
@@ -1270,7 +2513,7 @@ module.exports = {
     },
     getAuditLogs: async (companyId) => {
         if (useMock()) {
-            return mockDb.auditLogs.filter(l => l.companyId === companyId);
+            return companyId ? mockDb.auditLogs.filter(l => l.companyId === companyId) : [...mockDb.auditLogs].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100);
         }
         return await getAuditLogs(companyId);
     },
@@ -1303,7 +2546,7 @@ module.exports = {
 
     // ==================== SCAN LOG HELPERS ====================
 
-    // Fire-and-forget safe: callers should .catch(e => console.error('[ScanLog]', e)) — never await this.
+    // Fire-and-forget safe: callers should .catch(e => console.error('[ScanLog]', e)) â€” never await this.
     createScanLog: async (logData) => {
         const now = new Date();
         if (useMock()) {
@@ -1326,9 +2569,9 @@ module.exports = {
                 (!companyId || l.companyId === companyId) &&
                 new Date(l.timestamp) >= since
             );
-            const c = { accepted: 0, duplicate: 0, cancelled: 0, invalid: 0 };
+            const c = { accepted: 0, duplicate: 0, cancelled: 0, invalid: 0, manual_review: 0 };
             logs.forEach(l => { if (c[l.result] !== undefined) c[l.result]++; });
-            return { accepted: c.accepted, declined: c.duplicate + c.cancelled + c.invalid, declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid } };
+            return { accepted: c.accepted, declined: c.duplicate + c.cancelled + c.invalid + c.manual_review, declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid, manualReview: c.manual_review } };
         }
         const query = { timestamp: { $gte: sinceDate || new Date(0) } };
         if (companyId) query.companyId = companyId;
@@ -1336,13 +2579,36 @@ module.exports = {
             { $match: query },
             { $group: { _id: '$result', count: { $sum: 1 } } }
         ]);
-        const c = { accepted: 0, duplicate: 0, cancelled: 0, invalid: 0 };
+        const c = { accepted: 0, duplicate: 0, cancelled: 0, invalid: 0, manual_review: 0 };
         agg.forEach(a => { if (c[a._id] !== undefined) c[a._id] = a.count; });
         return {
             accepted: c.accepted,
-            declined: c.duplicate + c.cancelled + c.invalid,
-            declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid }
+            declined: c.duplicate + c.cancelled + c.invalid + c.manual_review,
+            declinedByReason: { duplicate: c.duplicate, cancelled: c.cancelled, invalid: c.invalid, manualReview: c.manual_review }
         };
+    },
+
+    getScanSummaryForEvent: async (eventName, companyId) => {
+        const normalizedName = String(eventName || '').trim().toLowerCase();
+        if (useMock()) {
+            const logs = _mockScanLogs.filter(log =>
+            String(log.event || '').trim().toLowerCase() === normalizedName &&
+            (!companyId || log.companyId === companyId)
+            );
+            return {
+                accepted: logs.filter(log => log.result === 'accepted').length,
+                duplicate: logs.filter(log => log.result === 'duplicate').length,
+                admissions: logs.filter(log => log.result === 'accepted').reduce((sum, log) => sum + (Number(log.admissionCount) || 1), 0),
+                recent: logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 30)
+            };
+        }
+        const query = { event: eventName, ...(companyId ? { companyId } : {}) };
+        const [groups, recent] = await Promise.all([
+            ScanLog.aggregate([{ $match: query }, { $group: { _id: '$result', count: { $sum: 1 }, admissions: { $sum: { $cond: [{ $eq: ['$result', 'accepted'] }, { $ifNull: ['$admissionCount', 1] }, 0] } } } }]),
+            ScanLog.find(query).sort({ timestamp: -1 }).limit(30).lean()
+        ]);
+        const accepted = groups.find(group => group._id === 'accepted');
+        return { accepted: accepted?.count || 0, duplicate: groups.find(group => group._id === 'duplicate')?.count || 0, admissions: accepted?.admissions || 0, recent };
     },
 
     // Count unique scanner userIds who have scanned since sinceDate.
@@ -1362,8 +2628,8 @@ module.exports = {
     },
 
     // Atomic scan: only transitions ticket from paid/generated/emailed state to scanned.
-    // Returns updated sale or null if precondition failed (already scanned — race condition guard).
-    atomicScanTicket: async (ticketId, scannedBy, scannedAtStr) => {
+    // Returns updated sale or null if precondition failed (already scanned â€” race condition guard).
+    atomicScanTicket: async (ticketId, scannedBy, scannedAtStr, admissionCount = 1) => {
         if (useMock()) {
             const idx = mockDb.sales.findIndex(s =>
                 s.ticketId === ticketId &&
@@ -1373,6 +2639,8 @@ module.exports = {
             mockDb.sales[idx].status = 'scanned';
             mockDb.sales[idx].scannedBy = scannedBy;
             mockDb.sales[idx].scannedAt = scannedAtStr;
+            mockDb.sales[idx].scannedAdmissionCount = admissionCount;
+            delete mockDb.sales[idx].reactivatedAt;
             mockDb.sales[idx].updatedAt = new Date().toISOString();
             return mockDb.sales[idx];
         }
@@ -1386,8 +2654,10 @@ module.exports = {
                     status: 'scanned',
                     scannedBy,
                     scannedAt: scannedAtStr,
+                    scannedAdmissionCount: admissionCount,
                     updatedAt: new Date().toISOString()
-                }
+                },
+                $unset: { reactivatedAt: 1 }
             },
             { returnDocument: 'after', lean: true }
         );
@@ -1401,21 +2671,41 @@ module.exports = {
     },
     getUserSessionByToken: async (token) => {
         if (!token) return null;
+        let session = null;
         if (useMock()) {
             for (const s of _mockUserSessions.values()) {
-                if (s.token === token) return s;
+                if (s.token === token) { session = s; break; }
             }
-            return null;
+        } else {
+            try {
+                session = await UserSession.findOne({ token }).lean();
+            } catch (_) {}
         }
-        return UserSession.findOne({ token }).lean();
+        if (session) return session;
+
+        // Stateless verification fallback: if a Vercel serverless cold-start or container switch occurs,
+        // recover session directly from the cryptographically signed token.
+        const verified = verifySignedSessionToken(token);
+        if (verified) {
+            _mockUserSessions.set(token, verified);
+            if (!useMock()) {
+                try {
+                    await UserSession.findOneAndUpdate({ token }, verified, { upsert: true }).catch(() => {});
+                } catch (_) {}
+            }
+            return verified;
+        }
+        return null;
     },
+    createSignedSessionToken,
+    verifySignedSessionToken,
     setUserSession: async (userId, data) => {
         if (useMock()) {
-            _mockUserSessions.set(userId, { ...data, userId });
+            _mockUserSessions.set(data.token || userId, { ...data, userId });
             return data;
         }
         return UserSession.findOneAndUpdate(
-            { userId },
+            { token: data.token },
             { ...data, userId },
             { upsert: true, new: true, lean: true }
         );
@@ -1541,6 +2831,7 @@ module.exports = {
     getAllEvents: async () => {
         let events = [];
         if (!useMock()) {
+            try { await UserSession.collection.dropIndex('userId_1').catch(() => {}); } catch (_) {}
             try {
                 const raw = await Event.find({}).lean();
                 // Normalize: always expose a string 'id' field (fallback to _id)
@@ -1564,25 +2855,48 @@ module.exports = {
         }
         return unique;
     },
+    purgeLegacyData: async () => purgeLegacyData(),
+    getEventsForOrganizer: async (userId, companyId) => {
+        if (useMock()) {
+            return [...new Set(_mockEvents.values())].filter(event => 
+                (Array.isArray(event.organizerUserIds) && event.organizerUserIds.includes(userId)) ||
+                (companyId && (event.companyId === companyId || event.organizerId === companyId))
+            );
+        }
+        const clauses = [{ organizerUserIds: userId }];
+        if (companyId) {
+            clauses.push({ companyId: companyId });
+            clauses.push({ organizerId: companyId });
+        }
+        return Event.find({ $or: clauses }).sort({ updatedAt: -1 }).lean();
+    },
     saveEvent: async (eventData) => {
+        const { _id: mongoId, ...eventFields } = eventData;
         const id = eventData.id || `event_${Date.now()}`;
         const name = (eventData.name || 'Untitled Event').trim();
         const doc = {
-            ...eventData, id, name,
-            companyId: eventData.companyId || 'littlane',
+            ...eventFields, id, name,
+            companyId: eventData.companyId || 'stageway',
+            organizerId: eventData.organizerId || eventData.companyId || 'stageway',
             active: eventData.active !== undefined ? eventData.active : true,
             tiers: eventData.tiers || [],
+            ticketCategories: eventData.ticketCategories || eventData.tiers || eventData.ticketTypes || [],
             gradient: eventData.gradient || 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)',
-            icon: eventData.icon || '🎉',
+            icon: eventData.icon || 'ðŸŽ‰',
             tagline: eventData.tagline || eventData.venue || 'Live Event',
+            createdAt: eventData.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
         _mockEvents.set(name, doc);
         _mockEvents.set(id, doc);
         if (!useMock()) {
+            try { await UserSession.collection.dropIndex('userId_1').catch(() => {}); } catch (_) {}
             try {
+                const selector = mongoId && mongoose.Types.ObjectId.isValid(String(mongoId))
+                    ? { _id: new mongoose.Types.ObjectId(String(mongoId)) }
+                    : { id };
                 await Event.findOneAndUpdate(
-                    { $or: [{ id }, { name }] },
+                    selector,
                     { $set: doc },
                     { upsert: true, new: true, lean: true }
                 );
@@ -1590,6 +2904,10 @@ module.exports = {
         }
         return doc;
     },
+    reserveEventInventory: async input => reserveEventInventory(input),
+    releaseEventInventoryReservation: async input => releaseEventInventoryReservation(input),
+    consumeEventInventoryReservation: async input => consumeEventInventoryReservation(input),
+    finalizeConsumedInventoryReservation: async input => finalizeConsumedInventoryReservation(input),
     deleteEvent: async (idOrName, nameHint) => {
         if (!idOrName && !nameHint) return false;
 
@@ -1609,6 +2927,7 @@ module.exports = {
         }
 
         if (!useMock()) {
+            try { await UserSession.collection.dropIndex('userId_1').catch(() => {}); } catch (_) {}
             try {
                 const orClauses = [];
                 // Try by MongoDB _id if valid ObjectId
@@ -1636,28 +2955,4 @@ module.exports = {
 };
 
 // ==================== IN-MEMORY MOCK EVENTS (fallback) ====================
-const _mockEvents = new Map([
-    ['Dholida Garba Royale 2026', {
-        id: 'event_dholida_2026', name: 'Dholida Garba Royale 2026', companyId: 'littlane',
-        date: '2026-10-17', time: '04:00 PM', venue: 'Pethkar Ground, Kothrud, Pune',
-        tagline: 'Pethkar Ground, Kothrud, Pune · 17th October',
-        gradient: 'linear-gradient(135deg, #7C4CE0 0%, #C84CE0 100%)',
-        icon: '🎟️', active: true,
-        tiers: [
-            { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
-            { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
-            { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
-            { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
-            { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
-            { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
-        ],
-        ticketTypes: [
-            { id: 'ga-single', name: 'GA Single', price: 499, gender: 'unisex' },
-            { id: 'ga-group-of-5', name: 'GA Group of 5', price: 2249, gender: 'unisex' },
-            { id: 'ga-group-of-10', name: 'GA Group of 10', price: 3999, gender: 'unisex' },
-            { id: 'vip-single', name: 'VIP Single', price: 799, gender: 'unisex' },
-            { id: 'vip-group-of-5', name: 'VIP Group of 5', price: 3749, gender: 'unisex' },
-            { id: 'vip-group-of-10', name: 'VIP Group of 10', price: 6999, gender: 'unisex' }
-        ]
-    }]
-]);
+const _mockEvents = new Map();

@@ -58,16 +58,25 @@ export default function Tickets({
   const setEventFilter = propOnEventFilterChange !== undefined ? propOnEventFilterChange : setInternalEventFilter
 
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [searchQ, setSearchQ] = useState('')
+
+  async function downloadTicket(ticketId: string) {
+    try {
+      const response = await fetch(`/api/admin/tickets/${encodeURIComponent(ticketId)}/download`, { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
+      if (!response.ok) throw new Error('Ticket download is not authorized.')
+      const url = URL.createObjectURL(await response.blob())
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = `Stageway-ticket-${ticketId}.pdf`
+      document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) { alert(error instanceof Error ? error.message : 'Ticket download failed.') }
+  }
 
   const effectiveSearch = searchQ || globalSearch
 
   const baseTicketSales = sales.filter((s) => {
     if (!isCountableTicketSale(s)) return false
 
-    const category = 'dholida garba royale'
-
-    if (eventFilter !== 'all' && category !== eventFilter)
+    if (eventFilter !== 'all' && s.event !== eventFilter)
       return false
 
     return true
@@ -123,17 +132,45 @@ export default function Tickets({
     }
   }
 
+  const handleDelete = async (ticket: Ticket) => {
+    const confirmation = window.prompt(
+      `Permanently delete ticket ${ticket.id} and its generated PDF? This cannot be undone. Type DELETE to confirm.`
+    )
+    if (confirmation !== 'DELETE') return
+
+    setDeletingId(ticket.id)
+    try {
+      const res = await fetch('/api/admin/delete-ticket', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': adminKey,
+          'x-auth-token': adminKey,
+        },
+        body: JSON.stringify({ ticketId: ticket.id }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.message || 'Unable to delete ticket.')
+      await onReload()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error deleting ticket.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const mapTicket = (s: any): Ticket => {
-    const isCancelled = s.status === 'cancelled'
-    const isScanned = s.status === 'scanned' || !!s.scannedAt
+    const normalizedStatus = String(s.status || '').toLowerCase()
+    const isCancelled = normalizedStatus === 'cancelled' || normalizedStatus === 'canceled'
+    const isScanned = normalizedStatus === 'scanned' || !!s.scannedAt
     return {
       id: s.ticketId,
       buyer: s.name,
       email: s.email,
       phone: s.phone || '—',
-      event: s.event || 'DHOLIDA GARBA ROYALE',
-      type: s.ticketType || 'GA Single',
-      qty: s.quantity || 1,
+      event: s.event || 'Event details unavailable',
+      type: s.ticketType || 'Ticket',
+      qty: Math.max(1, Number(s.quantity) || 1),
       price: s.amount || 0,
       generated: s.generatedAt ? new Date(s.generatedAt).toLocaleString('en-IN') : '—',
       expiry: 'Event End',
@@ -149,7 +186,10 @@ export default function Tickets({
   const baseTickets: Ticket[] = baseTicketSales.map(mapTicket)
   const tickets: Ticket[] = ticketSales.map(mapTicket)
 
-  const totalAmount = baseTickets.reduce((a, t) => a + t.price, 0)
+  const nonCancelledTickets = baseTickets.filter((ticket) => ticket.status !== 'Cancelled')
+  const totalOrders = nonCancelledTickets.length
+  const totalPasses = nonCancelledTickets.reduce((total, ticket) => total + ticket.qty, 0)
+  const totalAmount = nonCancelledTickets.reduce((a, t) => a + t.price, 0)
   const activeCount = baseTickets.filter((t) => t.status === 'Active').length
   const scannedCount = baseTickets.filter((t) => t.status === 'Scanned').length
   const cancelledCount = baseTickets.filter((t) => t.status === 'Cancelled').length
@@ -159,11 +199,20 @@ export default function Tickets({
       {/* Reference KPI Stat Tiles */}
       <div className="kpi-row">
         <div className="tile tile-teal">
-          <div className="tile-label">GENERATED PASSES</div>
-          <div className="tile-value">{tickets.length}</div>
-          <div className="tile-sub">Across all selected events</div>
+          <div className="tile-label">TOTAL ORDERS</div>
+          <div className="tile-value">{totalOrders}</div>
+          <div className="tile-sub">Non-cancelled ticket orders</div>
           <div className="tile-delta">
-            <span>🎫</span> Valid inventory
+            <span>▤</span> Cancelled orders excluded
+          </div>
+        </div>
+
+        <div className="tile tile-violet">
+          <div className="tile-label">TOTAL PASSES</div>
+          <div className="tile-value">{totalPasses.toLocaleString('en-IN')}</div>
+          <div className="tile-sub">Passes from non-cancelled orders</div>
+          <div className="tile-delta">
+            <span>🎫</span> Cancelled orders excluded
           </div>
         </div>
 
@@ -188,7 +237,7 @@ export default function Tickets({
         <div className="tile tile-dark">
           <div className="tile-label">TOTAL TICKET VALUE</div>
           <div className="tile-value">₹{totalAmount.toLocaleString()}</div>
-          <div className="tile-sub">{cancelledCount} cancelled passes</div>
+          <div className="tile-sub">{cancelledCount} cancelled passes excluded</div>
           <div className="tile-delta up">
             <span>↑</span> Gross pass sales
           </div>
@@ -211,7 +260,7 @@ export default function Tickets({
 
         <select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)}>
           <option value="all">All events</option>
-          <option value="dholida garba royale">DHOLIDA GARBA ROYALE</option>
+          {Array.from(new Set(sales.map(sale => sale.event).filter(Boolean))).map(eventName => <option key={eventName} value={eventName}>{eventName}</option>)}
         </select>
 
         <button
@@ -312,10 +361,10 @@ export default function Tickets({
                       <td>{t.generated}</td>
                       <td>
                         <div style={{ display: 'flex', gap: '6px' }}>
-                          <a
-                            href={t.status === 'Cancelled' ? '#' : `/api/ticket/${t.id}/download`}
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => downloadTicket(t.id)}
+                            disabled={t.status === 'Cancelled'}
                             className="btn-secondary"
                             style={{
                               height: '28px',
@@ -328,7 +377,7 @@ export default function Tickets({
                             }}
                           >
                             PDF
-                          </a>
+                          </button>
                           <button
                             className="btn-secondary"
                             onClick={() => onResend(t.id)}
@@ -356,6 +405,15 @@ export default function Tickets({
                               {cancellingId === t.id ? '...' : 'Cancel'}
                             </button>
                           )}
+                          <button
+                            className="btn-secondary"
+                            onClick={() => handleDelete(t)}
+                            disabled={deletingId === t.id}
+                            title="Permanently delete this ticket"
+                            style={{ height: '28px', padding: '0 8px', fontSize: '11px', color: 'var(--red)' }}
+                          >
+                            {deletingId === t.id ? '...' : 'Delete'}
+                          </button>
                         </div>
                       </td>
                     </tr>

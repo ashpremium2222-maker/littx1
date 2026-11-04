@@ -167,7 +167,7 @@ function MainAppShell() {
     return <SellerPortalApp />
   }
 
-  const isAdminRoute = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/dashhboard') || path.startsWith('/company');
+  const isAdminRoute = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/company');
   
   if (isAdminRoute && !userSession) {
     window.location.href = '/admin-login'
@@ -178,7 +178,7 @@ function MainAppShell() {
     return <DevAdminApp isPresentation={false} />
   }
 
-  if (path.startsWith('/dashboard') || path.startsWith('/dashhboard')) {
+  if (path.startsWith('/dashboard')) {
     return <PartnerDashboardApp isPresentation={false} />
   }
 
@@ -198,14 +198,19 @@ function PasswordGateApp() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (password === 'littx2026' || password === 'littlane2026') {
+    setError('')
+    try {
+      const response = await fetch('/api/portal-auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ portal: 'admin', password }) })
+      const data = await response.json()
+      if (!response.ok || !data.success || !data.token) throw new Error(data.message || 'Invalid authorization key')
+      sessionStorage.setItem('littx_token', data.token)
+      sessionStorage.setItem('littx_user', JSON.stringify(data.user))
       sessionStorage.setItem('tickets_auth', 'true')
       setAuth(true)
-      setError('')
-    } else {
-      setError('Invalid authorization key')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to sign in.')
     }
   }
 

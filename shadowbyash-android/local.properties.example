@@ -1,0 +1,5 @@
+sdk.dir=C:/path/to/Android/Sdk
+SHADOW_SIGNING_STORE_FILE=C:/secure/path/shadowbyash-release.jks
+SHADOW_SIGNING_STORE_PASSWORD=replace-with-your-local-secret
+SHADOW_SIGNING_KEY_ALIAS=shadowbyash-release
+SHADOW_SIGNING_KEY_PASSWORD=replace-with-your-local-secret

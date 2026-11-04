@@ -18,7 +18,7 @@ interface Props {
     code?: string
     entry?: {
       ticketId: string
-      status: 'approved' | 'duplicate' | 'cancelled' | 'invalid'
+      status: 'approved' | 'duplicate' | 'cancelled' | 'invalid' | 'manual_review'
       attendee: string
       event: string
       ticketType: string
@@ -164,7 +164,7 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
   // ─── Torch ───────────────────────────────────────────────────────────────
   async function toggleTorch() {
     const track = streamRef.current?.getVideoTracks()[0] as TorchTrack | undefined
-    const caps = track?.getCapabilities?.()
+    const caps = track?.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined
     if (!track || !caps?.torch) { setCameraError('torch_unavailable'); return }
     try {
       const next = !torchOn
@@ -208,14 +208,14 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
       title: entry.event,
       holder: entry.attendee,
       time: `Generated ${entry.generatedAt} · Attempt ${entry.scannedAt}`,
-      reason: entry.status === 'duplicate' ? `Already Scanned${entry.originalScanAt ? ` · First ${entry.originalScanAt}` : ''}` : entry.status === 'cancelled' ? 'Ticket Cancelled' : 'Invalid Ticket',
+      reason: entry.status === 'duplicate' ? `Already Scanned${entry.originalScanAt ? ` · First ${entry.originalScanAt}` : ''}` : entry.status === 'cancelled' ? 'Ticket Cancelled' : entry.status === 'manual_review' ? 'Requires Manual Review' : 'Invalid Ticket',
     }))
     : rejectedScans.map(r => ({
       id: r.ticket?.id || r.rawCode || '—',
       title: r.ticket?.event || 'Unknown Ticket',
       holder: r.ticket?.attendee || r.rawCode || 'Unknown',
       time: r.timestamp,
-      reason: r.reason === 'duplicate' ? 'Already Scanned' : r.reason === 'cancelled' ? 'Ticket Cancelled' : 'Invalid Ticket',
+      reason: r.reason === 'duplicate' ? 'Already Scanned' : r.reason === 'cancelled' ? 'Ticket Cancelled' : r.reason === 'manual_review' ? 'Requires Manual Review' : 'Invalid Ticket',
     }))
   const feedbackEntry = scanFeedback?.entry
   const feedbackOk = scanFeedback?.status === 'success'
@@ -258,7 +258,7 @@ export default function QRScanner({ onBack, onScan, premium = false, scanFeedbac
             <header className="sc-topbar">
               <div className="sc-brand">
                 <LittixLogo dark size="sm" />
-                <span>LITTX</span>
+                <span>Stageway</span>
               </div>
               {cameraActive && (
                 <button
@@ -809,6 +809,7 @@ function RefinedScanResult({
   sellerId?: string
   onScanNext?: () => void
 }) {
+  void feedbackLabel
   const approved = scanFeedback.status === 'success'
   const attendee = feedbackEntry?.attendee || 'Not available'
   const attendeeInitials = attendee
@@ -821,10 +822,8 @@ function RefinedScanResult({
   const rejectedReason =
     feedbackEntry?.status === 'duplicate' ? 'Duplicate Pass' :
     feedbackEntry?.status === 'cancelled' ? 'Cancelled Pass' :
+    feedbackEntry?.status === 'manual_review' ? 'Requires Manual Review' :
     'Invalid Pass'
-  const background = approved
-    ? 'radial-gradient(circle at 50% 20%, rgba(5,231,119,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(5,231,119,0.1) 0%, transparent 50%), #131313'
-    : 'radial-gradient(circle at top, rgba(255,77,77,0.15) 0%, transparent 70%), linear-gradient(180deg, #3a0000 0%, #130000 44%, #0a0000 100%)'
 
   function scanNext() {
     if (navigator.vibrate) navigator.vibrate(50)
@@ -832,16 +831,6 @@ function RefinedScanResult({
   }
 
   // Staggered Container Animation
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.08,
-        delayChildren: 0.1
-      }
-    }
-  }
 
   // Individual Card Animation
   const cardVariants = {
@@ -2152,3 +2141,7 @@ const styles = `
     .sc-nav-label { font-size: 9px; }
   }
 `
+
+// Retain these local result-rendering helpers while keeping the strict project
+// type check aware that they are intentionally available for scanner layouts.
+void [CompactCard, RefinedResultCard, ScanResultField]
