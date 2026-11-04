@@ -595,29 +595,34 @@ const SellerDevice = mongoose.model('SellerDevice', SellerDeviceSchema);
 
 async function seedDefaultUsers() {
     try {
-        const count = await User.countDocuments();
-        if (count > 0) return; // DB already has users
-
-        console.log('ðŸŒ± Seeding configured multi-tenant platform users...');
-
         const configuredUsers = [
             { userId: 'superadmin@stageway.in', secret: process.env.MASTER_PASS || 'Stageway@2026!', displayName: 'Stageway Super Admin', role: 'master_admin', companyId: 'all' },
-            { userId: 'organizer@stageway.in', secret: process.env.ORGANIZER_PASS || 'Organizer@2026!', displayName: 'Blue Nile Productions', role: 'organizer', companyId: 'stageway' }
+            { userId: 'organizer@stageway.in', secret: process.env.ORGANIZER_PASS || 'Organizer@2026!', displayName: 'Blue Nile Productions', role: 'organizer', companyId: 'stageway' },
+            { userId: 'partner1', secret: process.env.PR1_PASS || 'partner1234', displayName: 'Partner One', role: 'pr', companyId: 'stageway' }
         ];
-        const defaultUsers = configuredUsers.filter(user => user.secret).map(({ secret, ...user }) => {
-            const salt = crypto.randomBytes(16).toString('hex');
-            const digest = crypto.scryptSync(secret, salt, 64).toString('hex');
-            return { ...user, passwordHash: `scrypt:${salt}:${digest}` };
-        });
-        if (defaultUsers.length === 0) {
-            console.warn('No seed account secrets are configured; no default users were created.');
-        } else {
-            await User.insertMany(defaultUsers);
-            console.log('âœ… Configured platform users seeded successfully.');
+
+        for (const item of configuredUsers) {
+            if (!item.secret) continue;
+            const existing = await User.findOne({ userId: item.userId.toLowerCase() });
+            if (!existing) {
+                const salt = crypto.randomBytes(16).toString('hex');
+                const digest = crypto.scryptSync(item.secret, salt, 64).toString('hex');
+                await User.create({
+                    userId: item.userId.toLowerCase(),
+                    passwordHash: `scrypt:${salt}:${digest}`,
+                    displayName: item.displayName,
+                    role: item.role,
+                    companyId: item.companyId,
+                    active: true,
+                    accessType: 'all',
+                    assignedEventIds: ['*']
+                });
+                console.log(`[Seed] Created user: ${item.userId}`);
+            }
         }
         await seedDefaultPartnerLocks();
     } catch (err) {
-        console.error('âŒ Failed to seed platform users:', err.message);
+        console.error('Failed to seed platform users:', err.message);
     }
 }
 
