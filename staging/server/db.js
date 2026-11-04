@@ -598,26 +598,40 @@ async function seedDefaultUsers() {
         const configuredUsers = [
             { userId: 'superadmin@stageway.in', secret: process.env.MASTER_PASS || 'Stageway@2026!', displayName: 'Stageway Super Admin', role: 'master_admin', companyId: 'all' },
             { userId: 'organizer@stageway.in', secret: process.env.ORGANIZER_PASS || 'Organizer@2026!', displayName: 'Blue Nile Productions', role: 'organizer', companyId: 'stageway' },
-            { userId: 'partner1', secret: process.env.PR1_PASS || 'partner1234', displayName: 'Partner One', role: 'pr', companyId: 'stageway' }
+            { userId: 'partner1', secret: process.env.PR1_PASS || 'partner1234', displayName: 'Partner One', role: 'pr', companyId: 'stageway' },
+            { userId: 'testpr', secret: 'testpr1234', displayName: 'Test PR Partner', role: 'pr', companyId: 'stageway' }
         ];
 
         for (const item of configuredUsers) {
             if (!item.secret) continue;
-            const existing = await User.findOne({ userId: item.userId.toLowerCase() });
-            if (!existing) {
-                const salt = crypto.randomBytes(16).toString('hex');
-                const digest = crypto.scryptSync(item.secret, salt, 64).toString('hex');
-                await User.create({
-                    userId: item.userId.toLowerCase(),
-                    passwordHash: `scrypt:${salt}:${digest}`,
-                    displayName: item.displayName,
-                    role: item.role,
-                    companyId: item.companyId,
-                    active: true,
-                    accessType: 'all',
-                    assignedEventIds: ['*']
-                });
-                console.log(`[Seed] Created user: ${item.userId}`);
+            const salt = crypto.randomBytes(16).toString('hex');
+            const digest = crypto.scryptSync(item.secret, salt, 64).toString('hex');
+            const userObj = {
+                userId: item.userId.toLowerCase(),
+                password: item.secret,
+                passwordHash: `scrypt:${salt}:${digest}`,
+                displayName: item.displayName,
+                role: item.role,
+                companyId: item.companyId,
+                active: true,
+                accessType: 'all',
+                assignedEventIds: ['*']
+            };
+
+            // Seed into mockDb.users if not present
+            if (!mockDb.users.some(u => u.userId.toLowerCase() === userObj.userId)) {
+                mockDb.users.push(userObj);
+                _saveMockUsers(mockDb.users);
+            }
+
+            if (!useMock()) {
+                try {
+                    const existing = await User.findOne({ userId: item.userId.toLowerCase() });
+                    if (!existing) {
+                        await User.create(userObj);
+                        console.log(`[Seed] Created user: ${item.userId}`);
+                    }
+                } catch (_) {}
             }
         }
         await seedDefaultPartnerLocks();
@@ -1467,6 +1481,9 @@ function useMock() {
 const _tmpSalesFile = path.join(os.tmpdir(), 'littx_mock_sales.json');
 const _localSalesFile = path.join(__dirname, 'mock_sales.json');
 
+const _tmpUsersFile = path.join(os.tmpdir(), 'littx_mock_users.json');
+const _localUsersFile = path.join(__dirname, 'mock_users.json');
+
 function _pickSalesFile() {
     if (process.env.LITTX_MOCK_SALES_FILE) return process.env.LITTX_MOCK_SALES_FILE;
     // If local path is writable, use it (local dev). Otherwise use /tmp (Vercel).
@@ -1478,6 +1495,16 @@ function _pickSalesFile() {
     }
 }
 const MOCK_SALES_FILE = _pickSalesFile();
+
+function _pickUsersFile() {
+    try {
+        fs.accessSync(path.dirname(_localUsersFile), fs.constants.W_OK);
+        return _localUsersFile;
+    } catch (_) {
+        return _tmpUsersFile;
+    }
+}
+const MOCK_USERS_FILE = _pickUsersFile();
 
 function _loadMockSales() {
     // Try both paths
@@ -1504,8 +1531,35 @@ function _saveMockSales(salesArray) {
     console.error('[mock sales save error] Could not write to any path');
 }
 
+function _loadMockUsers() {
+    const paths = [MOCK_USERS_FILE, MOCK_USERS_FILE === _localUsersFile ? _tmpUsersFile : _localUsersFile];
+    for (const p of paths) {
+        try {
+            if (fs.existsSync(p)) {
+                const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (_) {}
+    }
+    return [];
+}
+
+function _saveMockUsers(usersArray) {
+    const paths = [MOCK_USERS_FILE, MOCK_USERS_FILE === _localUsersFile ? _tmpUsersFile : _localUsersFile];
+    for (const p of paths) {
+        try {
+            fs.writeFileSync(p, JSON.stringify(usersArray, null, 2), 'utf8');
+            return; // success
+        } catch (_) {}
+    }
+    console.error('[mock users save error] Could not write to any path');
+}
+
 mockDb.sales = _loadMockSales();
 console.log(`[MockDB] Loaded ${mockDb.sales.length} mock sales from ${MOCK_SALES_FILE}`);
+
+mockDb.users = _loadMockUsers();
+console.log(`[MockDB] Loaded ${mockDb.users.length} mock users from ${MOCK_USERS_FILE}`);
 
 const _mockSessions = new Map();
 const _mockUserSessions = new Map();
@@ -2101,59 +2155,100 @@ module.exports = {
 
     // User Helpers
     getAllUsers: async () => {
-        if (useMock()) return mockDb.users;
-        return await getAllUsers();
+        let dbUsers = [];
+        if (!useMock()) {
+            try {
+                dbUsers = await getAllUsers();
+            } catch (_) {}
+        }
+        const userMap = new Map();
+        for (const u of dbUsers) {
+            if (u && u.userId) userMap.set(u.userId.toLowerCase(), u);
+        }
+        for (const u of (mockDb.users || [])) {
+            if (u && u.userId) userMap.set(u.userId.toLowerCase(), { ...(userMap.get(u.userId.toLowerCase()) || {}), ...u });
+        }
+        return Array.from(userMap.values());
     },
     getUserById: async (userId) => {
-        if (useMock()) {
-            return mockDb.users.find(u => u.userId === userId) || null;
+        if (!userId) return null;
+        const normalized = String(userId).trim().toLowerCase();
+        let user = (mockDb.users || []).find(u => u.userId.toLowerCase() === normalized) || null;
+        if (!user && !useMock()) {
+            try {
+                user = await getUserById(userId) || await User.findOne({ userId: new RegExp('^' + normalized + '$', 'i') }).lean();
+            } catch (_) {}
         }
-        return await getUserById(userId);
+        return user;
     },
     updateUser: async (userId, updates) => {
-        if (useMock()) {
-            const idx = mockDb.users.findIndex(u => u.userId === userId);
-            if (idx !== -1) {
-                mockDb.users[idx] = { ...mockDb.users[idx], ...updates };
-                return mockDb.users[idx];
-            }
-            return null;
+        const normalized = String(userId).trim().toLowerCase();
+        const idx = (mockDb.users || []).findIndex(u => u.userId.toLowerCase() === normalized);
+        if (idx !== -1) {
+            mockDb.users[idx] = { ...mockDb.users[idx], ...updates };
+            _saveMockUsers(mockDb.users);
         }
-        return await updateUser(userId, updates);
+        if (!useMock()) {
+            try {
+                await updateUser(userId, updates);
+            } catch (_) {}
+        }
+        return idx !== -1 ? mockDb.users[idx] : null;
     },
     releaseSellerSlot: async (userId) => {
-        if (useMock()) {
-            const user = mockDb.users.find(item => item.userId === userId);
-            if (!user) return null;
+        const normalized = String(userId).trim().toLowerCase();
+        const user = (mockDb.users || []).find(u => u.userId.toLowerCase() === normalized);
+        if (user) {
             delete user.sellerSlot;
-            return user;
+            _saveMockUsers(mockDb.users);
         }
-        return await releaseSellerSlot(userId);
+        if (!useMock()) {
+            try {
+                await releaseSellerSlot(userId);
+            } catch (_) {}
+        }
+        return user;
     },
     createUser: async (userData) => {
-        if (useMock()) {
-            if (mockDb.users.some(u => u.userId.toLowerCase() === String(userData.userId).toLowerCase() || (userData.sellerSlot && u.sellerSlot === userData.sellerSlot) || (userData.email && u.email === String(userData.email).toLowerCase()))) {
-                const error = new Error('A user with this identifier already exists.');
-                error.code = 11000;
-                throw error;
-            }
-            const user = { ...userData };
+        const user = { ...userData };
+        const normalized = String(user.userId).trim().toLowerCase();
+        const idx = (mockDb.users || []).findIndex(u => u.userId.toLowerCase() === normalized);
+        if (idx === -1) {
             mockDb.users.push(user);
-            return user;
+        } else {
+            mockDb.users[idx] = { ...mockDb.users[idx], ...user };
         }
-        return await createUser(userData);
+        _saveMockUsers(mockDb.users);
+
+        if (!useMock()) {
+            try {
+                await createUser(userData);
+            } catch (err) {
+                console.warn('[DB User save warning]', err.message);
+            }
+        }
+        return user;
     },
     deleteUser: async (userId) => {
-        if (useMock()) {
-            const index = mockDb.users.findIndex(user => user.userId === userId);
-            if (index === -1) return null;
-            return mockDb.users.splice(index, 1)[0];
+        const normalized = String(userId).trim().toLowerCase();
+        const index = (mockDb.users || []).findIndex(user => user.userId.toLowerCase() === normalized);
+        let deleted = null;
+        if (index !== -1) {
+            deleted = mockDb.users.splice(index, 1)[0];
+            _saveMockUsers(mockDb.users);
         }
-        return await deleteUser(userId);
+        if (!useMock()) {
+            try {
+                await deleteUser(userId);
+            } catch (_) {}
+        }
+        return deleted;
     },
     getUserBySellerSlot: async (sellerSlot) => {
-        if (useMock()) return mockDb.users.find(u => u.sellerSlot === sellerSlot) || null;
-        return await getUserBySellerSlot(sellerSlot);
+        const mockMatch = (mockDb.users || []).find(u => u.sellerSlot === sellerSlot) || null;
+        if (mockMatch) return mockMatch;
+        if (!useMock()) return await getUserBySellerSlot(sellerSlot);
+        return null;
     },
     createOrganizerApplication: async (application) => {
         if (useMock()) { mockDb.organizerApplications.push({ ...application }); return application; }

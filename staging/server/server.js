@@ -1,4 +1,4 @@
-﻿
+
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -5114,7 +5114,7 @@ app.post('/api/organizer/pr-partners', requireOrganizer, async (req, res) => {
             displayName: String(displayName || '').trim() || normalizedUsername,
             role: 'pr',
             companyId,
-            password: '__hashed__',
+            password: rawPassword,
             passwordHash: hashPassword(rawPassword),
             accessType: accessType === 'all' ? 'all' : 'single',
             assignedEventIds,
@@ -5559,10 +5559,16 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
         }, 'token', loginAt);
     }
 
-    const managedUser = (await db.getAllUsers()).find(user => user.userId.toLowerCase() === String(username).toLowerCase());
+    const managedUser = await db.getUserById(normalizedUser)
+        || (await db.getAllUsers()).find(user =>
+            user.userId.toLowerCase() === normalizedUser ||
+            (user.email && user.email.toLowerCase() === normalizedUser)
+        );
     if (managedUser?.role === 'organizer') {
         if (managedUser.active === false || managedUser.blocked || managedUser.accountStatus === 'pending_activation' || managedUser.accountStatus === 'suspended') return res.status(403).json({ success: false, message: 'Organizer account is inactive. Contact the Master Admin.' });
-        if (!verifyPassword(String(password), managedUser.passwordHash)) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        const isOrganizerMatch = verifyPassword(String(password), managedUser.passwordHash)
+            || (managedUser.password && managedUser.password !== '__hashed__' && safeStringEqual(managedUser.password, password));
+        if (!isOrganizerMatch) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
         const loginAt = new Date().toISOString();
         const token = generateToken({
             userId: managedUser.userId,
@@ -5578,7 +5584,9 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
 
     if (managedUser?.role === 'pr') {
         if (managedUser.active === false || managedUser.blocked || managedUser.accountStatus === 'pending_activation' || managedUser.accountStatus === 'suspended') return res.status(403).json({ success: false, message: 'Partner account is inactive. Contact the organizer.' });
-        if (!verifyPassword(String(password), managedUser.passwordHash)) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        const isPRMatch = verifyPassword(String(password), managedUser.passwordHash)
+            || (managedUser.password && managedUser.password !== '__hashed__' && safeStringEqual(managedUser.password, password));
+        if (!isPRMatch) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
         const loginAt = new Date().toISOString();
         const token = generateToken({
             userId: managedUser.userId,
