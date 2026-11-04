@@ -628,7 +628,7 @@ async function seedDefaultPartnerLocks() {
 async function purgeLegacyData() {
     try {
         console.log('🧹 Purging legacy Littx events, sales, and demo data for fresh Stageway start...');
-        const legacyPattern = /dholida|garba|aura|genesis|sins|paradise|swan|static|sirens|sundowner/i;
+        const legacyPattern = /dholida|garba|aura|genesis|sins|paradise|swan|static|sirens|sundowner|premiere/i;
         const legacyIds = ['6a8e09b03c448413e97b8463', '6a8e09b03c448413e97b8466'];
 
         if (!useMock()) {

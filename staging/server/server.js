@@ -4235,6 +4235,19 @@ app.post('/api/admin/events/:eventRef/transition', requireEventManager, async (r
 });
 
 // ==================== HEALTH ====================
+app.delete('/api/admin/events/:eventRef', requireEventManager, async (req, res) => {
+    try {
+        const event = pickCanonicalEvent(await db.getAllEvents(), req.params.eventRef);
+        if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+        if (!canManageEvent(req, event)) return res.status(403).json({ success: false, message: 'You cannot manage this event.' });
+        await db.deleteEvent(event.id || event._id, event.name);
+        await db.createAuditLog({ adminUser: req.adminSession.userId, companyId: event.companyId, eventId: eventRef(event), category: 'EVENT_DELETED', fieldChanged: 'event', previousValue: event.name, reason: 'Event deleted.' });
+        return res.json({ success: true, message: 'Event deleted.' });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
 app.get('/api/health', (req, res) => res.json({ success: true, service: 'ticketing' }));
 
 function customerBookingSummary(sale, email) {
@@ -4773,7 +4786,7 @@ app.get('/api/organizer/overview', requireOrganizer, async (req, res) => {
             db.getAll()
         ]);
         if (!events) events = [];
-        const legacyPattern = /dholida|garba|aura|genesis|sins|paradise|swan|static|sirens|sundowner/i;
+        const legacyPattern = /dholida|garba|aura|genesis|sins|paradise|swan|static|sirens|sundowner|premiere/i;
         events = events.filter(e => !legacyPattern.test(e.name || '') && !legacyPattern.test(e.slug || ''));
         const sales = allSales.filter(sale => !isShadowSale(sale) && !legacyPattern.test(sale.event || '') && !legacyPattern.test(sale.eventName || ''));
         const byEvent = await Promise.all(events.map(async event => {
