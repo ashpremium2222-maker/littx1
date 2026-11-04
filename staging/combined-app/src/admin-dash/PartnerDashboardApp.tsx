@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import Dashboard from './pages/PartnerDashboardPage'
 import { customerTotal, isConfirmedSale } from './reporting'
 import Orders from './pages/Orders'
@@ -178,8 +178,8 @@ interface AppProps {
 
 export default function App({ isPresentation = false, isManager = false }: AppProps) {
   const [page, setPage] = useState<Page>(isManager ? 'dashboard' : 'master-overview')
-  const [selectedCompanyId, setSelectedCompanyId] = useState('littlane')
-  const [selectedCompanyName, setSelectedCompanyName] = useState('Littlane Ent')
+  const [selectedCompanyId, setSelectedCompanyId] = useState('stageway')
+  const [selectedCompanyName, setSelectedCompanyName] = useState('Stageway Productions')
   const [dark, setDark] = useState(true)
   const [search, setSearch] = useState('')
   const [adminKey, setAdminKey] = useState(
@@ -224,7 +224,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [manualEvent, setManualEvent] = useState('')
   const [manualEvents, setManualEvents] = useState<any[]>([])
   const [manualPasses, setManualPasses] = useState<any[]>([])
-  const [manualPartner, setManualPartner] = useState('littlane')
+  const [manualPartner, setManualPartner] = useState('stageway')
 
   const fetchSales = async (overrideKey?: string) => {
     try {
@@ -361,7 +361,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     }
 
     const partnerNameMap: Record<string, string> = {
-      'littlane': 'Littlane Ent',
+      'stageway': 'Stageway Productions',
       'nitro': 'DGR',
       '7th-heaven': '7th Heaven'
     }
@@ -570,7 +570,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
               Atharva <span className="badge-pro">PRO</span>
             </div>
             <div className="handle">
-              {currentPageObj?.label || 'Dashboard'} · Pune Ops
+              {currentPageObj?.label || 'Dashboard'} Â· Pune Ops
             </div>
           </div>
         </div>
@@ -657,12 +657,12 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             }}
           >
             <div className="card-head">
-              <h3>🎟 Generate & Email Ticket</h3>
+              <h3>ðŸŽŸ Generate & Email Ticket</h3>
               <button
                 className="icon-btn"
                 onClick={() => setShowManualModal(false)}
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -673,9 +673,9 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                   value={manualPartner}
                   onChange={(e) => setManualPartner(e.target.value)}
                 >
-                  <option value="littlane">Littlane Ent</option>
-                  <option value="nitro">DGR</option>
-                  <option value="7th-heaven">7th Heaven</option>
+                  <option value="stageway">Stageway Productions</option>
+                  
+                  
                 </select>
               </div>
 
@@ -731,12 +731,12 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                     setManualAmount(pass ? String(pass.price) : '')
                   }}>
                     <option value="">Select a category</option>
-                    {manualPasses.map(pass => <option key={pass.id || pass.name} value={pass.name}>{pass.name} — {pass.price}</option>)}
+                    {manualPasses.map(pass => <option key={pass.id || pass.name} value={pass.name}>{pass.name} â€” {pass.price}</option>)}
                   </select>
                 </div>
 
                   <div className="field">
-                    <label>PRICE (₹)</label>
+                    <label>PRICE (â‚¹)</label>
                     <input type="number" value={manualAmount} readOnly aria-readonly="true" />
                   </div>
               </div>
@@ -753,7 +753,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                   textAlign: 'center',
                   marginTop: '4px',
                 }}>
-                  ✓ {manualSuccessMsg === 'Sent to Dashboard for Approval' ? 'Ticket sent to dashboard for approval.' : 'Ticket sent successfully! Ready for next ticket.'}
+                  âœ“ {manualSuccessMsg === 'Sent to Dashboard for Approval' ? 'Ticket sent to dashboard for approval.' : 'Ticket sent successfully! Ready for next ticket.'}
                 </div>
               )}
 
@@ -767,7 +767,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
                     transition: 'all 0.2s',
                   }}
                 >
-                  {isManualSubmitting ? 'Processing...' : manualSuccessMsg ? `✓ ${manualSuccessMsg}` : 'Generate & Email'}
+                  {isManualSubmitting ? 'Processing...' : manualSuccessMsg ? `âœ“ ${manualSuccessMsg}` : 'Generate & Email'}
                 </button>
                 <button
                   type="button"

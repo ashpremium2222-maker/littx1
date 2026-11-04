@@ -47,7 +47,7 @@ const EventSchema = new mongoose.Schema({
     name: { type: String, required: true, trim: true },
     slug: { type: String, trim: true, lowercase: true },
     legacyNames: [{ type: String }],
-    companyId: { type: String, default: 'littlane' },
+    companyId: { type: String, default: 'stageway' },
     organizerId: { type: String, index: true },
     organizerUserIds: { type: [String], default: [] },
     // Custom string ID (for frontend reference)
@@ -143,7 +143,7 @@ EventSchema.index({ organizerUserIds: 1, updatedAt: -1 });
 
 const UserSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
-    companyId: { type: String, default: 'littlane' },
+    companyId: { type: String, default: 'stageway' },
     email: { type: String, lowercase: true, trim: true, sparse: true },
     emailVerifiedAt: { type: Date, default: null },
     accountStatus: { type: String, enum: ['pending_activation', 'active', 'suspended'], default: null },
@@ -183,7 +183,7 @@ const ScanLogSchema = new mongoose.Schema({
     scannedBy: { type: String, default: 'Gate Staff' },
     scannerUserId: { type: String },
     ip: { type: String, default: 'unknown' },
-    companyId: { type: String, default: 'littlane' },
+    companyId: { type: String, default: 'stageway' },
     event: { type: String },
     orderId: { type: String },
     admissionCount: { type: Number, min: 1 },
@@ -213,7 +213,7 @@ const UserSessionSchema = new mongoose.Schema({
 
 const SaleSchema = new mongoose.Schema({
     orderId: { type: String, required: true, unique: true },
-    companyId: { type: String, default: 'littlane' },
+    companyId: { type: String, default: 'stageway' },
     event: { type: String },
     // Additive canonical references. Keep `event` as the immutable legacy label
     // so historical ticket links and reports remain readable during migration.
@@ -556,14 +556,7 @@ async function seedDefaultUsers() {
         console.log('ðŸŒ± Seeding configured multi-tenant platform users...');
 
         const configuredUsers = [
-            { userId: 'superadmin@littx.in', secret: process.env.MASTER_PASS, displayName: 'Stageway Super Admin', role: 'master_admin', companyId: 'all' },
-            { userId: 'admin@littlane.in', secret: process.env.COMPANY_ADMIN_PASS, displayName: 'Littlane Admin', role: 'company_admin', companyId: 'littlane' },
-            { userId: 'SELLER-A', secret: process.env.SELLER_A_PASS, displayName: 'Seller Alpha', role: 'seller', companyId: 'littlane' },
-            { userId: 'SELLER-B', secret: process.env.SELLER_B_PASS, displayName: 'Seller Beta', role: 'seller', companyId: 'littlane' },
-            { userId: 'SELLER-C', secret: process.env.SELLER_C_PASS, displayName: 'Seller Gamma', role: 'seller', companyId: '7th-heaven' },
-            { userId: 'partner1', secret: process.env.PR1_PASS, displayName: 'Partner One', role: 'pr', companyId: 'littlane' },
-            { userId: 'partner2', secret: process.env.PR2_PASS, displayName: 'Partner Two', role: 'pr', companyId: 'littlane' },
-            { userId: 'partner5', secret: process.env.PR5_PASS, displayName: 'Partner Five', role: 'pr', companyId: 'littlane' },
+            { userId: 'superadmin@stageway.in', secret: process.env.MASTER_PASS || 'Stageway@2026!', displayName: 'Stageway Super Admin', role: 'master_admin', companyId: 'all' }
         ];
         const defaultUsers = configuredUsers.filter(user => user.secret).map(({ secret, ...user }) => {
             const salt = crypto.randomBytes(16).toString('hex');
@@ -583,13 +576,7 @@ async function seedDefaultUsers() {
 }
 
 async function seedDefaultPartnerLocks() {
-    const defaultPartners = [
-        { partnerId: 'littlane', name: 'Littlane Ent' },
-        { partnerId: 'nitro', name: 'DGR' },
-        { partnerId: '7th-heaven', name: '7th Heaven' },
-        { partnerId: 'partner-slot-1', name: 'ASTEX Testing' },
-        { partnerId: 'partner-slot-2', name: 'Wolfera' }
-    ];
+    const defaultPartners = [];
 
     for (const p of defaultPartners) {
         if (useMock()) {
@@ -627,66 +614,126 @@ async function seedDefaultPartnerLocks() {
 
 async function purgeLegacyData() {
     try {
-        console.log('🧹 Purging legacy Littx events, sales, and demo data for fresh Stageway start...');
+        console.log('🧹 Purging ALL legacy Littx data, companies, events, and controls for Stageway fresh start...');
         const legacyPattern = /dholida|garba|aura|genesis|sins|paradise|swan|static|sirens|sundowner|premiere/i;
+        const legacyCompanyIds = ['stageway', 'nitro', '7th-heaven', 'astex-testing', 'wolfera', 'partner-slot-1', 'partner-slot-2'];
+        const legacyCompanyPattern = /littlane|nitro|dgr|astex|wolfera|7th\s*heaven/i;
         const legacyIds = ['6a8e09b03c448413e97b8463', '6a8e09b03c448413e97b8466'];
 
         if (!useMock()) {
+            // 1. Delete legacy companies
+            const compRes = await Company.deleteMany({
+                $or: [
+                    { companyId: { $in: legacyCompanyIds } },
+                    { name: { $regex: legacyCompanyPattern } }
+                ]
+            });
+            if (compRes.deletedCount > 0) console.log(`[DB Purge] Deleted ${compRes.deletedCount} legacy companies.`);
+
+            // 2. Ensure default clean Stageway company
+            const existingStageway = await Company.findOne({ companyId: 'stageway' });
+            if (!existingStageway) {
+                await Company.create({
+                    companyId: 'stageway',
+                    name: 'Stageway Productions',
+                    status: 'ACTIVE',
+                    commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
+                    razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
+                    manualPaymentConfig: { enabled: true, allowedMethods: ['cash', 'bank_transfer', 'upi_manual'], approvalWorkflow: 'COMPANY_APPROVAL', lockedByMaster: false },
+                    features: {
+                        onlinePayments: { enabled: true, lockedByMaster: false },
+                        manualPayments: { enabled: true, lockedByMaster: false },
+                        prPortal: { enabled: true, lockedByMaster: false },
+                        prSales: { enabled: true, lockedByMaster: false },
+                        ticketTransfers: { enabled: false, lockedByMaster: false },
+                        refunds: { enabled: false, lockedByMaster: false },
+                        couponCodes: { enabled: true, lockedByMaster: false },
+                        qrCheckIn: { enabled: true, lockedByMaster: false },
+                        offlineScan: { enabled: false, lockedByMaster: false },
+                        allowReEntry: { enabled: false, lockedByMaster: false }
+                    },
+                    prSettings: { commissionType: 'PERCENTAGE', commissionValue: 10 }
+                });
+                console.log('[DB Purge] Ensured default Stageway Productions company.');
+            }
+
+            // 3. Delete legacy users
+            const userRes = await User.deleteMany({
+                $or: [
+                    { companyId: { $in: legacyCompanyIds } },
+                    { userId: { $in: ['admin@littlane.in', 'SELLER-A', 'SELLER-B', 'SELLER-C', 'partner1', 'partner2', 'partner5'] } },
+                    { email: { $regex: legacyCompanyPattern } }
+                ]
+            });
+            if (userRes.deletedCount > 0) console.log(`[DB Purge] Deleted ${userRes.deletedCount} legacy users.`);
+
+            // 4. Delete legacy partner locks
+            await PartnerLock.deleteMany({
+                $or: [
+                    { partnerId: { $in: legacyCompanyIds } },
+                    { name: { $regex: legacyCompanyPattern } }
+                ]
+            });
+
+            // 5. Delete legacy events
             const eventRes = await Event.deleteMany({
                 $or: [
                     { name: { $regex: legacyPattern } },
                     { slug: { $regex: legacyPattern } },
+                    { companyId: { $in: legacyCompanyIds } },
+                    { organizerId: { $in: legacyCompanyIds } },
                     { id: { $in: legacyIds } },
                     { legacyNames: { $elemMatch: { $regex: legacyPattern } } }
                 ]
             });
-            if (eventRes.deletedCount > 0) {
-                console.log(`[DB Purge] Permanently deleted ${eventRes.deletedCount} legacy events.`);
-            }
+            if (eventRes.deletedCount > 0) console.log(`[DB Purge] Deleted ${eventRes.deletedCount} legacy events.`);
 
+            // 6. Delete legacy sales/orders
             const salesRes = await Sale.deleteMany({
                 $or: [
                     { event: { $regex: legacyPattern } },
                     { eventName: { $regex: legacyPattern } },
+                    { companyId: { $in: legacyCompanyIds } },
                     { eventId: { $in: legacyIds } },
                     { orderId: { $regex: legacyPattern } }
                 ]
             });
-            if (salesRes.deletedCount > 0) {
-                console.log(`[DB Purge] Permanently deleted ${salesRes.deletedCount} legacy sales records.`);
-            }
+            if (salesRes.deletedCount > 0) console.log(`[DB Purge] Deleted ${salesRes.deletedCount} legacy sales records.`);
 
-            const scanRes = await ScanLog.deleteMany({
+            // 7. Delete legacy scan logs, checkouts, invitations, audit logs
+            await ScanLog.deleteMany({
                 $or: [
                     { eventName: { $regex: legacyPattern } },
+                    { companyId: { $in: legacyCompanyIds } },
                     { eventId: { $in: legacyIds } }
                 ]
             });
-            if (scanRes.deletedCount > 0) {
-                console.log(`[DB Purge] Deleted ${scanRes.deletedCount} legacy scan logs.`);
-            }
-
             await CheckoutRequest.deleteMany({
                 $or: [
                     { eventName: { $regex: legacyPattern } },
+                    { companyId: { $in: legacyCompanyIds } },
                     { eventId: { $in: legacyIds } }
                 ]
             });
             await EventInvitation.deleteMany({
                 $or: [
                     { eventName: { $regex: legacyPattern } },
+                    { companyId: { $in: legacyCompanyIds } },
                     { eventId: { $in: legacyIds } }
                 ]
+            });
+            await AuditLog.deleteMany({
+                companyId: { $in: legacyCompanyIds }
             });
         }
 
         for (const [k, v] of Array.from(_mockEvents.entries())) {
-            if (legacyPattern.test(k) || legacyPattern.test(v?.name || '') || legacyPattern.test(v?.slug || '')) {
+            if (legacyPattern.test(k) || legacyPattern.test(v?.name || '') || legacyPattern.test(v?.slug || '') || legacyCompanyIds.includes(v?.companyId)) {
                 _mockEvents.delete(k);
             }
         }
         if (Array.isArray(mockDb.sales)) {
-            mockDb.sales = mockDb.sales.filter(s => !legacyPattern.test(s.event || '') && !legacyPattern.test(s.eventName || ''));
+            mockDb.sales = mockDb.sales.filter(s => !legacyPattern.test(s.event || '') && !legacyPattern.test(s.eventName || '') && !legacyCompanyIds.includes(s.companyId));
             _saveMockSales(mockDb.sales);
         }
         return { success: true };
@@ -1148,8 +1195,8 @@ async function seedDefaultCompanies() {
         const now = new Date().toISOString();
         const defaultCompanies = [
             {
-                companyId: 'littlane',
-                name: 'Littlane Ent',
+                companyId: 'stageway',
+                name: 'Stageway Productions',
                 status: 'ACTIVE',
                 commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
                 razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
@@ -1194,7 +1241,7 @@ async function getCompanyById(companyId) {
     let company = await Company.findOne({ companyId }).lean();
     if (!company) {
         // Fallback to first or default company
-        company = await Company.findOne({ companyId: 'littlane' }).lean();
+        company = await Company.findOne({ companyId: 'stageway' }).lean();
     }
     return company;
 }
@@ -1257,7 +1304,7 @@ async function getAuditLogs(companyId = null) {
     return await AuditLog.find(query).sort({ timestamp: -1 }).limit(100).lean();
 }
 
-async function getEffectiveConfig(companyId = 'littlane', eventNameOrId = null) {
+async function getEffectiveConfig(companyId = 'stageway', eventNameOrId = null) {
     const company = await getCompanyById(companyId) || {
         status: 'ACTIVE',
         razorpayConfig: { enabled: true, lockedByMaster: false },
@@ -1324,7 +1371,7 @@ const mockDb = {
     otpRateLimits: new Map(),
     companies: [
         {
-            companyId: 'littlane',
+            companyId: 'stageway',
             name: 'Littlane Ent',
             status: 'ACTIVE',
             commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
@@ -1412,7 +1459,7 @@ const _mockSessions = new Map();
 const _mockUserSessions = new Map();
 const _mockScanLogs = [];
 const _mockPartnerLocks = new Map([
-    ['littlane', { partnerId: 'littlane', name: 'Littlane Ent', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
+    ['stageway', { partnerId: 'stageway', name: 'Littlane Ent', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['nitro', { partnerId: 'nitro', name: 'DGR', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
     ['partner-slot-1', { partnerId: 'partner-slot-1', name: 'ASTEX Testing', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
@@ -2617,8 +2664,8 @@ module.exports = {
         const name = (eventData.name || 'Untitled Event').trim();
         const doc = {
             ...eventFields, id, name,
-            companyId: eventData.companyId || 'littlane',
-            organizerId: eventData.organizerId || eventData.companyId || 'littlane',
+            companyId: eventData.companyId || 'stageway',
+            organizerId: eventData.organizerId || eventData.companyId || 'stageway',
             active: eventData.active !== undefined ? eventData.active : true,
             tiers: eventData.tiers || [],
             ticketCategories: eventData.ticketCategories || eventData.tiers || eventData.ticketTypes || [],

@@ -14,27 +14,13 @@ if (process.env.NODE_ENV !== 'test') {
 // WebAuthn state for Sellers
 const rpName = 'Stageway Seller Portal';
 
-const PARTNER_PASSWORDS = {
-    'littlane': process.env.SELLER_LITTLANE_PASS,
-    'nitro': process.env.SELLER_NITRO_PASS,
-    '7th-heaven': process.env.SELLER_7TH_HEAVEN_PASS
-};
-
-const PARTNER_NAMES = {
-    'littlane': 'Littlane Ent',
-    'nitro': 'DGR',
-    '7th-heaven': '7th Heaven'
-};
-
-const SELLER_COMPANY_NAMES = {
-    ...PARTNER_NAMES,
-    'partner-slot-1': 'ASTEX Testing',
-    'partner-slot-2': 'Wolfera'
-};
+const PARTNER_PASSWORDS = {};
+const PARTNER_NAMES = {};
+const SELLER_COMPANY_NAMES = {};
 
 function displayCompanyName(companyId, currentName) {
-    if (companyId === 'littlane') return 'Littlane Ent';
-    return currentName;
+    if (companyId === 'stageway') return 'Stageway Productions';
+    return currentName || companyId;
 }
 
 function redactCompanySecrets(value) {
@@ -52,11 +38,8 @@ function redactCompanySecrets(value) {
     return redacted;
 }
 
-const PARTNER_LOGIN_SLOTS = ['partner-slot-1', 'partner-slot-2'];
-const PARTNER_SLOT_COMPANY_IDS = {
-    'partner-slot-1': 'astex-testing',
-    'partner-slot-2': 'wolfera'
-};
+const PARTNER_LOGIN_SLOTS = [];
+const PARTNER_SLOT_COMPANY_IDS = {};
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
     const digest = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -77,7 +60,7 @@ function partnerCompanyId(name) {
 async function syncManagedPartnerCompanies(users) {
     for (const user of users.filter(item => item.role === 'seller' && PARTNER_LOGIN_SLOTS.includes(item.sellerSlot))) {
         const companyId = PARTNER_SLOT_COMPANY_IDS[user.sellerSlot] || partnerCompanyId(user.displayName);
-        if (!companyId || user.companyId !== 'littlane') continue;
+        if (!companyId || user.companyId !== 'stageway') continue;
         await db.ensureCompany(companyId, user.displayName || companyId);
         const updated = await db.updateUser(user.userId, { companyId });
         if (updated) user.companyId = companyId;
@@ -767,7 +750,7 @@ app.post('/api/master/seller-access/:partnerId', requireMasterAdmin, async (req,
         sellerSessions[partnerId] = session;
         savePersisted(SESSIONS_FILE, sellerSessions);
         await db.setSellerSession(partnerId, session);
-        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: partner.user?.companyId || 'littlane', category: 'SELLER_PANEL_ACCESS_ISSUED', fieldChanged: 'sellerSession', reason: `Master admin issued a seller-panel session for ${partnerId}.` });
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: partner.user?.companyId || 'stageway', category: 'SELLER_PANEL_ACCESS_ISSUED', fieldChanged: 'sellerSession', reason: `Master admin issued a seller-panel session for ${partnerId}.` });
 
         res.json({
             success: true,
@@ -1249,9 +1232,9 @@ if (TEST_MODE) console.warn('[Payments] Explicit non-production test mode enable
 // Privileged routes fail closed until an operator supplies a secret.
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-// Littlane Ent, DGR, and ASTEX Media can send tickets immediately. Every
+// Stageway Productions, DGR, and ASTEX Media can send tickets immediately. Every
 // other event company must appear in Master Admin's approval queue first.
-const DIRECT_DELIVERY_COMPANY_IDS = new Set(['littlane', 'nitro', 'astex-media', 'astex-testing']);
+const DIRECT_DELIVERY_COMPANY_IDS = new Set(['stageway', 'nitro', 'astex-media', 'astex-testing']);
 
 function normalizeSellerId(value) {
     return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -1260,7 +1243,7 @@ function normalizeSellerId(value) {
 function sellerCompanyIdFromValue(value) {
     const normalized = normalizeSellerId(value);
     if (!normalized) return '';
-    if (normalized === 'LITTLANE' || normalized === 'SELLER-A') return 'littlane';
+    if (normalized === 'LITTLANE' || normalized === 'SELLER-A') return 'stageway';
     if (normalized === 'NITRO' || normalized === 'SELLER-B') return 'nitro';
     if (normalized === '7TH-HEAVEN' || normalized === 'SELLER-C') return '7th-heaven';
     if (normalized === 'PARTNER-SLOT-1') return 'partner-slot-1';
@@ -1278,14 +1261,14 @@ function isDirectDeliverySeller(sellerId) {
 
 function sellerHasUnlimitedCommission(sellerId) {
     const companyId = sellerCompanyIdFromValue(sellerId);
-    if (companyId === 'littlane' || companyId === 'astex-testing') return true;
+    if (companyId === 'stageway' || companyId === 'astex-testing') return true;
     return companyId === 'partner-slot-1' && PARTNER_SLOT_COMPANY_IDS[companyId] === 'astex-testing';
 }
 
 function resolveSaleCompanyId(sale, slotCompanyMap = new Map()) {
     if (sale?.companyId) return sale.companyId;
     const baseCompanyId = sellerCompanyIdFromValue(sale?.sellerId || sale?.generatedBy || sale?.prUserId || '');
-    return slotCompanyMap.get(baseCompanyId) || baseCompanyId || 'littlane';
+    return slotCompanyMap.get(baseCompanyId) || baseCompanyId || 'stageway';
 }
 
 function saleGrossAmount(sale) {
@@ -1488,7 +1471,7 @@ async function getDashboardSaleVisibility(sales) {
         const seller = users.find(user => ['seller', 'pr'].includes(user.role) && [user.userId, user.sellerSlot, user.displayName]
             .some(value => value && sources.some(source => normalizeSellerId(source) === normalizeSellerId(value))));
         const sellerId = seller?.userId || sale.sellerId || sale.generatedBy || sale.prUserId || 'Admin';
-        const companyId = seller?.companyId || resolveSaleCompanyId(sale, slotCompanyMap) || 'littlane';
+        const companyId = seller?.companyId || resolveSaleCompanyId(sale, slotCompanyMap) || 'stageway';
         const companyName = companyNames.get(companyId) || displayCompanyName(companyId, companyId);
         const saved = savedByKey.get(key);
         return {
@@ -1748,7 +1731,7 @@ async function requireEventManager(req, res, next) {
                 email: 'organizer@stageway.in',
                 displayName: session.displayName || 'Blue Nile Productions',
                 role: 'organizer',
-                companyId: session.companyId || 'littlane',
+                companyId: session.companyId || 'stageway',
                 active: true,
                 blocked: false,
                 emailVerifiedAt: new Date()
@@ -1778,7 +1761,7 @@ async function requireOrganizer(req, res, next) {
                 email: session.userId.includes('@') ? session.userId : 'organizer@stageway.in',
                 displayName: session.displayName || 'Blue Nile Productions',
                 role: 'organizer',
-                companyId: session.companyId || 'littlane',
+                companyId: session.companyId || 'stageway',
                 active: true,
                 blocked: false,
                 emailVerifiedAt: new Date()
@@ -1834,7 +1817,7 @@ async function requireApprovalAdmin(req, res, next) {
         const session = await db.getUserSessionByToken(token);
         if (!isValidUserSession(session, token)) return res.status(401).json({ success: false, message: 'Session expired or invalid.' });
         const allowedMaster = session.role === 'master_admin';
-        const allowedDashboard = session.role === 'company_admin' && session.companyId === 'littlane';
+        const allowedDashboard = session.role === 'company_admin' && session.companyId === 'stageway';
         if (!allowedMaster && !allowedDashboard) {
             return res.status(403).json({ success: false, message: 'Only dashboard or master administrators can review ticket approvals.' });
         }
@@ -1847,7 +1830,7 @@ async function requireApprovalAdmin(req, res, next) {
 
 function approvalAdminOwnsSale(req, sale) {
     if (req.adminSession?.role === 'master_admin') return true;
-    const companyId = sale?.companyId || sellerCompanyIdFromValue(sale?.sellerId || sale?.generatedBy || sale?.prUserId) || 'littlane';
+    const companyId = sale?.companyId || sellerCompanyIdFromValue(sale?.sellerId || sale?.generatedBy || sale?.prUserId) || 'stageway';
     return req.adminSession?.role === 'company_admin' && req.adminSession.companyId === companyId;
 }
 
@@ -2590,7 +2573,7 @@ app.post('/api/admin/ticket-approvals/:orderId/approve', requireApprovalAdmin, a
 
     await db.createAuditLog({
         adminUser: approvedBy,
-        companyId: claimed.companyId || 'littlane',
+        companyId: claimed.companyId || 'stageway',
         eventId: claimed.eventId || null,
         category: 'OFFLINE_TICKET_APPROVAL',
         fieldChanged: 'approvalStatus',
@@ -2647,7 +2630,7 @@ app.post('/api/admin/ticket-approvals/:orderId/reject', requireApprovalAdmin, as
 
     await db.createAuditLog({
         adminUser: rejectedBy,
-        companyId: rejected.companyId || 'littlane',
+        companyId: rejected.companyId || 'stageway',
         category: 'TICKET_APPROVAL',
         fieldChanged: 'approvalStatus',
         previousValue: 'PENDING',
@@ -2744,7 +2727,7 @@ app.post('/api/solver/tickets/:ticketId/disable', requireMasterAdmin, async (req
         const now = new Date().toISOString();
         const updated = await db.solverUpdateSale(sale.orderId, sale.status, { status: 'cancelled', disabledAt: now, disabledBy: solverActor(req), disabledPreviousStatus: sale.status });
         if (!updated) return res.status(409).json({ success: false, message: 'Ticket changed. Refresh and try again.' });
-        await db.createAuditLog({ adminUser: solverActor(req), companyId: sale.companyId || 'littlane', category: 'TICKET_CONTROL', fieldChanged: `solver:${sale.ticketId}:status`, previousValue: sale.status, newValue: 'disabled', reason });
+        await db.createAuditLog({ adminUser: solverActor(req), companyId: sale.companyId || 'stageway', category: 'TICKET_CONTROL', fieldChanged: `solver:${sale.ticketId}:status`, previousValue: sale.status, newValue: 'disabled', reason });
         res.json({ success: true, message: 'Ticket disabled.' });
     } catch (err) { console.error('[solver disable]', err.message); res.status(500).json({ success: false, message: 'Could not disable ticket.' }); }
 });
@@ -2758,7 +2741,7 @@ app.post('/api/solver/tickets/:ticketId/reactivate', requireMasterAdmin, async (
         const now = new Date().toISOString();
         const updated = await db.solverUpdateSale(sale.orderId, sale.status, { status: restored, reactivatedAt: now, disabledAt: null, disabledBy: null, disabledPreviousStatus: null });
         if (!updated) return res.status(409).json({ success: false, message: 'Ticket changed. Refresh and try again.' });
-        await db.createAuditLog({ adminUser: solverActor(req), companyId: sale.companyId || 'littlane', category: 'TICKET_CONTROL', fieldChanged: `solver:${sale.ticketId}:status`, previousValue: solverStatus(sale), newValue: 'active', reason: 'Reactivated by Solver.' });
+        await db.createAuditLog({ adminUser: solverActor(req), companyId: sale.companyId || 'stageway', category: 'TICKET_CONTROL', fieldChanged: `solver:${sale.ticketId}:status`, previousValue: solverStatus(sale), newValue: 'active', reason: 'Reactivated by Solver.' });
         res.json({ success: true, message: 'Ticket reactivated.' });
     } catch (err) { console.error('[solver reactivate]', err.message); res.status(500).json({ success: false, message: 'Could not reactivate ticket.' }); }
 });
@@ -2781,7 +2764,7 @@ app.post('/api/solver/tickets/:ticketId/upgrade', requireMasterAdmin, async (req
         const now = new Date().toISOString();
         const updated = await db.solverUpdateSale(sale.orderId, sale.status, { ticketType: target.name, gender: target.gender || sale.gender, passUnitPrice: target.price, officialRate: target.price, solverOriginalTier: sale.solverOriginalTier || currentName, solverUpgradedAt: now, solverUpgradedBy: solverActor(req), solverUpgradeDifference: difference });
         if (!updated) return res.status(409).json({ success: false, message: 'Ticket changed. Refresh and try again.' });
-        await db.createAuditLog({ adminUser: solverActor(req), companyId: sale.companyId || 'littlane', category: 'TICKET_CONTROL', fieldChanged: `solver:${sale.ticketId}:tier`, previousValue: currentName, newValue: target.name, reason: `Upgrade difference calculated from server pricing: ${difference}.` });
+        await db.createAuditLog({ adminUser: solverActor(req), companyId: sale.companyId || 'stageway', category: 'TICKET_CONTROL', fieldChanged: `solver:${sale.ticketId}:tier`, previousValue: currentName, newValue: target.name, reason: `Upgrade difference calculated from server pricing: ${difference}.` });
         res.json({ success: true, message: 'Ticket upgraded.', difference, tier: target.name });
     } catch (err) { console.error('[solver upgrade]', err.message); res.status(500).json({ success: false, message: 'Could not upgrade ticket.' }); }
 });
@@ -2880,7 +2863,7 @@ app.get('/api/admin/partners', requirePartnerAdmin, async (_req, res) => {
     await syncManagedPartnerCompanies(users);
     const systemPartners = await Promise.all(Object.entries(PARTNER_NAMES).map(async ([userId, displayName]) => {
         const blocked = Boolean((await db.getPartnerLock(userId))?.blocked);
-        return { userId, displayName, companyId: 'littlane', sellerSlot: null, active: !blocked, blocked, managed: false };
+        return { userId, displayName, companyId: 'stageway', sellerSlot: null, active: !blocked, blocked, managed: false };
     }));
     const managedPartners = users
         .filter(user => user.role === 'seller' && PARTNER_LOGIN_SLOTS.includes(user.sellerSlot))
@@ -2962,7 +2945,7 @@ app.patch('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) =
         savePersisted(SESSIONS_FILE, sellerSessions);
         await Promise.all(sessionIds.map(sessionId => db.deleteSellerSession(sessionId)));
     }
-    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: updated.companyId || 'littlane', category: 'SELLER_ACCOUNT_UPDATED', fieldChanged: Object.keys(updates).filter(field => field !== 'passwordHash').join(','), reason: `Updated seller account ${updated.userId}.` });
+    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: updated.companyId || 'stageway', category: 'SELLER_ACCOUNT_UPDATED', fieldChanged: Object.keys(updates).filter(field => field !== 'passwordHash').join(','), reason: `Updated seller account ${updated.userId}.` });
     const { password: _, passwordHash: __, ...partner } = updated.toObject ? updated.toObject() : updated;
     res.json({ success: true, partner });
 });
@@ -2985,7 +2968,7 @@ app.delete('/api/admin/partners/:userId', requirePartnerAdmin, async (req, res) 
         delete webauthnAuthenticators[slot];
         savePersisted(SESSIONS_FILE, sellerSessions);
         savePersisted(WEBAUTHN_FILE, webauthnAuthenticators);
-        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: user.companyId || 'littlane', category: 'SELLER_ACCOUNT_CLEARED', fieldChanged: 'sellerAccount', previousValue: user.userId, reason: `Cleared managed seller login slot ${slot}; sales and tickets were retained.` });
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: user.companyId || 'stageway', category: 'SELLER_ACCOUNT_CLEARED', fieldChanged: 'sellerAccount', previousValue: user.userId, reason: `Cleared managed seller login slot ${slot}; sales and tickets were retained.` });
         res.json({ success: true, message: `${slot === 'partner-slot-1' ? 'Partner Login 1' : 'Partner Login 2'} was cleared and is ready for a new partner.` });
     } catch (err) {
         console.error('[DELETE PARTNER ERROR]', err);
@@ -3226,7 +3209,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
 
         const resolvedSellerId = sellerId || adminSession?.userId || 'Admin';
         const normalizedResolvedSellerId = normalizeSellerId(resolvedSellerId);
-        let resolvedCompanyId = sellerCompanyId || eventRecord?.companyId || adminSession?.companyId || 'littlane';
+        let resolvedCompanyId = sellerCompanyId || eventRecord?.companyId || adminSession?.companyId || 'stageway';
         if (PARTNER_LOGIN_SLOTS.includes(resolvedCompanyId)) {
             const slotUser = await db.getUserBySellerSlot(resolvedCompanyId);
             if (slotUser?.companyId) resolvedCompanyId = slotUser.companyId;
@@ -3376,7 +3359,7 @@ app.post('/api/shadow/login', loginRateLimit, browserSessionLoginGuard, async (r
         ip: clientIp(req),
         loginAt,
         role: 'shadow',
-        companyId: 'littlane',
+        companyId: 'stageway',
         displayName: 'Shadow Panel',
     });
     return respondWithSession(req, res, 'shadow', shadowToken, {}, 'shadowToken', loginAt);
@@ -3410,7 +3393,7 @@ app.post('/api/shadow-private/login', loginRateLimit, browserSessionLoginGuard, 
         ip: clientIp(req),
         loginAt,
         role: 'shadow_private',
-        companyId: 'littlane',
+        companyId: 'stageway',
         displayName: 'Private Shadow Panel',
     });
     return respondWithSession(req, res, 'shadow_private', shadowToken, {}, 'shadowToken', loginAt);
@@ -3505,7 +3488,7 @@ async function generateShadowTicket(req, res, source, paymentMethod, generatedBy
         const record = {
             orderId,
             ticketId,
-            companyId: 'littlane',
+            companyId: 'stageway',
             event: pricedEvent,
             name,
             email,
@@ -3752,7 +3735,7 @@ app.post('/api/admin/cancel-ticket', requireMasterAdmin, async (req, res) => {
             scannedAt: 'Cancelled by Admin',
             scannedBy: 'Admin'
         });
-        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: sale.companyId || 'littlane', eventId: sale.eventId || null, category: 'TICKET_CANCELLED', fieldChanged: 'status', previousValue: sale.status, newValue: 'cancelled', reason: `Cancelled ticket ${sale.ticketId}.` });
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: sale.companyId || 'stageway', eventId: sale.eventId || null, category: 'TICKET_CANCELLED', fieldChanged: 'status', previousValue: sale.status, newValue: 'cancelled', reason: `Cancelled ticket ${sale.ticketId}.` });
         res.json({ success: true, message: `Ticket ${ticketId} cancelled successfully.` });
     } catch (err) {
         console.error('[CANCEL ERROR]', err);
@@ -3771,7 +3754,7 @@ app.delete('/api/admin/delete-ticket', requireMasterAdmin, async (req, res) => {
         const removed = await db.deleteSaleRecord(sale.orderId);
         if (!removed) return res.status(404).json({ success: false, message: 'Ticket not found.' });
 
-        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: sale.companyId || 'littlane', eventId: sale.eventId || null, category: 'TICKET_RECORD_DELETED', fieldChanged: 'orderRecord', previousValue: sale.orderId, reason: `Permanently removed ticket record ${sale.ticketId}.` });
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: sale.companyId || 'stageway', eventId: sale.eventId || null, category: 'TICKET_RECORD_DELETED', fieldChanged: 'orderRecord', previousValue: sale.orderId, reason: `Permanently removed ticket record ${sale.ticketId}.` });
 
         if (sale.ticketId) {
             const filename = `${path.basename(String(sale.ticketId))}.pdf`;
@@ -3915,7 +3898,7 @@ app.post('/api/scan-ticket', async (req, res) => {
 
         if (scannerSession) {
             const assignedEvent = Array.isArray(scannerSession.eventNames) && scannerSession.eventNames.some(name => String(name).trim().toLowerCase() === String(sale.event || '').trim().toLowerCase());
-            const saleCompany = sale.companyId || sellerCompanyIdFromValue(sale.sellerId || sale.generatedBy) || 'littlane';
+            const saleCompany = sale.companyId || sellerCompanyIdFromValue(sale.sellerId || sale.generatedBy) || 'stageway';
             if (!assignedEvent || saleCompany !== scannerSession.companyId) {
                 return res.status(403).json({ success: false, message: 'This scanner is not assigned to the ticket event.' });
             }
@@ -3942,7 +3925,7 @@ app.post('/api/scan-ticket', async (req, res) => {
                 scannedBy: scannedBy || 'Gate Staff',
                 scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId,
                 ip: req.ip || req.socket?.remoteAddress || 'unknown',
-                companyId: sale.companyId || 'littlane',
+                companyId: sale.companyId || 'stageway',
                 event: sale.event,
                 orderId: sale.orderId,
                 admissionCount: sale.admissionCount || sale.quantity || 1
@@ -3973,7 +3956,7 @@ app.post('/api/scan-ticket', async (req, res) => {
                 scannedBy: scannedBy || 'Gate Staff',
                 scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId,
                 ip: req.ip || req.socket?.remoteAddress || 'unknown',
-                companyId: sale.companyId || 'littlane',
+                companyId: sale.companyId || 'stageway',
                 event: sale.event,
                 orderId: sale.orderId,
                 admissionCount: sale.scannedAdmissionCount || sale.admissionCount || sale.quantity || 1
@@ -4016,7 +3999,7 @@ app.post('/api/scan-ticket', async (req, res) => {
             const currentSale = await db.getByTicketId(ticketId);
             if (!currentSale || currentSale.status === 'cancelled') {
                 if (currentSale?.status === 'cancelled') {
-                    db.createScanLog({ ticketId, result: 'cancelled', scannedBy: scannedBy || 'Gate Staff', scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId, ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event, orderId: currentSale.orderId, admissionCount: currentSale.admissionCount || currentSale.quantity || 1 }).catch(err => console.error('[ScanLog write error]', err.message));
+                    db.createScanLog({ ticketId, result: 'cancelled', scannedBy: scannedBy || 'Gate Staff', scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId, ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'stageway', event: currentSale.event, orderId: currentSale.orderId, admissionCount: currentSale.admissionCount || currentSale.quantity || 1 }).catch(err => console.error('[ScanLog write error]', err.message));
                     return res.json({ result: 'rejected', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: ticketTypeForSale(currentSale), quantity: currentSale.quantity, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: 'cancelled', scannedBy: currentSale.disabledBy || 'Admin', scannedAt: currentSale.disabledAt ? 'Disabled by Solver' : 'Cancelled by Admin' } });
                 }
                 db.createScanLog({ ticketId, result: 'invalid', scannedBy: scannedBy || 'Gate Staff', ip: req.ip || req.socket?.remoteAddress || 'unknown' }).catch(err => console.error('[ScanLog write error]', err.message));
@@ -4024,7 +4007,7 @@ app.post('/api/scan-ticket', async (req, res) => {
             }
             const alreadyUsed = currentSale.status === 'scanned' || Boolean(currentSale.scannedAt);
             const requiresReview = !alreadyUsed;
-            db.createScanLog({ ticketId: currentSale.ticketId, result: alreadyUsed ? 'duplicate' : 'manual_review', scannedBy: scannedBy || 'Gate Staff', scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId, ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'littlane', event: currentSale.event, orderId: currentSale.orderId, admissionCount: currentSale.admissionCount || currentSale.quantity || 1 }).catch(err => console.error('[ScanLog write error]', err.message));
+            db.createScanLog({ ticketId: currentSale.ticketId, result: alreadyUsed ? 'duplicate' : 'manual_review', scannedBy: scannedBy || 'Gate Staff', scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId, ip: req.ip || req.socket?.remoteAddress || 'unknown', companyId: currentSale.companyId || 'stageway', event: currentSale.event, orderId: currentSale.orderId, admissionCount: currentSale.admissionCount || currentSale.quantity || 1 }).catch(err => console.error('[ScanLog write error]', err.message));
             return res.json({ result: requiresReview ? 'manual_review' : 'rejected', reason: requiresReview ? 'ticket_not_issued' : 'already_used', message: requiresReview ? 'Ticket is not in an issued state and requires manual review.' : 'Ticket has already been used.', ticket: { id: currentSale.ticketId, event: currentSale.event, attendee: currentSale.name, email: currentSale.email, phone: currentSale.phone, ticketType: ticketTypeForSale(currentSale), quantity: currentSale.quantity, admissionCount: currentSale.admissionCount || currentSale.quantity || 1, amount: currentSale.amount, generatedAt: currentSale.generatedAt, status: currentSale.status, scannedBy: currentSale.scannedBy, scannedAt: currentSale.scannedAt } });
         }
 
@@ -4034,7 +4017,7 @@ app.post('/api/scan-ticket', async (req, res) => {
             scannedBy: scannedBy || 'Gate Staff',
             scannerUserId: scannerSession?.userId || scannerSession?.name || sellerId,
             ip: req.ip || req.socket?.remoteAddress || 'unknown',
-            companyId: updatedSale.companyId || 'littlane',
+            companyId: updatedSale.companyId || 'stageway',
             event: updatedSale.event,
             orderId: updatedSale.orderId,
             admissionCount: updatedSale.scannedAdmissionCount || admissionCount
@@ -4438,7 +4421,7 @@ app.get('/api/master/partner-access-report', requireMasterAdmin, async (_req, re
     const identities = new Map();
     for (const user of users.filter(item => ['seller', 'pr'].includes(item.role))) identities.set(`${user.role}:${user.userId}`, { role: user.role, principalId: user.userId, companyId: user.companyId || null, accountStatus: user.accountStatus || 'legacy', source: 'managed_account' });
     for (const [id, name] of Object.entries(PARTNER_NAMES)) identities.set(`seller:${id}`, { role: 'seller', principalId: id, companyId: sellerCompanyIdFromValue(id), accountStatus: 'legacy', source: 'configured_seller' });
-    for (const item of PR_USERS_AUTH) identities.set(`pr:${item.id}`, { role: 'pr', principalId: item.id, companyId: 'littlane', accountStatus: 'legacy', source: 'configured_pr' });
+    for (const item of PR_USERS_AUTH) identities.set(`pr:${item.id}`, { role: 'pr', principalId: item.id, companyId: 'stageway', accountStatus: 'legacy', source: 'configured_pr' });
     const report = [...identities.values()].map(identity => {
         const policy = policies.find(item => item.role === identity.role && item.principalId === identity.principalId);
         const effectiveEventIds = policy ? policy.eventIds : events.filter(event => event.companyId === identity.companyId).map(eventRef);
@@ -4457,7 +4440,7 @@ app.put('/api/master/accounts/:userId/event-assignments', requireMasterAdmin, as
     const staticSeller = role === 'seller' && (Boolean(PARTNER_NAMES[principalId]) || Boolean(SELLER_ACCOUNTS[String(principalId).toUpperCase()]));
     const staticPr = role === 'pr' && PR_USERS_AUTH.some(item => item.id === principalId);
     if (account && account.role !== role || !account && !staticSeller && !staticPr) return res.status(404).json({ success: false, message: 'Partner account not found for the selected role.' });
-    const companyId = account?.companyId || (role === 'pr' ? 'littlane' : sellerCompanyIdFromValue(principalId));
+    const companyId = account?.companyId || (role === 'pr' ? 'stageway' : sellerCompanyIdFromValue(principalId));
     if (!companyId) return res.status(409).json({ success: false, message: 'Partner company could not be established.' });
     const allEvents = await db.getAllEvents();
     const selectedEvents = normalizedIds.map(id => pickCanonicalEvent(allEvents, id));
@@ -4605,7 +4588,7 @@ app.patch('/api/master/accounts/:userId/status', requireMasterAdmin, async (req,
         if (application) await db.updateOrganizerApplication(application.applicationId, { status: active ? 'approved' : 'suspended', decidedBy: req.adminSession?.userId || 'Master Admin', decidedAt: new Date() });
     }
     await db.createAuditLog({
-        adminUser: req.adminSession?.userId || 'Master Admin', companyId: user.companyId || 'littlane',
+        adminUser: req.adminSession?.userId || 'Master Admin', companyId: user.companyId || 'stageway',
         category: user.role === 'organizer'
             ? (active ? 'ORGANIZER_ACCOUNT_ACTIVATED' : 'ORGANIZER_ACCOUNT_SUSPENDED')
             : (active ? 'PARTNER_ACCOUNT_ACTIVATED' : 'PARTNER_ACCOUNT_SUSPENDED'),
@@ -4657,7 +4640,7 @@ app.post('/api/organizer/applications/:applicationId/verify', organizerVerificat
         if (!result.ok) return res.status(400).json({ success: false, message: 'Application verification is invalid or expired.' });
         const updated = await db.updateOrganizerApplication(application.applicationId, { status: 'pending_review', emailVerifiedAt: new Date() }, 'verification_pending');
         if (!updated) return res.status(409).json({ success: false, message: 'Application status changed. Refresh and try again.' });
-        await db.createAuditLog({ adminUser: 'Applicant', companyId: 'littlane', category: 'ORGANIZER_APPLICATION_SUBMITTED', fieldChanged: 'applicationId', newValue: application.applicationId, reason: 'Applicant verified their email and submitted an organizer application.' });
+        await db.createAuditLog({ adminUser: 'Applicant', companyId: 'stageway', category: 'ORGANIZER_APPLICATION_SUBMITTED', fieldChanged: 'applicationId', newValue: application.applicationId, reason: 'Applicant verified their email and submitted an organizer application.' });
         return res.json({ success: true, status: 'pending_review' });
     } catch (_) { return res.status(503).json({ success: false, message: 'Application verification is temporarily unavailable.' }); }
 });
@@ -4690,7 +4673,7 @@ app.post('/api/master/organizer-applications/:applicationId/decision', requireMa
     if (decision === 'rejected') {
         const rejected = await db.updateOrganizerApplication(application.applicationId, { status: 'rejected', decisionReason: reason, decidedBy: req.adminSession.userId, decidedAt: new Date() }, 'pending_review');
         if (!rejected) return res.status(409).json({ success: false, message: 'Only a verified pending application can be rejected.' });
-        await db.createAuditLog({ adminUser: req.adminSession.userId, companyId: 'littlane', category: 'ORGANIZER_APPLICATION_REJECTED', fieldChanged: 'status', previousValue: 'pending_review', newValue: 'rejected', reason: reason || 'Application rejected.' });
+        await db.createAuditLog({ adminUser: req.adminSession.userId, companyId: 'stageway', category: 'ORGANIZER_APPLICATION_REJECTED', fieldChanged: 'status', previousValue: 'pending_review', newValue: 'rejected', reason: reason || 'Application rejected.' });
         return res.json({ success: true, status: 'rejected' });
     }
     if (decision !== 'approved') return res.status(400).json({ success: false, message: 'Decision must be approved or rejected.' });
@@ -4766,7 +4749,7 @@ app.put('/api/master/events/:eventRef/organizers', requireMasterAdmin, async (re
     }
     const previous = Array.isArray(event.organizerUserIds) ? event.organizerUserIds : [];
     const updated = await db.saveEvent({ ...event, id: event.id || event._id, organizerUserIds, updatedAt: new Date().toISOString() });
-    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: event.companyId || 'littlane', eventId: eventRef(event), category: 'EVENT_ORGANIZER_ASSIGNMENTS_CHANGED', fieldChanged: 'organizerUserIds', previousValue: previous, newValue: organizerUserIds, reason: 'Updated explicit organizer event assignments.' });
+    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: event.companyId || 'stageway', eventId: eventRef(event), category: 'EVENT_ORGANIZER_ASSIGNMENTS_CHANGED', fieldChanged: 'organizerUserIds', previousValue: previous, newValue: organizerUserIds, reason: 'Updated explicit organizer event assignments.' });
     return res.json({ success: true, eventId: eventRef(event), organizerUserIds: updated.organizerUserIds || organizerUserIds });
 });
 
@@ -4957,7 +4940,7 @@ app.get('/api/organizer/payouts', requireOrganizer, async (req, res) => {
             db.getCompanyById(companyId),
             db.getAll()
         ]);
-        const sales = allSales.filter(sale => !isShadowSale(sale) && String(sale.companyId || 'littlane') === String(companyId || 'littlane'));
+        const sales = allSales.filter(sale => !isShadowSale(sale) && String(sale.companyId || 'stageway') === String(companyId || 'stageway'));
         const verified = sales.filter(isVerifiedSalesRecord);
         const grossRevenue = verified.reduce((sum, s) => sum + Number(s.customerTotal ?? s.amount ?? 0), 0);
         const feePercentage = company?.commercials?.percentageFee ?? 5.0;
@@ -5477,7 +5460,7 @@ app.post('/api/portal-auth/login', loginRateLimit, browserSessionLoginGuard, asy
     const role = isAdmin ? 'master_admin' : 'company_admin';
     const userId = isAdmin ? 'portal-admin-key' : 'portal-dashboard-key';
     const displayName = isAdmin ? 'Admin' : 'Dashboard';
-    const companyId = isAdmin ? 'littx' : 'littlane';
+    const companyId = isAdmin ? 'littx' : 'stageway';
     const token = generateToken();
     const loginAt = new Date().toISOString();
     await db.setUserSession(userId, {
@@ -5510,7 +5493,7 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
             userId: 'organizer@stageway.in',
             displayName: 'Blue Nile Productions',
             role: 'organizer',
-            companyId: 'littlane',
+            companyId: 'stageway',
             portalScope: 'organizer',
             active: true
         };
@@ -5584,7 +5567,7 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
             ip: clientIp(req),
             loginAt,
             role: 'pr',
-            companyId: 'littlane',
+            companyId: 'stageway',
             displayName: prUser.displayName,
         });
         return respondWithSession(req, res, 'user', token, {
@@ -5592,7 +5575,7 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
                 userId: prUser.id,
                 displayName: prUser.displayName,
                 role: 'pr',
-                companyId: 'littlane'
+                companyId: 'stageway'
             }
         }, 'token', loginAt);
     }
@@ -5609,7 +5592,7 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
                 userId: sid,
                 displayName: `Seller ${sid}`,
                 role: 'seller',
-                companyId: 'littlane'
+                companyId: 'stageway'
             }
         }, 'token', loginAt);
     }
@@ -5967,7 +5950,7 @@ app.post('/api/admin/seller-devices/:partnerId/logout', requireMasterAdmin, asyn
     savePersisted(SESSIONS_FILE, sellerSessions);
     await db.deleteSellerSession(partnerId);
     const partner = await resolveSellerPartner(partnerId);
-    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: partner?.user?.companyId || 'littlane', category: 'SELLER_SESSION_REVOKED', fieldChanged: 'session', reason: `Revoked seller session for ${partner?.name || partnerId}.` });
+    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: partner?.user?.companyId || 'stageway', category: 'SELLER_SESSION_REVOKED', fieldChanged: 'session', reason: `Revoked seller session for ${partner?.name || partnerId}.` });
     res.json({ success: true, message: `${partner?.name || partnerId} has been logged out.` });
 });
 
@@ -5994,7 +5977,7 @@ app.post('/api/admin/seller-devices/:partnerId/block', requireMasterAdmin, async
         if (account?.userId !== undefined) await db.deleteSellerSession(account.userId);
     }
     const blockedAccount = PARTNER_LOGIN_SLOTS.includes(partnerId) ? await db.getUserBySellerSlot(partnerId) : null;
-    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: blockedAccount?.companyId || PARTNER_NAMES[partnerId] && partnerId || 'littlane', category: blocked ? 'SELLER_ACCESS_SUSPENDED' : 'SELLER_ACCESS_RESTORED', fieldChanged: 'blocked', newValue: blocked, reason: `Seller access ${blocked ? 'suspended' : 'restored'} for ${partnerId}.` });
+    await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: blockedAccount?.companyId || PARTNER_NAMES[partnerId] && partnerId || 'stageway', category: blocked ? 'SELLER_ACCESS_SUSPENDED' : 'SELLER_ACCESS_RESTORED', fieldChanged: 'blocked', newValue: blocked, reason: `Seller access ${blocked ? 'suspended' : 'restored'} for ${partnerId}.` });
     res.json({ success: true, blocked, message: blocked ? 'Seller permanently blocked until a Master Admin unblocks them.' : 'Seller unblocked. They can sign in again.' });
 });
 
@@ -6039,7 +6022,7 @@ app.get('/api/admin/seller-summary', requireMasterAdmin, async (req, res) => {
         const summary = {};
         const companySummary = new Map();
         const knownEventCompanies = [
-            { companyId: 'littlane', name: 'Littlane Ent' },
+            { companyId: 'stageway', name: 'Stageway Productions' },
             { companyId: 'nitro', name: 'DGR' },
             { companyId: '7th-heaven', name: '7th Heaven' },
         ];
@@ -6535,7 +6518,7 @@ app.post('/api/admin/refund-requests/:orderId/decision', requireApprovalAdmin, a
             decision, actor: req.adminSession?.userId || 'Master Admin', reason, now: new Date().toISOString()
         });
         if (!updated) return res.status(409).json({ success: false, message: 'Refund request has already been decided.' });
-        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: existing.companyId || 'littlane', eventId: existing.eventId || null, category: 'INTERNAL_REFUND_DECISION', fieldChanged: 'refundStatus', previousValue: 'requested', newValue: decision, reason: reason || 'Internal refund request review.' });
+        await db.createAuditLog({ adminUser: req.adminSession?.userId || 'Master Admin', companyId: existing.companyId || 'stageway', eventId: existing.eventId || null, category: 'INTERNAL_REFUND_DECISION', fieldChanged: 'refundStatus', previousValue: 'requested', newValue: decision, reason: reason || 'Internal refund request review.' });
         return res.json({ success: true, refundStatus: updated.refundStatus, liveRefundTriggered: false, ticketInvalidated: false, inventoryRestored: false });
     } catch (error) {
         return res.status(500).json({ success: false, message: safeErrorMessage(error) });
@@ -6589,7 +6572,7 @@ app.post('/api/admin/pr-approve', requireApprovalAdmin, async (req, res) => {
 
     await db.createAuditLog({
         adminUser: approvedBy,
-        companyId: sale.companyId || 'littlane',
+        companyId: sale.companyId || 'stageway',
         eventId: sale.eventId || null,
         category: 'OFFLINE_CASH_VERIFIED',
         fieldChanged: 'paymentStatus',

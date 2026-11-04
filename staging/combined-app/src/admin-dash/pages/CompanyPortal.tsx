@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import Dashboard from './Dashboard'
 import Orders from './Orders'
 import Tickets from './Tickets'
@@ -33,19 +33,19 @@ function normalizeSellerId(value: any) {
 function saleCompanyId(sale: any) {
   if (sale?.companyId) return sale.companyId
   const seller = normalizeSellerId(sale?.sellerId || sale?.generatedBy || sale?.prUserId)
-  if (seller === 'LITTLANE' || seller === 'SELLER-A') return 'littlane'
+  if (seller === 'LITTLANE' || seller === 'SELLER-A') return 'stageway'
   if (seller === 'NITRO' || seller === 'SELLER-B') return 'nitro'
   if (seller === '7TH-HEAVEN' || seller === 'SELLER-C') return '7th-heaven'
   if (seller === 'PARTNER-SLOT-1') return 'partner-slot-1'
   if (seller === 'PARTNER-SLOT-2') return 'partner-slot-2'
-  return seller ? seller.toLowerCase() : 'littlane'
+  return seller ? seller.toLowerCase() : 'stageway'
 }
 
 function eventIdentifier(event: any) {
   return String(event?.eventId || event?.id || event?._id || '')
 }
 
-export default function CompanyPortal({ companyId = 'littlane', companyName = 'Littlane Ent', adminKey }: CompanyPortalProps) {
+export default function CompanyPortal({ companyId = 'stageway', companyName = 'Stageway Productions', adminKey }: CompanyPortalProps) {
   const [activeTab, setActiveTab] = useState<CompanyTab>('overview')
   const [selectedEventId, setSelectedEventId] = useState('all')
   const [events, setEvents] = useState<any[]>([])
@@ -119,7 +119,7 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
   }
 
   if (loading) {
-    return <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>Loading Company Workspace…</div>
+    return <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>Loading Company Workspaceâ€¦</div>
   }
 
   return (
@@ -154,7 +154,7 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
               fontSize: '1.2rem'
             }}
           >
-            🏢
+            ðŸ¢
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -183,10 +183,10 @@ export default function CompanyPortal({ companyId = 'littlane', companyName = 'L
               cursor: 'pointer'
             }}
           >
-            <option value="all">🌐 All Company Events ({events.length})</option>
+            <option value="all">ðŸŒ All Company Events ({events.length})</option>
             {events.map((e) => (
               <option key={eventIdentifier(e) || e.name} value={eventIdentifier(e)}>
-                🎟️ {e.name}
+                ðŸŽŸï¸ {e.name}
               </option>
             ))}
           </select>

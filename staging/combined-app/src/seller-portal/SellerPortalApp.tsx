@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 
 export interface PartnerOption {
@@ -123,7 +123,7 @@ export default function SellerPortalApp() {
   const [ticketsError, setTicketsError] = useState<string | null>(null)
 
   const currentPartner = partners.find((p) => p.id === selectedPartnerId) || partners[0]
-  const commissionIsUncapped = currentPartner?.id === 'littlane' || currentPartner?.name.toLowerCase().includes('astex')
+  const commissionIsUncapped = currentPartner?.id === 'stageway' || currentPartner?.name.toLowerCase().includes('astex')
   const selectedPass = passes.find((pass) => pass.name === ticketType)
   const ticketQuantity = Math.max(1, Math.min(20, Number.parseInt(quantity, 10) || 1))
   const customerTotal = (selectedPass?.price || 0) * ticketQuantity
@@ -328,7 +328,7 @@ export default function SellerPortalApp() {
 
       if (step1Data.isRegistration) {
         // FIRST LOGIN: Bind device WebAuthn Passkey
-        setWebauthnStatus('🔑 Registering Hardware Device Passkey... Touch TouchID / FaceID / YubiKey')
+        setWebauthnStatus('ðŸ”‘ Registering Hardware Device Passkey... Touch TouchID / FaceID / YubiKey')
         try {
           webauthnResponse = await startRegistration({ optionsJSON: step1Data.options })
         } catch (err: any) {
@@ -340,7 +340,7 @@ export default function SellerPortalApp() {
         }
       } else {
         // RECURRING LOGIN: Verify WebAuthn Hardware Passkey Signature
-        setWebauthnStatus('🔒 Verifying Hardware Passkey Device Signature...')
+        setWebauthnStatus('ðŸ”’ Verifying Hardware Passkey Device Signature...')
         try {
           webauthnResponse = await startAuthentication({ optionsJSON: step1Data.options })
         } catch (err: any) {
@@ -353,7 +353,7 @@ export default function SellerPortalApp() {
       }
 
       // Step 2: Send WebAuthn Response to Server for Cryptographic Signature Verification
-      setWebauthnStatus('🛡️ Verifying Cryptographic Proof on Server...')
+      setWebauthnStatus('ðŸ›¡ï¸ Verifying Cryptographic Proof on Server...')
       const step2Res = await fetch('/api/seller/login-step2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -487,7 +487,7 @@ export default function SellerPortalApp() {
           </div>
 
           <div className="inline-block bg-violet-500/10 border border-violet-500/30 text-violet-300 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-md mb-3 text-center w-full">
-            🔐 WEBAUTHN HARDWARE DEVICE LOCK ACTIVE
+            ðŸ” WEBAUTHN HARDWARE DEVICE LOCK ACTIVE
           </div>
 
           <h2 className="text-lg font-bold text-center mb-1">Partner Authentication</h2>
@@ -496,7 +496,7 @@ export default function SellerPortalApp() {
           {loginError && (
             <div className="bg-red-500/15 border-2 border-red-500/40 text-red-300 text-xs p-4 rounded-xl mb-6 text-center font-medium leading-relaxed shadow-lg">
               <div className="text-sm font-bold text-red-400 mb-1 flex items-center justify-center gap-1.5">
-                <span>⛔</span> ACCESS DENIED
+                <span>â›”</span> ACCESS DENIED
               </div>
               {loginError}
             </div>
@@ -528,7 +528,7 @@ export default function SellerPortalApp() {
                     }`}
                   >
                     <span>{p.name}</span>
-                    {p.active ? selectedPartnerId === p.id && <span className="text-violet-400 text-xs font-bold">● Selected</span> : <span className="text-slate-600 text-xs font-bold">Unavailable</span>}
+                    {p.active ? selectedPartnerId === p.id && <span className="text-violet-400 text-xs font-bold">â— Selected</span> : <span className="text-slate-600 text-xs font-bold">Unavailable</span>}
                   </button>
                 ))}
               </div>
@@ -563,7 +563,7 @@ export default function SellerPortalApp() {
                 'Verifying Passkey Device...'
               ) : (
                 <>
-                  <span>🔐 Log In & Verify Hardware Passkey</span>
+                  <span>ðŸ” Log In & Verify Hardware Passkey</span>
                 </>
               )}
             </button>
@@ -592,8 +592,8 @@ export default function SellerPortalApp() {
           {/* Read-only Device & Passkey Lock Indicator */}
           {authenticatedPartner.webauthnCredentialId && (
             <div className="hidden sm:flex text-[11px] text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg items-center gap-1.5">
-              <span>🔐 WebAuthn Bound</span>
-              <span className="text-slate-500">•</span>
+              <span>ðŸ” WebAuthn Bound</span>
+              <span className="text-slate-500">â€¢</span>
               <span className="font-mono text-violet-400">{authenticatedPartner.registeredDeviceId || 'Passkey Device'}</span>
             </div>
           )}
@@ -633,7 +633,7 @@ export default function SellerPortalApp() {
               <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5">Event</label>
               <select aria-label="Event" value={event} onChange={change => { setEvent(change.target.value); setTicketType(''); setPasses([]); setFeedback(null) }} required className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white font-semibold" disabled={!sellerEvents.length || pricingLoading}>
                 {!sellerEvents.length && <option value="">No published public company events</option>}
-                {sellerEvents.map(item => <option key={item.id} value={item.slug || item.id}>{item.name}{item.city ? ` · ${item.city}` : ''}{item.venue ? ` · ${item.venue}` : ''}</option>)}
+                {sellerEvents.map(item => <option key={item.id} value={item.slug || item.id}>{item.name}{item.city ? ` Â· ${item.city}` : ''}{item.venue ? ` Â· ${item.venue}` : ''}</option>)}
               </select>
             </div>
 
@@ -692,7 +692,7 @@ export default function SellerPortalApp() {
                     <div className={`text-[10px] mt-0.5 ${
                       ticketType === pass.name ? 'text-violet-400' : 'text-slate-600'
                     }`}>
-                      ₹{pass.price}
+                      â‚¹{pass.price}
                     </div>
                   </button>
                 ))}
@@ -728,7 +728,7 @@ export default function SellerPortalApp() {
                 </div>
                 {commissionChoice === 'custom' && (
                   <div className="mt-3">
-                    <label className="mb-1.5 block text-[11px] font-bold text-slate-400">Custom commission amount (₹)</label>
+                    <label className="mb-1.5 block text-[11px] font-bold text-slate-400">Custom commission amount (â‚¹)</label>
                     <input
                       autoFocus
                       type="number"
@@ -773,7 +773,7 @@ export default function SellerPortalApp() {
                 'Generating Ticket...'
               ) : (
                 <>
-                  <span>✨ Generate & Issue Pass</span>
+                  <span>âœ¨ Generate & Issue Pass</span>
                 </>
               )}
             </button>
@@ -847,7 +847,7 @@ export default function SellerPortalApp() {
                       <div className="min-w-0">
                         <div className="truncate text-sm font-extrabold text-white">{ticket.name || 'Guest'}</div>
                         <div className="truncate text-xs text-slate-500">{ticket.email || ticket.phone || 'No contact'}</div>
-                        {ticket.nickname && <div className="mt-1 truncate text-[11px] font-semibold text-violet-300">Nickname · {ticket.nickname}</div>}
+                        {ticket.nickname && <div className="mt-1 truncate text-[11px] font-semibold text-violet-300">Nickname Â· {ticket.nickname}</div>}
                       </div>
                       <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${state.className}`}>
                         {state.label}
@@ -881,7 +881,7 @@ export default function SellerPortalApp() {
       {successTicket && (
         <div role="dialog" aria-modal="true" aria-labelledby="ticket-success-title" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm animate-[fadeInUp_.28s_ease-out] rounded-3xl border border-emerald-400/25 bg-slate-900 p-7 text-center shadow-2xl">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400 text-3xl font-black text-slate-950 shadow-lg shadow-emerald-500/20">✓</div>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400 text-3xl font-black text-slate-950 shadow-lg shadow-emerald-500/20">âœ“</div>
             <h2 id="ticket-success-title" className="mt-5 text-xl font-black text-white">
               {successTicket.approvalRequired ? 'Ticket Sent to Dashboard for Approval' : 'Ticket Sent Successfully'}
             </h2>

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+﻿import { FormEvent, useEffect, useState } from 'react'
 
 interface PartnerPricingProps {
   adminKey: string
@@ -29,7 +29,7 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
   const [events, setEvents] = useState<EventPricing[]>([])
   const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState({ userId: '', displayName: '', password: '', companyId: 'littlane', sellerSlot: 'partner-slot-1' })
+  const [form, setForm] = useState({ userId: '', displayName: '', password: '', companyId: 'stageway', sellerSlot: 'partner-slot-1' })
   const [passwordTarget, setPasswordTarget] = useState<Partner | null>(null)
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -75,7 +75,7 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
       const data = await response.json()
       if (!response.ok) throw new Error(data.message || 'Unable to create partner.')
       const nextSlot = PARTNER_LOGIN_SLOTS.find(slot => !partners.some(partner => partner.active && partner.sellerSlot === slot.id))
-      setForm({ userId: '', displayName: '', password: '', companyId: 'littlane', sellerSlot: nextSlot?.id || 'partner-slot-1' })
+      setForm({ userId: '', displayName: '', password: '', companyId: 'stageway', sellerSlot: nextSlot?.id || 'partner-slot-1' })
       setNotice('Partner created and activated.')
       load()
     } catch (error: any) { setNotice(error.message || 'Unable to create partner.') }
@@ -218,7 +218,7 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
     }
   }
 
-  if (loading) return <div className="card">Loading {mode}…</div>
+  if (loading) return <div className="card">Loading {mode}â€¦</div>
 
   if (mode === 'partners') return (
     <div style={{ display: 'grid', gap: 'var(--gutter)' }}>
@@ -228,7 +228,7 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
           <div className="field"><label>Identifier</label><input required value={form.userId} onChange={e => setForm({ ...form, userId: e.target.value })} placeholder="partner@example.com" /></div>
           <div className="field"><label>Display name</label><input required value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} placeholder="Partner company" /></div>
           <div className="field"><label>Initial password</label><input required minLength={8} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></div>
-          <div className="field"><label>Login slot</label><select value={form.sellerSlot} onChange={e => setForm({ ...form, sellerSlot: e.target.value })}>{PARTNER_LOGIN_SLOTS.map(slot => { const owner = partnerForSlot(slot.id); return <option key={slot.id} value={slot.id} disabled={activeSlots.has(slot.id)}>{slot.label}{owner?.active ? ' — in use' : owner ? ' — replaces inactive partner' : ' — available'}</option> })}</select>{selectedSlotOwner && !selectedSlotOwner.active && <small className="muted-sm">Creating this partner will release the inactive {selectedSlotOwner.displayName} account from this login slot.</small>}</div>
+          <div className="field"><label>Login slot</label><select value={form.sellerSlot} onChange={e => setForm({ ...form, sellerSlot: e.target.value })}>{PARTNER_LOGIN_SLOTS.map(slot => { const owner = partnerForSlot(slot.id); return <option key={slot.id} value={slot.id} disabled={activeSlots.has(slot.id)}>{slot.label}{owner?.active ? ' â€” in use' : owner ? ' â€” replaces inactive partner' : ' â€” available'}</option> })}</select>{selectedSlotOwner && !selectedSlotOwner.active && <small className="muted-sm">Creating this partner will release the inactive {selectedSlotOwner.displayName} account from this login slot.</small>}</div>
           <button className="btn-primary" type="submit" disabled={PARTNER_LOGIN_SLOTS.every(slot => activeSlots.has(slot.id))} style={{ alignSelf: 'end' }}>Create partner</button>
         </form>
       </div>
@@ -247,7 +247,7 @@ export default function PartnerPricing({ adminKey, mode }: PartnerPricingProps) 
             <div className="field"><label htmlFor="seller-confirm-password">Confirm new password</label><input id="seller-confirm-password" type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} /></div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
               <button type="button" className="btn-secondary" onClick={closePasswordReset} disabled={resettingPassword}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={resettingPassword || newPassword.length < 8 || newPassword !== confirmPassword}>{resettingPassword ? 'Resetting…' : 'Reset password'}</button>
+              <button type="submit" className="btn-primary" disabled={resettingPassword || newPassword.length < 8 || newPassword !== confirmPassword}>{resettingPassword ? 'Resettingâ€¦' : 'Reset password'}</button>
             </div>
           </form>
         </section>

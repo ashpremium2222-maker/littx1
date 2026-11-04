@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import Dashboard from './pages/Dashboard'
 import { customerTotal, isConfirmedSale } from './reporting'
 import Orders from './pages/Orders'
@@ -659,7 +659,7 @@ export default function App({ isPresentation = false }: AppProps) {
               Atharva <span className="badge-pro">PRO</span>
             </div>
             <div className="handle">
-              {currentPageObj?.label || 'Dashboard'} · Pune Ops
+              {currentPageObj?.label || 'Dashboard'} Â· Pune Ops
             </div>
           </div>
         </div>
@@ -746,12 +746,12 @@ export default function App({ isPresentation = false }: AppProps) {
             }}
           >
             <div className="card-head">
-              <h3>🎟 Generate & Email Ticket</h3>
+              <h3>ðŸŽŸ Generate & Email Ticket</h3>
               <button
                 className="icon-btn"
                 onClick={() => setShowManualModal(false)}
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -808,7 +808,7 @@ export default function App({ isPresentation = false }: AppProps) {
                     <option value="">Select a ticket category</option>
                     {manualPasses.map(pass => (
                       <option key={pass.id || pass.name} value={pass.name}>
-                        {pass.name} — ₹{pass.price}
+                        {pass.name} â€” â‚¹{pass.price}
                       </option>
                     ))}
                   </select>
@@ -832,9 +832,9 @@ export default function App({ isPresentation = false }: AppProps) {
                     value={manualPartner}
                     onChange={(e) => setManualPartner(e.target.value)}
                   >
-                    <option value="littlane">Littlane Ent</option>
-                    <option value="nitro">DGR</option>
-                    <option value="7th-heaven">7th Heaven</option>
+                    <option value="stageway">Stageway Productions</option>
+                    
+                    
                   </select>
                 </div>
               </div>
@@ -845,7 +845,7 @@ export default function App({ isPresentation = false }: AppProps) {
                   className="btn-primary"
                   style={{ width: '100%', padding: '14px', fontSize: '14px' }}
                 >
-                  {isManualSubmitting ? 'Generating...' : manualSuccessMsg || 'Generate & Send →'}
+                  {isManualSubmitting ? 'Generating...' : manualSuccessMsg || 'Generate & Send â†’'}
                 </button>
                 {manualSuccessMsg && (
                   <div style={{ marginTop: '10px', fontSize: '11.5px', fontWeight: 700, color: 'var(--ink-soft)', textAlign: 'center' }}>

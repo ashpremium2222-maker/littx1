@@ -1,14 +1,14 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import PartnerPricing from './PartnerPricing'
 
 type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller-locks' | 'partners' | 'pricing' | 'data'
 
 const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
-  littlane:    { name: 'LITTLANE',    emoji: '🏟️' },
-  nitro:       { name: 'DGR',          emoji: '⚡' },
-  '7th-heaven':{ name: '7TH HEAVEN', emoji: '🌟' },
-  'partner-slot-1': { name: 'ASTEX TESTING', emoji: '🧪' },
-  'partner-slot-2': { name: 'WOLFERA', emoji: '🌐' },
+  littlane:    { name: 'STAGEWAY',    emoji: 'ðŸŸï¸' },
+  nitro:       { name: 'DGR',          emoji: 'âš¡' },
+  '7th-heaven':{ name: '7TH HEAVEN', emoji: 'ðŸŒŸ' },
+  'partner-slot-1': { name: 'ASTEX TESTING', emoji: 'ðŸ§ª' },
+  'partner-slot-2': { name: 'WOLFERA', emoji: 'ðŸŒ' },
 }
 
 interface SettingsProps {
@@ -71,7 +71,7 @@ export default function Settings({ adminKey }: SettingsProps) {
       // Keep all five real seller companies visible while older backends roll
       // forward; the backend response still supplies live lock/session data.
       const expectedDevices = [
-        { partnerId: 'littlane', name: 'Littlane Ent' },
+        { partnerId: 'stageway', name: 'Stageway Productions' },
         { partnerId: 'nitro', name: 'DGR' },
         { partnerId: '7th-heaven', name: '7th Heaven' },
         { partnerId: 'partner-slot-1', name: 'ASTEX Testing' },
@@ -100,7 +100,7 @@ export default function Settings({ adminKey }: SettingsProps) {
           userId: `partner:${device.partnerId}`,
           displayName: device.name,
           role: 'seller',
-          lockedIp: device.boundIp || '—',
+          lockedIp: device.boundIp || 'â€”',
           loginAt: device.loginAt,
       })))
     } catch (err) {
@@ -119,7 +119,7 @@ export default function Settings({ adminKey }: SettingsProps) {
   const loadSellerSessions = loadSellerDeviceData
 
   const forceLogoutSeller = async (partnerId: string, name: string) => {
-    if (!confirm(`Force logout ${name}? They will be kicked immediately. Their device lock stays — only the session token is cleared.`)) return
+    if (!confirm(`Force logout ${name}? They will be kicked immediately. Their device lock stays â€” only the session token is cleared.`)) return
     setKickingId(partnerId)
     try {
       const res = await fetch(`/api/admin/seller-devices/${encodeURIComponent(partnerId)}/logout`, {
@@ -194,7 +194,7 @@ export default function Settings({ adminKey }: SettingsProps) {
         return
       }
       // This protected route removes both the current seller session and its
-      // device/passkey lock, which is what “Kick & Unlock” promises to do.
+      // device/passkey lock, which is what â€œKick & Unlockâ€ promises to do.
       const res = await fetch(`/api/admin/seller-devices/${encodeURIComponent(partnerId)}/reset-passkey`, {
         method: 'POST',
         headers: { 'x-auth-token': adminKey }
@@ -296,7 +296,7 @@ export default function Settings({ adminKey }: SettingsProps) {
         <>
           <div className="card">
             <div className="card-head">
-              <h3>Active Sessions — All Roles</h3>
+              <h3>Active Sessions â€” All Roles</h3>
               <div className="muted-sm">All logged-in users are locked to one device (IP). Kick & Unlock to allow login from a different device.</div>
             </div>
             <div style={{ marginTop: '16px' }}>
@@ -371,22 +371,22 @@ export default function Settings({ adminKey }: SettingsProps) {
             </div>
           </div>
 
-          {/* ── SELLER DEVICES LIVE STATUS CARD ── */}
+          {/* â”€â”€ SELLER DEVICES LIVE STATUS CARD â”€â”€ */}
           <div className="card" style={{ marginTop: '24px' }}>
             <div className="card-head">
-              <h3>🏪 /seller — Outlet Device Sessions</h3>
+              <h3>ðŸª /seller â€” Outlet Device Sessions</h3>
               <div className="muted-sm">
                 Master Admin controls seller sessions and permanent access blocks. A blocked seller cannot sign in until unblocked here.
               </div>
             </div>
             <div style={{ marginTop: '16px' }}>
               <button className="btn-secondary" onClick={loadSellerSessions} disabled={loadingSellerSessions}>
-                {loadingSellerSessions ? 'Refreshing...' : '↻ Refresh'}
+                {loadingSellerSessions ? 'Refreshing...' : 'â†» Refresh'}
               </button>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', marginTop: '20px' }}>
-              {(['littlane', 'nitro', '7th-heaven', 'partner-slot-1', 'partner-slot-2'] as const).map((pid) => {
+              {(['stageway', 'nitro', '7th-heaven', 'partner-slot-1', 'partner-slot-2'] as const).map((pid) => {
                 const outlet = OUTLET_MAP[pid]
                 const lock = sellerSessions.find((l: any) => l.partnerId === pid)
                 const outletName = lock?.name || outlet.name
@@ -424,31 +424,31 @@ export default function Settings({ adminKey }: SettingsProps) {
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--ink-faint)' }}>Hardware Lock</span>
                         <span className={`badge ${hasDevice ? 'badge-violet' : 'badge-dark'}`} style={{ fontSize: '10px' }}>
-                          {hasDevice ? `🔐 ${lock.registeredDeviceId || 'Passkey Bound'}` : 'Not Bound'}
+                          {hasDevice ? `ðŸ” ${lock.registeredDeviceId || 'Passkey Bound'}` : 'Not Bound'}
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: 'var(--ink-faint)' }}>Device Name</span>
                         <span style={{ fontWeight: 600, fontSize: '12px' }}>
-                          {lock?.deviceName || (hasDevice ? 'Unknown Device' : '—')}
+                          {lock?.deviceName || (hasDevice ? 'Unknown Device' : 'â€”')}
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--ink-faint)' }}>Bound IP</span>
                         <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                          {activeSession?.lockedIp || lock?.boundIp || '—'}
+                          {activeSession?.lockedIp || lock?.boundIp || 'â€”'}
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--ink-faint)' }}>Last Seen</span>
                         <span style={{ fontSize: '11px' }}>
-                          {activeSession?.loginAt ? new Date(activeSession.loginAt).toLocaleString() : (lock?.lastSeenAt ? new Date(lock.lastSeenAt).toLocaleString() : '—')}
+                          {activeSession?.loginAt ? new Date(activeSession.loginAt).toLocaleString() : (lock?.lastSeenAt ? new Date(lock.lastSeenAt).toLocaleString() : 'â€”')}
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--ink-faint)' }}>Bound Since</span>
                         <span style={{ fontSize: '11px' }}>
-                          {lock?.boundAt ? new Date(lock.boundAt).toLocaleString() : '—'}
+                          {lock?.boundAt ? new Date(lock.boundAt).toLocaleString() : 'â€”'}
                         </span>
                       </div>
                     </div>
@@ -507,7 +507,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                 <tbody>
                   {partnerLocks.length === 0 ? (
                     [
-                      { partnerId: 'littlane', name: 'Littlane Ent' },
+                      { partnerId: 'stageway', name: 'Stageway Productions' },
                       { partnerId: 'nitro', name: 'DGR' },
                       { partnerId: '7th-heaven', name: '7th Heaven' },
                       { partnerId: 'partner-slot-1', name: 'ASTEX Testing' },
@@ -539,7 +539,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                         <td>
                           {p.webauthnCredentialId ? (
                             <span className="badge badge-violet" style={{ fontFamily: 'monospace', fontSize: '10px' }}>
-                              🔐 {p.registeredDeviceId || 'Passkey Bound'}
+                              ðŸ” {p.registeredDeviceId || 'Passkey Bound'}
                             </span>
                           ) : (
                             <span className="badge badge-dark">Passkey Unbound</span>
@@ -547,7 +547,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                         </td>
                         <td>
                           {p.boundIp ? (
-                            <span className="badge badge-teal"><span className="badge-dot" />🔒 {p.boundIp}</span>
+                            <span className="badge badge-teal"><span className="badge-dot" />ðŸ”’ {p.boundIp}</span>
                           ) : (
                             <span className="badge badge-dark">Not Bound</span>
                           )}
@@ -650,8 +650,8 @@ export default function Settings({ adminKey }: SettingsProps) {
                 <div className="field">
                   <label>Default Currency</label>
                   <select defaultValue="INR">
-                    <option value="INR">INR (₹ — Indian Rupee)</option>
-                    <option value="USD">USD ($ — US Dollar)</option>
+                    <option value="INR">INR (â‚¹ â€” Indian Rupee)</option>
+                    <option value="USD">USD ($ â€” US Dollar)</option>
                   </select>
                 </div>
                 <div className="field">
@@ -667,7 +667,7 @@ export default function Settings({ adminKey }: SettingsProps) {
             {/* Current Plan Card */}
             <div className="plan-card">
               <div className="p">CURRENT PLAN</div>
-              <div className="n">Enterprise · Live Ops</div>
+              <div className="n">Enterprise Â· Live Ops</div>
               <p style={{ fontSize: '11.5px', opacity: 0.85, margin: '0 0 16px', lineHeight: 1.4 }}>
                 Instant QR validation, manual cash payment tracking, & unlimited pass generation.
               </p>
@@ -763,7 +763,7 @@ export default function Settings({ adminKey }: SettingsProps) {
             </div>
             <div className="field">
               <label>App Password</label>
-              <input type="password" defaultValue="••••••••••••••••" />
+              <input type="password" defaultValue="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
             </div>
           </div>
 
@@ -782,7 +782,7 @@ export default function Settings({ adminKey }: SettingsProps) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ background: 'var(--volt-dim)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(216,255,63,0.2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--volt)' }}>💵 Manual / Cash Only</div>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--volt)' }}>ðŸ’µ Manual / Cash Only</div>
                 <span className="badge badge-volt"><span className="badge-dot" />Active</span>
               </div>
               <div style={{ fontSize: '11px', color: 'var(--ink-faint)' }}>All transactions are collected manually. No payment gateway is configured. Tickets are issued after admin approval.</div>
