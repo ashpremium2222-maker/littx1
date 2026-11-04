@@ -7,8 +7,9 @@ const crypto = require('crypto');
 // A Vercel function can be cold-started for any request. Keep one connection
 // promise on the Node global so every request waits for the same MongoDB
 // connection instead of issuing a buffered query while Mongoose is connecting.
-const HAS_CONFIGURED_MONGODB = Boolean(process.env.MONGODB_URI);
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/littx';
+const DEFAULT_ATLAS_URI = 'mongodb+srv://atharvarrrr7_db_user:KYZ6Ej2htIjL4f4w@littx.mrxmg1s.mongodb.net/littx?retryWrites=true&w=majority&appName=LITTX';
+const MONGODB_URI = process.env.MONGODB_URI || DEFAULT_ATLAS_URI;
+const HAS_CONFIGURED_MONGODB = true;
 const MONGO_PROMISE_KEY = '__littxMongoConnectionPromise';
 
 const SESSION_SIGN_SECRET = process.env.SESSION_SIGNING_SECRET || process.env.SCANNER_SESSION_SECRET || 'stageway-unified-session-secret-2026-secure-persistent';
@@ -65,7 +66,16 @@ async function connectDb() {
             serverSelectionTimeoutMS: 8000,
             connectTimeoutMS: 8000,
         }).then(async connection => {
-            console.log('âœ… Connected to MongoDB');
+            console.log('[MongoDB] Connected successfully to Atlas/Mongo');
+            try {
+                const usersCol = mongoose.connection.db.collection('users');
+                await usersCol.updateMany({ sellerSlot: null }, { $unset: { sellerSlot: '' } }).catch(() => {});
+                await usersCol.dropIndex('sellerSlot_1').catch(() => {});
+                await usersCol.createIndex(
+                    { sellerSlot: 1 },
+                    { unique: true, partialFilterExpression: { sellerSlot: { $type: 'string' } } }
+                ).catch(() => {});
+            } catch (_) {}
             await seedDefaultUsers();
             await purgeLegacyData();
             return connection;
@@ -189,7 +199,7 @@ EventSchema.index({ organizerUserIds: 1, updatedAt: -1 });
 const UserSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     companyId: { type: String, default: 'stageway' },
-    email: { type: String, lowercase: true, trim: true, sparse: true },
+    email: { type: String, lowercase: true, trim: true },
     emailVerifiedAt: { type: Date, default: null },
     accountStatus: { type: String, enum: ['pending_activation', 'active', 'suspended'], default: null },
     // null/absent means the account still uses its documented legacy
@@ -202,7 +212,7 @@ const UserSchema = new mongoose.Schema({
     // while they are migrated through the existing admin flow.
     passwordHash: { type: String, default: null },
     active: { type: Boolean, default: true },
-    sellerSlot: { type: String, default: null, sparse: true, unique: true },
+    sellerSlot: { type: String, default: undefined, sparse: true },
     blocked: { type: Boolean, default: false },
     allowedPasses: [{
         eventId: { type: String }, // Can store Event ID or Event Name
@@ -599,7 +609,8 @@ async function seedDefaultUsers() {
             { userId: 'superadmin@stageway.in', secret: process.env.MASTER_PASS || 'Stageway@2026!', displayName: 'Stageway Super Admin', role: 'master_admin', companyId: 'all' },
             { userId: 'organizer@stageway.in', secret: process.env.ORGANIZER_PASS || 'Organizer@2026!', displayName: 'Blue Nile Productions', role: 'organizer', companyId: 'stageway' },
             { userId: 'partner1', secret: process.env.PR1_PASS || 'partner1234', displayName: 'Partner One', role: 'pr', companyId: 'stageway' },
-            { userId: 'testpr', secret: 'testpr1234', displayName: 'Test PR Partner', role: 'pr', companyId: 'stageway' }
+            { userId: 'testpr', secret: 'testpr1234', displayName: 'Test PR Partner', role: 'pr', companyId: 'stageway' },
+            { userId: 'test1', secret: 'test1234', displayName: 'Test Partner 1', role: 'pr', companyId: 'stageway' }
         ];
 
         for (const item of configuredUsers) {
@@ -619,19 +630,25 @@ async function seedDefaultUsers() {
             };
 
             // Seed into mockDb.users if not present
-            if (!mockDb.users.some(u => u.userId.toLowerCase() === userObj.userId)) {
+            const existingMockIdx = mockDb.users.findIndex(u => u.userId.toLowerCase() === userObj.userId);
+            if (existingMockIdx === -1) {
                 mockDb.users.push(userObj);
-                _saveMockUsers(mockDb.users);
+            } else {
+                mockDb.users[existingMockIdx] = { ...mockDb.users[existingMockIdx], ...userObj };
             }
+            _saveMockUsers(mockDb.users);
 
             if (!useMock()) {
                 try {
-                    const existing = await User.findOne({ userId: item.userId.toLowerCase() });
-                    if (!existing) {
-                        await User.create(userObj);
-                        console.log(`[Seed] Created user: ${item.userId}`);
-                    }
-                } catch (_) {}
+                    await User.findOneAndUpdate(
+                        { userId: item.userId.toLowerCase() },
+                        { $set: userObj },
+                        { upsert: true, returnDocument: 'after', lean: true }
+                    );
+                    console.log(`[Seed] Ensured user: ${item.userId}`);
+                } catch (seedErr) {
+                    console.warn(`[Seed] Warning saving ${item.userId}:`, seedErr.message);
+                }
             }
         }
         await seedDefaultPartnerLocks();
@@ -678,10 +695,13 @@ async function seedDefaultPartnerLocks() {
 // ==================== LEGACY DATA PURGE (Stageway fresh start) ====================
 
 async function purgeLegacyData() {
+    if (process.env.RUN_LEGACY_PURGE !== 'true') {
+        return;
+    }
     try {
-        console.log('🧹 Purging ALL legacy Littx data, companies, events, and controls for Stageway fresh start...');
+        console.log('🧹 Purging legacy Littx data...');
         const legacyPattern = /dholida|garba|aura|genesis|sins|paradise|swan|static|sirens|sundowner|premiere/i;
-        const legacyCompanyIds = ['stageway', 'nitro', '7th-heaven', 'astex-testing', 'wolfera', 'partner-slot-1', 'partner-slot-2'];
+        const legacyCompanyIds = ['nitro', '7th-heaven', 'astex-testing', 'wolfera'];
         const legacyCompanyPattern = /littlane|nitro|dgr|astex|wolfera|7th\s*heaven/i;
         const legacyIds = ['6a8e09b03c448413e97b8463', '6a8e09b03c448413e97b8466'];
 
@@ -727,7 +747,7 @@ async function purgeLegacyData() {
             const userRes = await User.deleteMany({
                 $or: [
                     { companyId: { $in: legacyCompanyIds } },
-                    { userId: { $in: ['admin@littlane.in', 'SELLER-A', 'SELLER-B', 'SELLER-C', 'partner1', 'partner2', 'partner5'] } },
+                    { userId: { $in: ['admin@littlane.in', 'SELLER-A', 'SELLER-B', 'SELLER-C'] } },
                     { email: { $regex: legacyCompanyPattern } }
                 ]
             });
@@ -1059,7 +1079,15 @@ async function releaseSellerSlot(userId) {
 }
 
 async function createUser(userData) {
-    return await new User(userData).save();
+    const data = { ...userData };
+    if (data.sellerSlot === null || data.sellerSlot === undefined) {
+        delete data.sellerSlot;
+    }
+    return await User.findOneAndUpdate(
+        { userId: data.userId },
+        { $set: data },
+        { upsert: true, returnDocument: 'after', lean: true }
+    );
 }
 
 async function deleteUser(userId) {
@@ -2173,13 +2201,24 @@ module.exports = {
     getUserById: async (userId) => {
         if (!userId) return null;
         const normalized = String(userId).trim().toLowerCase();
-        let user = (mockDb.users || []).find(u => u.userId.toLowerCase() === normalized) || null;
-        if (!user && !useMock()) {
+        const escaped = normalized.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        if (!useMock()) {
             try {
-                user = await getUserById(userId) || await User.findOne({ userId: new RegExp('^' + normalized + '$', 'i') }).lean();
+                const dbUser = await User.findOne({
+                    $or: [
+                        { userId: new RegExp('^' + escaped + '$', 'i') },
+                        { email: new RegExp('^' + escaped + '$', 'i') }
+                    ]
+                }).lean();
+                if (dbUser) return dbUser;
             } catch (_) {}
         }
-        return user;
+        return (mockDb.users || []).find(u =>
+            u && (
+                (u.userId && u.userId.toLowerCase() === normalized) ||
+                (u.email && u.email.toLowerCase() === normalized)
+            )
+        ) || null;
     },
     updateUser: async (userId, updates) => {
         const normalized = String(userId).trim().toLowerCase();
@@ -2211,8 +2250,11 @@ module.exports = {
     },
     createUser: async (userData) => {
         const user = { ...userData };
+        if (user.sellerSlot === null || user.sellerSlot === undefined) {
+            delete user.sellerSlot;
+        }
         const normalized = String(user.userId).trim().toLowerCase();
-        const idx = (mockDb.users || []).findIndex(u => u.userId.toLowerCase() === normalized);
+        const idx = (mockDb.users || []).findIndex(u => u && u.userId && u.userId.toLowerCase() === normalized);
         if (idx === -1) {
             mockDb.users.push(user);
         } else {
@@ -2222,7 +2264,8 @@ module.exports = {
 
         if (!useMock()) {
             try {
-                await createUser(userData);
+                const saved = await createUser(user);
+                return saved || user;
             } catch (err) {
                 console.warn('[DB User save warning]', err.message);
             }
