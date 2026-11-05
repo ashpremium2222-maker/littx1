@@ -321,7 +321,7 @@ function rateLimit({ limit, windowMs, keyPrefix }) {
         }
     };
 }
-const loginRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'login' });
+const loginRateLimit = rateLimit({ limit: 30, windowMs: 15 * 60 * 1000, keyPrefix: 'login' });
 const ticketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, keyPrefix: 'ticket-resend' });
 const bookingRecoveryRequestRateLimit = rateLimit({ limit: 5, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-request' });
 const bookingRecoveryVerifyRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-verify' });
