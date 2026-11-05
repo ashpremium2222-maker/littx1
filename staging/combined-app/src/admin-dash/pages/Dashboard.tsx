@@ -75,7 +75,8 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
       fetch('/api/admin/sales-by-organiser', { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
         .then(r => r.json())
         .then(data => {
-          if (data.success && Array.isArray(data.rows)) setOrganiserSales(data.rows)
+          const items = data.eventRows || data.rows || []
+          if (data.success && Array.isArray(items)) setOrganiserSales(items)
         })
         .catch(() => {})
         .finally(() => setOrganiserLoading(false))
