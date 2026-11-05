@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 
 interface PRApprovalsProps {
   adminKey: string
@@ -27,24 +27,13 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
 
   const companyId = (sale: any) => {
     const raw = String(sale?.companyId || sale?.sellerId || sale?.generatedBy || sale?.prUserId || '').trim().toLowerCase()
-    const aliases: Record<string, string> = {
-      'seller-a': 'stageway', littlane: 'stageway',
-      'seller-b': 'nitro', nitro: 'nitro',
-      'seller-c': '7th-heaven', '7th-heaven': '7th-heaven',
-    }
-    return aliases[raw] || raw || 'unassigned'
+    return raw || 'stageway'
   }
 
   const companyName = (sale: any) => {
     const id = companyId(sale)
-    const names: Record<string, string> = {
-      stageway: 'Stageway Productions',
-      nitro: 'DGR',
-      '7th-heaven': '7th Heaven',
-      wolfera: 'Wolfera',
-      'astex-testing': 'ASTEX Testing',
-    }
-    return names[id] || id.split(/[-_]/).filter(Boolean).map((part: string) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+    if (id === 'stageway' || id === 'all') return 'Stageway Productions'
+    return id.split(/[-_]/).filter(Boolean).map((part: string) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
   }
 
   const finalStatusKey = (sale: any): 'approved' | 'rejected' | 'pending' => {
@@ -87,7 +76,7 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
 
   const approvalSales = useMemo(() => {
     const rowsById = new Map<string, any>()
-    ;[...sales, ...queuedSales].filter((sale: any) => !['stageway', 'nitro'].includes(companyId(sale)) && (
+    ;[...sales, ...queuedSales].filter((sale: any) => (
       isPendingApproval(sale) ||
       ['APPROVED', 'REJECTED'].includes(String(sale.approvalStatus || '').toUpperCase()) ||
       (sale.paymentMethod === 'cash' && sale.status !== 'created')
@@ -100,11 +89,6 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
 
   const companyCards = useMemo(() => {
     const groups = new Map<string, { id: string; name: string; pending: number; approved: number; rejected: number }>()
-    ;[
-      { id: '7th-heaven', name: '7th Heaven' },
-      { id: 'wolfera', name: 'Wolfera' },
-      { id: 'astex-testing', name: 'ASTEX Testing' },
-    ].forEach(company => groups.set(company.id, { ...company, pending: 0, approved: 0, rejected: 0 }))
     approvalSales.forEach((sale: any) => {
       const id = companyId(sale)
       if (!groups.has(id)) groups.set(id, { id, name: companyName(sale), pending: 0, approved: 0, rejected: 0 })
@@ -315,25 +299,27 @@ export default function PRApprovals({ adminKey, isPresentation = false, sales = 
         <div style={{ color: 'var(--ink-faint)', fontSize: 13 }}>{counts.pending} waiting for review</div>
       </header>
 
-      <section aria-label="Approvals by company" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: 12 }}>
-        {companyCards.map(company => (
-          <article key={company.id} className="card" style={{ padding: 16, border: `1px solid ${companyFilter === company.id ? 'var(--accent)' : 'var(--border)'}` }}>
-            <button type="button" onClick={() => setCompanyFilter(companyFilter === company.id ? 'all' : company.id)} style={{ display: 'block', border: 0, padding: 0, background: 'none', color: 'var(--ink)', fontWeight: 750, fontSize: 16, textAlign: 'left', cursor: 'pointer', width: '100%' }}>
-              {company.name}
-            </button>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              {(['pending', 'approved', 'rejected'] as const).map((status, index) => {
-                const color = ['#fbbf24', '#4ade80', '#f87171'][index]
-                const label = ['Pending', 'Accepted', 'Rejected'][index]
-                return <button key={status} type="button" onClick={() => { setCompanyFilter(company.id); setStatusFilter(status) }} aria-label={`${company.name}: ${company[status]} ${label.toLowerCase()}`} style={{ border: 0, borderRight: index < 2 ? '1px solid var(--border)' : 0, background: 'transparent', color, textAlign: 'left', cursor: 'pointer', padding: '2px 8px 2px 0' }}>
-                  <span style={{ display: 'block', fontSize: 20, fontWeight: 750 }}>{company[status]}</span>
-                  <span style={{ display: 'block', color: 'var(--ink-faint)', fontSize: 11, marginTop: 2 }}>{label}</span>
-                </button>
-              })}
-            </div>
-          </article>
-        ))}
-      </section>
+      {companyCards.length > 0 && (
+        <section aria-label="Approvals by company" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: 12 }}>
+          {companyCards.map(company => (
+            <article key={company.id} className="card" style={{ padding: 16, border: `1px solid ${companyFilter === company.id ? 'var(--accent)' : 'var(--border)'}` }}>
+              <button type="button" onClick={() => setCompanyFilter(companyFilter === company.id ? 'all' : company.id)} style={{ display: 'block', border: 0, padding: 0, background: 'none', color: 'var(--ink)', fontWeight: 750, fontSize: 16, textAlign: 'left', cursor: 'pointer', width: '100%' }}>
+                {company.name}
+              </button>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                {(['pending', 'approved', 'rejected'] as const).map((status, index) => {
+                  const color = ['#fbbf24', '#4ade80', '#f87171'][index]
+                  const label = ['Pending', 'Accepted', 'Rejected'][index]
+                  return <button key={status} type="button" onClick={() => { setCompanyFilter(company.id); setStatusFilter(status) }} aria-label={`${company.name}: ${company[status]} ${label.toLowerCase()}`} style={{ border: 0, borderRight: index < 2 ? '1px solid var(--border)' : 0, background: 'transparent', color, textAlign: 'left', cursor: 'pointer', padding: '2px 8px 2px 0' }}>
+                    <span style={{ display: 'block', fontSize: 20, fontWeight: 750 }}>{company[status]}</span>
+                    <span style={{ display: 'block', color: 'var(--ink-faint)', fontSize: 11, marginTop: 2 }}>{label}</span>
+                  </button>
+                })}
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
 
       <section className="card table-card" aria-label="Approval tickets">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>

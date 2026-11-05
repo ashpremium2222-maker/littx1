@@ -79,7 +79,7 @@ export default function MasterCompaniesTable({ onSelectCompany }: MasterCompanie
                   <td style={{ fontWeight: 700 }}>{c.stats?.totalOrders || 0}</td>
                   <td style={{ fontWeight: 700 }}>{c.stats?.ticketCount || 0}</td>
                   <td style={{ fontWeight: 800, color: 'var(--ink)' }}>₹{(c.stats?.grossRevenue || 0).toLocaleString()}</td>
-                  <td>5 Active PRs</td>
+                  <td>{c.stats?.activePRs ?? 0} Active PRs</td>
                   <td>
                     <button
                       className="btn btn-volt btn-sm"

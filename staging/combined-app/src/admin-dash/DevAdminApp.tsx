@@ -481,9 +481,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
     // Partner password validation check
     const partnerNameMap: Record<string, string> = {
-      'stageway': 'Stageway Productions',
-      'nitro': 'DGR',
-      '7th-heaven': '7th Heaven'
+      'stageway': 'Stageway Productions'
     }
 
     setIsManualSubmitting(true)

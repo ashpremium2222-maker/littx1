@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import Dashboard from './pages/PartnerDashboardPage'
 import { customerTotal, isConfirmedSale } from './reporting'
 import Orders from './pages/Orders'
@@ -361,9 +361,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     }
 
     const partnerNameMap: Record<string, string> = {
-      'stageway': 'Stageway Productions',
-      'nitro': 'DGR',
-      '7th-heaven': '7th Heaven'
+      'stageway': 'Stageway Productions'
     }
 
     setIsManualSubmitting(true)

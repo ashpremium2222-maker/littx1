@@ -1,14 +1,11 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import PartnerPricing from './PartnerPricing'
 
 type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller-locks' | 'partners' | 'pricing' | 'data'
 
 const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
-  littlane:    { name: 'STAGEWAY',    emoji: 'ðŸŸï¸' },
-  nitro:       { name: 'DGR',          emoji: 'âš¡' },
-  '7th-heaven':{ name: '7TH HEAVEN', emoji: 'ðŸŒŸ' },
-  'partner-slot-1': { name: 'ASTEX TESTING', emoji: 'ðŸ§ª' },
-  'partner-slot-2': { name: 'WOLFERA', emoji: 'ðŸŒ' },
+  stageway:    { name: 'STAGEWAY',    emoji: '🎪' },
+  littlane:    { name: 'STAGEWAY',    emoji: '🎪' },
 }
 
 interface SettingsProps {
@@ -70,16 +67,12 @@ export default function Settings({ adminKey }: SettingsProps) {
       const configuredDevices = data.devices || []
       // Keep all five real seller companies visible while older backends roll
       // forward; the backend response still supplies live lock/session data.
-      const expectedDevices = [
+      const expectedDevices = configuredDevices.length > 0 ? configuredDevices : [
         { partnerId: 'stageway', name: 'Stageway Productions' },
-        { partnerId: 'nitro', name: 'DGR' },
-        { partnerId: '7th-heaven', name: '7th Heaven' },
-        { partnerId: 'partner-slot-1', name: 'ASTEX Testing' },
-        { partnerId: 'partner-slot-2', name: 'Wolfera' },
       ]
       const devices = expectedDevices.map(expected => configuredDevices.find((device: any) => device.partnerId === expected.partnerId) || {
         ...expected,
-        companyId: expected.partnerId === 'partner-slot-1' ? 'astex-testing' : expected.partnerId === 'partner-slot-2' ? 'wolfera' : expected.partnerId,
+        companyId: expected.partnerId,
         blocked: false,
         passkeyBound: false,
         registeredDeviceId: null,
@@ -386,8 +379,8 @@ export default function Settings({ adminKey }: SettingsProps) {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', marginTop: '20px' }}>
-              {(['stageway', 'nitro', '7th-heaven', 'partner-slot-1', 'partner-slot-2'] as const).map((pid) => {
-                const outlet = OUTLET_MAP[pid]
+              {((sellerSessions.length > 0 ? sellerSessions.map(s => s.partnerId) : ['stageway']) as string[]).map((pid) => {
+                const outlet = OUTLET_MAP[pid] || { name: pid.toUpperCase(), emoji: '🏢' }
                 const lock = sellerSessions.find((l: any) => l.partnerId === pid)
                 const outletName = lock?.name || outlet.name
                 const activeSession = sessions.find((s: any) => s.userId === `partner:${pid}`)
@@ -507,11 +500,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                 <tbody>
                   {partnerLocks.length === 0 ? (
                     [
-                      { partnerId: 'stageway', name: 'Stageway Productions' },
-                      { partnerId: 'nitro', name: 'DGR' },
-                      { partnerId: '7th-heaven', name: '7th Heaven' },
-                      { partnerId: 'partner-slot-1', name: 'ASTEX Testing' },
-                      { partnerId: 'partner-slot-2', name: 'Wolfera' }
+                      { partnerId: 'stageway', name: 'Stageway Productions' }
                     ].map((p) => (
                       <tr key={p.partnerId}>
                         <td style={{ fontWeight: 'bold' }}>{p.name}</td>

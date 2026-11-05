@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import Dashboard from './Dashboard'
 import Orders from './Orders'
 import Tickets from './Tickets'
@@ -34,10 +34,6 @@ function saleCompanyId(sale: any) {
   if (sale?.companyId) return sale.companyId
   const seller = normalizeSellerId(sale?.sellerId || sale?.generatedBy || sale?.prUserId)
   if (seller === 'LITTLANE' || seller === 'SELLER-A') return 'stageway'
-  if (seller === 'NITRO' || seller === 'SELLER-B') return 'nitro'
-  if (seller === '7TH-HEAVEN' || seller === 'SELLER-C') return '7th-heaven'
-  if (seller === 'PARTNER-SLOT-1') return 'partner-slot-1'
-  if (seller === 'PARTNER-SLOT-2') return 'partner-slot-2'
   return seller ? seller.toLowerCase() : 'stageway'
 }
 
