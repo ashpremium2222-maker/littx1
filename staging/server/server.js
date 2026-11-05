@@ -81,6 +81,15 @@ function _loadCreatedPrPartners() {
         accessType: 'all',
         assignedEventIds: ['*']
     });
+    map.set('test1', {
+        userId: 'test1',
+        password: 'test1234',
+        displayName: 'Test Partner 1',
+        companyId: 'stageway',
+        role: 'pr',
+        accessType: 'all',
+        assignedEventIds: ['*']
+    });
 
     const candidatePaths = [CREATED_PR_FILE, LOCAL_CREATED_PR_FILE];
     for (const p of candidatePaths) {
@@ -321,7 +330,7 @@ function rateLimit({ limit, windowMs, keyPrefix }) {
         }
     };
 }
-const loginRateLimit = rateLimit({ limit: 30, windowMs: 15 * 60 * 1000, keyPrefix: 'login' });
+const loginRateLimit = rateLimit({ limit: 100, windowMs: 15 * 60 * 1000, keyPrefix: 'login' });
 const ticketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, keyPrefix: 'ticket-resend' });
 const bookingRecoveryRequestRateLimit = rateLimit({ limit: 5, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-request' });
 const bookingRecoveryVerifyRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-verify' });
@@ -1292,7 +1301,7 @@ const ADMIN_KEY = process.env.ADMIN_KEY || '';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 // Stageway Productions, DGR, and ASTEX Media can send tickets immediately. Every
 // other event company must appear in Master Admin's approval queue first.
-const DIRECT_DELIVERY_COMPANY_IDS = new Set(['stageway', 'nitro', 'astex-media', 'astex-testing']);
+const DIRECT_DELIVERY_COMPANY_IDS = new Set(['stageway']);
 
 function normalizeSellerId(value) {
     return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -1302,10 +1311,6 @@ function sellerCompanyIdFromValue(value) {
     const normalized = normalizeSellerId(value);
     if (!normalized) return '';
     if (normalized === 'LITTLANE' || normalized === 'SELLER-A') return 'stageway';
-    if (normalized === 'NITRO' || normalized === 'SELLER-B') return 'nitro';
-    if (normalized === '7TH-HEAVEN' || normalized === 'SELLER-C') return '7th-heaven';
-    if (normalized === 'PARTNER-SLOT-1') return 'partner-slot-1';
-    if (normalized === 'PARTNER-SLOT-2') return 'partner-slot-2';
     return normalized.toLowerCase();
 }
 
@@ -1319,8 +1324,7 @@ function isDirectDeliverySeller(sellerId) {
 
 function sellerHasUnlimitedCommission(sellerId) {
     const companyId = sellerCompanyIdFromValue(sellerId);
-    if (companyId === 'stageway' || companyId === 'astex-testing') return true;
-    return companyId === 'partner-slot-1' && PARTNER_SLOT_COMPANY_IDS[companyId] === 'astex-testing';
+    return companyId === 'stageway';
 }
 
 function resolveSaleCompanyId(sale, slotCompanyMap = new Map()) {
@@ -4221,12 +4225,25 @@ app.patch('/api/admin/events/:eventRef', requireEventManager, async (req, res) =
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
     if (!canManageEvent(req, event)) return res.status(403).json({ success: false, message: 'You cannot manage this event.' });
     const body = req.body || {};
-    const allowed = ['name', 'slug', 'description', 'category', 'images', 'venue', 'city', 'address', 'timezone', 'startsAt', 'endsAt', 'salesStartAt', 'salesEndAt', 'visibility', 'ticketCategories'];
+    const allowed = ['name', 'slug', 'description', 'category', 'images', 'venue', 'city', 'address', 'timezone', 'startsAt', 'endsAt', 'salesStartAt', 'salesEndAt', 'visibility', 'ticketCategories', 'status', 'commissionPct', 'commissionRate'];
     const updates = {};
     for (const field of allowed) if (Object.prototype.hasOwnProperty.call(body, field)) updates[field] = body[field];
     if (updates.name !== undefined) {
         updates.name = String(updates.name).trim();
         if (!updates.name || updates.name.length > 160) return res.status(400).json({ success: false, message: 'Event title must be between 1 and 160 characters.' });
+    }
+    if (updates.commissionPct !== undefined) {
+        updates.commissionPct = updates.commissionPct === null || updates.commissionPct === '' ? null : Math.max(0, Math.min(100, Number(updates.commissionPct) || 0));
+    }
+    if (updates.status !== undefined) {
+        updates.status = String(updates.status).toLowerCase();
+        if (updates.status === 'on_hold') {
+            updates.active = false;
+            updates.salesPaused = true;
+        } else if (updates.status === 'published') {
+            updates.active = true;
+            updates.salesPaused = false;
+        }
     }
     if (updates.slug !== undefined) {
         updates.slug = slugifyEvent(updates.slug || updates.name || event.name);
@@ -4286,13 +4303,315 @@ app.post('/api/admin/events/:eventRef/transition', requireEventManager, async (r
     if (!canManageEvent(req, event)) return res.status(403).json({ success: false, message: 'You cannot manage this event.' });
     const target = String(req.body?.status || '').toLowerCase();
     const current = lifecycleStatus(event);
-    const transitions = { draft: ['pending_review'], pending_review: ['draft', 'published'], published: ['cancelled', 'postponed', 'completed'], postponed: ['published', 'cancelled', 'completed'] };
-    if (!transitions[current]?.includes(target)) return res.status(409).json({ success: false, message: `Cannot transition event from ${current} to ${target}.` });
-    if (target === 'published' && req.adminSession.role !== 'master_admin') return res.status(403).json({ success: false, message: 'Only a master administrator can publish an event.' });
+    const validStatuses = ['draft', 'pending_approval', 'pending_review', 'published', 'on_hold', 'cancelled', 'postponed', 'completed'];
+    if (!validStatuses.includes(target)) {
+        return res.status(400).json({ success: false, message: `Invalid target status "${target}".` });
+    }
+    const isMasterAdmin = req.adminSession?.role === 'master_admin';
+    if (!isMasterAdmin) {
+        const transitions = { draft: ['pending_review'], pending_review: ['draft'], published: ['cancelled', 'postponed'], postponed: ['published', 'cancelled'] };
+        if (!transitions[current]?.includes(target)) return res.status(409).json({ success: false, message: `Cannot transition event from ${current} to ${target}.` });
+    }
     const now = new Date().toISOString();
-    const updated = await db.saveEvent({ ...event, id: event.id || event._id, _id: event._id, status: target, active: target === 'published', archived: target === 'completed', publishedAt: target === 'published' ? (event.publishedAt || now) : event.publishedAt, updatedAt: now });
+    const isPublished = target === 'published';
+    const isOnHold = target === 'on_hold';
+    const updated = await db.saveEvent({
+        ...event,
+        id: event.id || event._id,
+        _id: event._id,
+        status: target,
+        active: isPublished,
+        salesPaused: isOnHold,
+        archived: target === 'completed',
+        publishedAt: isPublished ? (event.publishedAt || now) : event.publishedAt,
+        updatedAt: now
+    });
     await db.createAuditLog({ adminUser: req.adminSession.userId, companyId: event.companyId, eventId: eventRef(event), category: 'EVENT_STATUS_CHANGED', fieldChanged: 'status', previousValue: current, newValue: target, reason: 'Event lifecycle transition.' });
     return res.json({ success: true, event: req.adminSession?.role === 'organizer' ? organizerSafeEvent(updated) : updated });
+});
+
+// ==================== ORGANIZER MANAGEMENT API ====================
+
+// GET /api/admin/organizers
+app.get('/api/admin/organizers', requireMasterAdmin, async (req, res) => {
+    try {
+        const [users, allEvents, rawSales] = await Promise.all([
+            db.getAllUsers(),
+            db.getAllEvents(),
+            db.getAll()
+        ]);
+        const paidSales = rawSales.filter(s => !isShadowSale(s) && isVerifiedSalesRecord(s));
+        const organizers = users.filter(u => u.role === 'organizer');
+
+        const result = organizers.map(org => {
+            const orgEvents = allEvents.filter(e => 
+                e.organizerId === org.userId || 
+                (org.companyId && e.companyId === org.companyId) || 
+                (Array.isArray(e.organizerUserIds) && e.organizerUserIds.includes(org.userId))
+            );
+            const eventIds = new Set(orgEvents.map(eventRef));
+            const orgSales = paidSales.filter(s => eventIds.has(String(s.eventId)) || orgEvents.some(e => String(s.event || '').toLowerCase() === String(e.name || '').toLowerCase()));
+            
+            const totalTickets = orgSales.reduce((sum, s) => sum + (Number(s.admissionCount) || Number(s.quantity) || 1), 0);
+            const grossRevenue = orgSales.reduce((sum, s) => sum + saleGrossAmount(s), 0);
+            const commissionPct = Number(org.commissionPct) >= 0 ? Number(org.commissionPct) : 5;
+            const platformCommission = Math.round((grossRevenue * commissionPct) / 100);
+            const netPayout = grossRevenue - platformCommission;
+
+            return {
+                userId: org.userId,
+                displayName: org.displayName || org.userId,
+                email: org.email || '',
+                phone: org.phone || '',
+                companyName: org.companyName || org.displayName || org.userId,
+                companyId: org.companyId || 'stageway',
+                role: 'organizer',
+                commissionPct,
+                accountStatus: org.accountStatus || (org.active !== false && !org.blocked ? 'active' : 'suspended'),
+                active: org.active !== false && !org.blocked,
+                blocked: Boolean(org.blocked),
+                createdAt: org.createdAt || null,
+                stats: {
+                    eventsCount: orgEvents.length,
+                    ticketsSold: totalTickets,
+                    grossRevenue,
+                    platformCommission,
+                    netPayout
+                },
+                events: orgEvents.map(e => ({
+                    id: eventRef(e),
+                    name: e.name,
+                    status: e.status || 'published',
+                    date: e.startsAt || e.date || null,
+                    commissionPct: e.commissionPct ?? commissionPct,
+                    ticketsSold: orgSales.filter(s => String(s.eventId) === eventRef(e) || String(s.event || '').toLowerCase() === String(e.name || '').toLowerCase()).reduce((sum, s) => sum + (Number(s.admissionCount) || Number(s.quantity) || 1), 0)
+                }))
+            };
+        });
+
+        res.json({ success: true, organizers: result });
+    } catch (err) {
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
+// POST /api/admin/organizers - Create organizer
+app.post('/api/admin/organizers', requireMasterAdmin, async (req, res) => {
+    try {
+        const { username, displayName, email, phone, companyName, password, commissionPct } = req.body || {};
+        const normalizedId = String(username || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        if (!normalizedId || normalizedId.length < 3) {
+            return res.status(400).json({ success: false, message: 'Organizer username must be at least 3 alphanumeric characters.' });
+        }
+        if (!password || password.length < 6) {
+            return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+        }
+        const existing = await db.getUserById(normalizedId);
+        if (existing) {
+            return res.status(409).json({ success: false, message: `An account with username "${normalizedId}" already exists.` });
+        }
+        const now = new Date().toISOString();
+        const userDoc = {
+            userId: normalizedId,
+            displayName: String(displayName || normalizedId).trim(),
+            email: String(email || `${normalizedId}@stageway.local`).trim().toLowerCase(),
+            phone: String(phone || '').trim(),
+            companyName: String(companyName || displayName || normalizedId).trim(),
+            companyId: 'stageway',
+            role: 'organizer',
+            password: password,
+            passwordHash: hashPassword(password),
+            commissionPct: Number(commissionPct) >= 0 ? Number(commissionPct) : 5,
+            active: true,
+            blocked: false,
+            accountStatus: 'active',
+            createdAt: now,
+            updatedAt: now
+        };
+        const created = await db.createUser(userDoc);
+        await db.createAuditLog({
+            adminUser: req.adminSession?.userId || 'Master Admin',
+            companyId: 'stageway',
+            category: 'ORGANIZER_CREATED',
+            fieldChanged: 'organizer',
+            newValue: normalizedId,
+            reason: 'Master admin registered new organizer account.'
+        });
+        return res.status(201).json({ success: true, organizer: created, message: 'Organizer account created successfully.' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
+// PATCH /api/admin/organizers/:userId - Update organizer details & commission
+app.patch('/api/admin/organizers/:userId', requireMasterAdmin, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const normalizedId = String(userId).trim().toLowerCase();
+        const existing = await db.getUserById(normalizedId);
+        if (!existing || existing.role !== 'organizer') {
+            return res.status(404).json({ success: false, message: 'Organizer account not found.' });
+        }
+        const updates = {};
+        const { displayName, email, phone, companyName, commissionPct, accountStatus, active, blocked, password } = req.body || {};
+        if (displayName !== undefined) updates.displayName = String(displayName).trim();
+        if (email !== undefined) updates.email = String(email).trim().toLowerCase();
+        if (phone !== undefined) updates.phone = String(phone).trim();
+        if (companyName !== undefined) updates.companyName = String(companyName).trim();
+        if (commissionPct !== undefined && Number.isFinite(Number(commissionPct))) updates.commissionPct = Math.max(0, Math.min(100, Number(commissionPct)));
+        if (accountStatus !== undefined) updates.accountStatus = accountStatus;
+        if (active !== undefined) updates.active = Boolean(active);
+        if (blocked !== undefined) updates.blocked = Boolean(blocked);
+        if (password && String(password).length >= 6) {
+            updates.password = String(password);
+            updates.passwordHash = hashPassword(String(password));
+        }
+        updates.updatedAt = new Date().toISOString();
+
+        const updated = await db.updateUser(normalizedId, updates);
+        await db.createAuditLog({
+            adminUser: req.adminSession?.userId || 'Master Admin',
+            companyId: existing.companyId || 'stageway',
+            category: 'ORGANIZER_UPDATED',
+            fieldChanged: Object.keys(updates).join(','),
+            reason: 'Master admin updated organizer details/commission.'
+        });
+        return res.json({ success: true, organizer: updated, message: 'Organizer updated successfully.' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
+// POST /api/admin/organizers/:userId/action - Dispatcher (approve, reject, activate, deactivate, suspend, unsuspend, revoke)
+app.post('/api/admin/organizers/:userId/action', requireMasterAdmin, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { action } = req.body || {};
+        const normalizedId = String(userId).trim().toLowerCase();
+        const existing = await db.getUserById(normalizedId);
+        if (!existing || existing.role !== 'organizer') {
+            return res.status(404).json({ success: false, message: 'Organizer account not found.' });
+        }
+        let updates = {};
+        let message = '';
+        if (action === 'approve') {
+            updates = { accountStatus: 'active', active: true, blocked: false };
+            message = 'Organizer registration approved.';
+        } else if (action === 'reject') {
+            updates = { accountStatus: 'rejected', active: false };
+            message = 'Organizer registration rejected.';
+        } else if (action === 'activate') {
+            updates = { active: true, accountStatus: 'active', blocked: false };
+            message = 'Organizer activated.';
+        } else if (action === 'deactivate') {
+            updates = { active: false, accountStatus: 'suspended' };
+            message = 'Organizer deactivated.';
+        } else if (action === 'suspend') {
+            updates = { blocked: true, active: false, accountStatus: 'suspended' };
+            message = 'Organizer suspended.';
+        } else if (action === 'unsuspend') {
+            updates = { blocked: false, active: true, accountStatus: 'active' };
+            message = 'Organizer unsuspended.';
+        } else if (action === 'revoke') {
+            if (db.deleteUserSession) await db.deleteUserSession(normalizedId).catch(() => {});
+            updates = { blocked: true, active: false, accountStatus: 'suspended' };
+            message = 'Organizer sessions and access revoked.';
+        } else {
+            return res.status(400).json({ success: false, message: `Unsupported action "${action}".` });
+        }
+        updates.updatedAt = new Date().toISOString();
+        const updated = await db.updateUser(normalizedId, updates);
+        await db.createAuditLog({
+            adminUser: req.adminSession?.userId || 'Master Admin',
+            companyId: existing.companyId || 'stageway',
+            category: 'ORGANIZER_ACTION_' + String(action).toUpperCase(),
+            fieldChanged: 'accountStatus',
+            newValue: action,
+            reason: `Master admin executed ${action} on organizer ${normalizedId}.`
+        });
+        return res.json({ success: true, organizer: updated, message });
+    } catch (err) {
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
+// DELETE /api/admin/organizers/:userId - Permanent deletion
+app.delete('/api/admin/organizers/:userId', requireMasterAdmin, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const normalizedId = String(userId).trim().toLowerCase();
+        const existing = await db.getUserById(normalizedId);
+        if (!existing || existing.role !== 'organizer') {
+            return res.status(404).json({ success: false, message: 'Organizer account not found.' });
+        }
+        await db.deleteUser(normalizedId);
+        await db.createAuditLog({
+            adminUser: req.adminSession?.userId || 'Master Admin',
+            companyId: existing.companyId || 'stageway',
+            category: 'ORGANIZER_DELETED',
+            fieldChanged: 'user',
+            previousValue: normalizedId,
+            reason: 'Master admin permanently revoked and deleted organizer account.'
+        });
+        return res.json({ success: true, message: `Organizer ${normalizedId} permanently deleted.` });
+    } catch (err) {
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
+});
+
+// GET /api/admin/sales-by-organiser - Breakdown of each organiser and their events (sorted asc by sales)
+app.get('/api/admin/sales-by-organiser', requireMasterAdmin, async (req, res) => {
+    try {
+        const [users, allEvents, rawSales] = await Promise.all([
+            db.getAllUsers(),
+            db.getAllEvents(),
+            db.getAll()
+        ]);
+        const paidSales = rawSales.filter(s => !isShadowSale(s) && isVerifiedSalesRecord(s));
+        const organizers = users.filter(u => u.role === 'organizer');
+
+        const eventRows = allEvents.map(event => {
+            const eId = eventRef(event);
+            const org = organizers.find(u => 
+                u.userId === event.organizerId || 
+                (event.companyId && u.companyId === event.companyId) ||
+                (Array.isArray(event.organizerUserIds) && event.organizerUserIds.includes(u.userId))
+            ) || { userId: event.organizerId || 'stageway', displayName: 'Stageway Productions', commissionPct: 5 };
+
+            const relatedSales = paidSales.filter(s => 
+                String(s.eventId) === eId || 
+                String(s.event || '').toLowerCase() === String(event.name || '').toLowerCase()
+            );
+
+            const totalTickets = relatedSales.reduce((sum, s) => sum + (Number(s.admissionCount) || Number(s.quantity) || 1), 0);
+            const grossRevenue = relatedSales.reduce((sum, s) => sum + saleGrossAmount(s), 0);
+            // Event commission overrides organiser commission, fallback 5%
+            const commissionPct = Number(event.commissionPct) >= 0 ? Number(event.commissionPct) : (Number(org.commissionPct) >= 0 ? Number(org.commissionPct) : 5);
+            const commissionEarned = Math.round((grossRevenue * commissionPct) / 100);
+            const netRevenue = grossRevenue - commissionEarned;
+
+            return {
+                organizerId: org.userId,
+                organizerName: org.displayName || org.companyName || org.userId,
+                eventId: eId,
+                eventName: event.name,
+                eventStatus: event.status || (event.active ? 'published' : 'draft'),
+                ticketsSold: totalTickets,
+                grossRevenue,
+                commissionPct,
+                commissionEarned,
+                netRevenue,
+                startsAt: event.startsAt || event.date || null
+            };
+        });
+
+        // Default sorting: Ascending order according to ticket sales (lowest sales first) as requested
+        eventRows.sort((a, b) => a.ticketsSold - b.ticketsSold);
+
+        res.json({ success: true, eventRows, totalOrganizers: organizers.length });
+    } catch (err) {
+        res.status(500).json({ success: false, message: safeErrorMessage(err) });
+    }
 });
 
 // ==================== HEALTH ====================
@@ -6236,8 +6555,6 @@ app.get('/api/admin/seller-summary', requireMasterAdmin, async (req, res) => {
         const companySummary = new Map();
         const knownEventCompanies = [
             { companyId: 'stageway', name: 'Stageway Productions' },
-            { companyId: 'nitro', name: 'DGR' },
-            { companyId: '7th-heaven', name: '7th Heaven' },
         ];
         const companyNames = new Map(knownEventCompanies.map(company => [company.companyId, company.name]));
         companies.forEach(company => {

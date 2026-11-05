@@ -1,0 +1,67 @@
+[
+  {
+    "userId": "superadmin@stageway.in",
+    "password": "Stageway@2026!",
+    "passwordHash": "scrypt:1526a36223fc2078ae1944ea50645744:1d02a46039eabf4a23e2fd264b82ab43b8e92c37451572ac3cb7c48285470e291abc047d07f17ee885b72b9333d33dd1a0144ae25237d108e9516fdfdcb2a085",
+    "displayName": "Stageway Super Admin",
+    "role": "master_admin",
+    "companyId": "all",
+    "active": true,
+    "assignedEventIds": [
+      "*"
+    ],
+    "accessType": "all"
+  },
+  {
+    "userId": "organizer@stageway.in",
+    "password": "Organizer@2026!",
+    "passwordHash": "scrypt:9dc7570754025ed9c638964b968df833:f0e92c0c1ab4516c7369ca7780611305b38fbda39bd236986ff7f58cfad057b1de9e4a91c6deaf9eea791866e84da6f65e58a7111dd61b1d19190e14ecfb55dc",
+    "displayName": "Blue Nile Productions",
+    "role": "organizer",
+    "companyId": "stageway",
+    "active": true,
+    "assignedEventIds": [
+      "*"
+    ],
+    "accessType": "all"
+  },
+  {
+    "userId": "partner1",
+    "password": "partner1234",
+    "passwordHash": "scrypt:e907cafddb2246cd685a9c0e6ad21bb0:adb5c285617d93c091cf3446629ef2d0202b6f647dfe2ff71044cb809238e9907f374e8ab0f5b7b412fabc15cbe9ab8399acf878a90902581a4a07ba69e3c528",
+    "displayName": "Partner One",
+    "role": "pr",
+    "companyId": "stageway",
+    "active": true,
+    "accessType": "all",
+    "assignedEventIds": [
+      "*"
+    ]
+  },
+  {
+    "userId": "testpr",
+    "password": "testpr1234",
+    "passwordHash": "scrypt:5e46110c9d1e10fe62a32523cc78ef79:1bb27bc19db595ee5e42434295d02d429d8695d6b01b6e9af5550baf76673cb5389a016f74005bc30e7f2e13c70bef421e218e0fafb400a12d147d51bdff5e2e",
+    "displayName": "Test PR Partner",
+    "role": "pr",
+    "companyId": "stageway",
+    "active": true,
+    "accessType": "all",
+    "assignedEventIds": [
+      "*"
+    ]
+  },
+  {
+    "userId": "test1",
+    "password": "test1234",
+    "passwordHash": "scrypt:9361ae5b1f09477f413a31130a1e0da9:9009d8196c69b0a59c28b0253daff4f5d477c8821d93ca7f9812c2e659c0a024d10de09cfbf0cce21de49e93414de9830c88cb401c884a40b4ca734d4002f33b",
+    "displayName": "Test Partner 1",
+    "role": "pr",
+    "companyId": "stageway",
+    "active": true,
+    "accessType": "all",
+    "assignedEventIds": [
+      "*"
+    ]
+  }
+]

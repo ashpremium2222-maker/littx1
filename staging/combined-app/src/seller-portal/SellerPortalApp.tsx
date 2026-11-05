@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 
 export interface PartnerOption {
@@ -123,7 +123,7 @@ export default function SellerPortalApp() {
   const [ticketsError, setTicketsError] = useState<string | null>(null)
 
   const currentPartner = partners.find((p) => p.id === selectedPartnerId) || partners[0]
-  const commissionIsUncapped = currentPartner?.id === 'stageway' || currentPartner?.name.toLowerCase().includes('astex')
+  const commissionIsUncapped = currentPartner?.id === 'stageway'
   const selectedPass = passes.find((pass) => pass.name === ticketType)
   const ticketQuantity = Math.max(1, Math.min(20, Number.parseInt(quantity, 10) || 1))
   const customerTotal = (selectedPass?.price || 0) * ticketQuantity

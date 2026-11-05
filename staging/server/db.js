@@ -121,11 +121,12 @@ const EventSchema = new mongoose.Schema({
     endsAt: { type: Date },
     salesStartAt: { type: Date },
     salesEndAt: { type: Date },
-    status: { type: String, enum: ['draft', 'pending_review', 'published', 'cancelled', 'postponed', 'completed'], default: 'draft', index: true },
+    status: { type: String, enum: ['draft', 'pending_review', 'pending_approval', 'published', 'on_hold', 'cancelled', 'postponed', 'completed'], default: 'draft', index: true },
+    commissionPct: { type: Number, default: null },
     visibility: { type: String, enum: ['public', 'unlisted', 'private'], default: 'public' },
     publishedAt: { type: Date },
     tagline: { type: String },
-    icon: { type: String, default: 'ðŸŽ‰' },
+    icon: { type: String, default: '🎉' },
     gradient: { type: String },
     active: { type: Boolean, default: true },
     isVip: { type: Boolean, default: false },
@@ -200,8 +201,11 @@ const UserSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     companyId: { type: String, default: 'stageway' },
     email: { type: String, lowercase: true, trim: true },
+    phone: { type: String, default: '' },
+    companyName: { type: String, default: '' },
+    commissionPct: { type: Number, default: 5 },
     emailVerifiedAt: { type: Date, default: null },
-    accountStatus: { type: String, enum: ['pending_activation', 'active', 'suspended'], default: null },
+    accountStatus: { type: String, enum: ['pending_activation', 'active', 'suspended', 'rejected'], default: null },
     // null/absent means the account still uses its documented legacy
     // company-wide scope; [] means an explicit event-scoped account with no access.
     assignedEventIds: { type: [String], default: undefined },
@@ -218,7 +222,7 @@ const UserSchema = new mongoose.Schema({
         eventId: { type: String }, // Can store Event ID or Event Name
         passName: { type: String }  // e.g. "Male Pass"
     }]
-});
+}, { strict: false });
 UserSchema.index({ email: 1 }, { sparse: true });
 
 const SellerSessionSchema = new mongoose.Schema({
@@ -1447,7 +1451,7 @@ async function getEffectiveConfig(companyId = 'stageway', eventNameOrId = null) 
 
     return {
         companyId: company.companyId || companyId,
-        companyName: company.name || 'Littlane Ent',
+        companyName: company.name || 'Stageway Productions',
         companyStatus: company.status,
         effective
     };
@@ -1466,7 +1470,7 @@ const mockDb = {
     companies: [
         {
             companyId: 'stageway',
-            name: 'Littlane Ent',
+            name: 'Stageway Productions',
             status: 'ACTIVE',
             commercials: { feeType: 'PERCENTAGE', percentageFee: 5, fixedFeePerTicket: 0 },
             razorpayConfig: { enabled: false, keyId: '', keySecret: '', webhookSecret: '', mode: 'TEST', lockedByMaster: false },
@@ -1593,11 +1597,7 @@ const _mockSessions = new Map();
 const _mockUserSessions = new Map();
 const _mockScanLogs = [];
 const _mockPartnerLocks = new Map([
-    ['stageway', { partnerId: 'stageway', name: 'Littlane Ent', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['nitro', { partnerId: 'nitro', name: 'DGR', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['7th-heaven', { partnerId: '7th-heaven', name: '7th Heaven', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['partner-slot-1', { partnerId: 'partner-slot-1', name: 'ASTEX Testing', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }],
-    ['partner-slot-2', { partnerId: 'partner-slot-2', name: 'Wolfera', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
+    ['stageway', { partnerId: 'stageway', name: 'Stageway Productions', boundIp: null, boundAt: null, sessionVersion: 1, lastSeenAt: null, loginAttemptLog: [] }]
 ]);
 const _mockDashboardSaleVisibility = new Map();
 

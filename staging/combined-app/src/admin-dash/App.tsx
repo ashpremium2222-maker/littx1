@@ -199,7 +199,7 @@ export default function App({ isPresentation = false }: AppProps) {
   const [manualPasses, setManualPasses] = useState<ManualPass[]>([])
   const [manualEvents, setManualEvents] = useState<ManualEvent[]>([])
   const [manualEvent, setManualEvent] = useState('')
-  const [manualPartner, setManualPartner] = useState('littlane')
+  const [manualPartner, setManualPartner] = useState('stageway')
 
   const fetchSales = async (keyToUse = adminKey) => {
     if (!keyToUse) {
