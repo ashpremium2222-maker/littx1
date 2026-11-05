@@ -1,4 +1,23 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Component } from 'react'
+
+// ==================== ERROR BOUNDARY ====================
+class PageErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
+  constructor(props: any) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: any) { console.error('[AdminPage Error]', error, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--red)' }}>
+          <div style={{ fontSize: 24, marginBottom: 12 }}>⚠ Page Error</div>
+          <div style={{ fontSize: 13, color: 'var(--ink-faint)', marginBottom: 20 }}>{this.state.error.message}</div>
+          <button className="btn-secondary" onClick={() => this.setState({ error: null })}>Try Again</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import Dashboard from './pages/AdminDashboardPage'
 import { customerTotal, isConfirmedSale } from './reporting'
 import Orders from './pages/Orders'
@@ -17,6 +36,7 @@ import MasterGlobalSearch from './pages/MasterGlobalSearch'
 import CompanyPortal from './pages/CompanyPortal'
 import MasterCompaniesTable from './pages/MasterCompaniesTable'
 import MasterSystemSettings from './pages/MasterSystemSettings'
+import OrganisersPanel from './pages/OrganisersPanel'
 import DashboardSaleVisibility from './pages/DashboardSaleVisibility'
 
 type Page =
@@ -62,7 +82,7 @@ const navItems: NavItemDef[] = [
   },
   {
     id: 'master-companies' as Page,
-    label: 'Event Companies',
+    label: 'Organisers',
     svgIcon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
@@ -534,11 +554,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       case 'master-overview':
         return <MasterOverview />
       case 'master-companies':
-        return <MasterCompaniesTable onSelectCompany={(id, name) => {
-          setSelectedCompanyId(id)
-          setSelectedCompanyName(name)
-          setPage('company-portal')
-        }} />
+        return <OrganisersPanel adminKey={adminKey} />
       case 'system-settings':
         return <MasterSystemSettings />
       case 'sale-visibility':
@@ -554,6 +570,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
             summary={summary}
             testMode={testMode}
             onManualGenerate={() => setShowManualModal(true)}
+            adminKey={adminKey}
           />
         )
       case 'orders':
@@ -601,7 +618,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       case 'pr-approvals':
         return <PRApprovals adminKey={adminKey} isPresentation={isPresentation} sales={sales} />
       case 'company-control':
-        return <CompanyControlCenter />
+        return <CompanyControlCenter adminKey={adminKey} />
       default:
         return (
           <Dashboard
@@ -785,7 +802,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
       </header>
 
       {/* Main Page Content */}
-      <main className="content fade-in-up">{renderPage(page)}</main>
+      <main className="content fade-in-up"><PageErrorBoundary>{renderPage(page)}</PageErrorBoundary></main>
 
       {/* Manual Ticket Modal */}
       {showManualModal && (

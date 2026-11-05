@@ -42,12 +42,12 @@ function metaForEvent(name: string) {
   return { gradient: 'linear-gradient(135deg, #6C4CE0 0%, #3B63E8 100%)', icon: '🎟', tagline: name || 'Event dashboard' }
 }
 
-interface DashboardEvent { id: string; slug?: string; name: string; status?: string; active?: boolean; visibility?: string; description?: string; images?: string[]; address?: string; city?: string; venue?: string; date?: string; time?: string; startsAt?: string | null; endsAt?: string | null; salesStartAt?: string | null; salesEndAt?: string | null; timezone?: string; category?: string; companyId?: string; ticketCategories?: Array<{ id: string; name: string; description?: string; price: number; currency?: string; totalInventory?: number | null; remainingAvailability?: number | null; groupSize?: number; maxPerCustomer?: number; status?: string; inclusions?: string[] }> }
+interface DashboardEvent { id: string; slug?: string; name: string; status?: string; active?: boolean; visibility?: string; description?: string; images?: string[]; address?: string; city?: string; venue?: string; date?: string; time?: string; startsAt?: string | null; endsAt?: string | null; salesStartAt?: string | null; salesEndAt?: string | null; timezone?: string; category?: string; companyId?: string; commissionPct?: number | null; ticketCategories?: Array<{ id: string; name: string; description?: string; price: number; currency?: string; totalInventory?: number | null; remainingAvailability?: number | null; groupSize?: number; maxPerCustomer?: number; status?: string; inclusions?: string[] }> }
 
 type EventEditorDraft = {
   slug: string; name: string; description: string; category: string; images: string; city: string; venue: string;
   address: string; timezone: string; startsAt: string; endsAt: string; salesStartAt: string; salesEndAt: string;
-  visibility: string; ticketCategories: NonNullable<DashboardEvent['ticketCategories']>
+  visibility: string; commissionPct: string; ticketCategories: NonNullable<DashboardEvent['ticketCategories']>
 }
 
 function dateTimeInput(value?: string | null) {
@@ -115,6 +115,7 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
   async function transitionEvent(record: DashboardEvent, status: string) {
     const confirmations: Record<string, string> = {
       published: `Publish ${record.name}? It will become visible according to its event visibility setting.`,
+      on_hold: `Put "${record.name}" on hold? Ticket sales will be paused immediately and the event will be hidden.`,
       cancelled: `Cancel ${record.name}? This changes its lifecycle state for attendees and sales.`,
       completed: `Mark ${record.name} completed and archive it from active-event listings? Existing orders and tickets will be preserved.`,
     }
@@ -129,6 +130,22 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
     } catch (reason) { setCreateError(reason instanceof Error ? reason.message : 'Event status could not be changed.') }
   }
 
+  async function deleteEvent(record: DashboardEvent) {
+    if (!window.confirm(`PERMANENTLY DELETE "${record.name}"?\n\nThis will remove the event, its ticket tiers, and event configuration. Existing order history will be preserved. This cannot be undone.`)) return
+    try {
+      const response = await fetch(`/api/admin/events/${encodeURIComponent(record.id)}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) throw new Error(data.message || 'Event could not be deleted.')
+      setCatalogEvents(current => current.filter(item => item.id !== record.id))
+      if (selectedEvent === `event:${record.id}`) setSelectedEvent(null)
+    } catch (reason) {
+      setCreateError(reason instanceof Error ? reason.message : 'Event could not be deleted.')
+    }
+  }
+
   function openEventEditor(record: DashboardEvent) {
     setEditingEvent(record)
     setEventDraft({
@@ -136,6 +153,7 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
       images: (record.images || []).join('\n'), city: record.city || '', venue: record.venue || '', address: record.address || '',
       timezone: record.timezone || 'Asia/Kolkata', startsAt: dateTimeInput(record.startsAt || record.date), endsAt: dateTimeInput(record.endsAt),
       salesStartAt: dateTimeInput(record.salesStartAt), salesEndAt: dateTimeInput(record.salesEndAt), visibility: record.visibility || 'public',
+      commissionPct: record.commissionPct !== undefined && record.commissionPct !== null ? String(record.commissionPct) : '',
       ticketCategories: (record.ticketCategories || []).map(item => ({ ...item, currency: item.currency || 'INR', totalInventory: item.totalInventory ?? null, remainingAvailability: item.remainingAvailability ?? null, groupSize: item.groupSize || 1, maxPerCustomer: item.maxPerCustomer || 20, status: item.status || 'active' }))
     })
   }
@@ -149,6 +167,7 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
         method: 'PATCH', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...eventDraft,
+          commissionPct: eventDraft.commissionPct !== '' ? Number(eventDraft.commissionPct) : null,
           images: eventDraft.images.split(/\r?\n/).map(value => value.trim()).filter(Boolean),
           startsAt: eventDraft.startsAt || null, endsAt: eventDraft.endsAt || null,
           salesStartAt: eventDraft.salesStartAt || null, salesEndAt: eventDraft.salesEndAt || null
@@ -254,8 +273,13 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
               pointerEvents: 'none',
             }} />
             <div style={{ position: 'absolute', top: '16px', right: '16px', display: 'flex', gap: '8px' }}>
+              {selectedRecord?.commissionPct !== undefined && selectedRecord?.commissionPct !== null && (
+                <span className="badge" style={{ background: 'rgba(124,92,250,0.35)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}>
+                  Commission: {selectedRecord.commissionPct}%
+                </span>
+              )}
               <span className="badge" style={{ background: 'rgba(61,220,132,0.25)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}>
-                <span className="badge-dot" style={{ background: selectedRecord?.status === 'published' ? '#3DDC84' : '#F5B942' }} /> {selectedRecord?.status || 'historical'}
+                <span className="badge-dot" style={{ background: selectedRecord?.status === 'published' ? '#3DDC84' : selectedRecord?.status === 'on_hold' ? '#F5B942' : '#94A3B8' }} /> {selectedRecord?.status || 'historical'}
               </span>
             </div>
             <div>
@@ -289,15 +313,39 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
         </div>
 
         {selectedRecord && <div className="card" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button className="btn-secondary" onClick={() => openEventEditor(selectedRecord)}>Edit event details</button>
-          {selectedRecord.status === 'draft' && <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'pending_review')}>Submit for review</button>}
-          {selectedRecord.status === 'pending_review' && currentRole === 'master_admin' && <button className="btn-primary" onClick={() => transitionEvent(selectedRecord, 'published')}>Publish event</button>}
-          {selectedRecord.status === 'published' && <>
-            <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'postponed')}>Postpone</button>
-            <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'cancelled')}>Cancel event</button>
-            <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'completed')}>Archive as completed</button>
-          </>}
-          {selectedRecord.status === 'postponed' && currentRole === 'master_admin' && <button className="btn-primary" onClick={() => transitionEvent(selectedRecord, 'published')}>Republish event</button>}
+          <button className="btn-secondary" onClick={() => openEventEditor(selectedRecord)}>✏ Edit Event Details</button>
+          
+          {selectedRecord.status === 'draft' && (
+            <>
+              <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'pending_review')}>Submit for review</button>
+              {currentRole === 'master_admin' && <button className="btn-primary" onClick={() => transitionEvent(selectedRecord, 'published')}>Publish event</button>}
+            </>
+          )}
+
+          {(selectedRecord.status === 'pending_review' || selectedRecord.status === 'pending_approval') && currentRole === 'master_admin' && (
+            <button className="btn-primary" onClick={() => transitionEvent(selectedRecord, 'published')}>Approve &amp; Publish</button>
+          )}
+
+          {selectedRecord.status === 'published' && (
+            <>
+              <button className="btn-secondary" style={{ color: 'var(--gold)', borderColor: 'rgba(251,191,36,0.4)' }} onClick={() => transitionEvent(selectedRecord, 'on_hold')}>⏸ Put on Hold</button>
+              <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'postponed')}>Postpone</button>
+              <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'cancelled')}>Cancel event</button>
+              <button className="btn-secondary" onClick={() => transitionEvent(selectedRecord, 'completed')}>Archive as completed</button>
+            </>
+          )}
+
+          {selectedRecord.status === 'on_hold' && (
+            <button className="btn-primary" style={{ background: 'var(--green)' }} onClick={() => transitionEvent(selectedRecord, 'published')}>▶ Resume Sales (Publish)</button>
+          )}
+
+          {selectedRecord.status === 'postponed' && currentRole === 'master_admin' && (
+            <button className="btn-primary" onClick={() => transitionEvent(selectedRecord, 'published')}>Republish event</button>
+          )}
+
+          {currentRole === 'master_admin' && (
+            <button className="btn-secondary" style={{ color: 'var(--red)', borderColor: 'rgba(255,107,107,0.4)', marginLeft: 'auto' }} onClick={() => deleteEvent(selectedRecord)}>🗑 Delete Event</button>
+          )}
         </div>}
         {editingEvent && eventDraft && <div role="dialog" aria-modal="true" aria-label="Edit event details" style={{ position: 'fixed', inset: 0, zIndex: 100, overflowY: 'auto', background: 'rgba(0,0,0,.76)', padding: 20 }}>
           <form className="card" onSubmit={saveEvent} style={{ maxWidth: 1000, margin: '20px auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -305,6 +353,7 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
             <div className="muted-sm">Saving uses the event-scoped API. Publication, category removal, and inventory capacity rules remain enforced by the server.</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>
               {(['name', 'slug', 'category', 'city', 'venue', 'address', 'timezone'] as const).map(field => <label key={field} style={{ display: 'grid', gap: 5 }}>{field[0].toUpperCase() + field.slice(1)}<input required={field === 'name'} value={eventDraft[field]} onChange={event => setEventDraft(current => current ? { ...current, [field]: event.target.value } : current)} /></label>)}
+              <label style={{ display: 'grid', gap: 5 }}>Commission % (Event Override)<input type="number" min="0" max="100" step="0.1" placeholder="Default (Organiser %)" value={eventDraft.commissionPct} onChange={event => setEventDraft(current => current ? { ...current, commissionPct: event.target.value } : current)} /></label>
               <label style={{ display: 'grid', gap: 5 }}>Visibility<select value={eventDraft.visibility} onChange={event => setEventDraft(current => current ? { ...current, visibility: event.target.value } : current)}><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></label>
               {([['startsAt', 'Event starts'], ['endsAt', 'Event ends'], ['salesStartAt', 'Ticket sales start'], ['salesEndAt', 'Ticket sales end']] as const).map(([field, label]) => <label key={field} style={{ display: 'grid', gap: 5 }}>{label}<input type="datetime-local" value={eventDraft[field]} onChange={event => setEventDraft(current => current ? { ...current, [field]: event.target.value } : current)} /></label>)}
             </div>

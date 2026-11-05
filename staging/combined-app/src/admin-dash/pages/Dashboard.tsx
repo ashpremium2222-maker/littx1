@@ -1,4 +1,4 @@
-import { Fragment, useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -21,7 +21,6 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   void [summary, onManualGenerate]
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('7d')
   const [popupEvent, setPopupEvent] = useState<{ name: string; top: number; left: number } | null>(null)
-  const [expandedSeller, setExpandedSeller] = useState<string | null>(null)
 
   const paidSales = sales.filter(isConfirmedSale)
   const revenueSales = paidSales.filter(
@@ -64,20 +63,25 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
   })()
   const activePopupSection = popupEvent ? ticketSections.find(section => section.id === popupEvent.name) : null
 
-  // ==================== SELLER BREAKDOWN ====================
-  const [sellerSummary, setSellerSummary] = useState<any[]>([])
+  // ==================== SALES BY ORGANISER ====================
+  const [organiserSales, setOrganiserSales] = useState<any[]>([])
+  const [organiserLoading, setOrganiserLoading] = useState(false)
+  const [organiserFilter, setOrganiserFilter] = useState('all')
+  const [dateFilter, setDateFilter] = useState('all')
   useEffect(() => {
     if (!adminKey) return
-    const loadCompanySales = () => {
-      fetch('/api/admin/seller-summary', { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
-        .then(response => response.json())
+    const load = () => {
+      setOrganiserLoading(true)
+      fetch('/api/admin/sales-by-organiser', { headers: { 'x-auth-token': adminKey, 'x-admin-key': adminKey } })
+        .then(r => r.json())
         .then(data => {
-          if (data.success && Array.isArray(data.companySummary)) setSellerSummary(data.companySummary)
+          if (data.success && Array.isArray(data.rows)) setOrganiserSales(data.rows)
         })
         .catch(() => {})
+        .finally(() => setOrganiserLoading(false))
     }
-    loadCompanySales()
-    const timer = window.setInterval(loadCompanySales, 10000)
+    load()
+    const timer = window.setInterval(load, 15000)
     return () => window.clearInterval(timer)
   }, [adminKey])
 
@@ -272,72 +276,92 @@ export default function Dashboard({ sales = [], summary = {}, testMode, onManual
         </div>
       </div>
 
+      {/* ==================== SALES BY ORGANISER ==================== */}
       <div className="card table-card">
-        <div className="card-head" style={{ padding: '18px 18px 0' }}>
-          <h3>Event Company Ticket Sales & Commission</h3>
-          <div className="muted-sm">Confirmed tickets by event company and pass category</div>
+        <div className="card-head" style={{ padding: '18px 18px 12px' }}>
+          <div>
+            <h3>Sales by Organiser</h3>
+            <div className="muted-sm">Event-level breakdown sorted by tickets sold (lowest first) · commission priority: event &gt; organiser &gt; default 5%</div>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              value={organiserFilter}
+              onChange={e => setOrganiserFilter(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: '8px', background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line)', fontSize: '12px' }}
+            >
+              <option value="all">All Organisers</option>
+              {[...new Set(organiserSales.map((r: any) => r.organiserName))].map(name => (
+                <option key={String(name)} value={String(name)}>{String(name)}</option>
+              ))}
+            </select>
+            <select
+              value={dateFilter}
+              onChange={e => setDateFilter(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: '8px', background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line)', fontSize: '12px' }}
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="7d">Last 7 Days</option>
+              <option value="30d">Last 30 Days</option>
+            </select>
+            {organiserLoading && <span style={{ fontSize: '11px', color: 'var(--ink-faint)' }}>Refreshing…</span>}
+          </div>
         </div>
         <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
-                <th>Event Company</th>
-                <th>Tickets Sold</th>
-                <th>Gross Sales</th>
-                <th>Commission Earned</th>
-                <th>Net After Commission</th>
-                <th>Pass Categories</th>
-                <th>Latest Sale</th>
+                <th>Organiser</th>
+                <th>Event</th>
+                <th style={{ textAlign: 'right' }}>Tickets Sold ↑</th>
+                <th style={{ textAlign: 'right' }}>Gross Revenue</th>
+                <th style={{ textAlign: 'right' }}>Commission</th>
+                <th style={{ textAlign: 'right' }}>Net Revenue</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {sellerSummary.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-faint)', padding: '24px' }}>
-                    No event company ticket sales yet.
-                  </td>
-                </tr>
-              ) : sellerSummary.map(seller => {
-                const expanded = expandedSeller === seller.companyId
-                const categories = Object.entries(seller.categories as Record<string, { ticketCount: number; grossSales: number; commissionEarned: number; netAfterCommission: number }>).sort((a, b) => b[1].ticketCount - a[1].ticketCount)
-                return (
-                  <Fragment key={seller.companyId}>
-                    <tr>
+              {(() => {
+                const now = Date.now()
+                const cutoff = dateFilter === 'today' ? now - 86400000
+                  : dateFilter === '7d' ? now - 7 * 86400000
+                  : dateFilter === '30d' ? now - 30 * 86400000
+                  : 0
+                const rows = organiserSales.filter((r: any) => {
+                  if (organiserFilter !== 'all' && r.organiserName !== organiserFilter) return false
+                  if (cutoff && r.lastSaleAt && new Date(r.lastSaleAt).getTime() < cutoff) return false
+                  return true
+                })
+                if (rows.length === 0) return (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-faint)', padding: '32px' }}>
+                      {organiserLoading ? 'Loading organiser sales…' : 'No organiser sales data yet.'}
+                    </td>
+                  </tr>
+                )
+                return rows.map((row: any, idx: number) => {
+                  const statusColors: Record<string, string> = {
+                    published: 'badge-teal', on_hold: 'badge-gold', draft: 'badge-dark',
+                    pending_approval: 'badge-amber', completed: 'badge-violet', cancelled: 'badge-red'
+                  }
+                  const badge = statusColors[row.eventStatus] || 'badge-dark'
+                  return (
+                    <tr key={idx}>
+                      <td style={{ fontWeight: 600 }}>{row.organiserName || '—'}</td>
+                      <td>{row.eventName || '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{row.ticketsSold ?? 0}</td>
+                      <td style={{ textAlign: 'right' }}>{formatINR(row.grossRevenue ?? 0)}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--green)', fontWeight: 700 }}>{formatINR(row.commission ?? 0)}</td>
+                      <td style={{ textAlign: 'right' }}>{formatINR(row.netRevenue ?? 0)}</td>
                       <td>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedSeller(expanded ? null : seller.companyId)}
-                          style={{ border: 0, padding: 0, background: 'none', color: 'var(--ink)', font: 'inherit', fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}
-                        >
-                          {seller.name} <span style={{ color: 'var(--ink-faint)', fontSize: '11px' }}>{expanded ? 'Hide categories' : 'View categories'}</span>
-                        </button>
-                      </td>
-                      <td>{seller.ticketCount}</td>
-                      <td>{formatINR(seller.grossSales)}</td>
-                      <td style={{ color: 'var(--green)', fontWeight: 700 }}>{formatINR(seller.commissionEarned)}</td>
-                      <td>{formatINR(seller.netAfterCommission)}</td>
-                      <td>{categories.length}</td>
-                      <td style={{ color: 'var(--ink-soft)' }}>
-                        {seller.lastSale ? new Date(seller.lastSale).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                        <span className={`badge ${badge}`}>
+                          {(row.eventStatus || 'unknown').replace(/_/g, ' ')}
+                        </span>
                       </td>
                     </tr>
-                    {expanded && (
-                      <tr>
-                        <td colSpan={7} style={{ padding: '12px 20px', background: 'var(--panel-2)' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 2fr) repeat(4, minmax(115px, 1fr))', gap: '10px', color: 'var(--ink-faint)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>
-                            <span>Pass Type</span><span>Tickets Sold</span><span>Gross Sales</span><span>Commission</span><span>Net After Commission</span>
-                          </div>
-                          {categories.length ? categories.map(([name, totals]) => (
-                            <div key={name} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 2fr) repeat(4, minmax(115px, 1fr))', gap: '10px', paddingTop: '10px', color: 'var(--ink)' }}>
-                              <span>{name}</span><span>{totals.ticketCount}</span><span>{formatINR(totals.grossSales)}</span><span>{formatINR(totals.commissionEarned)}</span><span>{formatINR(totals.netAfterCommission)}</span>
-                            </div>
-                          )) : <div style={{ paddingTop: '10px', color: 'var(--ink-faint)' }}>No category sales recorded.</div>}
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                )
-              })}
+                  )
+                })
+              })()}
             </tbody>
           </table>
         </div>

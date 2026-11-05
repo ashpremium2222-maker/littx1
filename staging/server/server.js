@@ -1299,7 +1299,7 @@ if (TEST_MODE) console.warn('[Payments] Explicit non-production test mode enable
 // Privileged routes fail closed until an operator supplies a secret.
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-// Stageway Productions, DGR, and ASTEX Media can send tickets immediately. Every
+// Stageway Productions can send tickets immediately. Every
 // other event company must appear in Master Admin's approval queue first.
 const DIRECT_DELIVERY_COMPANY_IDS = new Set(['stageway']);
 
@@ -3252,7 +3252,7 @@ app.post('/api/admin/generate-ticket', async (req, res) => {
     if (adminSession?.role === 'company_admin' && eventRecord?.companyId !== adminSession.companyId) {
         return res.status(403).json({ success: false, message: 'Administrator is not assigned to this event.' });
     }
-    // Only authenticated Littlane and ASTEX seller sessions are exempt. Admin
+    // Only authenticated Stageway seller sessions are exempt. Admin
     // supplied partner IDs cannot grant the exemption.
     const commissionMaximum = sellerId && sellerHasUnlimitedCommission(sellerId) ? null : 20;
     const hasCustomCommissionAmount = Object.prototype.hasOwnProperty.call(req.body || {}, 'commissionAmount');

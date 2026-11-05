@@ -5,7 +5,6 @@ type SettingsTab = 'profile' | 'smtp' | 'payments' | 'roles' | 'audit' | 'seller
 
 const OUTLET_MAP: Record<string, { name: string; emoji: string }> = {
   stageway:    { name: 'STAGEWAY',    emoji: '🎪' },
-  littlane:    { name: 'STAGEWAY',    emoji: '🎪' },
 }
 
 interface SettingsProps {
@@ -645,7 +644,7 @@ export default function Settings({ adminKey }: SettingsProps) {
                 </div>
                 <div className="field">
                   <label>Support Email</label>
-                  <input defaultValue="littxent@gmail.com" />
+                  <input defaultValue="admin@stageway.in" />
                 </div>
               </div>
             </div>
@@ -748,7 +747,7 @@ export default function Settings({ adminKey }: SettingsProps) {
             </div>
             <div className="field">
               <label>User Email</label>
-              <input defaultValue="littxent@gmail.com" />
+              <input defaultValue="admin@stageway.in" />
             </div>
             <div className="field">
               <label>App Password</label>

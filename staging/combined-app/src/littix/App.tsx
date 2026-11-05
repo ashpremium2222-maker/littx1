@@ -43,7 +43,7 @@ const DEPTH: Record<Screen['name'], number> = {
   'scan-rejected': 2,
 }
 
-const SELLER_IDS = ['littlane', '7th-heaven', 'nitro'] as const
+const SELLER_IDS = ['stageway'] as const
 
 type DirectScannerTab = 'scanner' | 'history' | 'profile'
 type HistoryTab = 'approved' | 'rejected'

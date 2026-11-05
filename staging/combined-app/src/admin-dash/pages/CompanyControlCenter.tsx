@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import ChangePreviewModal from './ChangePreviewModal'
 
 interface CompanyStats {
@@ -55,7 +55,7 @@ type TabType =
   | 'permissions'
   | 'audit'
 
-export default function CompanyControlCenter() {
+export default function CompanyControlCenter({ adminKey = '' }: { adminKey?: string }) {
   const [companies, setCompanies] = useState<CompanyData[]>([])
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('stageway')
   const [company, setCompany] = useState<CompanyData | null>(null)
@@ -65,6 +65,21 @@ export default function CompanyControlCenter() {
   const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [activeTab, setActiveTab] = useState<TabType>('general')
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  const getHeaders = (json = true) => {
+    const key = adminKey || sessionStorage.getItem('littx_token') || ''
+    return {
+      ...(json ? { 'Content-Type': 'application/json' } : {}),
+      'x-auth-token': key,
+      'x-admin-key': key
+    }
+  }
 
   // Draft state for edits
   const [draftConfig, setDraftConfig] = useState<any>({})
@@ -77,13 +92,17 @@ export default function CompanyControlCenter() {
   // Fetch Companies List
   const fetchCompanies = async () => {
     try {
-      const res = await fetch('/api/master/companies')
+      const res = await fetch('/api/master/companies', { headers: getHeaders(false) })
       const data = await res.json()
       if (data.success && data.companies) {
         setCompanies(data.companies)
+        if (data.companies.length > 0 && !data.companies.some((c: any) => c.companyId === selectedCompanyId)) {
+          setSelectedCompanyId(data.companies[0].companyId)
+        }
       }
     } catch (err) {
       console.error('Failed to fetch companies:', err)
+      showToast('Could not load companies list', 'error')
     }
   }
 
@@ -91,7 +110,7 @@ export default function CompanyControlCenter() {
   const fetchCompanyDetails = async (id: string) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/master/companies/${id}/control-center`)
+      const res = await fetch(`/api/master/companies/${id}/control-center`, { headers: getHeaders(false) })
       const data = await res.json()
       if (data.success) {
         setCompany(data.company)
@@ -99,9 +118,12 @@ export default function CompanyControlCenter() {
         setEvents(data.events || [])
         setAuditLogs(data.auditLogs || [])
         setDraftConfig(data.company)
+      } else {
+        showToast(data.message || 'Could not load company controls', 'error')
       }
     } catch (err) {
       console.error('Failed to fetch control center state:', err)
+      showToast('Network error loading company details', 'error')
     } finally {
       setLoading(false)
     }
@@ -172,7 +194,7 @@ export default function CompanyControlCenter() {
 
       const res = await fetch(`/api/master/companies/${selectedCompanyId}/config`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(true),
         body: JSON.stringify({
           updates,
           adminUser: 'Stageway Master Admin',
@@ -184,23 +206,24 @@ export default function CompanyControlCenter() {
       if (data.success) {
         setShowPreviewModal(false)
         setChangeReason('')
+        showToast('Company configuration updated successfully!')
         fetchCompanyDetails(selectedCompanyId)
         fetchCompanies()
       } else {
-        alert(`Error: ${data.message}`)
+        showToast(`Error: ${data.message}`, 'error')
       }
     } catch (err) {
-      alert('Failed to save configuration.')
+      showToast('Failed to save configuration.', 'error')
     }
   }
 
   // Emergency Trigger
   const handleEmergencyAction = async (action: string, label: string) => {
-    if (!confirm(`ðŸš¨ EMERGENCY ACTION: Are you sure you want to execute "${label}" for ${company?.name}?`)) return
+    if (!confirm(`🚨 EMERGENCY ACTION: Are you sure you want to execute "${label}" for ${company?.name}?`)) return
     try {
       const res = await fetch(`/api/master/companies/${selectedCompanyId}/emergency`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(true),
         body: JSON.stringify({
           action,
           statusReason: `Emergency override triggered: ${label}`,
@@ -209,20 +232,28 @@ export default function CompanyControlCenter() {
       })
       const data = await res.json()
       if (data.success) {
+        showToast(`Emergency action "${label}" completed.`)
         fetchCompanyDetails(selectedCompanyId)
         fetchCompanies()
+      } else {
+        showToast(data.message || 'Emergency action failed.', 'error')
       }
     } catch (err) {
-      alert('Emergency action failed.')
+      showToast('Emergency action failed.', 'error')
     }
   }
 
   if (loading && !company) {
-    return <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>Loading Company Control Centerâ€¦</div>
+    return <div style={{ padding: '40px', color: 'var(--ink-faint)', textAlign: 'center' }}>Loading Company Control Center…</div>
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 999, padding: '12px 20px', borderRadius: 12, background: toast.type === 'success' ? 'var(--green)' : 'var(--red)', color: '#fff', fontWeight: 600, fontSize: 13 }}>
+          {toast.msg}
+        </div>
+      )}
       {/* Top Header & Company Selector */}
       <div className="card" style={{ background: 'linear-gradient(135deg, #15121F 0%, #0A0912 100%)', border: '1px solid rgba(216,255,63,0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
