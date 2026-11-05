@@ -21,7 +21,10 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const portalTitle = portal === 'admin' ? 'Admin Portal' : portal === 'organizer' ? 'Organizer Portal' : 'Dashboard'
+  
+  const isMasterAdmin = portal === 'admin'
+  const isOrganizer = portal === 'organizer'
+  const portalTitle = isMasterAdmin ? 'Enterprise Admin' : isOrganizer ? 'Organizer Portal' : 'Dashboard'
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,18 +33,47 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
     setError('')
 
     try {
-      const res = await fetch(portal === 'organizer' ? '/api/auth/login' : '/api/portal-auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(portal === 'organizer' ? { username, password } : { portal, password }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.success || !data.user || !data.token) {
-        setError(data.message || 'Invalid access credentials')
+      let data: any = null
+      let ok = false
+
+      // If username provided (organizer or admin with email/username), try /api/auth/login first
+      if (username.trim()) {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username.trim(), password }),
+        })
+        data = await res.json().catch(() => ({}))
+        ok = res.ok && data.success
+      }
+
+      // If not successful or no username provided, try /api/portal-auth/login
+      if (!ok) {
+        const res = await fetch('/api/portal-auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ portal, password }),
+        })
+        const portalData = await res.json().catch(() => ({}))
+        if (res.ok && portalData.success) {
+          data = portalData
+          ok = true
+        } else if (!data?.message) {
+          data = portalData
+        }
+      }
+
+      if (!ok || !data?.success || !data?.user || !data?.token) {
+        setError(data?.message || 'Invalid access credentials. Please verify your credentials and try again.')
         return
       }
 
-      const session = { ...data.user, token: data.token } as UserSession
+      const session = {
+        ...data.user,
+        portalScope: isMasterAdmin ? 'admin' : isOrganizer ? 'organizer' : 'dashboard',
+        token: data.token
+      } as UserSession
+
       sessionStorage.setItem('littx_user', JSON.stringify(session))
       sessionStorage.setItem('littx_token', data.token)
       localStorage.setItem('littx_user', JSON.stringify(session))
@@ -53,13 +85,18 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
       setPassword('')
       onLoginSuccess(session)
     } catch (err: any) {
-      setError(err.message || 'Server connection error')
+      setError(err.message || 'Server connection error. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  const fillTestCredentials = () => {
+  const fillMasterAdminCredentials = () => {
+    setUsername('superadmin@stageway.in')
+    setPassword('Stageway@2026!')
+  }
+
+  const fillOrganizerCredentials = () => {
     setUsername('organizer@stageway.in')
     setPassword('Organizer@2026!')
   }
@@ -71,100 +108,141 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 20,
+        padding: 24,
         background: '#0B0C0E',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        position: 'relative',
+        overflow: 'hidden'
       }}
     >
+      {/* Background ambient emerald glow */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '20%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 500,
+          height: 350,
+          background: 'radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, rgba(11, 12, 14, 0) 70%)',
+          pointerEvents: 'none'
+        }}
+      />
+
       <div
         style={{
           width: '100%',
           maxWidth: 440,
-          padding: 32,
-          background: '#14161C',
-          border: '1px solid #20232B',
-          borderRadius: 12,
-          boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
+          padding: 36,
+          background: '#121418',
+          border: '1px solid #222630',
+          borderRadius: 16,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(16, 185, 129, 0.1)',
+          position: 'relative',
+          zIndex: 1
         }}
       >
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <img src="/logo.png" alt="Stageway" style={{ height: 32, width: 'auto', margin: '0 auto 12px', display: 'block' }} />
-          <h2 style={{ margin: '0 0 6px', fontSize: '1.25rem', fontWeight: 600, color: '#EDEDEF', letterSpacing: '-0.01em' }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg, #059669 0%, #10B981 100%)', boxShadow: '0 8px 24px rgba(16, 185, 129, 0.35)', marginBottom: 14 }}>
+            <span style={{ color: '#FFF', fontWeight: 900, fontSize: 22, fontFamily: 'system-ui' }}>S</span>
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 6 }}>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#F9FAFB', letterSpacing: '-0.02em' }}>
+              STAGEWAY
+            </h1>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block', boxShadow: '0 0 8px #10B981' }} />
+          </div>
+
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#10B981', letterSpacing: '0.02em', marginBottom: 4 }}>
             {brandTitle || `Stageway ${portalTitle}`}
-          </h2>
-          <div style={{ fontSize: 12, color: '#8B909A' }}>
-            {accessHelpText || 'Enter your access credentials to proceed'}
+          </div>
+          
+          <div style={{ fontSize: 12, color: '#9CA3AF' }}>
+            {accessHelpText || (isMasterAdmin ? 'Master platform control & management' : 'Authorized access only')}
           </div>
         </div>
 
         {error && (
           <div
             style={{
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.25)',
-              color: '#EF4444',
-              padding: '10px 14px',
-              borderRadius: 6,
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              color: '#F87171',
+              padding: '11px 14px',
+              borderRadius: 8,
               fontSize: 12,
               fontWeight: 500,
-              marginBottom: 16,
+              marginBottom: 20,
               textAlign: 'center',
+              lineHeight: 1.4
             }}
           >
             {error}
           </div>
         )}
 
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {portal === 'organizer' && (
+        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {(isOrganizer || isMasterAdmin) && (
             <div>
-              <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4, textTransform: 'uppercase' }}>
-                Account Email / ID
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#9CA3AF', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {isMasterAdmin ? 'Admin Account Email / ID' : 'Account Email / ID'}
               </label>
               <input
                 type="text"
-                name="organizer-account"
-                placeholder="organizer@stageway.in"
+                name="account-username"
+                placeholder={isMasterAdmin ? "superadmin@stageway.in" : "organizer@stageway.in"}
                 value={username}
                 onChange={event => setUsername(event.target.value)}
-                required
                 autoComplete="username"
                 autoFocus
                 style={{
                   width: '100%',
-                  background: '#0E1013',
-                  border: '1px solid #282C36',
-                  borderRadius: 6,
-                  padding: '9px 12px',
-                  color: '#EDEDEF',
+                  background: '#161920',
+                  border: '1px solid #222630',
+                  borderRadius: 8,
+                  padding: '11px 14px',
+                  color: '#F9FAFB',
                   fontSize: 13,
+                  outline: 'none',
+                  transition: 'border-color 0.2s',
+                  boxSizing: 'border-box'
                 }}
+                onFocus={e => e.currentTarget.style.borderColor = '#10B981'}
+                onBlur={e => e.currentTarget.style.borderColor = '#222630'}
               />
             </div>
           )}
 
           <div>
-            <label style={{ display: 'block', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#8B909A', marginBottom: 4, textTransform: 'uppercase' }}>
-              {portal === 'organizer' ? 'Password' : 'Access Key'}
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {isMasterAdmin ? 'Password or Access Key' : isOrganizer ? 'Password' : 'Access Key'}
+              </label>
+            </div>
             <input
               type="password"
-              name={portal === 'organizer' ? 'organizer-password' : 'portal-access-key'}
-              placeholder={portal === 'organizer' ? 'Enter password' : 'Enter access key'}
+              name="account-password"
+              placeholder={isMasterAdmin ? "Enter password or access key" : "Enter password"}
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              autoFocus={portal !== 'organizer'}
-              autoComplete={portal === 'organizer' ? 'current-password' : 'off'}
+              autoFocus={!isOrganizer && !isMasterAdmin}
+              autoComplete="current-password"
               style={{
                 width: '100%',
-                background: '#0E1013',
-                border: '1px solid #282C36',
-                borderRadius: 6,
-                padding: '9px 12px',
-                color: '#EDEDEF',
+                background: '#161920',
+                border: '1px solid #222630',
+                borderRadius: 8,
+                padding: '11px 14px',
+                color: '#F9FAFB',
                 fontSize: 13,
+                outline: 'none',
+                transition: 'border-color 0.2s',
+                boxSizing: 'border-box'
               }}
+              onFocus={e => e.currentTarget.style.borderColor = '#10B981'}
+              onBlur={e => e.currentTarget.style.borderColor = '#222630'}
             />
           </div>
 
@@ -173,51 +251,76 @@ export default function LoginPage({ portal, onLoginSuccess, brandTitle, accessHe
             disabled={loading}
             style={{
               width: '100%',
-              padding: '11px',
+              padding: '12px',
               fontSize: 13,
-              fontWeight: 600,
-              marginTop: 6,
-              background: '#EDEDEF',
-              color: '#0B0C0E',
+              fontWeight: 700,
+              marginTop: 4,
+              background: loading ? '#059669' : 'linear-gradient(135deg, #059669 0%, #10B981 100%)',
+              color: '#FFFFFF',
               border: 'none',
-              borderRadius: 6,
+              borderRadius: 8,
               cursor: loading ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 16px rgba(16, 185, 129, 0.35)',
+              transition: 'opacity 0.2s, transform 0.1s'
             }}
           >
-            {loading ? 'Authenticating…' : 'Sign In'}
+            {loading ? 'Authenticating…' : 'Sign In to Portal'}
           </button>
         </form>
 
-        {portal === 'organizer' && (
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #1E2026', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+        <div style={{ marginTop: 24, paddingTop: 18, borderTop: '1px solid #222630', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+          {isMasterAdmin && (
             <button
               type="button"
-              onClick={fillTestCredentials}
+              onClick={fillMasterAdminCredentials}
               style={{
-                background: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                color: '#8B909A',
-                borderRadius: 6,
-                padding: '6px 12px',
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                color: '#10B981',
+                borderRadius: 8,
+                padding: '7px 14px',
                 fontSize: 11,
-                fontFamily: 'JetBrains Mono, monospace',
+                fontWeight: 600,
                 cursor: 'pointer',
+                transition: 'all 0.2s'
               }}
             >
-              Fill Test Credentials
+              Fill Master Admin Credentials
             </button>
+          )}
 
-            <div style={{ fontSize: 12, color: '#555962', display: 'flex', gap: 8 }}>
-              <a href="/organizer/apply" style={{ color: '#8B909A', textDecoration: 'none' }}>
-                Apply as organizer
-              </a>
-              <span>·</span>
-              <a href="/organizer/activate" style={{ color: '#8B909A', textDecoration: 'none' }}>
-                Activate account
-              </a>
-            </div>
-          </div>
-        )}
+          {isOrganizer && (
+            <>
+              <button
+                type="button"
+                onClick={fillOrganizerCredentials}
+                style={{
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.25)',
+                  color: '#10B981',
+                  borderRadius: 8,
+                  padding: '7px 14px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Fill Test Organizer Credentials
+              </button>
+
+              <div style={{ fontSize: 12, color: '#6B7280', display: 'flex', gap: 8 }}>
+                <a href="/organizer/apply" style={{ color: '#9CA3AF', textDecoration: 'none' }}>
+                  Apply as organizer
+                </a>
+                <span>·</span>
+                <a href="/organizer/activate" style={{ color: '#9CA3AF', textDecoration: 'none' }}>
+                  Activate account
+                </a>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

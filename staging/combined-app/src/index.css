@@ -902,17 +902,18 @@ html, body {
   content: '';
   position: absolute;
   left: 0;
-  top: 25%;
-  height: 50%;
+  top: 20%;
+  height: 60%;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background: var(--grad-violet);
+  background: #10B981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
 }
 
 .rail-link .count {
   margin-left: auto;
-  background: var(--violet);
-  color: #fff;
+  background: #10B981;
+  color: #0B0C0E;
   font-size: 10px;
   font-weight: 800;
   padding: 1px 7px;
@@ -921,15 +922,16 @@ html, body {
 
 .rail-promo {
   margin-top: 14px;
-  border-radius: 14px;
-  padding: 14px;
-  background: var(--grad-violet);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #059669 0%, #10B981 100%);
   display: flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
   color: #fff;
   transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
 }
 
 .rail-promo svg {
@@ -940,7 +942,7 @@ html, body {
 
 .rail-promo:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(108, 76, 224, 0.4);
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.45);
 }
 
 .rail-promo div {
@@ -1111,9 +1113,9 @@ html, body {
 .tb-cta {
   height: 36px;
   padding: 0 16px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: none;
-  background: var(--grad-violet);
+  background: linear-gradient(135deg, #059669 0%, #10B981 100%);
   color: #fff;
   font-weight: 700;
   font-size: 12.5px;
@@ -1122,12 +1124,12 @@ html, body {
   gap: 7px;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: 0 4px 16px rgba(108, 76, 224, 0.3);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
 }
 
 .tb-cta:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(108, 76, 224, 0.45);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
 }
 
 /* ── Content Viewport ──────────────────────────────────────────────── */

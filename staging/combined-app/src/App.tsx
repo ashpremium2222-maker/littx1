@@ -107,10 +107,10 @@ function MainAppShell() {
 
   // ── MASTER ADMIN (/admin) ─────────────────────────────────────────────────
   if (path.startsWith('/admin')) {
-    if (userSession?.role === 'master_admin' && userSession.portalScope === 'admin') {
+    if (userSession?.role === 'master_admin') {
       return <DevAdminApp isPresentation={false} />
     }
-    return <LoginPage portal="admin" onLoginSuccess={handleLoginRedirect} />
+    return <LoginPage portal="admin" onLoginSuccess={handleLoginRedirect} brandTitle="ENTERPRISE ADMIN" accessHelpText="Sign in with your Master Admin account or Access Key." />
   }
 
   if (path.startsWith('/organizer')) {

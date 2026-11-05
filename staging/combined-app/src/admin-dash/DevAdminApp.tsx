@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import Dashboard from './pages/AdminDashboardPage'
 import { customerTotal, isConfirmedSale } from './reporting'
 import Orders from './pages/Orders'
@@ -265,7 +265,25 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const [page, setPage] = useState<Page>(isManager ? 'dashboard' : 'master-overview')
   const [selectedCompanyId, setSelectedCompanyId] = useState('stageway')
   const [selectedCompanyName, setSelectedCompanyName] = useState('Stageway Productions')
-  const [dark, setDark] = useState(true)
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem('stageway_admin_theme')
+    return saved ? saved === 'dark' : true
+  })
+
+  useEffect(() => {
+    localStorage.setItem('stageway_admin_theme', dark ? 'dark' : 'light')
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+  }, [dark])
+
+  const userSessionObj = (() => {
+    try {
+      const stored = sessionStorage.getItem('littx_user') || localStorage.getItem('littx_user')
+      if (stored) return JSON.parse(stored)
+    } catch (_) {}
+    return null
+  })()
+  const userDisplayName = userSessionObj?.displayName || userSessionObj?.userId || 'Master Admin'
+  const userInitials = (userDisplayName.slice(0, 2) || 'MA').toUpperCase()
   const [search, setSearch] = useState('')
   const [adminKey, setAdminKey] = useState(
     sessionStorage.getItem('littx_token') || ''
@@ -434,6 +452,7 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
     setAuthChecking(false)
     setSales([])
     if (errMsg) setAuthError(errMsg)
+    else window.location.href = '/admin'
   }
   void [setKeyInput, isAuthenticated, authChecking, authError, setManualQty, handleLogin, handleLogout]
 
@@ -602,14 +621,29 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
   const currentPageObj = navItems.find((n) => n.id === page)
 
   return (
-    <div className={`app-canvas ${dark ? '' : 'theme-light'}`}>
+    <div className={`app-canvas ${dark ? '' : 'theme-light'}`} data-theme={dark ? 'dark' : 'light'}>
       {/* Sidebar Rail */}
       <aside className="rail">
-        <div className="rail-brand">
-          <div className="mark">L</div>
+        <div className="rail-brand" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px 18px', borderBottom: '1px solid var(--line)', marginBottom: 14 }}>
+          <div style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            background: 'linear-gradient(135deg, #059669 0%, #10B981 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+            flexShrink: 0
+          }}>
+            <span style={{ color: '#FFF', fontWeight: 900, fontSize: 17, fontFamily: 'system-ui' }}>S</span>
+          </div>
           <div className="word">
-            <b>LitTix</b>
-            <span>Enterprise Admin</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <b style={{ fontSize: 13.5, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--ink)' }}>STAGEWAY</b>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', display: 'inline-block', boxShadow: '0 0 8px #10B981' }} />
+            </div>
+            <span style={{ fontSize: 10.5, color: '#10B981', fontWeight: 700, letterSpacing: '0.04em' }}>ENTERPRISE ADMIN</span>
           </div>
         </div>
 
@@ -665,14 +699,34 @@ export default function App({ isPresentation = false, isManager = false }: AppPr
 
       {/* Header Topbar */}
       <header className="topbar">
-        <div className="tb-profile">
-          <div className="tb-avatar-sm">AT</div>
+        <div className="tb-profile" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="tb-avatar-sm" style={{
+            background: 'linear-gradient(135deg, #059669 0%, #10B981 100%)',
+            color: '#FFFFFF',
+            fontWeight: 800,
+            fontSize: 13,
+            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)'
+          }}>
+            {userInitials}
+          </div>
           <div className="who">
-            <div className="name">
-              Atharva <span className="badge-pro">PRO</span>
+            <div className="name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {userDisplayName}
+              <span className="badge-pro" style={{
+                background: 'rgba(16, 185, 129, 0.15)',
+                color: '#10B981',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                padding: '2px 6px',
+                borderRadius: 4,
+                fontSize: 9.5,
+                fontWeight: 800,
+                letterSpacing: '0.06em'
+              }}>
+                MASTER
+              </span>
             </div>
-            <div className="handle">
-              {currentPageObj?.label || 'Dashboard'} Â· Pune Ops
+            <div className="handle" style={{ color: 'var(--ink-faint)', fontSize: 11 }}>
+              {currentPageObj?.label || 'Dashboard'} · Platform Control
             </div>
           </div>
         </div>
