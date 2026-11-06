@@ -101,27 +101,6 @@ h1.big span{display:block}
 .ring{width:18px;height:18px;border-radius:50%;border:3px solid rgba(245,242,234,.3);border-top-color:#F5F2EA;animation:sp .7s linear infinite}@keyframes sp{to{rotate:360deg}}
 .go.done{background:linear-gradient(180deg,#31E7C8,#1FB89E)}
 
-/* ---------- AI ---------- */
-.aih{position:relative;flex:1;margin:0 18px;border-radius:34px;overflow:hidden;min-height:300px}
-.aic{position:absolute;left:0;right:0;bottom:0;z-index:4;text-align:center;padding:0 24px 20px}
-.match{font-family:var(--mono);font-size:13px;display:inline-flex;align-items:center;gap:8px}.match i{width:7px;height:7px;border-radius:50%;background:var(--pink);box-shadow:0 0 10px var(--pink);animation:ping 1.6s infinite}
-.aic h2{font-size:27px;line-height:1.1;font-weight:450;letter-spacing:-.8px;margin-top:10px}
-.aic p{font-family:var(--mono);font-size:12.5px;line-height:1.6;margin-top:10px;color:rgba(245,242,234,.85)}
-.buddy{text-align:center;padding:16px 20px 0;flex:none}.buddy .av{justify-content:center;padding-left:9px}.buddy .av i{width:34px;height:34px;border-color:#0A0912;display:grid;place-items:center;font-size:13px;font-weight:600}
-.buddy small{display:block;font-size:12.5px;color:var(--mut);margin-top:12px}
-.see{margin-top:14px;height:50px;padding:0 28px;border-radius:999px;font-size:16px;background:var(--grad);box-shadow:0 10px 28px rgba(49,231,200,.45),0 1px 0 rgba(245,242,234,.4) inset;transition:scale .2s var(--spring)}.see:active{scale:.94}
-.fch{display:flex;gap:8px;overflow-x:auto;padding:16px 16px 10px;scrollbar-width:none;flex:none}.fch::-webkit-scrollbar{display:none}
-.fc{flex:none;display:flex;align-items:center;gap:10px;height:42px;padding:0 8px 0 15px;border-radius:14px;background:rgba(245,242,234,.07);font-size:13.5px;transition:background .35s}
-.fc.on{background:rgba(245,242,234,.14)}.fc u{width:24px;height:24px;display:grid;place-items:center;border-radius:8px;background:rgba(245,242,234,.1);text-decoration:none;font-size:15px;transition:rotate .45s var(--spring)}.fc.on u{rotate:45deg}
-.inp{display:flex;align-items:center;gap:10px;margin:0 10px calc(var(--bt) - 6px);padding:10px;border-radius:36px;background:rgba(20,16,38,.8);border:1px solid rgba(245,242,234,.08);backdrop-filter:blur(20px);flex:none}
-.inp>button{width:48px;height:48px;border-radius:50%;flex:none;display:grid;place-items:center;background:rgba(245,242,234,.1);transition:scale .25s var(--spring),background .3s}.inp>button:active{scale:.85}
-.inp input{flex:1;min-width:0;height:48px;padding:0 16px;border-radius:24px;background:rgba(245,242,234,.07);font-size:15.5px;caret-color:#31E7C8}
-.inp input::placeholder{color:rgba(245,242,234,.4)}
-.wave{display:flex;gap:3px;align-items:center;height:20px}.wave i{width:2.5px;border-radius:2px;background:#F5F2EA;animation:wv 1s ease-in-out infinite}
-.wave i:nth-child(1){height:8px}.wave i:nth-child(2){height:16px;animation-delay:.15s}.wave i:nth-child(3){height:20px;animation-delay:.3s}.wave i:nth-child(4){height:12px;animation-delay:.45s}.wave i:nth-child(5){height:6px;animation-delay:.6s}
-@keyframes wv{50%{transform:scaleY(.4)}}
-.inp>.send{background:var(--grad)}
-
 /* ---------- SEATS ---------- */
 .stagew{position:relative;height:120px;margin:8px 0 0}
 .stg{position:absolute;left:8%;right:8%;top:22px;height:66px;clip-path:url(#cp);background:linear-gradient(180deg,rgba(49,231,200,.95),rgba(49,231,200,.35));animation:scr 1s .2s var(--ease) both}
@@ -410,11 +389,11 @@ textarea.inpf{height:96px;padding:14px 18px;resize:none;font-family:inherit}
 
 :root{--disp:"Unbounded","Inter",system-ui,sans-serif;--grad:#D8FF3F}
 /* ===== palette v4: volt + cyan primary, black text ===== */
-.go,.see,.inp>.send,.fol,.btn2{background:#D8FF3F;color:#0A0912;font-weight:600}
-.go,.see,.fol{box-shadow:0 12px 30px rgba(216,255,63,.28),0 1px 0 rgba(255,255,255,.5) inset}
+.go,.fol,.btn2{background:#D8FF3F;color:#0A0912;font-weight:600}
+.go,.fol{box-shadow:0 12px 30px rgba(216,255,63,.28),0 1px 0 rgba(255,255,255,.5) inset}
 .go.ghost{color:#F5F2EA}.go.red{color:#F5F2EA}.go.done{color:#0A0912}
 .okc{background:#31E7C8;box-shadow:0 0 0 12px rgba(49,231,200,.15),0 0 60px rgba(49,231,200,.5)}
-.okc svg,.inp>.send svg{stroke:#0A0912}
+.okc svg{stroke:#0A0912}
 .sseg.ai i{background:#31E7C8;box-shadow:0 6px 22px rgba(49,231,200,.4)}.sseg.ai button.on{color:#0A0912}
 .dock button.on,.td.on,.tgl.on,.sseg3 button.on{background:#D8FF3F;color:#0A0912}
 .dock button.on{box-shadow:0 6px 20px rgba(216,255,63,.4)}
@@ -435,7 +414,6 @@ h1.big{font-family:var(--disp);font-weight:600;letter-spacing:-.01em;line-height
 .det h2{font-family:var(--disp);font-weight:600;letter-spacing:-.01em;line-height:1.1;font-size:17.5px}
 .det h4{font-family:var(--disp);font-weight:600;letter-spacing:-.01em;line-height:1.1;font-size:14px}
 .bbar strong{font-family:var(--disp);font-weight:600;letter-spacing:-.01em;line-height:1.1;font-size:clamp(14px,4.1vw,18.2px)}
-.aic h2{font-family:var(--disp);font-weight:600;letter-spacing:-.01em;line-height:1.1;font-size:18.9px}
 .ok h2{font-family:var(--disp);font-weight:600;letter-spacing:-.01em;line-height:1.1;font-size:22.4px}
 .tk .tt h3{font-family:var(--disp);font-weight:600;letter-spacing:-.01em;line-height:1.1;font-size:13.3px}
 .empty h3{font-family:var(--disp);font-weight:600;letter-spacing:-.01em;line-height:1.1;font-size:14px}
@@ -465,7 +443,7 @@ h1.big{font-family:var(--disp);font-weight:600;letter-spacing:-.01em;line-height
 button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
 .app{min-height:100%;}
 .body{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-.mas,.cats,.rail2,.thumbs,.fch{overscroll-behavior-inline:contain}
+.mas,.cats,.rail2,.thumbs{overscroll-behavior-inline:contain}
 @media (max-width: 380px){
   .hd{padding-inline:14px}
   #home .top{padding-inline:14px}
@@ -511,10 +489,6 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
   .view#detail .hart{height:clamp(260px,36vw,420px)}
   .view#detail .det{padding-inline:clamp(24px,4vw,56px)}
   .view#detail .bbar,.view#seats .bbar,.view#search .bbar,.view#checkout .bbar{left:50%;width:min(100%,980px);transform:translateX(-50%)}
-  .view#ai .aih{width:min(100% - 64px,1100px);height:clamp(300px,48vh,560px);flex:none;margin:8px auto 0}
-  .view#ai .aic{padding-bottom:32px}
-  .view#ai .buddy{padding-top:22px}
-  .view#ai .fch,.view#ai .inp{width:min(100% - 64px,1100px);margin-inline:auto}
   .view#tickets .tstage{width:min(100% - 48px,980px);margin-inline:auto}
   .view#tickets>.hd,.view#tickets>.tmonth,.view#tickets>.tdates{width:min(100% - 48px,980px);margin-inline:auto}
   .view#search>.body,.view#checkout>.body{width:min(100%,980px);margin-inline:auto}
@@ -560,8 +534,38 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
   #home .top{padding-top:20px}
   h1.big{padding-top:24px}
   .cats{padding-top:18px}
-  .view#ai .aih{height:42vh;min-height:220px}
 }
+
+/* ---------- Conversational event assistant ---------- */
+.view#ai{background:radial-gradient(80% 36% at 50% 0%,rgba(49,231,200,.1),transparent 80%),radial-gradient(80% 30% at 50% 100%,rgba(216,255,63,.07),transparent 80%),#0A0912}
+.view#ai>.hd{width:100%;max-width:960px;margin-inline:auto;padding-inline:clamp(18px,4vw,40px)}
+.view#ai>.hd span{font-weight:600;letter-spacing:-.3px}
+.chat-thread{flex:1;min-height:0;width:100%;max-width:880px;margin:0 auto;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(245,242,234,.18) transparent;padding:18px clamp(18px,4vw,40px) 14px;display:flex;flex-direction:column;gap:16px}
+.chat-msg{display:flex;align-items:flex-end;gap:10px;max-width:min(88%,680px);animation:chatIn .3s var(--ease) both}
+.chat-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.chat-avatar{width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;color:#0A0912;background:var(--grad);font-size:13px;font-weight:700}
+.chat-bubble{min-width:0;padding:13px 16px;border:1px solid rgba(245,242,234,.1);border-radius:20px 20px 20px 6px;background:rgba(245,242,234,.065);backdrop-filter:blur(18px);font-size:14px;line-height:1.6;color:rgba(245,242,234,.9);overflow-wrap:anywhere}
+.chat-msg.user .chat-bubble{border-color:rgba(49,231,200,.24);border-radius:20px 20px 6px 20px;background:rgba(49,231,200,.12);color:#F5F2EA}
+.chat-bubble p+p{margin-top:8px}
+.chat-events{display:grid;gap:9px;margin-top:12px}
+.chat-event{width:100%;text-align:left;padding:13px 14px;border:1px solid rgba(245,242,234,.1);border-radius:16px;background:rgba(10,9,18,.48);transition:background .2s,border-color .2s,transform .2s}
+.chat-event:hover{background:rgba(49,231,200,.09);border-color:rgba(49,231,200,.3);transform:translateY(-1px)}
+.chat-event b{display:block;font-size:13px;line-height:1.4;font-weight:600}
+.chat-event small{display:block;margin-top:5px;color:var(--mut);font:11px/1.5 var(--mono)}
+.chat-wait{align-self:flex-start;display:flex;align-items:center;gap:5px;margin-left:40px;color:var(--mut);font:12px var(--mono)}
+.chat-wait i{width:5px;height:5px;border-radius:50%;background:var(--cyan);animation:chatDot .9s ease-in-out infinite alternate}.chat-wait i:nth-child(2){animation-delay:.2s}.chat-wait i:nth-child(3){animation-delay:.4s}
+@keyframes chatDot{to{opacity:.3;transform:translateY(-3px)}}@keyframes chatIn{from{opacity:0;transform:translateY(8px)}}
+.chat-suggestions{display:flex;gap:8px;max-width:880px;width:100%;margin:0 auto;padding:4px clamp(18px,4vw,40px) 10px;overflow-x:auto;scrollbar-width:none;flex:none}
+.chat-suggestions::-webkit-scrollbar{display:none}
+.chat-suggestions button{flex:none;border:1px solid rgba(245,242,234,.12);border-radius:999px;padding:9px 13px;background:rgba(245,242,234,.055);font-size:12px;color:rgba(245,242,234,.78);transition:border-color .2s,background .2s}
+.chat-suggestions button:hover{border-color:rgba(49,231,200,.35);background:rgba(49,231,200,.08)}
+.chat-compose{display:flex;align-items:center;gap:10px;width:calc(100% - 28px);max-width:800px;flex:none;margin:0 auto var(--bt);padding:8px;border:1px solid rgba(245,242,234,.14);border-radius:28px;background:rgba(24,21,39,.78);box-shadow:0 15px 45px rgba(0,0,0,.25);backdrop-filter:blur(24px) saturate(1.3)}
+.chat-compose:focus-within{border-color:rgba(49,231,200,.52);box-shadow:0 0 0 3px rgba(49,231,200,.08),0 15px 45px rgba(0,0,0,.25)}
+.chat-compose input{flex:1;min-width:0;height:46px;padding:0 12px;font-size:14px;caret-color:var(--cyan)}
+.chat-compose input::placeholder{color:rgba(245,242,234,.42)}
+.chat-compose button{width:44px;height:44px;flex:none;border-radius:50%;display:grid;place-items:center;color:#0A0912;background:var(--grad);transition:scale .2s var(--spring),opacity .2s}
+.chat-compose button:active{scale:.9}.chat-compose button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:420px){.chat-thread{gap:13px;padding-top:12px}.chat-msg{max-width:94%}.chat-avatar{width:27px;height:27px}.chat-bubble{font-size:13.5px;padding:11px 13px}.chat-compose{width:calc(100% - 20px)}}
 </style>
 </head>
 <body>
@@ -591,11 +595,12 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 </section>
 
 <section class="view off" id="ai">
-  <div class="hd"><button class="gb back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><span>Events Recommendation</span><button class="gb" id="clr" aria-label="New chat"><svg viewBox="0 0 24 24"><path d="M5 5h14v11H9l-4 4zM12 8v5M9.5 10.5h5"/></svg></button></div>
-  <div class="aih" id="aih"><div id="aart"></div><div class="aic"><span class="match"><i></i><span id="mt">94% match</span></span><h2 id="aT"></h2><p id="aI"></p></div></div>
-  <div class="buddy"><div class="av" id="buddies"></div><small id="bt"></small><button class="see" id="see">See who’s going</button></div>
-  <div class="fch" id="fch"></div>
-  <div class="inp"><button id="plus" aria-label="Add"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button><input id="q" placeholder="Describe your vibe…" autocomplete="off"><button id="mic" aria-label="Voice"><span class="wave"><i></i><i></i><i></i><i></i><i></i></span></button></div>
+  <div class="hd"><button class="gb back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><span>Vibora AI</span><button class="gb" id="clr" aria-label="New chat"><svg viewBox="0 0 24 24"><path d="M5 5h14v11H9l-4 4zM12 8v5M9.5 10.5h5"/></svg></button></div>
+  <div class="chat-thread" id="chatMessages" role="log" aria-live="polite" aria-label="Chat with Vibora AI"></div>
+  <div class="chat-suggestions" id="chatSuggestions" aria-label="Suggested messages">
+    <button type="button" data-prompt="Find events in Pune">Events in Pune</button><button type="button" data-prompt="Show me concerts">Concerts</button><button type="button" data-prompt="Find something under ₹1,000">Under ₹1,000</button>
+  </div>
+  <form class="chat-compose" id="chatForm"><input id="q" placeholder="Ask about events, prices, or venues…" autocomplete="off" aria-label="Message Vibora AI"><button id="mic" type="submit" aria-label="Send message"><svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-3-7zM11 13l9-9"/></svg></button></form>
 </section>
 
 <section class="view off" id="seats">
@@ -799,29 +804,61 @@ function total(){const n=nTix(),e=E[cur];if(e.soldout){const w=ST.waitlist.inclu
   $('cont').textContent='Continue';$('tN').textContent=`${n} ticket${n===1?'':'s'}`;count($('tP'),amount(),idr,500);$('cont').disabled=!n}
 $('cont').onclick=()=>{if(E[cur].soldout){openWaitlist();return}openSeats();push('seats')};
 
-/* ---------- AI recommendation ---------- */
-let aiEv=4,chips=new Set(['Concerts']),typed=false,tmr;
-const FCH=['Concerts','Festival','Seminar','Workshop','Parties'];
-function renderChips(){$('fch').innerHTML=FCH.map(c=>`<button class="fc${chips.has(c)?' on':''}" data-c="${c}">${c}<u>+</u></button>`).join('')}
-function score(e,words){let s=0;words.forEach(w=>{if(e.k.some(k=>k.includes(w)||w.includes(k)))s++});return s}
-function pick(){const words=$('q').value.toLowerCase().split(/\W+/).filter(w=>w.length>2),pool=E.map((e,i)=>({e,i})).filter(({e})=>!chips.size||e.tg.some(t=>chips.has(t)));
-  if(!pool.length)return null;return pool.map(x=>({...x,s:score(x.e,words)*14+(x.e.tg.some(t=>chips.has(t))?10:0)+Math.min(8,x.e.going/700)+60})).sort((a,b)=>b.s-a.s)[0]}
-function showAI(i,m,anim){aiEv=i;const e=E[i];
-  $('aart').innerHTML=art(e);$('aih').classList.remove('sw');void $('aih').offsetWidth;if(anim)$('aih').classList.add('sw');
-  $('aT').textContent=e.t;$('aI').innerHTML=`${e.kind||e.tg.join(' · ')}<br>${e.when}<br>${e.venue}`;
-  count($('mt'),Math.min(98,Math.round(m)),v=>Math.round(v)+'% match',800);
-  $('buddies').innerHTML=avs(5,true);$('bt').textContent=`Andriana, Josh, and ${Math.round(e.going/100)} others are looking for event buddies`}
-function recommend(anim=true){const p=pick();if(!p){$('aT').textContent='No events match yet';return}showAI(p.i,p.s,anim)}
-function openAI(pre){renderChips();if(pre){typed=true;clearInterval(tmr);$('q').value=pre;syncMic();recommend(true);return}
-  showAI(aiEv,94,false);if(!typed){typed=true;const txt='I want something energetic';let n=0;$('q').value='';clearInterval(tmr);
-  setTimeout(()=>{tmr=setInterval(()=>{$('q').value=txt.slice(0,++n);syncMic();if(n>=txt.length)clearInterval(tmr)},55)},900)}}
-function syncMic(){const has=$('q').value.trim().length>0;$('mic').classList.toggle('send',has);
-  $('mic').innerHTML=has?'<svg class="ic" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>':'<span class="wave"><i></i><i></i><i></i><i></i><i></i></span>'}
-$('q').oninput=syncMic;$('q').onkeydown=e=>{if(e.key==='Enter')$('mic').click()};
-$('mic').onclick=()=>{if($('q').value.trim()){buzz(10);$('q').blur();recommend()}else{buzz(6);$('q').focus()}};
-$('fch').onclick=e=>{const b=e.target.closest('.fc');if(!b)return;const c=b.dataset.c;chips.has(c)?chips.delete(c):chips.add(c);buzz(5);renderChips();recommend()};
-$('see').onclick=()=>go('going',aiEv);$('plus').onclick=()=>buzz(5);
-$('clr').onclick=()=>{$('q').value='';chips.clear();syncMic();renderChips();recommend()};
+/* ---------- Live, conversational event assistant ---------- */
+let chatStarted=false,chatBusy=false,chatLastResults=[];
+const chatStop=new Set(['the','and','for','with','from','that','this','what','when','where','how','can','could','would','show','find','recommend','suggest','please','want','like','looking','something','events','event','near','me','any','all','are','under','below','less','than','within','budget','around','about','today','tonight','tomorrow','weekend','cheap','affordable','good','best','fun','some','in','on','at','to','of','is','it','its','my','we','our','there','has','have']);
+const chatText=e=>[e.t,e.cat,e.city,e.venue,e.d,...(e.tg||[]),...(e.k||[])].filter(Boolean).join(' ').toLowerCase();
+function addChatMessage(role,text,events=[]){
+  const row=document.createElement('div');row.className='chat-msg '+role;
+  if(role==='assistant'){const avatar=document.createElement('span');avatar.className='chat-avatar';avatar.textContent='✦';row.append(avatar)}
+  const bubble=document.createElement('div');bubble.className='chat-bubble';
+  String(text).split('\n').filter(Boolean).forEach(line=>{const p=document.createElement('p');p.textContent=line;bubble.append(p)});
+  if(events.length){const cards=document.createElement('div');cards.className='chat-events';events.forEach(({e,i})=>{const b=document.createElement('button');b.type='button';b.className='chat-event';b.dataset.eventIndex=i;const title=document.createElement('b');title.textContent=e.t||'Event';const meta=document.createElement('small');const cost=Number(e.price)>0?inr(e.price):'Price to be announced';meta.textContent=[e.when||e.date,e.venue,cost].filter(Boolean).join(' · ');b.append(title,meta);cards.append(b)});bubble.append(cards)}
+  row.append(bubble);$('chatMessages').append(row);$('chatMessages').scrollTop=$('chatMessages').scrollHeight;
+}
+function chatEventMatches(message){
+  const q=message.toLowerCase(),cities=[...new Set(E.map(e=>e.city).filter(Boolean))],city=cities.find(c=>q.includes(String(c).toLowerCase()));
+  const categories=['concert','concerts','festival','workshop','party','parties','nightlife','music','art','hip-hop','comedy'];
+  const category=categories.find(c=>q.includes(c));
+  const budgetMatch=q.match(/(?:under|below|less than|max(?:imum)?|within|budget(?: of)?)\s*(?:₹|rs\.?\s*)?([\d,]+(?:\.\d+)?)\s*(k)?/i);
+  const budget=budgetMatch?Number(budgetMatch[1].replace(/,/g,''))*(budgetMatch[2]?1000:1):null;
+  const words=q.replace(/₹|rs\.?/g,' ').split(/[^\p{L}\p{N}]+/u).filter(w=>w.length>2&&!chatStop.has(w)&&!/^\d+$/.test(w));
+  const filtered=E.map((e,i)=>({e,i})).filter(({e})=>(!city||String(e.city||'').toLowerCase()===city.toLowerCase())&&(!category||[e.cat,...(e.tg||[])].some(t=>String(t).toLowerCase().includes(category.replace(/s$/,''))||String(t).toLowerCase().includes(category))));
+  let pool=filtered.length?filtered:E.map((e,i)=>({e,i}));
+  if(budget!==null){const within=pool.filter(({e})=>Number(e.price)<=budget);if(within.length)pool=within}
+  const scored=pool.map(x=>{const text=chatText(x.e);let score=0;words.forEach(w=>{if(text.includes(w))score+=w.length>5?3:2});if(city&&String(x.e.city||'').toLowerCase()===city.toLowerCase())score+=8;if(category&&[x.e.cat,...(x.e.tg||[])].some(t=>String(t).toLowerCase().includes(category.replace(/s$/,''))))score+=7;if(budget!==null&&Number(x.e.price)<=budget)score+=5;if(/cheap|affordable|lowest|cheapest/.test(q)&&Number.isFinite(+x.e.price))score+=Math.max(0,4-Math.min(4,+x.e.price/1000));return {...x,score}}).sort((a,b)=>b.score-a.score||new Date(a.e.dt||a.e.startsAt||0)-new Date(b.e.dt||b.e.startsAt||0));
+  return {items:scored.slice(0,3),city,category,budget,hasSpecific:words.length>0||!!city||!!category||budget!==null};
+}
+function answerChat(message){
+  const q=message.toLowerCase();
+  if(/\b(hi|hello|hey|good morning|good evening)\b/.test(q)&&q.split(/\s+/).length<6)return {text:'Hey! Tell me your city, the kind of event you’re into, or your budget and I’ll find live listings.'};
+  if(/\b(what can you do|what do you do|who are you|help me)\b/.test(q))return {text:'I’m Vibora’s event assistant. I can search published events by city or category, compare ticket prices, and show you dates and venues. Try “concerts in Pune under ₹1,000”.'};
+  if(/\b(thanks|thank you|cheers)\b/.test(q))return {text:'You’re welcome! Want me to find another event or check a different city or budget?'};
+  if(aiLiveState==='loading')return {text:'I’m loading the latest published events. Give me a moment, then send that again.'};
+  if(aiLiveState==='unavailable')return {text:'I can’t reach the live event list right now. Please check your connection and try again.'};
+  if(!E.length)return {text:'There aren’t any published events available right now. Check back soon, or try again after new events are listed.'};
+  const contextual=/\b(it|that|those|them|price|cost|where|when)\b/.test(q)&&chatLastResults.length;
+  const result=contextual?{items:chatLastResults.map(i=>({e:E[i],i,score:0})).filter(x=>x.e),hasSpecific:true}:chatEventMatches(message),items=result.items;
+  if(!items.length)return {text:'I couldn’t find a published event that matches that yet. Try a city, music style, category, or price limit.'};
+  chatLastResults=items.map(x=>x.i);
+  const cityText=result.city?` in ${result.city}`:'';
+  let text;
+  if(/\b(where|venue|location)\b/.test(q)&&contextual)text=`Here ${items.length===1?'is the venue':'are the venues'} for the event${items.length===1?'':'s'} we just discussed${cityText}.`;
+  else if(/\b(when|date|tonight|today|tomorrow|weekend)\b/.test(q)&&contextual)text=`Here ${items.length===1?'is the date':'are the dates'} for the event${items.length===1?'':'s'} we just discussed.`;
+  else if(/\b(price|cost|ticket|how much|budget|under|below|cheap|affordable)\b/.test(q))text=result.budget!==null&&items.every(x=>Number(x.e.price)>result.budget)?`I didn’t find a live listing under ${inr(result.budget)}. These are the closest matches available right now:`:`Here ${result.budget!==null?'are events within your budget':'are the current ticket prices'}:`;
+  else if(/\b(hi|hello|hey)\b/.test(q)&&q.split(/\s+/).length<4)text='Hey! Tell me your city, the kind of event you’re into, or your budget and I’ll find live listings.';
+  else if(result.hasSpecific&&items[0].score===0)text=`I don’t see an exact match${cityText}, so here are a few upcoming events you can explore:`;
+  else text=`I found ${items.length===1?'a live event':'some live events'} that fit${cityText}. Tap one to see its details and tickets:`;
+  return {text,items};
+}
+function showChatWelcome(){addChatMessage('assistant',`Hi${ST.user?.name&&ST.user.name!=='Guest'?' '+ST.user.name.split(/\s+/)[0]:''}! I can help you find live events, compare prices, and check venues. What are you in the mood for?`)}
+function sendChatMessage(value){const message=String(value||'').trim();if(!message||chatBusy)return;chatBusy=true;$('q').value='';addChatMessage('user',message);const wait=document.createElement('div');wait.className='chat-wait';wait.id='chatWait';wait.innerHTML='<i></i><i></i><i></i><span>Finding events</span>';$('chatMessages').append(wait);$('chatMessages').scrollTop=$('chatMessages').scrollHeight;
+  setTimeout(()=>{wait.remove();const reply=answerChat(message);addChatMessage('assistant',reply.text,reply.items||[]);chatBusy=false;$('q').focus()},280)}
+function openAI(pre){if(!chatStarted){chatStarted=true;showChatWelcome()}if(pre)sendChatMessage(pre);}
+$('chatForm').addEventListener('submit',e=>{e.preventDefault();sendChatMessage($('q').value);buzz(8)});
+$('chatSuggestions').addEventListener('click',e=>{const b=e.target.closest('[data-prompt]');if(b)sendChatMessage(b.dataset.prompt)});
+$('chatMessages').addEventListener('click',e=>{const b=e.target.closest('[data-event-index]');if(!b)return;const i=Number(b.dataset.eventIndex);if(E[i])go('detail',i)});
+$('clr').onclick=()=>{chatStarted=true;chatLastResults=[];$('chatMessages').innerHTML='';$('q').value='';showChatWelcome();$('q').focus()};
 
 /* ---------- SEATS ---------- */
 const ROWS=[2,3,4,4,4,3,2];let sel=new Set();
@@ -879,7 +916,7 @@ $('sseg').onclick=e=>{const b=e.target.closest('button');if(!b||b.dataset.m===sm
 $('sres').onclick=e=>{const c=e.target.closest('.cp');if(c){$('sq').value=c.dataset.q;buzz(5);renderSearch();return}
   if(e.target.closest('#tryai')){smode='ai';buzz(8);renderSearch();return}
   const r=e.target.closest('.r2');if(r){const t=E[+r.dataset.i].t;recents=[t,...recents.filter(x=>x!==t)].slice(0,4);$('sq').blur();openDetail(+r.dataset.i)}};
-$('sai').onclick=()=>{chips.clear();openAI($('sq').value.trim()||undefined);push('ai')};
+  $('sai').onclick=()=>{openAI($('sq').value.trim()||undefined);push('ai')};
 /* ---------- init ---------- */
 /* ---------- SLIDE TO PAY ---------- */
 const sl=$('slide'),hd=$('handle');let max=0,x0=0,drag=false,tick=0,paying=false;
@@ -1281,12 +1318,14 @@ function doScan(kind,code){const names=NAMES[scK%NAMES.length],seat='ABCD'[scK%4
 $('scannerB').onclick=e=>{if(e.target.closest('#scGo'))doScan();if(e.target.closest('#scM'))sheet(`<h3>Enter ticket code</h3><p class="sub2">Type the order number printed under the QR code.</p><input class="inpf mono" id="scC" placeholder="VBR-XXXXXX" style="margin-top:14px;text-transform:uppercase"><button class="go full" id="scV2" style="margin-top:16px">Validate</button>`,()=>{$('scV2').onclick=()=>{const c=$('scC').value.trim().toUpperCase();closeSheet();setTimeout(()=>doScan(TK.some(t=>t.order===c)?'ok':'no',c),350)}})};
 
 /* ===================== REAL-TIME DATA SYNC ===================== */
+let aiLiveState='loading';
 async function syncRealtimeEvents() {
   try {
     const res = await fetch('/api/events');
     if (!res.ok) throw new Error('Live event catalog could not be loaded.');
     const data = await res.json();
     if (data && data.success && Array.isArray(data.events)) {
+      aiLiveState=data.events.length?'ready':'empty';
       const liveEvents = data.events.map((ev, idx) => {
         const dt = new Date(ev.startsAt || ev.date || Date.now());
         const timeStr = dt.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
@@ -1325,9 +1364,9 @@ async function syncRealtimeEvents() {
         const liveCities=[...new Set(liveEvents.map(e=>e.city).filter(Boolean))];if(liveCities.length&&!liveCities.includes(ST.city))ST.city=liveCities[0];save();cityLabel();
         renderMas();
         renderRails();
-      } else { E.splice(0,E.length); renderMas(); renderRails(); }
-    } else { E.splice(0,E.length);renderMas();renderRails(); }
-  } catch (err) { E.splice(0,E.length);renderMas();renderRails();toast('Live event catalog is unavailable','!'); }
+    } else { E.splice(0,E.length); renderMas(); renderRails(); }
+    } else { aiLiveState='empty';E.splice(0,E.length);renderMas();renderRails(); }
+  } catch (err) { aiLiveState='unavailable';E.splice(0,E.length);renderMas();renderRails();toast('Live event catalog is unavailable','!'); }
 }
 syncRealtimeEvents();
 
