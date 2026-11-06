@@ -920,7 +920,7 @@
       Back to site
     </button>
   </div>
-  <iframe id="viboraFrame" src="vibora-littx.html" title="Littx App" allow="vibrate; camera"></iframe>
+  <iframe id="viboraFrame" src="vibora-littx.html?signin=1" title="Littx App" allow="vibrate; camera"></iframe>
 </div>
 
 <script>
@@ -934,7 +934,7 @@
     var overlay = document.getElementById('viboraOverlay');
     var frame = document.getElementById('viboraFrame');
     if (!frame.src || frame.src.indexOf('vibora-littx.html') === -1) {
-      frame.src = 'vibora-littx.html';
+      frame.src = 'vibora-littx.html?signin=1';
     }
     overlay.classList.add('open');
     document.body.style.overflow = 'hidden';

@@ -552,10 +552,9 @@ E.forEach(e=>{const m=e.date.match(/([A-Z]{3}) (\d+), (\d+)(?::(\d+))? (AM|PM)/)
   let d=new Date(now.getFullYear(),MON.indexOf(m[1]),+m[2],h,+(m[4]||0));if(d<now)d=new Date(now.getFullYear()+1,MON.indexOf(m[1]),+m[2],h,+(m[4]||0));
   e.dt=d;e.time=d.toLocaleTimeString('en',{hour:'numeric',minute:'2-digit'});e.when=d.toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'})+' · '+e.time;e.date=MON[d.getMonth()]+' '+d.getDate()+', '+e.time});
 /* ---- ticket store (persisted) ---- */
-const USER='Alex Morgan';let TK=[],lastTk=0;
-try{TK=JSON.parse(localStorage.getItem('vibora.tk')||'[]');if(!localStorage.getItem('vibora.seed')){localStorage.setItem('vibora.seed','1');
-  TK=[{id:11,ev:0,order:'LTX-DHOL26',seats:['A12','A13'],tiers:[2,0,0],total:998},{id:12,ev:1,order:'LTX-SNBRN9',seats:['VIP-4'],tiers:[0,1,0],total:2998}]}}catch(e){}
-const saveTK=()=>{try{localStorage.setItem('vibora.tk',JSON.stringify(TK))}catch(e){}};
+const USER='';let TK=[],lastTk=0,bookingChallengeId='',bookingSessionEmail='',bookingRecoveryBusy=false;
+// Ticket data and access tokens are held in memory only and loaded after server OTP verification.
+const saveTK=()=>{};
 
 const $=id=>document.getElementById(id),app=$('app'),buzz=n=>{try{navigator.vibrate&&navigator.vibrate(n)}catch(e){}};
 const inr=n=>'₹'+Math.round(n).toLocaleString('en-IN');const idr=inr;
@@ -571,15 +570,12 @@ const I=(k,f)=>`<svg class="ic" viewBox="0 0 24 24"${f?' fill="currentColor" str
 const BACK='<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',AVS=['😎','🤩','🦊','🐼','🎧','🔥','🌙','🎸'],AVC=[['#D8FF3F','#FF2E7E'],['#31E7C8','#31E7C8'],['#D8FF3F','#D8FF3F'],['#31E7C8','#1FB89E'],['#D8FF3F','#31E7C8'],['#D8FF3F','#FF2E7E'],['#31E7C8','#31E7C8'],['#D8FF3F','#B7D92E']];
 const SNAP=e=>({t:e.t,date:e.date,venue:e.venue,art:e.art,a:e.a,b:e.b,c:e.c});
 const ago=ts=>{const m=Math.round((Date.now()-ts)/6e4);return m<1?'now':m<60?m+'m':m<1440?Math.round(m/60)+'h':Math.round(m/1440)+'d'};
-const H=36e5,DEF=()=>({user:{name:'Alex Morgan',email:'alex.morgan@mail.com',phone:'+91 98765 43210',av:0},onboarded:0,saved:[1],follows:[],waitlist:[],
-  cards:[{id:1,brand:'visa',last4:'4242',exp:'08/28',name:'Alex Morgan'},{id:2,brand:'mc',last4:'0002',exp:'11/27',name:'Alex Morgan'}],pm:1,promo:null,pts:1280,gift:500,city:'Pune',lang:'English',theme:'dark',
+const H=36e5,DEF=()=>({user:{name:'Guest',email:'',phone:'',av:0},onboarded:0,saved:[],follows:[],waitlist:[],
+  cards:[],pm:null,promo:null,pts:0,gift:0,city:'Pune',lang:'English',theme:'dark',
   set:{push:1,email:1,sms:0,faceid:1,tfa:0,alerts:1,rem:1,drops:1,near:1,friends:0,promo:1},ratings:{},F:{sort:'rec',date:'any',maxP:3e6,km:200,g:[]},
-  notifs:[{id:1,ty:'book',t:'Booking confirmed',s:'Kanye West Live in Jakarta · 2 tickets',ts:Date.now()-2*H,r:0},{id:2,ty:'remind',t:'Chase Atlantic is coming up',s:'Doors open at 6:00 PM · keep your QR ready',ts:Date.now()-5*H,r:0},{id:3,ty:'drop',t:'Price drop',s:'VIP for Neon Rooftop Party is 15% cheaper',ts:Date.now()-26*H,r:1},{id:4,ty:'friend',t:'Josh is going to Midnight Warehouse Rave',s:'Join him and sit together',ts:Date.now()-50*H,r:1},{id:5,ty:'promo',t:'10% off your next order',s:'Use code VIBE10 at checkout',ts:Date.now()-100*H,r:1}],
-  hist:[{id:101,snap:{t:'Neon Nights Festival',date:'SEP 14, 8:00 PM',venue:'Ancol Beach Arena',art:'neon',a:'#FF2E7E',b:'#141026',c:'#31E7C8'},seats:['B4','B5'],total:1100000,status:'Completed',order:'VBR-3M9PLW',ts:Date.now()-60*24*H},
-        {id:102,snap:{t:'Jazz Under the Stars',date:'AUG 2, 7:00 PM',venue:'Taman Ismail Marzuki',art:'beam',a:'#31E7C8',b:'#0A0912',c:'#FF2E7E'},seats:['D1'],total:450000,status:'Completed',order:'VBR-J2K8QQ',ts:Date.now()-90*24*H},
-        {id:103,snap:{t:'Street Art Weekend',date:'JUL 20, 11:00 AM',venue:'Kota Tua, Jakarta',art:'blob',a:'#FF2E7E',b:'#0A0912',c:'#31E7C8'},seats:['A9'],total:150000,status:'Refunded',order:'VBR-R5T1ZZ',ts:Date.now()-110*24*H}]});
+  notifs:[],hist:[]});
 let ST;try{ST=JSON.parse(localStorage.getItem('vibora.st')||'null')}catch(e){}
-{const d=DEF();ST=Object.assign(d,ST||{});ST.set=Object.assign(DEF().set,ST.set);ST.F=Object.assign(DEF().F,ST.F)}
+{const d=DEF();ST=Object.assign(d,ST||{});ST.set=Object.assign(DEF().set,ST.set);ST.F=Object.assign(DEF().F,ST.F);if(ST.user?.email==='alex.morgan@mail.com'){ST.cards=[];ST.hist=[];ST.pts=0;ST.gift=0;ST.saved=[];ST.notifs=[]}ST.user=d.user;ST.onboarded=0;ST.cards=[];ST.hist=[];ST.pts=0;ST.gift=0;ST.saved=[];ST.notifs=[]; }
 const save=()=>{try{localStorage.setItem('vibora.st',JSON.stringify(ST))}catch(e){}};
 
 /* sheets, toast, offline, theme */
@@ -788,11 +784,10 @@ hd.addEventListener('pointermove',e=>{if(!drag)return;const p=Math.max(0,Math.mi
 const endD=()=>{if(!drag)return;drag=false;hd.classList.remove('drag');const p=parseFloat(sl.style.getPropertyValue('--p'))||0;if(p>.86){setP(1);completePay()}else setP(0)};
 hd.addEventListener('pointerup',endD);hd.addEventListener('pointercancel',endD);
 function resetSlide(){paying=false;sl.classList.remove('done');setP(0)}
-function completePay(){const card=ST.cards.find(c=>c.id===ST.pm);
-  if(card&&card.last4==='0002'){paying=true;buzz([30,60,30]);sl.classList.add('shake');setTimeout(()=>{sl.classList.remove('shake');setP(0);paying=false;payFailed()},520);return}
-  paying=true;buzz([14,40,26]);const f=fees(),t={id:Date.now(),ev:cur,order:'VBR-'+Math.random().toString(36).slice(2,8).toUpperCase(),seats:[...sel].sort(),tiers:[...qty],total:f.total,ts:Date.now(),pm:pmLabel()};
-  TK.push(t);saveTK();lastTk=t.id;clearInterval(holdI);ST.pts+=Math.round(f.total/1e4);ST.gift-=f.gift;if(f.disc)ST.promo=null;save();addNotif('book','Booking confirmed',`${E[cur].t} · ${t.seats.length} ticket${t.seats.length>1?'s':''}`);
-  setTimeout(()=>{sl.classList.add('done');confetti(sl);setTimeout(showOk,950)},180)}
+function completePay(){
+  const event=E[cur];if(!event?.id){toast('This event is not available for online booking','!');return}
+  try{window.top.location.href='/events?event='+encodeURIComponent(event.id)}catch(_){location.href='/events?event='+encodeURIComponent(event.id)}
+}
 
 /* ---------- MY TICKETS ---------- */
 function qr(seed){let h=0;for(const c of seed)h=(h*31+c.charCodeAt(0))>>>0;const R=rng(h),N=29;let o='';const inF=(x,y)=>(x<8&&y<8)||(x>N-9&&y<8)||(x<8&&y>N-9);
@@ -808,33 +803,33 @@ function renderTickets(){
   $('tdates').innerHTML=Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()+i);return `<button class="td" data-i="${i}"><b>${d.toLocaleDateString('en',{weekday:'short'})}</b><span>${d.getDate()}</span><i></i></button>`}).join('');
   $('tcards').innerHTML=byDate().map((t,k)=>{const e=E[t.ev],tiers=t.tiers.map((q,i)=>q?`${TIERS[i][0]} ×${q}`:'').filter(Boolean).join(', ');
     return `<div class="tc" data-id="${t.id}" style="animation-delay:${k*80}ms">${art(e)}<div class="tt"><h3>${e.t}</h3><p>${e.date} · ${e.venue}${t.listed?' · <b style="color:#D8FF3F">Listed</b>':''}</p></div>
-    <button class="tcls" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><button class="tqb" aria-label="Show QR">${QRI}</button>
-    <div class="tp"><div class="tg2"><div><label>Name</label><b>${ST.user.name}</b></div><div><label>Order Number</label><b>${t.order}</b></div><div><label>Date</label><b>${e.dt.toLocaleDateString('en',{month:'long',day:'numeric',year:'numeric'})}</b></div><div><label>Time</label><b>${e.time}</b></div><div><label>Seats</label><b>${t.seats.join(', ')}</b></div><div><label>Tickets</label><b>${tiers}</b></div></div>
-    <div class="tch"><button data-a="tr">↗ Transfer</button><button data-a="sl">$ ${t.listed?'Edit listing':'Sell'}</button><button data-a="dr">⌖ Directions</button></div></div></div>`}).join('');
+    <button class="tcls" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><button class="tqb" aria-label="Download ticket">${QRI}</button>
+    <div class="tp"><div class="tg2"><div><label>Name</label><b>${t.customerName||ST.user.name}</b></div><div><label>Ticket ID</label><b>${t.order}</b></div><div><label>Date</label><b>${e.dt.toLocaleDateString('en',{month:'long',day:'numeric',year:'numeric'})}</b></div><div><label>Time</label><b>${e.time}</b></div><div><label>Quantity</label><b>${t.seats.length}</b></div><div><label>Status</label><b>${t.status||'paid'}</b></div></div>
+    <div class="tch"><button data-a="dl">↓ Download ticket PDF</button></div></div></div>`}).join('');
   const first=byDate()[0];if(first&&!tOpen)tDay=dIdx(first);
   $('tcount').textContent=TK.length?`${TK.length} upcoming ticket${TK.length>1?'s':''}`:'No tickets yet';
   $('bdg').textContent=TK.length;$('bdg').style.display=TK.length?'grid':'none';renderNext();markDates();layoutT()}
 function markDates(){[...$('tdates').children].forEach((b,i)=>{b.classList.toggle('on',i===tDay);b.classList.toggle('has',TK.some(t=>dIdx(t)===i))});
   const d=new Date();d.setDate(d.getDate()+tDay);$('tmonth').textContent=d.toLocaleDateString('en',{month:'long',year:'numeric'}).toUpperCase()}
 function scrollDate(){const b=$('tdates').children[tDay];if(b)$('tdates').scrollTo({left:b.offsetLeft-$('tdates').clientWidth/2+b.offsetWidth/2,behavior:'smooth'})}
-function layoutT(){const cs=[...$('tcards').children],H=$('tstage').clientHeight-100,sel=TK.filter(t=>dIdx(t)===tDay).map(t=>t.id),ids=cs.map(c=>+c.dataset.id),
+function layoutT(){const cs=[...$('tcards').children],H=$('tstage').clientHeight-100,sel=TK.filter(t=>dIdx(t)===tDay).map(t=>t.id),ids=cs.map(c=>c.dataset.id),
   order=[...ids.filter(i=>!sel.includes(i)),...ids.filter(i=>sel.includes(i))],n=cs.length,step=n>1?Math.min(54,(H-156)/(n-1)):0,none=!sel.length,oh=Math.min(H,430);
   const em=$('tempty');em.classList.toggle('show',none&&tOpen===null);
   if(none){const d=new Date();d.setDate(d.getDate()+tDay);const nx=byDate().find(t=>dIdx(t)>tDay)||byDate()[0];
     $('teH').textContent=TK.length?'No tickets this day':'No tickets yet';
     $('teP').innerHTML=TK.length?`${d.toLocaleDateString('en',{weekday:'long',month:'long',day:'numeric'})} is wide open.<br>Your next event is just a tap away.`:'Book a concert or a party and it will appear here.';
     $('teB').textContent=TK.length?`Go to ${E[nx.ev].t}`:'Explore events';$('teB').dataset.go=TK.length?nx.id:''}
-  cs.forEach(c=>{const id=+c.dataset.id,i=order.indexOf(id),op=tOpen===id;c.classList.toggle('open',op);c.style.zIndex=i+1;c.style.setProperty('--td',(tOpen===null?(n-1-i)*35:i*25)+'ms');c.classList.toggle('dim',none&&tOpen===null);c.style.animation='none';
+  cs.forEach(c=>{const id=c.dataset.id,i=order.indexOf(id),op=tOpen===id;c.classList.toggle('open',op);c.style.zIndex=i+1;c.style.setProperty('--td',(tOpen===null?(n-1-i)*35:i*25)+'ms');c.classList.toggle('dim',none&&tOpen===null);c.style.animation='none';
     if(tOpen===null){c.style.top=(6+i*step)+'px';c.style.height='150px';c.style.transform='none';c.style.filter='none'}
     else if(op){c.style.top='4px';c.style.height=oh+'px';c.style.transform='none';c.style.filter='none'}
     else{c.style.top=(H+30+i*12)+'px';c.style.height='150px';c.style.transform='scale(.94)';c.style.filter='blur(3px)'}});
   $('tqr').style.height=oh+'px'}
 const openTk=id=>{if(tOpen!==null)return;const t=TK.find(x=>x.id===id);tDay=dIdx(t);markDates();tOpen=id;buzz(12);layoutT()};
 const closeTk=()=>{showQR(false);tOpen=null;layoutT()};
-function showQR(v){tQR=v;if(v){const t=TK.find(x=>x.id===tOpen);$('qrb').innerHTML=qr(t.order);$('qro').textContent=`${t.order} · ${t.seats.join(', ')}`}$('tqr').classList.toggle('show',v)}
+async function showQR(v){if(!v){tQR=false;$('tqr').classList.remove('show');return}const t=TK.find(x=>x.id===tOpen);if(!t?.downloadToken){toast('Sign in again to access this ticket','!');return}tQR=true;try{const res=await fetch('/api/customer/bookings/ticket-download',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+t.downloadToken},body:JSON.stringify({ticketId:t.order}),cache:'no-store'});if(!res.ok)throw new Error('Ticket download is temporarily unavailable.');const url=URL.createObjectURL(await res.blob()),link=document.createElement('a');link.href=url;link.download='ticket-'+t.order+'.pdf';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}catch(e){toast(e.message||'Ticket download failed','!')}finally{tQR=false}}
 $('tcards').onclick=e=>{const c=e.target.closest('.tc');if(!c)return;const q=e.target.closest('.tqb');
   if(q){q.classList.add('press');buzz(12);setTimeout(()=>showQR(true),240);setTimeout(()=>q.classList.remove('press'),900);return}
-  if(e.target.closest('.tcls')){closeTk();return}const ch=e.target.closest('.tch button');if(e.target.closest('.tch')){if(ch){const a=ch.dataset.a,id=+c.dataset.id;buzz(6);if(a==='tr')go('transfer',id);else if(a==='sl')go('sell',id);else go('venue',TK.find(x=>x.id===id).ev)}return}if(tOpen===null)openTk(+c.dataset.id)};
+  if(e.target.closest('.tcls')){closeTk();return}const ch=e.target.closest('.tch button');if(e.target.closest('.tch')){if(ch?.dataset.a==='dl')showQR(true);return}if(tOpen===null)openTk(c.dataset.id)};
 $('tqr').onclick=()=>showQR(false);
 $('tdates').onclick=e=>{const b=e.target.closest('.td');if(!b)return;if(tOpen!==null)closeTk();tDay=+b.dataset.i;buzz(6);markDates();layoutT()};
 $('teB').onclick=()=>{const g=$('teB').dataset.go;buzz(8);if(g){tDay=dIdx(TK.find(t=>t.id==g));markDates();scrollDate();layoutT()}else{stack=['home'];paintStack()}};
@@ -1067,29 +1062,28 @@ $('tags').onclick=e=>{const o=e.target.closest('.org');if(o)go('artist',+o.datas
 document.querySelector('#detail [aria-label=Location]').onclick=()=>go('venue',cur);$('dV').parentElement.style.cursor='pointer';$('dV').parentElement.onclick=()=>go('venue',cur);
 
 /* ===================== ONBOARDING / LOGIN / OTP ===================== */
-const ob=document.createElement('div');ob.className='ob';ob.id='ob';ob.style.display='none';app.append(ob);let obS=0,lgM='phone',lgV='',otI=0,obTm=0;
+const ob=document.createElement('div');ob.className='ob';ob.id='ob';ob.style.display='none';app.append(ob);let obS=0,lgM='email',lgV='',otI=0,obTm=0;
 const SLD=[['Find your next night out','Concerts, festivals and parties picked just for you — all in one place.','🎶','#FF2E7E'],['Book seats in seconds','Choose your exact seats, hold them, and slide to pay.','🎟','#31E7C8'],['Entry made effortless','Your live QR ticket works offline and lands straight in your wallet.','📲','#31E7C8']];
 function obGo(n){obS=n;clearInterval(otI);const L=`<div class="logo" style="font-size:26px"><i style="width:44px;height:44px;font-size:22px;border-radius:14px">V</i>vibora</div>`;
   ob.innerHTML=n===0?`<div class="st splash"><div class="logo"><i>V</i>vibora</div><p>LIVE · TOGETHER</p></div>`:
   n<4?`<div class="st"><div style="display:flex;justify-content:flex-end"><button class="skip" id="obSk">Skip</button></div><div class="orb" style="--c:${SLD[n-1][3]}"><b>${SLD[n-1][2]}</b></div><h1>${SLD[n-1][0]}</h1><p class="pp">${SLD[n-1][1]}</p><div style="flex:1"></div><div class="dots2">${[1,2,3].map(i=>`<i class="${i===n?'on':''}"></i>`).join('')}</div><button class="go full" id="obNx">${n===3?'Get started':'Next'}</button></div>`:
-  n===4?`<div class="st">${L}<h1 style="text-align:left;margin-top:34px;font-size:32px">Welcome to Vibora</h1><p class="pp" style="text-align:left;margin:10px 0 0">Sign in or create an account to book tickets.</p>
-    <div class="sseg" id="lgSeg" style="margin:22px 0 0"><i></i><button data-m="phone" class="on">Phone</button><button data-m="email">Email</button></div>
-    <div class="lgs"><div class="fl2"><span class="cc2" id="lgCc">+91 ▾</span><input id="lgIn" inputmode="tel" placeholder="98765 43210" autocomplete="off"></div><button class="go full" id="lgGo" disabled>Continue</button></div>
-    <div class="or">or continue with</div><div class="soc"><button id="sA"> Apple</button><button id="sG">Google</button></div><div style="flex:1"></div><button class="lnk" id="lgGuest">Continue as guest</button><p class="pp" style="font-size:10.5px;margin:8px 0 0">By continuing you agree to our Terms &amp; Privacy Policy.</p></div>`:
+  n===4?`<div class="st">${L}<h1 style="text-align:left;margin-top:34px;font-size:32px">Welcome to LITTX</h1><p class="pp" style="text-align:left;margin:10px 0 0">Sign in with your email to view your real bookings and tickets.</p>
+    <div class="lgs"><div class="fl2"><input id="lgIn" inputmode="email" type="email" placeholder="you@email.com" autocomplete="email"></div><button class="go full" id="lgGo" disabled>Send verification code</button><p class="pp" id="lgErr" role="status" style="font-size:12px;margin-top:10px"></p></div>
+    <div style="flex:1"></div><button class="lnk" id="lgGuest">Continue as guest</button><p class="pp" style="font-size:10.5px;margin:8px 0 0">Booking history and account tickets are protected by a one-time email code.</p></div>`:
   `<div class="st"><div style="display:flex"><button class="gb" id="otB" aria-label="Back">${BACK}</button></div><h1 style="text-align:left;margin-top:30px;font-size:30px">Verify your ${lgM}</h1><p class="pp" style="text-align:left;margin:10px 0 0">We sent a 6-digit code to <b style="color:#F5F2EA">${lgV}</b></p>
-    <div class="otp" id="otp">${Array.from({length:6},(_,i)=>`<input maxlength="1" inputmode="numeric" data-i="${i}" autocomplete="one-time-code">`).join('')}</div><div class="lnk" id="otRs" style="color:var(--mut)">Resend code in 30s</div><button class="lnk" id="otAuto" style="font-size:12px;color:#D8FF3F">Demo: autofill code</button></div>`;
+    <div class="otp" id="otp">${Array.from({length:6},(_,i)=>`<input maxlength="1" inputmode="numeric" data-i="${i}" autocomplete="one-time-code">`).join('')}</div><div class="lnk" id="otRs" style="color:var(--mut)">Enter the code sent to your email</div><p class="pp" id="otErr" role="status" style="font-size:12px;margin-top:10px"></p></div>`;
   if(n===4)lgIn=$('lgIn');if(n===5){const inp=ob.querySelectorAll('.otp input');setTimeout(()=>inp[0].focus(),400);let s=30;otI=setInterval(()=>{s--;const r=$('otRs');if(!r){clearInterval(otI);return}r.textContent=s>0?`Resend code in ${s}s`:'Resend code';if(s<=0){r.style.color='#D8FF3F';clearInterval(otI)}},1000)}}
 let lgIn=null;
-function lgChk(){const v=$('lgIn').value.trim();$('lgGo').disabled=!(lgM==='phone'?v.replace(/\D/g,'').length>=8:/^\S+@\S+\.\S+$/.test(v))}
-function otVerify(){const v=[...ob.querySelectorAll('.otp input')].map(i=>i.value).join('');if(v.length<6)return;ob.querySelectorAll('.otp input').forEach(i=>{i.disabled=true;i.classList.add('f')});buzz(10);
-  const r=$('otRs');r.innerHTML='<i class="ring" style="display:inline-block;vertical-align:middle;margin-right:8px"></i>Verifying…';setTimeout(()=>{r.textContent='✓ Verified';r.style.color='#31E7C8';buzz([14,40,26]);setTimeout(()=>finishOnb(lgV),600)},900)}
-function finishOnb(contact){if(contact){if(lgM==='email')ST.user.email=contact;else ST.user.phone='+91 '+contact}ST.onboarded=1;save();ob.classList.add('out');setTimeout(()=>{ob.style.display='none';permSheet();R.profile&&R.profile()},750)}
+function lgChk(){const v=$('lgIn').value.trim();$('lgGo').disabled=!/^\S+@\S+\.\S+$/.test(v)}
+async function loadCustomerBookings(bookings){TK=[];for(const booking of bookings){if(!booking.ticketId||!booking.ticketViewToken)continue;let details={};try{const res=await fetch('/api/customer/bookings/ticket-view',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+booking.ticketViewToken},body:JSON.stringify({ticketId:booking.ticketId}),cache:'no-store'});const data=await res.json();if(res.ok&&data.success)details=data.ticket||{}}catch(_){}
+  const eventName=details.event||booking.event||'LITTX booking';let evIndex=E.findIndex(e=>e.t.toLowerCase()===eventName.toLowerCase());if(evIndex<0){const dt=new Date(details.dateLabel||details.generatedAt||booking.createdAt||Date.now());E.push({id:'',t:eventName,cat:details.category||'Event',tg:[details.category||'Event'],date:dt.toLocaleDateString('en',{month:'short',day:'numeric',year:'numeric'}),when:dt.toLocaleString(),dt,time:dt.toLocaleTimeString('en',{hour:'numeric',minute:'2-digit'}),venue:details.venue||'',price:Number(booking.amount)||0,going:0,k:[],art:'beam',a:'#31E7C8',b:'#0A0912',c:'#D8FF3F',r:1,d:details.description||'',city:'',km:0,org:0,soldout:false});evIndex=E.length-1}
+  const quantity=Math.max(1,Number(booking.quantity)||1);TK.push({id:booking.ticketId,ev:evIndex,order:booking.ticketId,seats:Array.from({length:quantity},(_,i)=>String(i+1)),tiers:[quantity,0,0],total:Number(booking.amount)||0,ts:Date.parse(booking.createdAt||'')||Date.now(),customerName:details.name||details.attendee||booking.customerName||ST.user.name,viewToken:booking.ticketViewToken,downloadToken:booking.ticketAccessToken,resendToken:booking.ticketResendToken,status:booking.status})}renderTickets()}
+async function requestCustomerOtp(email){const err=$('lgErr'),button=$('lgGo');button.disabled=true;button.innerHTML='<i class="ring"></i> Sending code';if(err)err.textContent='';try{const res=await fetch('/api/customer/bookings/recovery/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});const data=await res.json();if(!res.ok||!data.success)throw new Error(data.message||'Could not send a verification code.');bookingChallengeId=data.challengeId;lgV=email;obGo(5)}catch(e){if(err)err.textContent=e.message||'Email sign-in is temporarily unavailable.'}finally{const go=$('lgGo');if(go){go.disabled=false;go.textContent='Send verification code'}}}
+async function otVerify(){if(bookingRecoveryBusy)return;const v=[...ob.querySelectorAll('.otp input')].map(i=>i.value).join('');if(v.length<6||!bookingChallengeId)return;bookingRecoveryBusy=true;ob.querySelectorAll('.otp input').forEach(i=>i.disabled=true);buzz(10);const r=$('otRs');r.textContent='Verifying…';try{const res=await fetch('/api/customer/bookings/recovery/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:lgV,challengeId:bookingChallengeId,code:v})});const data=await res.json();if(!res.ok||!data.success)throw new Error(data.message||'Code could not be verified.');bookingSessionEmail=lgV;await loadCustomerBookings(data.bookings||[]);ST.user.email=lgV;ST.user.name=TK[0]?.customerName||lgV.split('@')[0];r.textContent='✓ Verified';r.style.color='#31E7C8';buzz([14,40,26]);setTimeout(()=>{ob.classList.add('out');setTimeout(()=>{ob.style.display='none';R.profile&&R.profile()},500)},450)}catch(e){const m=$('otErr');if(m)m.textContent=e.message||'Verification failed. Request a new code and try again.';ob.querySelectorAll('.otp input').forEach(i=>{i.disabled=false;i.value=''});ob.querySelector('.otp input')?.focus();r.textContent='Enter the code sent to your email'}finally{bookingRecoveryBusy=false}}
+function finishOnb(){ST.onboarded=0;save();ob.classList.add('out');setTimeout(()=>{ob.style.display='none';R.profile&&R.profile()},500)}
 function obStart(n=0){ob.style.display='';ob.classList.remove('out');obGo(n);if(n===0)setTimeout(()=>{if(obS===0)obGo(1)},1900)}
-ob.addEventListener('click',e=>{const b=e.target.closest('button,#lgCc');if(!b)return;const id=b.id;buzz(5);
-  if(id==='obNx')obGo(obS<3?obS+1:4);else if(id==='obSk')obGo(4);else if(id==='lgGuest')finishOnb();else if(id==='sA'||id==='sG'){ST.user.name=ST.user.name;finishOnb()}
-  else if(id==='lgGo'){lgV=$('lgIn').value.trim();if(lgM==='phone')lgV='+91 '+lgV.replace(/^0/,'');obGo(5)}else if(id==='otB')obGo(4);else if(id==='otAuto'){const inp=[...ob.querySelectorAll('.otp input')];'482913'.split('').forEach((d,i)=>setTimeout(()=>{inp[i].value=d;buzz(4);if(i===5)otVerify()},i*140))}
-  else if(b.dataset.m){lgM=b.dataset.m;$('lgSeg').classList.toggle('ai',lgM==='email');[...$('lgSeg').querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x===b));$('lgCc').style.display=lgM==='phone'?'':'none';$('lgIn').value='';$('lgIn').placeholder=lgM==='phone'?'812 3456 7890':'you@email.com';$('lgIn').inputMode=lgM==='phone'?'tel':'email';lgChk()}});
-ob.addEventListener('input',e=>{if(e.target.id==='lgIn')lgChk();const o=e.target.closest('.otp input');if(o){o.value=o.value.replace(/\D/g,'');const i=+o.dataset.i,all=ob.querySelectorAll('.otp input');if(o.value&&i<5)all[i+1].focus();otVerify()}});
+ob.addEventListener('click',e=>{const b=e.target.closest('button,#lgCc');if(!b)return;const id=b.id;buzz(5);if(id==='obNx')obGo(obS<3?obS+1:4);else if(id==='obSk')obGo(4);else if(id==='lgGuest')finishOnb();else if(id==='lgGo'){const email=$('lgIn').value.trim().toLowerCase();if(/^\S+@\S+\.\S+$/.test(email))requestCustomerOtp(email)}else if(id==='otB'){bookingChallengeId='';obGo(4)}});
+ob.addEventListener('input',e=>{if(e.target.id==='lgIn')lgChk();const o=e.target.closest('.otp input');if(o){o.value=o.value.replace(/\D/g,'');const i=+o.dataset.i,all=ob.querySelectorAll('.otp input');if(o.value&&i<5)all[i+1].focus();if([...all].every(x=>x.value))otVerify()}});
 ob.addEventListener('keydown',e=>{const o=e.target.closest('.otp input');if(o&&e.key==='Backspace'&&!o.value&&+o.dataset.i>0)ob.querySelectorAll('.otp input')[+o.dataset.i-1].focus()});
 function permSheet(){sheet(`<div style="text-align:center"><div class="bigi">${I('bell')}</div><h3>Stay in the loop</h3><p class="sub2">Get booking confirmations, reminders and presale alerts. You can change this anytime.</p></div>
   <div style="margin-top:14px">${lr(I('bell'),'Notifications','Reminders, price drops & presales',tog('push'),'')}${lr(I('pin'),'Location','Find events near you',tog('near'),'')}</div><button class="go full" id="pmC" style="margin-top:14px">Continue</button><button class="lnk" id="pmN" style="display:block;width:100%">Not now</button>`,()=>{
@@ -1109,8 +1103,8 @@ R.profile=()=>{const u=ST.user,p=ST.pts,tier=p>=2000?'Platinum':p>=1000?'Gold':'
 $('profileB').onclick=e=>{const t=e.target.closest('.sseg3 button');if(t){ST.theme=t.dataset.t;save();applyTheme();[...t.parentNode.children].forEach(c=>c.classList.toggle('on',c===t));buzz(5);return}
   const g=e.target.closest('[data-g]');if(!g)return;const f={edit:()=>go('settings','edit'),pay:()=>go('pay'),orders:()=>go('orders'),saved:()=>go('saved'),notif:()=>go('settings','notif'),city:openCity,lang:()=>go('settings','lang'),sec:()=>go('settings','security'),rewards:()=>go('rewards'),promos:()=>go('promos'),help:()=>go('help'),scan:()=>go('scanner'),logout:logoutSheet}[g.dataset.g];if(f)f()};
 $('pEd').onclick=()=>go('settings','edit');
-function logoutSheet(){sheet(`<div style="text-align:center"><div class="bigi a">${I('logout')}</div><h3>Log out of Vibora?</h3><p class="sub2">Your tickets stay saved to your account.</p></div><div style="display:flex;gap:10px;margin-top:20px"><button class="go ghost" id="loC" style="flex:1;justify-content:center;padding:0">Cancel</button><button class="go red" id="loY" style="flex:1;justify-content:center;padding:0">Log out</button></div>`,()=>{
-  $('loC').onclick=closeSheet;$('loY').onclick=()=>{closeSheet();ST.onboarded=0;save();stack=['home'];paintStack();setTimeout(()=>obStart(4),300)}})}
+function logoutSheet(){sheet(`<div style="text-align:center"><div class="bigi a">${I('logout')}</div><h3>Sign out of LITTX?</h3><p class="sub2">Sign in again to securely load your booking history.</p></div><div style="display:flex;gap:10px;margin-top:20px"><button class="go ghost" id="loC" style="flex:1;justify-content:center;padding:0">Cancel</button><button class="go red" id="loY" style="flex:1;justify-content:center;padding:0">Log out</button></div>`,()=>{
+  $('loC').onclick=closeSheet;$('loY').onclick=()=>{closeSheet();bookingSessionEmail='';bookingChallengeId='';TK=[];ST.onboarded=0;ST.user.name='';ST.user.email='';save();renderTickets();stack=['home'];paintStack();setTimeout(()=>obStart(4),300)}})}
 /* ===================== SETTINGS (edit / security / language / notifications) ===================== */
 mk('settings','Settings',{foot:'<button class="go full" id="stSave">Save changes</button>'});let stAv=0;
 const LANGS=['English','Bahasa Indonesia','हिन्दी','日本語','Español','Français'];
@@ -1184,59 +1178,56 @@ $('scannerB').onclick=e=>{if(e.target.closest('#scGo'))doScan();if(e.target.clos
 async function syncRealtimeEvents() {
   try {
     const res = await fetch('/api/events');
-    if (!res.ok) return;
+    if (!res.ok) throw new Error('Live event catalog could not be loaded.');
     const data = await res.json();
-    if (data && data.success && Array.isArray(data.events) && data.events.length > 0) {
+    if (data && data.success && Array.isArray(data.events)) {
       const liveEvents = data.events.map((ev, idx) => {
         const dt = new Date(ev.startsAt || ev.date || Date.now());
         const timeStr = dt.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
         const dateStr = dt.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) + ', ' + timeStr;
         const whenStr = dt.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }) + ' · ' + timeStr;
         const passes = ev.ticketCategories || [];
-        const lowestPrice = passes.length ? Math.min(...passes.map(p => Number(p.price) || 499)) : 499;
+        const lowestPrice = passes.length ? Math.min(...passes.map(p => Number(p.price) || 0)) : 0;
         return {
           id: ev.id || ev.slug || idx,
           t: ev.name,
-          cat: ev.category || 'Festival',
-          tg: [ev.category || 'Festival', ev.city || 'Pune'].filter(Boolean),
+          cat: ev.category || 'Event',
+          tg: [ev.category || 'Event'].filter(Boolean),
           date: dateStr,
           when: whenStr,
           dt: dt,
           time: timeStr,
-          venue: (ev.venue || 'Main Venue') + (ev.city ? ', ' + ev.city : ''),
-          city: ev.city || 'Pune',
+          venue: (ev.venue || ev.address || 'Venue to be announced') + (ev.city ? ', ' + ev.city : ''),
+          city: ev.city || '',
           price: lowestPrice,
-          going: Math.floor(Math.random() * 3000) + 1500,
+          going: 0,
           k: [ev.name.toLowerCase(), (ev.category || '').toLowerCase(), (ev.city || '').toLowerCase()],
           art: idx % 3 === 0 ? 'beam' : idx % 3 === 1 ? 'neon' : 'blob',
           a: idx % 2 === 0 ? '#FF2E7E' : '#31E7C8',
           b: '#0A0912',
           c: '#D8FF3F',
           r: 1.0,
-          img: (ev.images && ev.images[0]) || (ev.name.toLowerCase().includes('garba') ? 'dholida-garba-royale.png' : ''),
-          d: ev.description || 'Live experience curated by Littx.',
-          km: 3 + (idx * 2),
+          img: (ev.images && ev.images[0]) || '',
+          d: ev.description || 'Event details coming soon.',
+          km: 0,
           org: 0,
           soldout: false
         };
       });
       if (liveEvents.length > 0) {
-        const liveNames = new Set(liveEvents.map(e => e.t.toLowerCase()));
-        const remaining = E.filter(e => !liveNames.has(e.t.toLowerCase()));
-        E.splice(0, E.length, ...liveEvents, ...remaining);
+        E.splice(0, E.length, ...liveEvents);
+        const liveCities=[...new Set(liveEvents.map(e=>e.city).filter(Boolean))];if(liveCities.length&&!liveCities.includes(ST.city))ST.city=liveCities[0];save();cityLabel();
         renderMas();
         renderRails();
-      }
-    }
-  } catch (err) {
-    console.log('[Realtime Events] Live catalog loaded');
-  }
+      } else { E.splice(0,E.length); renderMas(); renderRails(); }
+    } else { E.splice(0,E.length);renderMas();renderRails(); }
+  } catch (err) { E.splice(0,E.length);renderMas();renderRails();toast('Live event catalog is unavailable','!'); }
 }
 syncRealtimeEvents();
 
 /* ===================== INIT ===================== */
 $('dPro').onclick=openProfile;
-bellDot();applyTheme();cityLabel();renderRails();refreshHome(900);if(!ST.onboarded)obStart();
+bellDot();applyTheme();cityLabel();renderRails();refreshHome(900);if(new URLSearchParams(location.search).has('signin'))obStart(4);else if(!ST.onboarded)obStart();
 
 paintStack();
 </script></body></html>
