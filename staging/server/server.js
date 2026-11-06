@@ -1345,6 +1345,7 @@ function saleRevenueAfterCommission(sale) {
 
 function canDeliverSale(sale) {
     if (!sale) return false;
+    if (sale.paymentMethod === 'cash' && (sale.status === 'pr_cash_pending' || sale.paymentStatus === 'pending')) return false;
     if (isDirectDeliveryCompany(sale.companyId) || isDirectDeliverySeller(sale.sellerId || sale.generatedBy || sale.prUserId)) return true;
     if (sale.approvalStatus === 'APPROVED' || sale.approvalStatus === 'NOT_REQUIRED') return true;
     if (sale.approvalStatus === 'PENDING' || sale.approvalStatus === 'REJECTED') return false;
@@ -4199,8 +4200,9 @@ app.post('/api/admin/events', requireEventManager, async (req, res) => {
     if (events.some(item => String(item.slug || slugifyEvent(item.name)).toLowerCase() === slug)) return res.status(409).json({ success: false, message: 'That public event slug is already in use.' });
     const now = new Date().toISOString();
     const record = {
-        id: `event_${crypto.randomUUID()}`, slug, name, companyId, organizerId: companyId,
-        ...(isOrganizer ? { organizerUserIds: [req.adminSession.userId] } : {}),
+        id: `event_${crypto.randomUUID()}`, slug, name, companyId,
+        organizerId: isOrganizer ? req.adminSession.userId : (String(body.organizerId || '').trim() || companyId),
+        organizerUserIds: isOrganizer ? [req.adminSession.userId] : (body.organizerId ? [String(body.organizerId).trim()] : []),
         description: String(body.description || '').slice(0, 10000), category: String(body.category || '').trim().slice(0, 100),
         images: Array.isArray(body.images) ? body.images.map(value => String(value).slice(0, 2000)).slice(0, 20) : [],
         venue: String(body.venue || '').slice(0, 300), city: String(body.city || '').slice(0, 100), address: String(body.address || '').slice(0, 1000),
@@ -4225,7 +4227,7 @@ app.patch('/api/admin/events/:eventRef', requireEventManager, async (req, res) =
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
     if (!canManageEvent(req, event)) return res.status(403).json({ success: false, message: 'You cannot manage this event.' });
     const body = req.body || {};
-    const allowed = ['name', 'slug', 'description', 'category', 'images', 'venue', 'city', 'address', 'timezone', 'startsAt', 'endsAt', 'salesStartAt', 'salesEndAt', 'visibility', 'ticketCategories', 'status', 'commissionPct', 'commissionRate'];
+    const allowed = ['name', 'slug', 'description', 'category', 'images', 'venue', 'city', 'address', 'timezone', 'startsAt', 'endsAt', 'salesStartAt', 'salesEndAt', 'visibility', 'ticketCategories', 'status', 'commissionPct', 'commissionRate', 'organizerId'];
     const updates = {};
     for (const field of allowed) if (Object.prototype.hasOwnProperty.call(body, field)) updates[field] = body[field];
     if (updates.name !== undefined) {
@@ -7059,7 +7061,7 @@ app.post('/api/admin/refund-requests/:orderId/decision', requireApprovalAdmin, a
 app.get('/api/admin/pr-approvals', requireApprovalAdmin, async (req, res) => {
     try {
         const all = await db.getAll();
-        const pending = all.filter(s => approvalAdminOwnsSale(req, s) && !isDirectDeliveryCompany(s.companyId || sellerCompanyIdFromValue(s.sellerId || s.generatedBy || s.prUserId)) && (
+        const pending = all.filter(s => approvalAdminOwnsSale(req, s) && (
             s.status === 'pr_cash_pending' ||
             s.approvalStatus === 'PENDING' ||
             s.status === 'pending_approval' ||
