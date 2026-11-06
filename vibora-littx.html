@@ -681,7 +681,7 @@ const H=36e5,DEF=()=>({user:{name:'Guest',email:'',phone:'',av:0},onboarded:0,sa
 let ST;try{ST=JSON.parse(localStorage.getItem('vibora.st')||'null')}catch(e){}
 {const d=DEF();ST=Object.assign(d,ST||{});ST.set=Object.assign(DEF().set,ST.set);ST.F=Object.assign(DEF().F,ST.F);ST.user=Object.assign({},d.user,ST.user||{});if(ST.user.email==='alex.morgan@mail.com'){ST.cards=[];ST.hist=[];ST.pts=0;ST.gift=0;ST.saved=[];ST.notifs=[]}ST.onboarded=0;ST.cards=[];ST.hist=[];ST.pts=0;ST.gift=0;ST.saved=[];ST.notifs=[]; }
 const save=()=>{try{localStorage.setItem('vibora.st',JSON.stringify(ST))}catch(e){}};
-function updateWelcomeGreeting(){const fullName=String(ST.user?.name||'').trim(),firstName=fullName&&fullName.toLowerCase()!=='guest'?fullName.split(/\s+/)[0]:'';$('welcomeText').textContent='THE HYPE STARTS HERE';$('spotlightLine').textContent=firstName?`Is Yours, ${firstName}`:'Is Yours'}
+function updateWelcomeGreeting(){const fullName=String(ST.user?.name||'').trim(),firstName=fullName&&fullName.toLowerCase()!=='guest'?fullName.split(/\s+/)[0]:'';$('welcomeText').textContent='The Hype Starts Here';$('spotlightLine').textContent=firstName?`Is Yours, ${firstName}`:'Is Yours'}
 updateWelcomeGreeting();
 
 /* sheets, toast, offline, theme */
