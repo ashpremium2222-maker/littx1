@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "cd staging/combined-app && npm install && npm run build && mv dist/index.html dist/app.html && cp ../../index.html dist/index.html && cp ../../logo.png dist/logo.png",
+  "buildCommand": "cd staging/combined-app && npm install && npm run build && mv dist/index.html dist/app.html && cp ../../index.html dist/index.html && cp ../../logo.png dist/logo.png && cp ../../vibora-littx.html dist/vibora-littx.html && cp ../../vibora-littx.html dist/vibora.html && cp ../../dholida-garba-royale.png dist/dholida-garba-royale.png",
   "outputDirectory": "staging/combined-app/dist",
   "redirects": [
     {
@@ -131,6 +131,18 @@
     {
       "source": "/events/(.*)",
       "destination": "/app.html"
+    },
+    {
+      "source": "/vibora-littx.html",
+      "destination": "/vibora-littx.html"
+    },
+    {
+      "source": "/vibora",
+      "destination": "/vibora-littx.html"
+    },
+    {
+      "source": "/app",
+      "destination": "/vibora-littx.html"
     },
     {
       "source": "/(.*)",
