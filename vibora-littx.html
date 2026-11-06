@@ -762,7 +762,7 @@ document.querySelectorAll('.back').forEach(b=>b.onclick=pop);
 /* ---------- HOME ---------- */
 let cat=0;
 $('cats').innerHTML=CATS.map((c,i)=>`<button class="cat${i?'':' on'}" data-i="${i}">${c}</button>`).join('');
-function renderMas(){const L=list();if(!L.length){$('mas').innerHTML=`<div class="empty" style="width:100%;padding-top:30px"><div class="eo">${I('pin')}</div><h3>No events found</h3><p>Nothing in ${ST.city} matches right now.<br>Try another city or clear your filters.</p><button class="go" id="mReset">Reset filters</button></div>`;return}
+function renderMas(){const L=list();if(!L.length){$('mas').innerHTML=`<div class="empty" style="width:100%;padding-top:30px"><div class="eo">${I('pin')}</div><h3>No events found</h3><p>Nothing in ${ST.city} matches right now.<br>Try another city or clear your filters.</p>${fCount(ST.F)?'<button class="go" id="mReset">Reset filters</button>':''}</div>`;return}
   const cols=[[],[]];L.forEach((x,n)=>cols[n%2].push([x,n]));
   $('mas').innerHTML=cols.map(c=>`<div class="col">${c.map(([{e,i},n])=>`<div class="ec" data-i="${i}" style="--n:${n}"><div class="ea" style="aspect-ratio:1/${e.r}">${art(e)}${e.soldout?'<span class="pillb r" style="position:absolute;left:12px;top:12px;z-index:5;background:rgba(10,9,18,.9);color:#F5F2EA">SOLD OUT</span>':''}<button class="hrt${isSaved(i)?' on':''}" data-h="${i}" aria-label="Save">${I('heart')}</button><h3>${e.t.replace(/ (?=[^ ]+$)/,'<br>')}</h3></div><div class="em"><span>${e.cat}</span><span>${e.date}</span></div></div>`).join('')}</div>`).join('')}
 $('cats').onclick=e=>{const b=e.target.closest('.cat');if(!b||+b.dataset.i===cat)return;cat=+b.dataset.i;buzz(5);

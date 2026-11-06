@@ -871,11 +871,9 @@
   .vibora-topbar {
     position: relative; z-index: 100; flex: 0 0 auto;
     display: flex; align-items: center; justify-content: space-between;
-    min-height: 46px;
-    padding: max(4px, env(safe-area-inset-top)) clamp(14px, 2vw, 28px) 4px;
-    background: rgba(10,9,18,.94);
-    border-bottom: 1px solid rgba(245,242,234,.08);
-    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    box-sizing: border-box; height: 36px; min-height: 36px;
+    padding: 3px clamp(14px, 2vw, 28px);
+    background: transparent;
     pointer-events: none;
   }
   .vibora-topbar .vt-brand {
@@ -905,7 +903,7 @@
   }
 
   @media (max-width: 600px) {
-    .vibora-topbar { min-height: 44px; padding: max(4px, env(safe-area-inset-top)) 12px 4px; }
+    .vibora-topbar { height: calc(36px + env(safe-area-inset-top)); min-height: calc(36px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 12px 0; }
     .vibora-topbar .vt-close { padding: 6px 11px; font-size: 10px; }
   }
 
