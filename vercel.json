@@ -133,10 +133,6 @@
       "destination": "/app.html"
     },
     {
-      "source": "/vibora-littx.html",
-      "destination": "/vibora-littx.html"
-    },
-    {
       "source": "/vibora",
       "destination": "/vibora-littx.html"
     },
