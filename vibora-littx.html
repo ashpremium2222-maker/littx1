@@ -694,7 +694,7 @@ let sdg=null;const gx=sh2.querySelector('.grabx');
 gx.addEventListener('pointerdown',e=>{sdg={y:e.clientY,d:0};sh2.style.transition='none';gx.setPointerCapture(e.pointerId)});
 gx.addEventListener('pointermove',e=>{if(!sdg)return;sdg.d=Math.max(0,e.clientY-sdg.y);sh2.style.transform=`translateY(${sdg.d}px)`});
 const gxEnd=()=>{if(!sdg)return;const d=sdg.d;sdg=null;sh2.style.transition='';sh2.style.transform='';if(d>90)closeSheet()};gx.addEventListener('pointerup',gxEnd);gx.addEventListener('pointercancel',gxEnd);
-const toast=(m,ic='✓')=>{toastEl.innerHTML=`<i>${ic}</i>${m}`;toastEl.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>toastEl.classList.remove('on'),2400);buzz(8)};
+const toast=(m,ic='✓')=>{toastEl.innerHTML=`<i>${ic}</i>${m}`;toastEl.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>toastEl.classList.remove('on'),1400);buzz(8)};
 const setOff=v=>offb.classList.toggle('on',v);addEventListener('offline',()=>setOff(true));addEventListener('online',()=>{setOff(false);toast('Back online','📶')});
 const applyTheme=()=>{app.dataset.theme=ST.theme==='auto'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):ST.theme};
 /* views + rows */
