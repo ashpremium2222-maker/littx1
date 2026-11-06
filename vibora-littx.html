@@ -552,6 +552,9 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 .chat-event:hover{background:rgba(49,231,200,.09);border-color:rgba(49,231,200,.3);transform:translateY(-1px)}
 .chat-event b{display:block;font-size:13px;line-height:1.4;font-weight:600}
 .chat-event small{display:block;margin-top:5px;color:var(--mut);font:11px/1.5 var(--mono)}
+.chat-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chat-actions button{border:1px solid rgba(49,231,200,.28);border-radius:999px;padding:9px 13px;background:rgba(49,231,200,.09);color:#DFFCF6;font-size:12px;transition:background .2s,border-color .2s}
+.chat-actions button:hover{background:rgba(49,231,200,.17);border-color:rgba(49,231,200,.52)}
 .chat-wait{align-self:flex-start;display:flex;align-items:center;gap:5px;margin-left:40px;color:var(--mut);font:12px var(--mono)}
 .chat-wait i{width:5px;height:5px;border-radius:50%;background:var(--cyan);animation:chatDot .9s ease-in-out infinite alternate}.chat-wait i:nth-child(2){animation-delay:.2s}.chat-wait i:nth-child(3){animation-delay:.4s}
 @keyframes chatDot{to{opacity:.3;transform:translateY(-3px)}}@keyframes chatIn{from{opacity:0;transform:translateY(8px)}}
@@ -598,7 +601,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
   <div class="hd"><button class="gb back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><span>Vibora AI</span><button class="gb" id="clr" aria-label="New chat"><svg viewBox="0 0 24 24"><path d="M5 5h14v11H9l-4 4zM12 8v5M9.5 10.5h5"/></svg></button></div>
   <div class="chat-thread" id="chatMessages" role="log" aria-live="polite" aria-label="Chat with Vibora AI"></div>
   <div class="chat-suggestions" id="chatSuggestions" aria-label="Suggested messages">
-    <button type="button" data-prompt="Find events in Pune">Events in Pune</button><button type="button" data-prompt="Show me concerts">Concerts</button><button type="button" data-prompt="Find something under ₹1,000">Under ₹1,000</button>
+    <button type="button" data-prompt="Find a fun event">Find events</button><button type="button" data-prompt="Give me an outfit idea for a concert">Outfit ideas</button><button type="button" data-prompt="How do I break the ice at an event?">Break the ice</button>
   </div>
   <form class="chat-compose" id="chatForm"><input id="q" placeholder="Ask about events, prices, or venues…" autocomplete="off" aria-label="Message Vibora AI"><button id="mic" type="submit" aria-label="Send message"><svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-3-7zM11 13l9-9"/></svg></button></form>
 </section>
@@ -808,12 +811,13 @@ $('cont').onclick=()=>{if(E[cur].soldout){openWaitlist();return}openSeats();push
 let chatStarted=false,chatBusy=false,chatLastResults=[];
 const chatStop=new Set(['the','and','for','with','from','that','this','what','when','where','how','can','could','would','show','find','recommend','suggest','please','want','like','looking','something','events','event','near','me','any','all','are','under','below','less','than','within','budget','around','about','today','tonight','tomorrow','weekend','cheap','affordable','good','best','fun','some','in','on','at','to','of','is','it','its','my','we','our','there','has','have']);
 const chatText=e=>[e.t,e.cat,e.city,e.venue,e.d,...(e.tg||[]),...(e.k||[])].filter(Boolean).join(' ').toLowerCase();
-function addChatMessage(role,text,events=[]){
+function addChatMessage(role,text,events=[],actions=[]){
   const row=document.createElement('div');row.className='chat-msg '+role;
   if(role==='assistant'){const avatar=document.createElement('span');avatar.className='chat-avatar';avatar.textContent='✦';row.append(avatar)}
   const bubble=document.createElement('div');bubble.className='chat-bubble';
   String(text).split('\n').filter(Boolean).forEach(line=>{const p=document.createElement('p');p.textContent=line;bubble.append(p)});
   if(events.length){const cards=document.createElement('div');cards.className='chat-events';events.forEach(({e,i})=>{const b=document.createElement('button');b.type='button';b.className='chat-event';b.dataset.eventIndex=i;const title=document.createElement('b');title.textContent=e.t||'Event';const meta=document.createElement('small');const cost=Number(e.price)>0?inr(e.price):'Price to be announced';meta.textContent=[e.when||e.date,e.venue,cost].filter(Boolean).join(' · ');b.append(title,meta);cards.append(b)});bubble.append(cards)}
+  if(actions.length){const bar=document.createElement('div');bar.className='chat-actions';actions.forEach(({label,action})=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.chatAction=action;bar.append(b)});bubble.append(bar)}
   row.append(bubble);$('chatMessages').append(row);$('chatMessages').scrollTop=$('chatMessages').scrollHeight;
 }
 function chatEventMatches(message){
@@ -832,11 +836,23 @@ function chatEventMatches(message){
 function answerChat(message){
   const q=message.toLowerCase();
   if(/\b(hi|hello|hey|good morning|good evening)\b/.test(q)&&q.split(/\s+/).length<6)return {text:'Hey! Tell me your city, the kind of event you’re into, or your budget and I’ll find live listings.'};
-  if(/\b(what can you do|what do you do|who are you|help me)\b/.test(q))return {text:'I’m Vibora’s event assistant. I can search published events by city or category, compare ticket prices, and show you dates and venues. Try “concerts in Pune under ₹1,000”.'};
+  if(/\b(what can you do|what do you do|who are you|help me)\b/.test(q))return {text:'I’m your Vibora night-out companion. I can find published events, compare dates and ticket prices, suggest what to wear, help you feel confident, and give you easy, respectful ways to start a conversation. What are you planning?'};
   if(/\b(thanks|thank you|cheers)\b/.test(q))return {text:'You’re welcome! Want me to find another event or check a different city or budget?'};
+  if(/\b(rizz|ice.?break|talk to (a |her|someone)|meet (a |someone)|approach|flirt|start a conversation|conversation starter|talking to girls|talk to girls)\b/.test(q)){
+    const e=chatLastResults.length?E[chatLastResults[0]]:null;
+    return {text:`Keep it relaxed and about the moment${e?` at ${e.t}`:''}. Try: “Hey, what’s been your favorite part of the night so far?” or “Have you seen this artist before?” Smile, listen to the answer, and share something about yourself too. If she seems busy or isn’t interested, say “No worries—have a great night” and give her space. That confidence reads better than a rehearsed line.`};
+  }
+  if(/\b(outfit|outfits|fit ideas|what should i wear|wear to|dress code|clothes|shoes)\b/.test(q)){
+    const kind=/festival/.test(q)?'festival':/concert|gig|show/.test(q)?'concert':/club|party|rave|nightlife/.test(q)?'party':/date/.test(q)?'date night':'night out';
+    const look=kind==='festival'?'Go breathable and easy to move in: a relaxed tee or light shirt, comfortable trousers, and shoes you can stand in. Add one bright layer or accessory for personality.':kind==='concert'?'Try a clean tee or open overshirt, dark straight-leg trousers, and comfortable shoes. Pick one standout detail and keep the rest simple.':kind==='party'?'A sharp, comfortable base works best: a well-fitting shirt or top, dark trousers, and clean shoes. Add one accessory; skip anything you’ll spend the night adjusting.':'Keep it polished but still you: a fitted top or shirt, neat trousers, and comfortable shoes. A light layer is handy if the venue gets cold.';
+    return {text:`For a ${kind}, I’d go with this:\n${look}\nCheck the venue and weather before you leave, and wear something you can enjoy the whole night in. Tell me the event, your style, and what’s already in your wardrobe and I’ll build a more specific fit.`};
+  }
+  if(/\b(cool|confidence|confident|nervous|awkward|social|make friends|make a friend)\b/.test(q))return {text:'The easiest way to feel cool is to stop trying to perform. Pick one thing you genuinely like about the event, put your phone away for a bit, and ask someone an easy open question like “What brought you here?” Listen, respond to what they actually said, and let the conversation breathe. You don’t need to impress everyone—just be present and kind.'};
+  if(/\b(which is best|what is best|best one|which one|compare)\b/.test(q)&&!chatLastResults.length)return {text:'“Best” depends on your night: big crowd and loud music, a relaxed hangout, or something hands-on? Tell me your city and budget and I’ll narrow down the live options. I can also help with an outfit or conversation starter.'};
   if(aiLiveState==='loading')return {text:'I’m loading the latest published events. Give me a moment, then send that again.'};
-  if(aiLiveState==='unavailable')return {text:'I can’t reach the live event list right now. Please check your connection and try again.'};
-  if(!E.length)return {text:'There aren’t any published events available right now. Check back soon, or try again after new events are listed.'};
+  const eventIntent=/\b(event|events|concert|concerts|festival|workshop|party|parties|tickets?|venue|price|cost|tonight|weekend|going out|show me|find|looking for|which is best|best one|compare)\b/.test(q);
+  if(aiLiveState==='unavailable')return eventIntent?{text:'I can’t reach the live event listings at the moment. I can still help you plan your look or think of a low-pressure opener while I’m offline.',actions:[{label:'Try listings again',action:'retry-events'},{label:'Outfit ideas',action:'outfit'},{label:'Icebreakers',action:'icebreakers'}]}:{text:'I’m having trouble reaching event listings, but I can still help with outfit ideas, confidence, and conversation starters. What would be useful?'};
+  if(!E.length)return eventIntent?{text:'I don’t see any published events in the live catalogue right now, so I won’t invent listings. I can still help you plan the night, choose a fit, or find a natural way to start a conversation. Want me to check listings again?',actions:[{label:'Refresh events',action:'retry-events'},{label:'Outfit ideas',action:'outfit'},{label:'Icebreakers',action:'icebreakers'}]}:{text:'I’m here for the whole night-out plan—not just event listings. Ask me for a fit idea, a confidence boost, or a natural opener. For example: “What should I wear to a concert?”'};
   const contextual=/\b(it|that|those|them|price|cost|where|when)\b/.test(q)&&chatLastResults.length;
   const result=contextual?{items:chatLastResults.map(i=>({e:E[i],i,score:0})).filter(x=>x.e),hasSpecific:true}:chatEventMatches(message),items=result.items;
   if(!items.length)return {text:'I couldn’t find a published event that matches that yet. Try a city, music style, category, or price limit.'};
@@ -857,7 +873,7 @@ function sendChatMessage(value){const message=String(value||'').trim();if(!messa
 function openAI(pre){if(!chatStarted){chatStarted=true;showChatWelcome()}if(pre)sendChatMessage(pre);}
 $('chatForm').addEventListener('submit',e=>{e.preventDefault();sendChatMessage($('q').value);buzz(8)});
 $('chatSuggestions').addEventListener('click',e=>{const b=e.target.closest('[data-prompt]');if(b)sendChatMessage(b.dataset.prompt)});
-$('chatMessages').addEventListener('click',e=>{const b=e.target.closest('[data-event-index]');if(!b)return;const i=Number(b.dataset.eventIndex);if(E[i])go('detail',i)});
+$('chatMessages').addEventListener('click',e=>{const action=e.target.closest('[data-chat-action]');if(action){const kind=action.dataset.chatAction;if(kind==='outfit')sendChatMessage('Give me an outfit idea for a night out');else if(kind==='icebreakers')sendChatMessage('Give me a respectful icebreaker for an event');else if(kind==='retry-events'){action.disabled=true;action.textContent='Checking…';syncRealtimeEvents().then(()=>addChatMessage('assistant',E.length?`I found ${E.length} published events. Tell me your city, mood, or budget and I’ll narrow them down.`:'The live catalogue still has no published events. I can still help with your outfit or a conversation starter.'))}return}const b=e.target.closest('[data-event-index]');if(!b)return;const i=Number(b.dataset.eventIndex);if(E[i])go('detail',i)});
 $('clr').onclick=()=>{chatStarted=true;chatLastResults=[];$('chatMessages').innerHTML='';$('q').value='';showChatWelcome();$('q').focus()};
 
 /* ---------- SEATS ---------- */
