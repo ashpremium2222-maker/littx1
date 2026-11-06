@@ -48,8 +48,9 @@ button,input{font:inherit;color:inherit;border:0;background:none;outline:0}butto
 .art::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(10,9,18,.65))}
 
 /* ---------- HOME ---------- */
-.pill{display:flex;align-items:center;gap:12px;height:48px;padding:0 20px 0 6px;border-radius:999px;background:rgba(245,242,234,.09);border:1px solid rgba(245,242,234,.07);backdrop-filter:blur(16px);font-size:15px}
-.pill i{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--grad)}
+.pill{display:flex;align-items:center;gap:12px;width:max-content;max-width:calc(100vw - 112px);height:48px;padding:0 20px 0 6px;border-radius:999px;background:rgba(245,242,234,.075);border:1px solid rgba(245,242,234,.1);backdrop-filter:blur(16px);font-size:clamp(12px,3.8vw,15px);line-height:1;white-space:nowrap;overflow:hidden;user-select:none;-webkit-user-select:none}
+.pill i{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--grad);flex:none}
+.pill span{overflow:hidden;text-overflow:ellipsis}
 .bell{position:relative}.bell b{position:absolute;top:12px;right:13px;width:8px;height:8px;border-radius:50%;background:var(--pink);box-shadow:0 0 8px var(--pink);animation:ping 2s infinite}
 @keyframes ping{50%{scale:1.35;opacity:.7}}
 #home .top{display:flex;justify-content:space-between;padding:var(--st) 18px 0;animation:dn .9s .1s var(--ease) both}
