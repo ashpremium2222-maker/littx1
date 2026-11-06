@@ -869,16 +869,8 @@
   #viboraOverlay.open { opacity: 1; visibility: visible; }
 
   .vibora-topbar {
-    position: relative; z-index: 100; flex: 0 0 auto;
-    display: flex; align-items: center; justify-content: space-between;
-    box-sizing: border-box; height: 36px; min-height: 36px;
-    padding: 3px clamp(14px, 2vw, 28px);
-    background: linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.025));
-    border-bottom: 1px solid rgba(255,255,255,.12);
-    box-shadow: 0 1px 0 rgba(255,255,255,.035) inset, 0 10px 28px rgba(0,0,0,.12);
-    backdrop-filter: blur(22px) saturate(150%);
-    -webkit-backdrop-filter: blur(22px) saturate(150%);
-    pointer-events: none;
+    position: absolute; top: 0; left: 0; right: 0; z-index: 100;
+    height: 0; padding: 0; pointer-events: none;
   }
   .vibora-topbar .vt-brand {
     display: flex; align-items: center; gap: 8px; pointer-events: auto;
@@ -889,12 +881,12 @@
     color: #F5F2EA; letter-spacing: .04em;
   }
   .vibora-topbar .vt-close {
-    margin-left: auto;
+    position: absolute; top: max(3px, env(safe-area-inset-top)); right: clamp(10px, 2vw, 28px);
     pointer-events: auto; border: 1px solid rgba(255,255,255,.2);
     background: linear-gradient(145deg, rgba(255,255,255,.14), rgba(255,255,255,.045));
     box-shadow: 0 8px 24px rgba(0,0,0,.22), 0 1px 0 rgba(255,255,255,.16) inset;
     backdrop-filter: blur(18px) saturate(155%); -webkit-backdrop-filter: blur(18px) saturate(155%);
-    color: #F5F2EA; padding: 6px 13px; font-size: 11px;
+    color: #F5F2EA; padding: 4px 9px; font-size: 10px;
     font-family: 'JetBrains Mono', monospace; cursor: pointer;
     border-radius: 999px;
     display: flex; align-items: center; gap: 6px;
@@ -903,14 +895,13 @@
   .vibora-topbar .vt-close:hover { background: rgba(255,46,126,.25); border-color: rgba(255,46,126,.5); transform: translateY(-1px); }
 
   #viboraFrame {
-    width: 100%; height: auto; min-height: 0; flex: 1 1 auto; border: none;
+    position: absolute; inset: 0; width: 100%; height: 100%; flex: none; border: none;
     display: block;
     background: #0A0912;
   }
 
   @media (max-width: 600px) {
-    .vibora-topbar { height: calc(36px + env(safe-area-inset-top)); min-height: calc(36px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 12px 0; }
-    .vibora-topbar .vt-close { padding: 6px 11px; font-size: 10px; }
+    .vibora-topbar .vt-close { right: 10px; padding: 4px 8px; font-size: 9px; }
   }
 
   #viboraOverlay .launch-flash {
