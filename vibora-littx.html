@@ -54,6 +54,7 @@ button,input{font:inherit;color:inherit;border:0;background:none;outline:0}butto
 @keyframes ping{50%{scale:1.35;opacity:.7}}
 #home .top{display:flex;justify-content:space-between;padding:var(--st) 18px 0;animation:dn .9s .1s var(--ease) both}
 h1.big{font-size:clamp(34px,10.4vw,46px);line-height:1.02;font-weight:420;letter-spacing:-2px;padding:46px 20px 0;animation:rise 1s .2s var(--ease) both}
+h1.big span{display:block}
 .sub{font-size:14.5px;color:var(--mut);padding:14px 20px 0;animation:rise 1s .3s var(--ease) both}
 .cats{display:flex;gap:10px;overflow-x:auto;padding:26px 20px 0;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 82%,transparent);mask-image:linear-gradient(90deg,#000 82%,transparent);animation:rise 1s .4s var(--ease) both}
 .cats::-webkit-scrollbar{display:none}
@@ -569,7 +570,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 <section class="view" id="home"><div class="body">
   <div class="top"><div class="pill"><i><svg class="ic" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2-1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg></i><span id="welcomeText">Welcome back!</span></div>
     <button class="gb bell" aria-label="Notifications"><svg viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4"/></svg><b></b></button></div>
-  <h1 class="big">Your Next<br>Experience Awaits</h1>
+  <h1 class="big"><span>The Spotlight</span><span id="spotlightLine">Is Yours</span></h1>
   <div class="sub"><button id="cityB" class="cityb">Events in <b id="cityN">Pune</b> ▾</button><button class="fbtn" id="fBtn" aria-label="Filters"><svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filters<i id="fcnt"></i></button></div>
   <div class="next" id="next" style="display:none"></div>
   <div class="cats" id="cats"></div>
@@ -679,7 +680,7 @@ const H=36e5,DEF=()=>({user:{name:'Guest',email:'',phone:'',av:0},onboarded:0,sa
 let ST;try{ST=JSON.parse(localStorage.getItem('vibora.st')||'null')}catch(e){}
 {const d=DEF();ST=Object.assign(d,ST||{});ST.set=Object.assign(DEF().set,ST.set);ST.F=Object.assign(DEF().F,ST.F);ST.user=Object.assign({},d.user,ST.user||{});if(ST.user.email==='alex.morgan@mail.com'){ST.cards=[];ST.hist=[];ST.pts=0;ST.gift=0;ST.saved=[];ST.notifs=[]}ST.onboarded=0;ST.cards=[];ST.hist=[];ST.pts=0;ST.gift=0;ST.saved=[];ST.notifs=[]; }
 const save=()=>{try{localStorage.setItem('vibora.st',JSON.stringify(ST))}catch(e){}};
-function updateWelcomeGreeting(){const fullName=String(ST.user?.name||'').trim(),firstName=fullName&&fullName.toLowerCase()!=='guest'?fullName.split(/\s+/)[0]:'';$('welcomeText').textContent=firstName?`Welcome back, ${firstName}!`:'Welcome back!'}
+function updateWelcomeGreeting(){const fullName=String(ST.user?.name||'').trim(),firstName=fullName&&fullName.toLowerCase()!=='guest'?fullName.split(/\s+/)[0]:'';$('welcomeText').textContent='THE HYPE STARTS HERE';$('spotlightLine').textContent=firstName?`Is Yours, ${firstName}`:'Is Yours'}
 updateWelcomeGreeting();
 
 /* sheets, toast, offline, theme */
