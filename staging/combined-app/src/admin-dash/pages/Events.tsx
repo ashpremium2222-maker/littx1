@@ -71,7 +71,7 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [createError, setCreateError] = useState('')
   const [createBusy, setCreateBusy] = useState(false)
-  const [draft, setDraft] = useState({ name: '', companyId: '', city: '', venue: '', category: '', ticketName: '', price: '' })
+  const [draft, setDraft] = useState({ name: '', companyId: 'stageway', city: '', venue: '', category: '', ticketName: '', price: '' })
   const [editingEvent, setEditingEvent] = useState<DashboardEvent | null>(null)
   const [eventDraft, setEventDraft] = useState<EventEditorDraft | null>(null)
   const [editBusy, setEditBusy] = useState(false)
@@ -106,7 +106,7 @@ export default function Events({ sales = [], adminKey, onNavigateToTickets }: Pr
       const data = await response.json()
       if (!response.ok || !data.success) throw new Error(data.message || 'Event could not be created.')
       setCatalogEvents(current => [...current, data.event])
-      setDraft({ name: '', companyId: '', city: '', venue: '', category: '', ticketName: '', price: '' })
+      setDraft({ name: '', companyId: 'stageway', city: '', venue: '', category: '', ticketName: '', price: '' })
       setShowCreateForm(false)
     } catch (reason) { setCreateError(reason instanceof Error ? reason.message : 'Event could not be created.') }
     finally { setCreateBusy(false) }
