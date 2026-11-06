@@ -518,6 +518,9 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
   .view#tickets>.hd,.view#tickets>.tmonth,.view#tickets>.tdates{width:min(100% - 48px,980px);margin-inline:auto}
   .view#search>.body,.view#checkout>.body{width:min(100%,980px);margin-inline:auto}
   .view#search .sbar{width:min(100%,980px);margin-inline:auto}
+  .view#search .sseg{box-sizing:border-box;width:min(calc(100% - 48px),980px);margin:14px auto 4px}
+  .view#search .bbar:not(.sb-hide){left:50%;width:min(100%,980px);transform:translateX(-50%)}
+  .view#search .bbar.sb-hide{left:50%;width:min(100%,980px);transform:translate(-50%,120%)}
   .pg{padding-inline:32px}
   .sh2{left:50%;right:auto;bottom:24px;width:min(560px,calc(100% - 48px));border-radius:28px;border:1px solid rgba(245,242,234,.12);transform:translate(-50%,110%)}
   .sh2.on{transform:translate(-50%,0)}
@@ -682,8 +685,8 @@ const save=()=>{try{localStorage.setItem('vibora.st',JSON.stringify(ST))}catch(e
 const sbg=document.createElement('div'),sh2=document.createElement('div'),toastEl=document.createElement('div'),offb=document.createElement('div');
 sbg.className='sbg';sh2.className='sh2';sh2.innerHTML='<div class="grabx"></div><div class="shc"></div>';toastEl.className='toast';offb.className='offb';offb.innerHTML=`${I('wifi')} You’re offline · saved tickets still work`;
 app.append(sbg,sh2,toastEl,offb);
-function sheet(html,mount){const c=sh2.querySelector('.shc');c.innerHTML=html;c.scrollTop=0;sbg.classList.add('on');sh2.classList.add('on');buzz(8);mount&&mount(sh2)}
-const closeSheet=()=>{sbg.classList.remove('on');sh2.classList.remove('on')};sbg.onclick=closeSheet;
+function sheet(html,mount){const c=sh2.querySelector('.shc');if(!html||!String(html).trim()){closeSheet();return}c.innerHTML=html;c.scrollTop=0;sbg.classList.add('on');sh2.classList.add('on');buzz(8);mount&&mount(sh2)}
+const closeSheet=()=>{sbg.classList.remove('on');sh2.classList.remove('on');sh2.style.transform='';sh2.style.transition=''};sbg.onclick=closeSheet;
 let sdg=null;const gx=sh2.querySelector('.grabx');
 gx.addEventListener('pointerdown',e=>{sdg={y:e.clientY,d:0};sh2.style.transition='none';gx.setPointerCapture(e.pointerId)});
 gx.addEventListener('pointermove',e=>{if(!sdg)return;sdg.d=Math.max(0,e.clientY-sdg.y);sh2.style.transform=`translateY(${sdg.d}px)`});
@@ -750,7 +753,7 @@ $('savedB').onclick=e=>{const h=e.target.closest('.hrt');if(h){toggleSave(+h.dat
 
 /* ---------- navigation stack ---------- */
 let stack=['home'];
-function paintStack(){document.querySelectorAll('.view').forEach(v=>{const i=stack.indexOf(v.id);v.classList.toggle('off',i<0);v.classList.toggle('under',i>=0&&i<stack.length-1);v.style.zIndex=i<0?0:i+1});
+function paintStack(){closeSheet();document.querySelectorAll('.view').forEach(v=>{const i=stack.indexOf(v.id);v.classList.toggle('off',i<0);v.classList.toggle('under',i>=0&&i<stack.length-1);v.style.zIndex=i<0?0:i+1});
   const top=stack[stack.length-1];$('dock').classList.toggle('hide',!['home','tickets','profile'].includes(top));
   $('dHome').classList.toggle('on',top==='home');$('dTix').classList.toggle('on',top==='tickets');$('dPro').classList.toggle('on',top==='profile')}
 const push=id=>{if(stack[stack.length-1]===id)return;stack.push(id);buzz(10);paintStack()};

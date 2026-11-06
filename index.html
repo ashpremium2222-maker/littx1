@@ -864,14 +864,18 @@
     opacity: 0; visibility: hidden;
     transition: opacity .4s ease, visibility .4s ease;
     display: flex; flex-direction: column;
+    overflow: hidden;
   }
   #viboraOverlay.open { opacity: 1; visibility: visible; }
 
   .vibora-topbar {
-    position: absolute; top: 0; left: 0; right: 0; z-index: 100;
+    position: relative; z-index: 100; flex: 0 0 auto;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 18px;
-    background: linear-gradient(180deg, rgba(10,9,18,.92) 50%, transparent);
+    min-height: 58px;
+    padding: max(8px, env(safe-area-inset-top)) clamp(14px, 2vw, 28px) 8px;
+    background: rgba(10,9,18,.94);
+    border-bottom: 1px solid rgba(245,242,234,.08);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
     pointer-events: none;
   }
   .vibora-topbar .vt-brand {
@@ -883,6 +887,7 @@
     color: #F5F2EA; letter-spacing: .04em;
   }
   .vibora-topbar .vt-close {
+    margin-left: auto;
     pointer-events: auto; border: 1px solid rgba(245,242,234,.2);
     background: rgba(20,16,38,.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     color: #F5F2EA; padding: 8px 16px; font-size: 12px;
@@ -894,9 +899,14 @@
   .vibora-topbar .vt-close:hover { background: rgba(255,46,126,.25); border-color: rgba(255,46,126,.5); transform: translateY(-1px); }
 
   #viboraFrame {
-    width: 100%; height: 100%; border: none;
+    width: 100%; height: auto; min-height: 0; flex: 1 1 auto; border: none;
     display: block;
     background: #0A0912;
+  }
+
+  @media (max-width: 600px) {
+    .vibora-topbar { min-height: 52px; padding-inline: 12px; }
+    .vibora-topbar .vt-close { padding: 7px 12px; font-size: 11px; }
   }
 
   #viboraOverlay .launch-flash {
@@ -911,10 +921,6 @@
 <div id="viboraOverlay" role="dialog" aria-modal="true" aria-label="Littx App">
   <div class="launch-flash"></div>
   <div class="vibora-topbar">
-    <div class="vt-brand">
-      <img src="logo.png" alt="Littx">
-      <span>LITTX</span>
-    </div>
     <button class="vt-close" onclick="closeApp()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>
       Back to site
