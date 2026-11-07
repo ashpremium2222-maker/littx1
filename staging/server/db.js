@@ -8,8 +8,10 @@ const crypto = require('crypto');
 // promise on the Node global so every request waits for the same MongoDB
 // connection instead of issuing a buffered query while Mongoose is connecting.
 const DEFAULT_ATLAS_URI = 'mongodb+srv://atharvarrrr7_db_user:KYZ6Ej2htIjL4f4w@littx.mrxmg1s.mongodb.net/littx?retryWrites=true&w=majority&appName=LITTX';
-const MONGODB_URI = process.env.MONGODB_URI || DEFAULT_ATLAS_URI;
-const HAS_CONFIGURED_MONGODB = true;
+// Never let an isolated test process connect to the developer's/default Atlas
+// database. Test requests use the in-memory mock store instead.
+const MONGODB_URI = process.env.NODE_ENV === 'test' ? '' : (process.env.MONGODB_URI || DEFAULT_ATLAS_URI);
+const HAS_CONFIGURED_MONGODB = Boolean(MONGODB_URI);
 const MONGO_PROMISE_KEY = '__littxMongoConnectionPromise';
 
 const SESSION_SIGN_SECRET = process.env.SESSION_SIGNING_SECRET || process.env.SCANNER_SESSION_SECRET || 'stageway-unified-session-secret-2026-secure-persistent';
@@ -58,6 +60,7 @@ function verifySignedSessionToken(token) {
 }
 
 async function connectDb() {
+    if (process.env.NODE_ENV === 'test') return null;
     if (mongoose.connection.readyState === 1) return mongoose.connection;
 
     if (!global[MONGO_PROMISE_KEY]) {
@@ -112,6 +115,10 @@ const EventSchema = new mongoose.Schema({
     venue: { type: String },
     stage: { type: String },
     description: { type: String },
+    organizerName: { type: String, trim: true, default: '' },
+    lineup: { type: String, default: '' },
+    ageRestriction: { type: String, default: '' },
+    terms: { type: String, default: '' },
     category: { type: String, trim: true },
     images: [{ type: String }],
     city: { type: String, trim: true },
@@ -1600,6 +1607,10 @@ function _pickSalesFile() {
 const MOCK_SALES_FILE = _pickSalesFile();
 
 function _pickUsersFile() {
+    if (process.env.LITTX_MOCK_USERS_FILE) return process.env.LITTX_MOCK_USERS_FILE;
+    // Keep test mutations isolated per worker; never rewrite the checked-in
+    // developer fixture when the API suite seeds its mock account list.
+    if (process.env.NODE_ENV === 'test') return path.join(os.tmpdir(), `littx_test_users_${process.pid}.json`);
     try {
         fs.accessSync(path.dirname(_localUsersFile), fs.constants.W_OK);
         return _localUsersFile;

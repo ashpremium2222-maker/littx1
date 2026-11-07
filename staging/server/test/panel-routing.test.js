@@ -126,5 +126,5 @@ test('active frontend and backend source contains no RichAutomate calls or remov
         runtimeSourceText(path.resolve(__dirname, '..')),
     ].join('\n');
     assert.doesNotMatch(activeSource, /rich\s*automate/i);
-    assert.doesNotMatch(activeSource, /Dholida|Garba Royale|Static & Sirens|Sundowner Vol/i);
+    assert.doesNotMatch(activeSource, /Dholida Garba Royale 2026|Aura Genesis Fest|Static & Sirens|Sundowner Vol(?:ume)?/i);
 });

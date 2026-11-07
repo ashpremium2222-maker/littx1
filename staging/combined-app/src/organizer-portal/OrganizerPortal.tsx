@@ -75,6 +75,10 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
     address: '',
     timezone: 'Asia/Kolkata',
     description: '',
+    organizerName: '',
+    lineup: '',
+    ageRestriction: '',
+    terms: '',
     posterUrl: '',
     startsAt: '',
     endsAt: '',
@@ -233,6 +237,10 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
       address: event.address || '',
       timezone: event.timezone || 'Asia/Kolkata',
       description: event.description || '',
+      organizerName: event.organizerName || '',
+      lineup: event.lineup || '',
+      ageRestriction: event.ageRestriction || '',
+      terms: event.terms || '',
       posterUrl: event.images?.[0] || '',
       startsAt: localDatetime(event.startsAt),
       endsAt: localDatetime(event.endsAt),
@@ -261,6 +269,10 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
           address: editForm.address.trim(),
           timezone: editForm.timezone.trim() || 'Asia/Kolkata',
           description: editForm.description,
+          organizerName: editForm.organizerName.trim(),
+          lineup: editForm.lineup.trim(),
+          ageRestriction: editForm.ageRestriction.trim(),
+          terms: editForm.terms.trim(),
           images: editForm.posterUrl.trim() ? [editForm.posterUrl.trim()] : [],
           startsAt: editForm.startsAt ? new Date(editForm.startsAt).toISOString() : null,
           endsAt: editForm.endsAt ? new Date(editForm.endsAt).toISOString() : null,
@@ -1142,6 +1154,24 @@ export default function OrganizerPortal({ onLogout }: { onLogout: () => void }) 
                     placeholder="Enter artist lineup, event bio, dress code, age restrictions, and entry policies..."
                     style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
                   />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>ORGANISER NAME</label>
+                    <input value={editForm.organizerName} onChange={e => setEditForm(prev => ({ ...prev, organizerName: e.target.value }))} maxLength={160} placeholder="Public organiser name" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>AGE RESTRICTION</label>
+                    <input value={editForm.ageRestriction} onChange={e => setEditForm(prev => ({ ...prev, ageRestriction: e.target.value }))} maxLength={240} placeholder="e.g. 18+ with valid ID" style={inputStyle} />
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>LINEUP / EXPERIENCE DETAILS</label>
+                  <textarea value={editForm.lineup} onChange={e => setEditForm(prev => ({ ...prev, lineup: e.target.value }))} maxLength={2000} rows={2} placeholder="Artists, performers, or what guests can expect" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
+                </div>
+                <div>
+                  <label style={labelStyle}>ENTRY TERMS</label>
+                  <textarea value={editForm.terms} onChange={e => setEditForm(prev => ({ ...prev, terms: e.target.value }))} maxLength={4000} rows={2} placeholder="Entry, ID, re-entry, and refund terms" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
                 </div>
               </div>
 

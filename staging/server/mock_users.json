@@ -2,7 +2,7 @@
   {
     "userId": "superadmin@stageway.in",
     "password": "Stageway@2026!",
-    "passwordHash": "scrypt:1526a36223fc2078ae1944ea50645744:1d02a46039eabf4a23e2fd264b82ab43b8e92c37451572ac3cb7c48285470e291abc047d07f17ee885b72b9333d33dd1a0144ae25237d108e9516fdfdcb2a085",
+    "passwordHash": "scrypt:71d397f259d656ab01fb2a019719b299:4f8a148a7862f9fe7aab1259350f58b0bc0e586ca049f9dc82cd5cc0d0a8458c666814daa834e5824b64876c94a92f3f42601b241d49c7f791abd893684ba713",
     "displayName": "Stageway Super Admin",
     "role": "master_admin",
     "companyId": "all",
@@ -15,7 +15,7 @@
   {
     "userId": "organizer@stageway.in",
     "password": "Organizer@2026!",
-    "passwordHash": "scrypt:9dc7570754025ed9c638964b968df833:f0e92c0c1ab4516c7369ca7780611305b38fbda39bd236986ff7f58cfad057b1de9e4a91c6deaf9eea791866e84da6f65e58a7111dd61b1d19190e14ecfb55dc",
+    "passwordHash": "scrypt:9d63102dc8e4a3db96b06f7c45649185:7b9f79821e634e8f6625fc306a9b3954a1509acce5135cf84e672833359da2dbbe000b4e167dd3f08e925ad0b4053b659f77cb26f6b81fe514aafe847ec5e971",
     "displayName": "Blue Nile Productions",
     "role": "organizer",
     "companyId": "stageway",
@@ -28,7 +28,7 @@
   {
     "userId": "partner1",
     "password": "partner1234",
-    "passwordHash": "scrypt:e907cafddb2246cd685a9c0e6ad21bb0:adb5c285617d93c091cf3446629ef2d0202b6f647dfe2ff71044cb809238e9907f374e8ab0f5b7b412fabc15cbe9ab8399acf878a90902581a4a07ba69e3c528",
+    "passwordHash": "scrypt:98f74addcc45ed0de51f6d698f6b8974:c23ac1fe7671fead2420eda625f31a22668c6ed156f2d5701fff43d7bf1ff24981e75c7a2cbfdbccae299a307a74c949d55edebf9a20a4004b4017b0eb40beb8",
     "displayName": "Partner One",
     "role": "pr",
     "companyId": "stageway",
@@ -41,7 +41,7 @@
   {
     "userId": "testpr",
     "password": "testpr1234",
-    "passwordHash": "scrypt:5e46110c9d1e10fe62a32523cc78ef79:1bb27bc19db595ee5e42434295d02d429d8695d6b01b6e9af5550baf76673cb5389a016f74005bc30e7f2e13c70bef421e218e0fafb400a12d147d51bdff5e2e",
+    "passwordHash": "scrypt:529d7856693169b544320950cf32eb22:f66f820b7d8c1a073d68c930151670d4958c29cebeb6bef6ab038402a68139386dd96671e1ba6efb44e8a5c326363768a989ed61a71d8294d35a33da7ff6df30",
     "displayName": "Test PR Partner",
     "role": "pr",
     "companyId": "stageway",
@@ -54,7 +54,7 @@
   {
     "userId": "test1",
     "password": "test1234",
-    "passwordHash": "scrypt:9361ae5b1f09477f413a31130a1e0da9:9009d8196c69b0a59c28b0253daff4f5d477c8821d93ca7f9812c2e659c0a024d10de09cfbf0cce21de49e93414de9830c88cb401c884a40b4ca734d4002f33b",
+    "passwordHash": "scrypt:0d727381f6ba4d9ad0434f8b7aa56d55:0d8def772fdd460e8d8d1ac8ea95e4d3ddab8cdd5e225f5b489e6155f30412f8749a96f7ecd3704cea442b08f88d281d4bce8a92be489db20e3c5210a7720670",
     "displayName": "Test Partner 1",
     "role": "pr",
     "companyId": "stageway",

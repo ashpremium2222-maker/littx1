@@ -606,8 +606,8 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
   <div class="next" id="next" style="display:none"></div>
   <div class="cats" id="cats"></div>
   <div class="mas" id="mas"></div>
-  <div class="shd"><h3>Trending now</h3><button data-all="trend">See all</button></div><div class="rail2" id="trail"></div>
-  <div class="shd"><h3>Starting soon</h3><button data-all="soon">See all</button></div><div class="rail2" id="srail" style="padding-bottom:150px"></div></div>
+  <div class="shd"><h3>Upcoming events</h3><button data-all="soon">See all</button></div><div class="rail2" id="trail"></div>
+  <div class="shd"><h3>More to look forward to</h3><button data-all="soon">See all</button></div><div class="rail2" id="srail" style="padding-bottom:150px"></div></div>
   </section>
 
 <section class="view off" id="detail">
@@ -684,19 +684,10 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
   <div class="tk"><div class="tt" id="tkA"></div><div class="tb" id="tkB"></div></div><div style="display:flex;gap:10px;margin-top:18px"><button class="go ghost" id="done">Done</button><button class="go" id="viewTk">View ticket</button></div></div>
 </div>
 <script>
-/* ---- data (swap with your API; add img:'url' to use real posters) ---- */
-const E=[
- {t:'Dholida Garba Royale 2026',cat:'Festival',tg:['Festival','Garba'],date:'OCT 17, 4:00 PM',when:'Sat, Oct 17 · 4:00 PM',venue:'Pethkar Ground, Kothrud, Pune',price:499,going:8500,k:['garba','dholida','festival','traditional','live'],art:'beam',a:'#FF2E7E',b:'#3A0F2E',c:'#D8FF3F',r:.82,img:'dholida-garba-royale.png',d:'Celebrate an unforgettable Garba night featuring Aneesh Poojari, celebrity host Akanksha Choudhary and Ashish Bhatia.'},
- {t:'Sunburn Arena Live',cat:'Concerts',tg:['Concerts','Festival'],date:'NOV 22, 5:00 PM',when:'Sat, Nov 22 · 5:00 PM',venue:'Mahalaxmi Racecourse, Mumbai',price:1499,going:14200,k:['edm','dance','energetic','festival'],art:'beam',a:'#31E7C8',b:'#0A0912',c:'#D8FF3F',r:1.22,d:'Massive mainstage production, laser rigs, and world-class electronic dance music.'},
- {t:'Boiler Room Mumbai: Warehouse Sessions',cat:'Parties',tg:['Parties','Nightlife'],date:'DEC 5, 9:00 PM',when:'Fri, Dec 5 · 9:00 PM',kind:'Warehouse · Underground',venue:'Great Eastern Mills, Byculla, Mumbai',price:1200,going:3400,k:['techno','underground','boiler room','rave'],art:'neon',a:'#FF2E7E',b:'#141026',c:'#31E7C8',r:1.1,d:'Raw sound systems, intimate 360-degree stage and 6 hours of high-energy electronic beats.'},
- {t:'NH7 Weekender Festival',cat:'Festival',tg:['Festival','Concerts'],date:'DEC 12, 2:00 PM',when:'Sat, Dec 12 · 2:00 PM',venue:'Mahalakshmi Lawns, Pune',price:1999,going:18900,k:['indie','rock','hip-hop','festival'],art:'blob',a:'#D8FF3F',b:'#0A0912',c:'#31E7C8',r:.85,d:'The happiest music festival with multiple stages, indie headliners, comedy, and food stalls.'},
- {t:'Kanye West: Vultures Listening Experience',cat:'Concert',tg:['Concerts','Hip-Hop'],date:'NOV 28, 7:30 PM',when:'Sat, Nov 28 · 7:30 PM',kind:'Hip-Hop · Stadium Experience',venue:'Jio World Garden, BKC, Mumbai',price:2500,going:22000,k:['hip-hop','kanye','rap','energetic'],art:'beam',a:'#FF2E7E',b:'#0A0912',c:'#D8FF3F',r:1,d:'One night only in India. Monumental audio-visual showcase, stadium sound and visual spectacle.'},
- {t:'Goa Neon Beach Rave',cat:'Parties',tg:['Parties','Festival'],date:'DEC 29, 8:00 PM',when:'Tue, Dec 29 · 8:00 PM',kind:'Beach Club · Sunset to Sunrise',venue:'Vagator Beach, North Goa',price:999,going:5200,k:['beach','rave','goa','dance','nightlife'],art:'neon',a:'#31E7C8',b:'#0A0912',c:'#FF2E7E',r:.9,d:'Open-air beachfront party with neon installations, fire artists, and international lineup.'},
- {t:'Deep Sound & Vinyl Craft Workshop',cat:'Workshop',tg:['Workshop','Art'],date:'NOV 16, 11:00 AM',when:'Sun, Nov 16 · 11:00 AM',venue:'The Project Cafe, Bengaluru',price:750,going:140,k:['chill','creative','art','music'],art:'blob',a:'#D8FF3F',b:'#141026',c:'#F5F2EA',r:1.32,d:'Hands-on session on analog sound design, vinyl mixing, and acoustic resonance.'}
-];
+/* The event catalogue is populated only from the published-events API. */
+const E=[];
 const TIERS=[['Regular Pass',1,150],['VIP Pass',2,50],['Fan Pit / Lounge',3.5,20]];
 const CATS=['All events','Concerts','Festival','Workshop','Parties'];
-[[0,'Pune',4,0],[1,'Mumbai',12,1],[2,'Mumbai',8,3],[3,'Pune',14,0],[4,'Mumbai',6,1],[5,'Goa',18,3],[6,'Bengaluru',5,2]].forEach(([i,c,k,o,so])=>Object.assign(E[i],{city:c,km:k,org:o,soldout:!!so}));
 
 /* ---- real dates: weekday/time always correct for today ---- */
 const MON=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -757,7 +748,7 @@ app.addEventListener('click',e=>{const t=e.target.closest('.tgl');if(!t)return;e
 const emptyS=(ic,h,p,btn,id)=>`<div class="empty"><div class="eo">${I(ic)}</div><h3>${h}</h3><p>${p}</p>${btn?`<button class="go" id="${id}">${btn}</button>`:''}</div>`;
 
 /* ===================== HOME UPGRADES ===================== */
-const CITIES=['Pune','Mumbai','Goa','Bengaluru','Delhi NCR'],GEN=['Concerts','Festival','Workshop','Parties','Hip-Hop','Art','Nightlife'];
+let CITIES=[];const GEN=['Concerts','Festival','Workshop','Parties','Hip-Hop','Art','Nightlife'];
 const isSaved=i=>ST.saved.includes(i);
 function toggleSave(i){const on=!isSaved(i);ST.saved=on?[...ST.saved,i]:ST.saved.filter(x=>x!==i);save();buzz(on?[8,30,8]:5);
   document.querySelectorAll(`.hrt[data-h="${i}"]`).forEach(b=>{b.classList.toggle('on',on);b.classList.remove('pop');void b.offsetWidth;b.classList.add('pop')});
@@ -787,12 +778,11 @@ function openFilters(){let f=JSON.parse(JSON.stringify(ST.F));const cnt=()=>E.fi
 function openCity(){sheet(`<h3>Choose city</h3><p class="sub2">Events update instantly.</p><div style="margin-top:14px">${CITIES.map((c,n)=>lr(I('pin'),c,`${E.filter(e=>e.city===c).length} events`,ST.city===c?'<span style="color:#D8FF3F">✓</span>':'',`data-c="${c}"`,n)).join('')}</div>`,s=>{
   s.querySelectorAll('[data-c]').forEach(r=>r.onclick=()=>{ST.city=r.dataset.c;save();closeSheet();cityLabel();refreshHome(450);toast('Showing events in '+ST.city,'📍')})})}
 const railCard=(e,i,tag)=>`<div class="rt" data-i="${i}"><div class="ea">${art(e)}${tag?`<span class="rk2">${tag}</span>`:''}<button class="hrt${isSaved(i)?' on':''}" data-h="${i}" aria-label="Save">${I('heart')}</button></div><h4>${e.t}</h4><small>${e.date}</small></div>`;
-function renderRails(){const tr=[...E.keys()].sort((a,b)=>E[b].going-E[a].going).slice(0,5),so=[...E.keys()].sort((a,b)=>E[a].dt-E[b].dt).slice(0,5);
-  $('trail').innerHTML=tr.map((i,n)=>railCard(E[i],i,n+1)).join('');$('srail').innerHTML=so.map(i=>railCard(E[i],i,'')).join('')}
+function renderRails(){const upcoming=[...E.keys()].sort((a,b)=>E[a].dt-E[b].dt);$('trail').innerHTML=upcoming.slice(0,4).map(i=>railCard(E[i],i,'')).join('');$('srail').innerHTML=upcoming.slice(4,8).map(i=>railCard(E[i],i,'')).join('')}
 $('home').addEventListener('click',e=>{const h=e.target.closest('.rt .hrt');if(h){toggleSave(+h.dataset.h);return}const r=e.target.closest('.rt');if(r){openDetail(+r.dataset.i);return}
   const a=e.target.closest('[data-all]');if(a)go('seeall',{k:a.dataset.all});if(e.target.closest('#cityB'))openCity();if(e.target.closest('#fBtn'))openFilters()});
-mk('seeall','');R.seeall=({k})=>{const L=[...E.keys()].sort(k==='trend'?(a,b)=>E[b].going-E[a].going:(a,b)=>E[a].dt-E[b].dt);$('seeall').querySelector('.ttl2').textContent=k==='trend'?'Trending now':'Starting soon';
-  $('seeallB').innerHTML=L.map((i,n)=>row(E[i],i,n,`<small>${E[i].cat} · ${E[i].date}</small>`,{lead:k==='trend'?`<span class="rk">${n+1}</span>`:'',html:`<div class="pr">from<strong>${short(E[i].price)}</strong></div>`})).join('')};
+mk('seeall','');R.seeall=()=>{const L=[...E.keys()].sort((a,b)=>E[a].dt-E[b].dt);$('seeall').querySelector('.ttl2').textContent='Upcoming events';
+  $('seeallB').innerHTML=L.map((i,n)=>row(E[i],i,n,`<small>${E[i].cat} · ${E[i].date}</small>`,{html:`<div class="pr">from<strong>${short(E[i].price)}</strong></div>`})).join('')};
 $('seeallB').onclick=e=>{const r=e.target.closest('.r2');if(r)openDetail(+r.dataset.i)};
 mk('saved','Saved events');R.saved=()=>{const L=ST.saved;$('savedB').innerHTML=L.length?L.map((i,n)=>row(E[i],i,n,`<small>${E[i].cat} · ${E[i].date}</small><small>${E[i].venue}</small>`,{html:`<button class="hrt on" style="position:static" data-h="${i}" aria-label="Unsave">${I('heart')}</button>`})).join(''):emptyS('heart','Nothing saved yet','Tap the heart on any event to keep it here.','Explore events','svGo')};
 $('savedB').onclick=e=>{const h=e.target.closest('.hrt');if(h){toggleSave(+h.dataset.h);return}if(e.target.closest('#svGo')){stack=['home'];paintStack();return}const r=e.target.closest('.r2');if(r)openDetail(+r.dataset.i)};
@@ -814,19 +804,19 @@ document.querySelectorAll('.back').forEach(b=>b.onclick=pop);
 /* ---------- HOME ---------- */
 let cat=0;
 $('cats').innerHTML=CATS.map((c,i)=>`<button class="cat${i?'':' on'}" data-i="${i}">${c}</button>`).join('');
-function renderMas(){const L=list();if(!L.length){$('mas').innerHTML=`<div class="empty" style="width:100%;padding-top:30px"><div class="eo">${I('pin')}</div><h3>No events found</h3><p>Nothing in ${ST.city} matches right now.<br>Try another city or clear your filters.</p>${fCount(ST.F)?'<button class="go" id="mReset">Reset filters</button>':''}</div>`;return}
+function renderMas(){const L=list();if(aiLiveState==='loading'&&!E.length){$('mas').innerHTML='<div class="empty" role="status"><div class="eo"><i class="ring"></i></div><h3>Finding your next plan…</h3><p>Loading published events and live ticket options.</p></div>';return}if(!L.length){const unavailable=aiLiveState==='unavailable';$('mas').innerHTML=`<div class="empty" style="width:100%;padding-top:30px"><div class="eo">${I(unavailable?'refresh':'pin')}</div><h3>${unavailable?'Events could not be loaded':'No events found'}</h3><p>${unavailable?'The live event catalogue is temporarily unavailable.':'No published events in '+esc(ST.city)+' match right now.'}<br>${unavailable?'Check your connection and retry.':'Try another city or clear your filters.'}</p>${unavailable?'<button class="go" id="retryLiveEvents">Try again</button>':fCount(ST.F)?'<button class="go" id="mReset">Reset filters</button>':''}</div>`;return}
   const cols=[[],[]];L.forEach((x,n)=>cols[n%2].push([x,n]));
   $('mas').innerHTML=cols.map(c=>`<div class="col">${c.map(([{e,i},n])=>`<div class="ec" data-i="${i}" style="--n:${n}"><div class="ea" style="aspect-ratio:1/${e.r}">${art(e)}${e.soldout?'<span class="pillb r" style="position:absolute;left:12px;top:12px;z-index:5;background:rgba(10,9,18,.9);color:#F5F2EA">SOLD OUT</span>':''}<button class="hrt${isSaved(i)?' on':''}" data-h="${i}" aria-label="Save">${I('heart')}</button><h3>${e.t.replace(/ (?=[^ ]+$)/,'<br>')}</h3></div><div class="em"><span>${e.cat}</span><span>${e.date}</span></div></div>`).join('')}</div>`).join('')}
 $('cats').onclick=e=>{const b=e.target.closest('.cat');if(!b||+b.dataset.i===cat)return;cat=+b.dataset.i;buzz(5);
   document.querySelectorAll('.cat').forEach(x=>x.classList.toggle('on',x===b));b.scrollIntoView({inline:'center',behavior:'smooth',block:'nearest'});
   $('mas').style.cssText='opacity:0;transform:translateY(14px);transition:.2s';setTimeout(()=>{renderMas();$('mas').style.cssText='transition:.4s'},200)};
-$('mas').onclick=e=>{const h=e.target.closest('.hrt');if(h){toggleSave(+h.dataset.h);return}if(e.target.closest('#mReset')){ST.F=DEF().F;ST.city='Jakarta';cat=0;save();document.querySelectorAll('.cat').forEach((x,k)=>x.classList.toggle('on',k===0));cityLabel();refreshHome(450);return}const c=e.target.closest('.ec');if(c)openDetail(+c.dataset.i)};
+$('mas').onclick=e=>{if(e.target.closest('#retryLiveEvents')){syncRealtimeEvents();return}const h=e.target.closest('.hrt');if(h){toggleSave(+h.dataset.h);return}if(e.target.closest('#mReset')){ST.F=DEF().F;ST.city=CITIES[0]||ST.city;cat=0;save();document.querySelectorAll('.cat').forEach((x,k)=>x.classList.toggle('on',k===0));cityLabel();refreshHome(450);return}const c=e.target.closest('.ec');if(c)openDetail(+c.dataset.i)};
 $('dSearch').onclick=openSearch;
 
 /* ---------- DETAIL ---------- */
 let cur=0,qty=[1,0,0];
 $('thumbs').innerHTML=E.map((e,i)=>`<div class="th" data-i="${i}">${art(e)}</div>`).join('');
-function openDetail(i){setDetail(i,true);$('dBody').scrollTop=0;push('detail')}
+function openDetail(i){const event=E[i];if(!event?.id)return;location.href=`/events?event=${encodeURIComponent(event.slug||event.id)}`}
 function setDetail(i,first){cur=i;const e=E[i];
   document.querySelectorAll('.th').forEach((t,k)=>t.classList.toggle('on',k===i));
   const t=document.querySelector(`.th[data-i="${i}"]`);setTimeout(()=>$('thumbs').scrollTo({left:t.offsetLeft-$('thumbs').clientWidth/2+t.offsetWidth/2,behavior:first?'auto':'smooth'}),30);
@@ -913,11 +903,11 @@ $('msgReload').onclick=()=>loadViboraInbox(true);
 $('msgList').onclick=async event=>{if(event.target.closest('[data-msg-find-people]')){openViboraAccount();return}if(event.target.closest('[data-msg-signin]')){openViboraAccount();return}if(event.target.closest('[data-msg-retry]')){loadViboraInbox(true);return}const accept=event.target.closest('[data-msg-accept]');if(accept){accept.disabled=true;try{await viboraApi(`/api/vibora/connections/${encodeURIComponent(accept.dataset.msgAccept)}/accept`,{method:'POST',body:'{}'});await loadViboraInbox(true);const found=viboraInbox.find(item=>item.pairKey===accept.dataset.msgAccept);if(found)openViboraMessages(found.profile.viboraId)}catch(error){accept.disabled=false;toast(error.message,'!')}return}const row=event.target.closest('[data-msg-open]');if(row)openViboraMessages(row.dataset.msgOpen)};
 $('msgConversation').onclick=async event=>{if(event.target.closest('[data-msg-list-back]')){$('msgShell').classList.remove('has-thread');viboraActiveId='';clearInterval(viboraThreadTimer);renderViboraInboxList();return}const retry=event.target.closest('[data-msg-retry-thread]');if(retry){fetchViboraThread(viboraInbox.find(item=>item.profile?.viboraId===viboraActiveId));return}const block=event.target.closest('[data-msg-block]'),report=event.target.closest('[data-msg-report]');if(!block&&!report)return;const targetId=block?.dataset.msgBlock||report?.dataset.msgReport;const isReport=Boolean(report);if(!confirm(isReport?'Report this person for spam or harassment? This will also block them.':'Block this person? They will no longer be able to message you.'))return;try{await viboraApi(isReport?'/api/vibora/report':'/api/vibora/block',{method:'POST',body:JSON.stringify(isReport?{targetId,reason:'other'}:{targetId})});toast(isReport?'Profile reported and blocked':'Profile blocked','✓');viboraActiveId='';$('msgShell').classList.remove('has-thread');showViboraEmptyThread();await loadViboraInbox(true)}catch(error){toast(error.message,'!')}};
 async function openViboraMessages(otherId,name){if(!viboraToken()){openViboraAccount();return}openViboraInbox();await loadViboraInbox(true);showViboraConversation(otherId)}
-async function loadViboraMatches(){const root=$('vpMatches');if(!root)return;root.innerHTML='<p class="sub2">Finding your people…</p>';try{const [data,links]=await Promise.all([viboraApi('/api/vibora/matches'),viboraApi('/api/vibora/connections')]);const status=new Map((links.connections||[]).map(x=>[x.profile.viboraId,x]));root.innerHTML='';if(!data.matches.length){root.innerHTML='<p class="sub2">No opt-in matches yet. Add a few interests and check back soon ✨</p>';return}data.matches.forEach(m=>{const c=document.createElement('div');c.className='chat-bubble';c.style.margin='8px 0';const state=status.get(m.viboraId);const photo=/^https:\/\//.test(m.avatarUrl||'')?`<img src="${esc(m.avatarUrl)}" alt="" width="40" height="40" style="border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">`:'';const tags=[...(m.sharedInterests||[])].slice(0,4).join(' · ')||m.city||'New to Vibora';c.innerHTML=`${photo}<b>${esc(m.displayName)}</b> <small> · ${m.compatibility}% vibe match</small><p><small>${esc(m.viboraId)}${m.city?' · '+esc(m.city):''}</small><br>${esc(tags)}</p>${state?.status==='accepted'?`<button class="go" data-vib-message="${esc(m.viboraId)}" data-vib-name="${esc(m.displayName)}">Message</button>`:state?.direction==='outgoing'?'<small>Request sent</small>':state?.direction==='incoming'?`<button class="go" data-vib-accept="${esc(state.pairKey)}">Accept request</button>`:`<button class="go" data-vib-connect="${esc(m.viboraId)}">Say hi</button>`} <button class="go ghost" data-vib-report="${esc(m.viboraId)}">Report</button> <button class="go ghost" data-vib-block="${esc(m.viboraId)}">Block</button>`;root.append(c)});root.querySelectorAll('[data-vib-connect]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await viboraApi('/api/vibora/connections',{method:'POST',body:JSON.stringify({targetId:b.dataset.vibConnect})});loadViboraMatches()}catch(err){b.disabled=false;toast(err.message,'!')}});root.querySelectorAll('[data-vib-accept]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await viboraApi(`/api/vibora/connections/${encodeURIComponent(b.dataset.vibAccept)}/accept`,{method:'POST',body:'{}'});loadViboraMatches()}catch(err){b.disabled=false;toast(err.message,'!')}});root.querySelectorAll('[data-vib-message]').forEach(b=>b.onclick=()=>openViboraMessages(b.dataset.vibMessage,b.dataset.vibName));root.querySelectorAll('[data-vib-block],[data-vib-report]').forEach(b=>b.onclick=async()=>{const blocked=b.hasAttribute('data-vib-block'),targetId=b.dataset.vibBlock||b.dataset.vibReport;if(!blocked&&!confirm('Report this profile for spam or harassment? It will also be blocked.'))return;try{await viboraApi(blocked?'/api/vibora/block':'/api/vibora/report',{method:'POST',body:JSON.stringify(blocked?{targetId}:{targetId,reason:'other'})});toast(blocked?'Profile blocked':'Profile reported and blocked','✓');loadViboraMatches()}catch(err){toast(err.message,'!')}})}catch(err){root.textContent=err.message}}
+async function loadViboraMatches(){const root=$('vpMatches');if(!root)return;root.innerHTML='<p class="sub2">Finding your people…</p>';try{const [data,links]=await Promise.all([viboraApi('/api/vibora/matches'),viboraApi('/api/vibora/connections')]);const status=new Map((links.connections||[]).map(x=>[x.profile.viboraId,x]));root.innerHTML='';if(!data.matches.length){root.innerHTML='<p class="sub2">No opt-in matches yet. Add a few interests and check back soon ✨</p>';return}data.matches.forEach(m=>{const c=document.createElement('div');c.className='chat-bubble';c.style.margin='8px 0';const state=status.get(m.viboraId);const photo=/^https:\/\//.test(m.avatarUrl||'')?`<img src="${esc(m.avatarUrl)}" alt="" width="40" height="40" style="border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">`:'';const tags=[...(m.sharedInterests||[])].slice(0,4).join(' · ')||m.city||'New to Vibora';c.innerHTML=`${photo}<b>${esc(m.displayName)}</b><p><small>${esc(m.viboraId)}${m.city?' · '+esc(m.city):''}</small><br>${esc(tags)}${m.sharedCity?' · '+esc(m.sharedCity):''}</p>${state?.status==='accepted'?`<button class="go" data-vib-message="${esc(m.viboraId)}" data-vib-name="${esc(m.displayName)}">Message</button>`:state?.direction==='outgoing'?'<small>Request sent</small>':state?.direction==='incoming'?`<button class="go" data-vib-accept="${esc(state.pairKey)}">Accept request</button>`:`<button class="go" data-vib-connect="${esc(m.viboraId)}">Say hi</button>`} <button class="go ghost" data-vib-report="${esc(m.viboraId)}">Report</button> <button class="go ghost" data-vib-block="${esc(m.viboraId)}">Block</button>`;root.append(c)});root.querySelectorAll('[data-vib-connect]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await viboraApi('/api/vibora/connections',{method:'POST',body:JSON.stringify({targetId:b.dataset.vibConnect})});loadViboraMatches()}catch(err){b.disabled=false;toast(err.message,'!')}});root.querySelectorAll('[data-vib-accept]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await viboraApi(`/api/vibora/connections/${encodeURIComponent(b.dataset.vibAccept)}/accept`,{method:'POST',body:'{}'});loadViboraMatches()}catch(err){b.disabled=false;toast(err.message,'!')}});root.querySelectorAll('[data-vib-message]').forEach(b=>b.onclick=()=>openViboraMessages(b.dataset.vibMessage,b.dataset.vibName));root.querySelectorAll('[data-vib-block],[data-vib-report]').forEach(b=>b.onclick=async()=>{const blocked=b.hasAttribute('data-vib-block'),targetId=b.dataset.vibBlock||b.dataset.vibReport;if(!blocked&&!confirm('Report this profile for spam or harassment? It will also be blocked.'))return;try{await viboraApi(blocked?'/api/vibora/block':'/api/vibora/report',{method:'POST',body:JSON.stringify(blocked?{targetId}:{targetId,reason:'other'})});toast(blocked?'Profile blocked':'Profile reported and blocked','✓');loadViboraMatches()}catch(err){toast(err.message,'!')}})}catch(err){root.textContent=err.message}}
 function showChatWelcome(){if(ST.aiPrefs.rememberChats&&Array.isArray(ST.aiChats)&&ST.aiChats.length){chatHistory=ST.aiChats.slice(-40);chatHistory.forEach(m=>addChatMessage(m.role,m.content));return}const greeting=`Hi${ST.user?.name&&ST.user.name!=='Guest'?' '+ST.user.name.split(/\s+/)[0]:''}! I’m Vibora, your night-out companion. Ask me about live events, outfits, plans, or how to break the ice.`;chatHistory.push({role:'assistant',content:greeting});addChatMessage('assistant',greeting);saveAIChat()}
 async function sendChatMessage(value){const message=String(value||'').trim();if(!message||chatBusy)return;chatBusy=true;$('q').value='';chatHistory.push({role:'user',content:message});addChatMessage('user',message);const wait=document.createElement('div');wait.className='chat-wait';wait.id='chatWait';wait.innerHTML='<i></i><i></i><i></i><span>Vibora is thinking</span>';$('chatMessages').append(wait);$('chatMessages').scrollTop=$('chatMessages').scrollHeight;
   try{
-    const response=await fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json',...(viboraToken()?{Authorization:`Bearer ${viboraToken()}`}:{})},body:JSON.stringify({messages:chatHistory.slice(-12),personality:ST.aiPrefs.personality,rememberChats:ST.aiPrefs.rememberChats,memory:ST.aiPrefs.rememberChats?ST.aiPrefs.rememberText:''})});
+    if(!E.length)await syncRealtimeEvents();const response=await fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json',...(viboraToken()?{Authorization:`Bearer ${viboraToken()}`}:{})},body:JSON.stringify({messages:chatHistory.slice(-12),personality:ST.aiPrefs.personality,rememberChats:ST.aiPrefs.rememberChats,memory:ST.aiPrefs.rememberChats?ST.aiPrefs.rememberText:''})});
     const data=await response.json().catch(()=>({}));
     if(!response.ok||!data.success){
       const note=data.code==='ai_not_configured'?'Vibora is not connected yet. The site administrator needs to add GEMINI_API_KEY in Vercel.':(data.message||'I couldn’t reach the AI just now. Please try again in a moment.');
@@ -931,7 +921,7 @@ async function sendChatMessage(value){const message=String(value||'').trim();if(
 function openAI(pre){if(!chatStarted){chatStarted=true;showChatWelcome()}if(pre)sendChatMessage(pre);}
 $('chatForm').addEventListener('submit',e=>{e.preventDefault();sendChatMessage($('q').value);buzz(8)});
 $('chatSuggestions').addEventListener('click',e=>{const inbox=e.target.closest('[data-ai-inbox]');if(inbox){openViboraInbox();return}const social=e.target.closest('[data-ai-social]');if(social){openViboraAccount();return}const prefs=e.target.closest('[data-ai-prefs]');if(prefs){openAIPreferences();return}const b=e.target.closest('[data-prompt]');if(b)sendChatMessage(b.dataset.prompt)});
-$('chatMessages').addEventListener('click',e=>{const action=e.target.closest('[data-chat-action]');if(action){const kind=action.dataset.chatAction;if(kind==='outfit')sendChatMessage('Give me an outfit idea for a night out');else if(kind==='icebreakers')sendChatMessage('Give me a respectful icebreaker for an event');else if(kind==='retry-events'){action.disabled=true;action.textContent='Checking…';syncRealtimeEvents().then(()=>addChatMessage('assistant',E.length?`I found ${E.length} published events. Tell me your city, mood, or budget and I’ll narrow them down.`:'The live catalogue still has no published events. I can still help with your outfit or a conversation starter.'))}return}const b=e.target.closest('[data-event-index]');if(!b)return;const i=Number(b.dataset.eventIndex);if(E[i])go('detail',i)});
+$('chatMessages').addEventListener('click',e=>{const action=e.target.closest('[data-chat-action]');if(action){const kind=action.dataset.chatAction;if(kind==='outfit')sendChatMessage('Give me an outfit idea for a night out');else if(kind==='icebreakers')sendChatMessage('Give me a respectful icebreaker for an event');else if(kind==='retry-events'){action.disabled=true;action.textContent='Checking…';syncRealtimeEvents().then(()=>addChatMessage('assistant',E.length?`I found ${E.length} published events. Tell me your city, mood, or budget and I’ll narrow them down.`:'The live catalogue still has no published events. I can still help with your outfit or a conversation starter.'))}return}const b=e.target.closest('[data-event-index]');if(!b)return;const i=Number(b.dataset.eventIndex);if(E[i])openDetail(i)});
 $('clr').onclick=()=>{chatStarted=true;chatHistory=[];$('chatMessages').innerHTML='';$('q').value='';showChatWelcome();$('q').focus()};
 
 /* ---------- SEATS ---------- */
@@ -954,7 +944,7 @@ function confetti(el){const r=el.getBoundingClientRect(),ar=app.getBoundingClien
     const a=Math.random()*6.28,v=80+Math.random()*160;d.animate([{transform:'translate(0,0)',opacity:1},{transform:`translate(${Math.cos(a)*v}px,${Math.sin(a)*v-110}px) rotate(${Math.random()*540}deg)`,opacity:1,offset:.6},{transform:`translate(${Math.cos(a)*v*1.1}px,${Math.sin(a)*v+80}px) scale(.2)`,opacity:0}],{duration:1200+Math.random()*600,easing:'cubic-bezier(.2,.7,.3,1)'}).onfinish=()=>d.remove()}}
 
 /* ---------- SEARCH: by name + AI picks ---------- */
-let smode='name',aiT=0,recents=['Concert','Party','Workshop'];
+let smode='name',aiT=0,aiSearchSeq=0,recents=[];
 const SYN={fun:'energetic party dance',relax:'chill calm',relaxed:'chill calm',loud:'loud energetic',night:'night party dance',nightlife:'night party',cheap:'family chill',date:'chill moody calm',friends:'party energetic dance',music:'live pop rock',rap:'hip-hop',crazy:'energetic loud party',romantic:'chill moody',weekend:'chill family',kids:'family',creative:'creative art'};
 const PROMPTS=['I want something energetic','A chill weekend with friends','Best party tonight','Something creative and calm','Loud live music'];
 const esc=t=>t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -962,10 +952,6 @@ const hl=(t,q)=>{t=esc(t);q.toLowerCase().split(/\s+/).filter(Boolean).forEach(w
 const IC_X='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>';
 const row=(e,i,n,mid,right,q='')=>`<div class="r2" data-i="${i}" style="--n:${n}">${right.lead||''}<div class="th2">${art(e)}</div><div class="in"><b>${hl(e.t,q)}</b>${mid}</div>${right.html}</div>`;
 const priceR=e=>({html:`<div class="pr">from<strong>${short(e.price)}</strong></div>`});
-function aiRank(q){let w=q.toLowerCase().split(/\W+/).filter(x=>x.length>2);w=w.flatMap(x=>[x,...(SYN[x]||'').split(' ').filter(Boolean)]);
-  return E.map((e,i)=>{const hay=(e.t+' '+e.d+' '+e.tg.join(' ')).toLowerCase();let hits=0;const why=new Set();
-    w.forEach(x=>{if(e.k.some(k=>k.includes(x)||x.includes(k))){hits+=2;why.add(x)}else if(hay.includes(x)){hits++;why.add(x)}});
-    return{e,i,hits,why:[...why].slice(0,3),m:Math.min(98,Math.round(48+hits*11+Math.min(8,e.going/800)))}}).filter(x=>x.hits>0).sort((a,b)=>b.m-a.m).slice(0,4)}
 function renderSearch(){const raw=$('sq').value,q=raw.trim(),box=$('sres'),ai=smode==='ai';
   $('field').classList.toggle('has',!!raw);$('sseg').classList.toggle('ai',ai);
   document.querySelectorAll('#sseg button').forEach(b=>b.classList.toggle('on',b.dataset.m===smode));
@@ -973,17 +959,24 @@ function renderSearch(){const raw=$('sq').value,q=raw.trim(),box=$('sres'),ai=sm
   clearTimeout(aiT);
   if(!ai){
     if(!q){box.innerHTML=`<div class="lbl"><span>Recent</span></div><div class="chips2">${recents.map((r,n)=>`<button class="cp" data-q="${r}" style="--n:${n}">${IC_X}${r}</button>`).join('')}</div>
-      <div class="lbl"><span>Trending now</span><span>${E.length} events</span></div>${[...E.keys()].sort((a,b)=>E[b].going-E[a].going).slice(0,4).map((i,n)=>row(E[i],i,n,`<small>${E[i].cat} · ${E[i].date}</small>`,{lead:`<span class="rk">${n+1}</span>`,html:`<div class="pr">${(E[i].going/1000).toFixed(1)}K<br>going</div>`})).join('')}`;return}
+      <div class="lbl"><span>Upcoming events</span><span>${E.length} live</span></div>${[...E.keys()].sort((a,b)=>E[a].dt-E[b].dt).slice(0,4).map((i,n)=>row(E[i],i,n,`<small>${E[i].cat} · ${E[i].date}</small>`,priceR(E[i]))).join('')}`;return}
     const toks=q.toLowerCase().split(/\s+/),res=E.map((e,i)=>({e,i,h:(e.t+' '+e.cat+' '+e.venue+' '+e.tg.join(' ')).toLowerCase()})).filter(x=>toks.every(t=>x.h.includes(t)))
       .sort((a,b)=>b.e.t.toLowerCase().includes(toks[0])-a.e.t.toLowerCase().includes(toks[0]));
     box.innerHTML=res.length?`<div class="lbl"><span>${res.length} result${res.length>1?'s':''}</span><span>by name</span></div>`+res.map(({e,i},n)=>row(e,i,n,`<small>${hl(e.cat,q)} · ${e.date}</small><small>${hl(e.venue,q)}</small>`,priceR(e),q)).join('')
       :`<div class="empty"><div class="eo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8.5 11h5"/></svg></div><h3>No events found</h3><p>Nothing matches “${esc(q)}”.<br>Describe a vibe instead and let AI find it.</p><button class="go" id="tryai">Try AI picks</button></div>`;return}
   if(!q){box.innerHTML=`<div class="lbl"><span>Try asking</span></div><div class="chips2">${PROMPTS.map((r,n)=>`<button class="cp ai" data-q="${r}" style="--n:${n}">✦ ${r}</button>`).join('')}</div>
-    <div class="empty" style="padding-top:34px"><div class="eo"><svg viewBox="0 0 24 24" fill="#D8FF3F"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg></div><h3>Tell us your vibe</h3><p>Describe the mood, the crowd or the night you want — Vibora AI will rank the best matches.</p></div>`;return}
-  box.innerHTML=`<div class="think"><i></i>Vibora AI is matching events…</div><div class="skel"></div><div class="skel" style="opacity:.7"></div><div class="skel" style="opacity:.4"></div>`;
-  aiT=setTimeout(()=>{let r=aiRank(q);const none=!r.length;if(none)r=E.map((e,i)=>({e,i,why:['popular'],m:60+Math.min(12,e.going/600)|0})).sort((a,b)=>b.e.going-a.e.going).slice(0,3);
-    box.innerHTML=`<div class="hi">${none?'No exact match — showing popular picks':`${r.length} best match${r.length>1?'es':''} for you`}</div><div class="lbl"><span>Recommended</span><span>match</span></div>`+
-      r.map(({e,i,why,m},n)=>row(e,i,n,`<small>${e.when}</small><div class="why">${why.map(w=>`<em>${w}</em>`).join('')}</div>`,{html:`<div class="mring" style="--p:${m}"><span>${m}%</span></div>`})).join('')},650)}
+    <div class="empty" style="padding-top:34px"><div class="eo"><svg viewBox="0 0 24 24" fill="#D8FF3F"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg></div><h3>Tell us your vibe</h3><p>Describe the mood, crowd or night you want — Vibora will chat with you and search live events.</p></div>`;return}
+  const requestId=++aiSearchSeq;
+  box.innerHTML=`<div class="think"><i></i>Vibora is finding the right night…</div><div class="skel"></div><div class="skel" style="opacity:.7"></div><div class="skel" style="opacity:.4"></div>`;
+  aiT=setTimeout(async()=>{
+    try{
+      if(!E.length)await syncRealtimeEvents();const response=await fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json',...(viboraToken()?{Authorization:`Bearer ${viboraToken()}`}:{})},body:JSON.stringify({messages:[{role:'user',content:q}],personality:ST.aiPrefs.personality,rememberChats:false})});
+      const data=await response.json().catch(()=>({}));if(requestId!==aiSearchSeq)return;
+      if(!response.ok||!data.success)throw new Error(data.message||'Vibora could not reach the AI right now.');
+      const matches=(Array.isArray(data.events)?data.events:[]).map(event=>{const i=E.findIndex(item=>String(item.id)===String(event.id));return i>=0?{e:E[i],i}:null}).filter(Boolean);
+      box.innerHTML=`<div class="hi">${esc(data.reply||'Here’s what I found.')}</div>`+(matches.length?`<div class="lbl"><span>Live event matches</span><span>${matches.length}</span></div>`+matches.map(({e,i},n)=>row(e,i,n,`<small>${esc(e.when||e.date)}</small><small>${esc(e.venue)}</small>`,priceR(e))).join(''):`<div class="empty"><h3>No matching published events</h3><p>I couldn’t find a live event match for that vibe. Try another city, date, or mood.</p></div>`);
+    }catch(error){if(requestId!==aiSearchSeq)return;box.innerHTML=`<div class="empty"><h3>AI picks are unavailable</h3><p>${esc(error.message||'Please try again.')}</p><button class="go" id="tryai">Try again</button></div>`}
+  },550)}
 function openSearch(){renderSearch();push('search');setTimeout(()=>{try{$('sq').focus({preventScroll:true})}catch(e){}},700)}
 $('sq').oninput=renderSearch;$('sx').onclick=()=>{$('sq').value='';buzz(5);renderSearch();$('sq').focus()};
 $('sseg').onclick=e=>{const b=e.target.closest('button');if(!b||b.dataset.m===smode)return;smode=b.dataset.m;buzz(6);renderSearch()};
@@ -1177,33 +1170,17 @@ function rateSheet(o){let n=0;sheet(`<div style="text-align:center"><h3>How was 
   $('rvS').onclick=()=>{ST.ratings[o.id]=n;ST.pts+=50;save();closeSheet();toast('Thanks! +50 reward points','⭐');if(stack[stack.length-1]==='order')R.order(o.id)}})}
 
 /* ===================== SHARE / GOING / ARTIST ===================== */
-const NAMES=['Andriana Putri','Josh Kim','Maya Santos','Rafi Pratama','Lina Chen','Dev Patel','Sara Ali','Kenji Sato','Nora Blake','Tomas Reyes'];
 const avc=(n,i,s=40)=>{const c=AVC[(i+n.length)%AVC.length];return `<i class="avc" style="--x:${c[0]};--y:${c[1]};width:${s}px;height:${s}px;font-size:${s*.4}px">${n[0]}</i>`};
-function openShare(i){const e=E[i],url=`https://vibora.app/e/${i+1}-${e.t.toLowerCase().replace(/\W+/g,'-')}`;
+function openShare(i){const e=E[i],url=`${location.origin}/events?event=${encodeURIComponent(e.slug||e.id)}`;
   sheet(`<h3>Share event</h3><div class="shcard"><div class="sht">${art(e)}</div><div><b>${e.t}</b><small>${e.when}</small><small>${e.venue}</small></div></div>
   <div class="shr">${[['Messages','#31E7C8','💬'],['Chat','#25d366','🟢'],['Story','linear-gradient(135deg,#f58529,#dd2a7b,#8134af)','📸'],['Telegram','#2aabee','✈️'],['More','rgba(245,242,234,.14)','⋯']].map(([n,c,ic])=>`<button class="sht2" data-t="${n}"><i style="background:${c}">${ic}</i><span>${n}</span></button>`).join('')}</div>
   <span class="lbl2">EVENT LINK</span><div class="pfield"><input class="inpf mono" id="shU" value="${url}" readonly style="font-size:12px;text-transform:none"><button class="go" id="shC">Copy</button></div>`,()=>{
   sh2.querySelectorAll('.sht2').forEach(b=>b.onclick=()=>{if(navigator.share&&b.dataset.t==='More'){navigator.share({title:e.t,text:`${e.t} · ${e.when}`,url}).catch(()=>{});return}closeSheet();toast(`Shared via ${b.dataset.t}`,'↗')});
   $('shC').onclick=()=>{try{navigator.clipboard&&navigator.clipboard.writeText(url)}catch(x){}$('shC').textContent='Copied ✓';toast('Link copied','🔗')}})}
-mk('going','Who’s going',{foot:'<button class="go full" id="gInv">Invite friends</button>'});let gEv=0;const invited=new Set();
-R.going=i=>{gEv=i;const e=E[i],pick=(k,n)=>Array.from({length:n},(_,j)=>NAMES[(i*3+k+j)%NAMES.length]);const fr=pick(0,3),ot=pick(3,7);
-  $('goingB').innerHTML=`<div class="gsum"><div class="av">${avs(5,true)}</div><h2>${e.going>=1000?(e.going/1000).toFixed(1)+'K':e.going} people are going</h2><p>${e.t}</p></div>
-  ${lr(I('users'),'Looking for event buddies','Let others who are going find you',tog('buddy'),'')}
-  <div class="grp">Friends going · ${fr.length}</div>${fr.map((n,k)=>`<div class="lr" style="--n:${k}">${avc(n,k,44)}<div class="lrt"><b>${n}</b><small>Going · ${e.tg[0]} fan</small></div><button class="btn2" data-inv="${n}">${invited.has(n+i)?'Invited ✓':'Invite'}</button></div>`).join('')}
-  <div class="grp">Others going</div>${ot.map((n,k)=>`<div class="lr" style="--n:${k+3}">${avc(n,k+3,44)}<div class="lrt"><b>${n}</b><small>${2+(k*3)%7} mutual friends</small></div><button class="btn2" data-fol="${n}">Connect</button></div>`).join('')}`};
-$('goingB').onclick=e=>{const b=e.target.closest('.btn2');if(!b)return;buzz(6);if(b.dataset.inv){const k=b.dataset.inv+gEv;invited.has(k)?invited.delete(k):invited.add(k);b.classList.toggle('on',invited.has(k));b.textContent=invited.has(k)?'Invited ✓':'Invite';if(invited.has(k))toast(`Invite sent to ${b.dataset.inv.split(' ')[0]}`,'✉')}
-  else{b.classList.toggle('on');b.textContent=b.classList.contains('on')?'Requested ✓':'Connect'}};
-$('gInv').onclick=()=>openShare(gEv);
-const ORG=[{n:'Littlane Entertainment',f:34500,r:4.9,bio:'Exclusive live concerts, traditional festivals and cultural showcases across Maharashtra and India.',ev:[0,3]},{n:'Sunburn Live',f:88200,r:4.8,bio:'Asia’s biggest electronic dance music festival and arena tour creators.',ev:[1,4]},{n:'Studio Nine Bengaluru',f:4200,r:4.9,bio:'Immersive sound, art, and creative workshops in intimate spaces.',ev:[6]},{n:'After Dark Collective',f:31000,r:4.7,bio:'Warehouse raves, secret beach parties and late-night underground electronic music.',ev:[2,5]}];
-mk('artist','');let aO=0;
-R.artist=o=>{aO=o;const g=ORG[o],on=ST.follows.includes(o),e0=E[g.ev[0]];$('artist').querySelector('.ttl2').textContent='Organizer';
-  $('artistB').innerHTML=`<div class="acover">${art(e0)}</div><div class="ahead"><div class="aava avc" style="--x:${AVC[o*2][0]};--y:${AVC[o*2][1]}">${g.n[0]}</div><button class="fol${on?' on':''}" id="aFol">${on?'Following ✓':'Follow'}</button></div>
-  <div class="ainfo"><h2>${g.n}<span class="vf">✓</span></h2><p>${g.bio}</p></div>
-  <div class="stats"><div><b>${g.ev.length}</b><small>EVENTS</small></div><div><b id="aFc">${(g.f+(on?1:0)).toLocaleString()}</b><small>FOLLOWERS</small></div><div><b>${g.r} ★</b><small>RATING</small></div></div>
-  <div class="grp" style="padding:22px 22px 10px">Upcoming events</div><div style="padding:0 18px 150px">${g.ev.map((i,n)=>row(E[i],i,n,`<small>${E[i].cat} · ${E[i].date}</small>`,{html:`<div class="pr">from<strong>${short(E[i].price)}</strong></div>`})).join('')}</div>`;
-  $('artist').querySelector('.body').onscroll=e=>{const y=e.target.scrollTop;const c=$('artistB').querySelector('.acover .art');if(c)c.style.transform=`scale(${1+Math.max(0,-y)/300}) translateY(${y*.35}px)`}};
-$('artistB').onclick=e=>{const f=e.target.closest('#aFol');if(f){const on=!ST.follows.includes(aO);ST.follows=on?[...ST.follows,aO]:ST.follows.filter(x=>x!==aO);save();f.classList.toggle('on',on);f.textContent=on?'Following ✓':'Follow';buzz(on?[8,30,8]:5);const c=$('aFc');c.classList.remove('roll');void c.offsetWidth;c.classList.add('roll');c.textContent=(ORG[aO].f+(on?1:0)).toLocaleString();toast(on?`Following ${ORG[aO].n}`:'Unfollowed',on?'🔔':'×');return}
-  const r=e.target.closest('.r2');if(r)openDetail(+r.dataset.i)};
+mk('going','Who’s going');
+R.going=()=>{$('goingB').innerHTML='<div class="empty"><h3>Attendee discovery is private</h3><p>People will appear here only after the event connection feature and their opt-in are available.</p></div>';};
+mk('artist','Organizer');
+R.artist=()=>{$('artistB').innerHTML='<div class="empty"><h3>Organizer details</h3><p>Open the live event page for verified organiser information.</p><a class="go" href="/events">Browse live events</a></div>';};
 /* ===================== VENUE MAP ===================== */
 const MODES={drive:['car','#FF2E7E',18,'12.4 km','Drive'],transit:['bus','#31E7C8',34,'11.8 km','Transit'],walk:['walk','#31E7C8',142,'9.9 km','Walk']};let vE=E[0],vm='drive',vz=1,vx=0,vy=0;
 mk('venue','Venue');
@@ -1315,10 +1292,10 @@ R.profile=()=>{const u=ST.user,p=ST.pts,tier=p>=2000?'Platinum':p>=1000?'Gold':'
   <div class="grp">Account</div>${lr(I('user'),'Edit profile','Name, photo, contact',undefined,'data-g="edit"',0)}${lr(I('card'),'Payment methods',`${ST.cards.length} cards · Apple Pay`,undefined,'data-g="pay"',1)}${lr(I('hist'),'Order history','Receipts & past tickets',undefined,'data-g="orders"',2)}${lr(I('heart'),'Saved events',`${ST.saved.length} saved`,undefined,'data-g="saved"',3)}${lr(I('bell'),'Notifications','Push, email & SMS',undefined,'data-g="notif"',4)}${lr(I('chat'),'Vibe people & messages','Private chats with your connections',undefined,'data-g="vibora"',5)}
   <div class="grp">Preferences</div>${lr(I('pin'),'City',ST.city,undefined,'data-g="city"',5)}${lr(I('globe'),'Language',ST.lang,undefined,'data-g="lang"',6)}${lr(I('shield'),'Security','Face ID, 2FA & devices',undefined,'data-g="sec"',7)}
   <span class="lbl2" style="margin-top:14px">APPEARANCE</span><div class="sseg3">${[['dark','Dark'],['light','Light'],['auto','Auto']].map(([k,n])=>`<button data-t="${k}" class="${ST.theme===k?'on':''}">${n}</button>`).join('')}</div>
-  <div class="grp">Rewards & support</div>${lr(I('gift'),'Promos & gift cards',`Balance ${idr(ST.gift)}`,undefined,'data-g="promos"',8)}${lr(I('help'),'Help centre','FAQs & live chat',undefined,'data-g="help"',9)}${lr(I('scan'),'Gate scanner','Staff demo · validate tickets',undefined,'data-g="scan"',10)}${lr(I('wifi'),'Demo: simulate offline','Shows the offline banner',tog('off'),'',11)}
+  <div class="grp">Rewards & support</div>${lr(I('gift'),'Promos & gift cards',`Balance ${idr(ST.gift)}`,undefined,'data-g="promos"',8)}${lr(I('help'),'Help centre','FAQs & live chat',undefined,'data-g="help"',9)}${lr(I('scan'),'Gate scanner','Open the secure staff scanner',undefined,'data-g="scan"',10)}${lr(I('wifi'),'Demo: simulate offline','Shows the offline banner',tog('off'),'',11)}
   ${lr(I('logout'),'Log out','',I('chev'),'data-g="logout"',12,'danger')}<p class="sub2" style="text-align:center;margin-top:18px">Vibora 3.0 · Made for live nights</p>`};
 $('profileB').onclick=e=>{const t=e.target.closest('.sseg3 button');if(t){ST.theme=t.dataset.t;save();applyTheme();[...t.parentNode.children].forEach(c=>c.classList.toggle('on',c===t));buzz(5);return}
-  const g=e.target.closest('[data-g]');if(!g)return;const f={edit:()=>go('settings','edit'),pay:()=>go('pay'),orders:()=>go('orders'),saved:()=>go('saved'),notif:()=>go('settings','notif'),city:openCity,lang:()=>go('settings','lang'),sec:()=>go('settings','security'),vibora:openViboraAccount,rewards:()=>go('rewards'),promos:()=>go('promos'),help:()=>go('help'),scan:()=>go('scanner'),logout:logoutSheet}[g.dataset.g];if(f)f()};
+  const g=e.target.closest('[data-g]');if(!g)return;const f={edit:()=>go('settings','edit'),pay:()=>go('pay'),orders:()=>go('orders'),saved:()=>go('saved'),notif:()=>go('settings','notif'),city:openCity,lang:()=>go('settings','lang'),sec:()=>go('settings','security'),vibora:openViboraAccount,rewards:()=>go('rewards'),promos:()=>go('promos'),help:()=>go('help'),scan:()=>{location.href='/scanner'},logout:logoutSheet}[g.dataset.g];if(f)f()};
 $('pEd').onclick=()=>go('settings','edit');
 function logoutSheet(){sheet(`<div style="text-align:center"><div class="bigi a">${I('logout')}</div><h3>Sign out of LITTX?</h3><p class="sub2">Sign in again to securely load your booking history.</p></div><div style="display:flex;gap:10px;margin-top:20px"><button class="go ghost" id="loC" style="flex:1;justify-content:center;padding:0">Cancel</button><button class="go red" id="loY" style="flex:1;justify-content:center;padding:0">Log out</button></div>`,()=>{
   $('loC').onclick=closeSheet;$('loY').onclick=()=>{closeSheet();bookingSessionEmail='';bookingChallengeId='';TK=[];ST.onboarded=0;ST.user.name='';ST.user.email='';save();renderTickets();stack=['home'];paintStack();setTimeout(()=>obStart(4),300)}})}
@@ -1380,16 +1357,8 @@ R.rewards=()=>{const p=ST.pts,nx=p>=2000?5000:2000,tier=p>=2000?'Platinum':p>=10
   <div class="grp">Redeem points</div>${[['IDR 50K voucher',500,'WELCOME50K'],['IDR 120K voucher',1000,''],['VIP seat upgrade',1500,'']].map(([n,c,code],k)=>lr(I('gift'),n,`${c} points`,`<button class="btn2" data-rd="${c}" data-n="${n}" data-code="${code}" ${p<c?'disabled style="opacity:.4"':''}>Redeem</button>`,'',k)).join('')}
   <div class="grp">Earn history</div>${[['Kanye West Live booking','+240'],['Review submitted','+50'],['Chase Atlantic booking','+110'],['Welcome bonus','+200']].map(([t,v],k)=>lr(I('star'),t,'',`<b style="color:#31E7C8;font-family:var(--mono);font-size:13px">${v}</b>`,'',k)).join('')}`};
 $('rewardsB').onclick=e=>{const b=e.target.closest('[data-rd]');if(!b||b.disabled)return;ST.pts-=+b.dataset.rd;if(b.dataset.code)ST.promo=b.dataset.code;save();addNotif('promo',`${b.dataset.n} redeemed`,b.dataset.code?'Applies automatically at checkout':'Check your email for details');R.rewards();toast(`${b.dataset.n} redeemed`,'🎁');buzz([14,40,26])};
-/* ===================== GATE SCANNER (staff demo) ===================== */
-mk('scanner','Gate scanner');let scN={t:0,v:0,r:0},scL=[],scK=0;
-R.scanner=()=>{$('scannerB').innerHTML=`<div class="scan" id="scV"><i></i><i></i><i></i><i></i></div><div id="scR"></div><div class="cnt"><div><b id="n1">${scN.t}</b><small>SCANNED</small></div><div><b id="n2" style="color:#31E7C8">${scN.v}</b><small>VALID</small></div><div><b id="n3" style="color:#f87171">${scN.r}</b><small>REJECTED</small></div></div>
-  <div style="display:flex;gap:10px"><button class="go ghost" id="scM" style="flex:1;justify-content:center;padding:0">Enter code</button><button class="go" id="scGo" style="flex:2;justify-content:center">Simulate scan</button></div><div class="grp">Recent scans</div><div id="scLg"></div>`;scLog()};
-const scLog=()=>{$('scLg').innerHTML=scL.length?scL.slice(0,6).map((l,n)=>lr(I(l.k==='ok'?'check':'x'),l.n,l.s,`<span class="pillb ${l.k==='ok'?'g':l.k==='wr'?'a':'r'}">${l.k==='ok'?'Valid':l.k==='wr'?'Used':'Invalid'}</span>`,'',n)).join(''):'<p class="sub2" style="text-align:center">No scans yet</p>'};
-function doScan(kind,code){const names=NAMES[scK%NAMES.length],seat='ABCD'[scK%4]+(2+scK%7);scK++;const k=kind||['ok','ok','wr','no','ok'][scK%5],v=$('scV');v.classList.remove('ok','no','wr');void v.offsetWidth;v.classList.add(k);
-  const msg={ok:['Valid ticket',`${names} · Seat ${seat} · Gate A`,'check'],wr:['Already used',`Scanned 12 min ago at Gate C`,'clock'],no:['Invalid code',code?`“${code}” not found`:'Ticket not recognised','x']}[k];
-  $('scR').innerHTML=`<div class="sres2 ${k}"><div class="bigi ${k==='ok'?'g':k==='wr'?'a':'r'}" style="margin:0;width:48px;height:48px;box-shadow:none;flex:none">${I(msg[2])}</div><div><b>${msg[0]}</b><small>${msg[1]}</small></div></div>`;
-  scN.t++;k==='ok'?scN.v++:scN.r++;$('n1').textContent=scN.t;$('n2').textContent=scN.v;$('n3').textContent=scN.r;scL.unshift({k,n:k==='ok'?names:msg[0],s:k==='ok'?`Seat ${seat}`:msg[1]});scLog();buzz(k==='ok'?[20]:k==='wr'?[30,60,30]:[60,40,60,40]);setTimeout(()=>v.classList.remove(k),2200)}
-$('scannerB').onclick=e=>{if(e.target.closest('#scGo'))doScan();if(e.target.closest('#scM'))sheet(`<h3>Enter ticket code</h3><p class="sub2">Type the order number printed under the QR code.</p><input class="inpf mono" id="scC" placeholder="VBR-XXXXXX" style="margin-top:14px;text-transform:uppercase"><button class="go full" id="scV2" style="margin-top:16px">Validate</button>`,()=>{$('scV2').onclick=()=>{const c=$('scC').value.trim().toUpperCase();closeSheet();setTimeout(()=>doScan(TK.some(t=>t.order===c)?'ok':'no',c),350)}})};
+/* Staff check-in opens the authenticated scanner application. */
+mk('scanner','Gate scanner');R.scanner=()=>{location.href='/scanner'};
 
 /* ===================== REAL-TIME DATA SYNC ===================== */
 let aiLiveState='loading';
@@ -1400,15 +1369,17 @@ async function syncRealtimeEvents() {
     const data = await res.json();
     if (data && data.success && Array.isArray(data.events)) {
       aiLiveState=data.events.length?'ready':'empty';
-      const liveEvents = data.events.map((ev, idx) => {
+      const liveEvents = data.events.filter(ev=>{const start=new Date(ev.startsAt||ev.date||0).getTime();return !Number.isFinite(start)||start===0||start>=Date.now()}).map((ev, idx) => {
         const dt = new Date(ev.startsAt || ev.date || Date.now());
         const timeStr = dt.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
         const dateStr = dt.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) + ', ' + timeStr;
         const whenStr = dt.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }) + ' · ' + timeStr;
         const passes = ev.ticketCategories || [];
-        const lowestPrice = passes.length ? Math.min(...passes.map(p => Number(p.price) || 0)) : 0;
+        const now=Date.now(),availablePasses=passes.filter(p=>p.status==='active'&&(p.remainingAvailability==null||p.remainingAvailability>0)&&(!p.salesStartAt||new Date(p.salesStartAt).getTime()<=now)&&(!p.salesEndAt||new Date(p.salesEndAt).getTime()>now));
+        const lowestPrice = availablePasses.length ? Math.min(...availablePasses.map(p => Number(p.price) || 0)) : 0;
         return {
           id: ev.id || ev.slug || idx,
+          slug: ev.slug || '',
           t: ev.name,
           cat: ev.category || 'Event',
           tg: [ev.category || 'Event'].filter(Boolean),
@@ -1429,18 +1400,18 @@ async function syncRealtimeEvents() {
           img: (ev.images && ev.images[0]) || '',
           d: ev.description || 'Event details coming soon.',
           km: 0,
-          org: 0,
+          org: null,
           soldout: false
         };
       });
       if (liveEvents.length > 0) {
         E.splice(0, E.length, ...liveEvents);
-        const liveCities=[...new Set(liveEvents.map(e=>e.city).filter(Boolean))];if(liveCities.length&&!liveCities.includes(ST.city))ST.city=liveCities[0];save();cityLabel();
+        const liveCities=[...new Set(liveEvents.map(e=>e.city).filter(Boolean))];CITIES=liveCities;if(liveCities.length&&!liveCities.includes(ST.city))ST.city=liveCities[0];save();cityLabel();
         renderMas();
         renderRails();
-    } else { E.splice(0,E.length); renderMas(); renderRails(); }
-    } else { aiLiveState='empty';E.splice(0,E.length);renderMas();renderRails(); }
-  } catch (err) { aiLiveState='unavailable';E.splice(0,E.length);renderMas();renderRails();toast('Live event catalog is unavailable','!'); }
+    } else { CITIES=[];E.splice(0,E.length); renderMas(); renderRails(); }
+    } else { aiLiveState='empty';CITIES=[];E.splice(0,E.length);renderMas();renderRails(); }
+  } catch (err) { aiLiveState='unavailable';CITIES=[];E.splice(0,E.length);renderMas();renderRails();toast('Live event catalog is unavailable','!'); }
 }
 syncRealtimeEvents();
 

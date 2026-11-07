@@ -28,7 +28,7 @@ test('public event cards have no static demo fallback and the marketplace report
     const marketplace = fs.readFileSync(path.join(repositoryRoot, 'staging/combined-app/src/components/EventMarketplace.tsx'), 'utf8');
     assert.match(homepage, /fetch\('\/api\/events'/);
     assert.doesNotMatch(homepage, /Dholida Garba Royale 2026|Aura Genesis Fest/);
-    assert.match(marketplace, /fetch\(url\)/);
+    assert.match(marketplace, /fetch\(url(?:,|\))/);
     assert.match(marketplace, /Events could not be loaded\./);
     assert.match(marketplace, /No published events match these filters\./);
     assert.match(marketplace, /eventId: event\.id/);
@@ -53,4 +53,3 @@ test('legacy /littx page redirects to the live homepage without static demo list
     assert.match(legacyPage, /href="\/"/);
     assert.doesNotMatch(legacyPage, /Static & Sirens|Sundowner|2\.4M tickets|180 cities/i);
 });
-
