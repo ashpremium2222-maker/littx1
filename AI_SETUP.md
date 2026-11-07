@@ -10,7 +10,7 @@ is Google's Gemini API using its OpenAI-compatible Chat Completions endpoint.
 1. Create an API key in [Google AI Studio](https://aistudio.google.com/apikey).
 2. In the Vercel project, open **Settings → Environment Variables** and add
    `GEMINI_API_KEY` with that value for the Production environment.
-3. Save and redeploy the project. The app selects `gemini-2.5-flash-lite` by
+3. Save and redeploy the project. The app selects `gemini-3.5-flash-lite` by
    default; no model or base URL variable is required.
 
 Keep the key server-side. Do not paste it into `vibora-littx.html`, a public

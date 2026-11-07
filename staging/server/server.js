@@ -67,7 +67,7 @@ function getViboraAIProviderConfig() {
         apiKey: geminiApiKey || process.env.LITTX_AI_API_KEY || process.env.OPENAI_API_KEY || '',
         baseUrl,
         model: geminiApiKey
-            ? (process.env.GEMINI_MODEL || process.env.LITTX_AI_MODEL || 'gemini-2.5-flash-lite')
+            ? (process.env.GEMINI_MODEL || process.env.LITTX_AI_MODEL || 'gemini-3.5-flash-lite')
             : (process.env.LITTX_AI_MODEL || process.env.OPENAI_MODEL || ''),
         isGemini: Boolean(geminiApiKey)
     };
