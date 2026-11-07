@@ -4811,9 +4811,11 @@ function publicViboraProfile(profile, includePrivate = false) {
         viboraId: profile.viboraId, displayName: profile.displayName, avatarUrl: profile.avatarUrl || '',
         bio: profile.bio || '', city: profile.city || '', interests: profile.interests || [], musicGenres: profile.musicGenres || [],
         partyVibes: profile.partyVibes || [], discoverable: Boolean(profile.discoverable),
-        proactiveEnabled: Boolean(profile.proactiveEnabled), proactiveFrequency: profile.proactiveFrequency || 'off',
-        timezone: profile.timezone || 'Asia/Kolkata', quietStart: profile.quietStart || '22:00', quietEnd: profile.quietEnd || '09:00',
-        ...(includePrivate ? { email: profile.email, mutedUntil: profile.mutedUntil || null } : {})
+        ...(includePrivate ? {
+            email: profile.email, mutedUntil: profile.mutedUntil || null,
+            proactiveEnabled: Boolean(profile.proactiveEnabled), proactiveFrequency: profile.proactiveFrequency || 'off',
+            timezone: profile.timezone || 'Asia/Kolkata', quietStart: profile.quietStart || '22:00', quietEnd: profile.quietEnd || '09:00'
+        } : {})
     };
 }
 
@@ -4971,6 +4973,42 @@ app.get('/api/vibora/matches', viboraSocialRateLimit, requireViboraIdentity, asy
 });
 
 const viboraPairKey = (a, b) => [a, b].sort().join(':');
+app.get('/api/vibora/inbox', requireViboraIdentity, async (req, res) => {
+    const me = req.viboraProfile;
+    try {
+        const rows = await db.ViboraConnection.find({ $or: [{ requesterId: me.viboraId }, { recipientId: me.viboraId }] })
+            .sort({ updatedAt: -1 }).limit(100).lean();
+        const otherIds = [...new Set(rows.map(row => row.requesterId === me.viboraId ? row.recipientId : row.requesterId))];
+        const profiles = await db.ViboraProfile.find({ viboraId: { $in: otherIds }, discoverable: true, blockedViboraIds: { $ne: me.viboraId } }).lean();
+        const blocked = new Set(me.blockedViboraIds || []);
+        const byId = new Map(profiles.filter(profile => !blocked.has(profile.viboraId)).map(profile => [profile.viboraId, profile]));
+        const visibleRows = rows.filter(row => byId.has(row.requesterId === me.viboraId ? row.recipientId : row.requesterId));
+        const acceptedPairKeys = visibleRows.filter(row => row.status === 'accepted').map(row => row.pairKey);
+        const latestMessages = acceptedPairKeys.length ? await db.ViboraMessage.aggregate([
+            { $match: { pairKey: { $in: acceptedPairKeys } } },
+            { $sort: { createdAt: -1 } },
+            { $group: { _id: '$pairKey', body: { $first: '$body' }, senderId: { $first: '$senderId' }, createdAt: { $first: '$createdAt' } } }
+        ]) : [];
+        const latestByPair = new Map(latestMessages.map(message => [message._id, message]));
+        const inbox = visibleRows.map(row => {
+            const otherId = row.requesterId === me.viboraId ? row.recipientId : row.requesterId;
+            const latest = latestByPair.get(row.pairKey);
+            return {
+                pairKey: row.pairKey,
+                status: row.status,
+                direction: row.requesterId === me.viboraId ? 'outgoing' : 'incoming',
+                profile: publicViboraProfile(byId.get(otherId)),
+                lastMessage: latest?.body || '',
+                lastMessageAt: latest?.createdAt || row.updatedAt || row.createdAt || null,
+                lastMessageSenderId: latest?.senderId || ''
+            };
+        }).sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0));
+        res.set('Cache-Control', 'no-store');
+        return res.json({ success: true, inbox });
+    } catch (_) {
+        return res.status(503).json({ success: false, message: 'Your inbox is temporarily unavailable.' });
+    }
+});
 app.get('/api/vibora/connections', requireViboraIdentity, async (req, res) => {
     const id = req.viboraProfile.viboraId;
     try {
