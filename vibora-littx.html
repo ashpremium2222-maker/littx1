@@ -69,7 +69,7 @@ h1.big span{display:block}
 .ea .art{transition:transform .9s var(--ease)}.ec:hover .art{transform:scale(1.06)}
 .em{display:flex;justify-content:space-between;gap:6px;padding:9px 6px 0;font-family:var(--mono);font-size:11px;color:rgba(245,242,234,.4)}
 .em span:last-child{text-transform:uppercase}
-.dock{position:absolute;left:50%;bottom:var(--bt);z-index:30;display:flex;gap:6px;padding:7px;transform:translateX(-50%);border-radius:999px;background:rgba(20,16,38,.72);border:1px solid rgba(245,242,234,.1);backdrop-filter:blur(26px) saturate(1.5);box-shadow:0 20px 50px rgba(0,0,0,.6);transition:transform .8s var(--spring),opacity .4s}
+.dock{position:absolute;left:50%;bottom:var(--bt);z-index:30;display:flex;gap:6px;padding:7px;max-width:calc(100% - 24px);transform:translateX(-50%);border-radius:999px;background:rgba(20,16,38,.72);border:1px solid rgba(245,242,234,.1);backdrop-filter:blur(26px) saturate(1.5);box-shadow:0 20px 50px rgba(0,0,0,.6);transition:transform .8s var(--spring),opacity .4s}
 .dock.hide{transform:translate(-50%,140px);opacity:0}
 .dock button{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;background:rgba(245,242,234,.07);transition:scale .25s var(--spring),background .3s}.dock button:active{scale:.85}.dock button:hover{background:rgba(49,231,200,.25)}
 
@@ -677,7 +677,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 
 <section class="view off" id="checkout"><div class="hd"><button class="gb back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><span>Checkout</span><button class="gb" id="ckH" aria-label="Help"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7M12 17h.01"/></svg></button></div><div class="body"><div class="pg" id="checkoutB"></div></div><div class="bbar col"><div class="sum"><div><small id="ckN">Total</small><strong id="ckP"></strong></div></div><div class="slide" id="slide"><div class="track"><i class="fill"></i><div class="lab" id="slab">Slide to pay</div><div class="pd">✓ Paid</div></div><div class="handle" id="handle"><svg viewBox="0 0 24 24"><path d="M6 6l6 6-6 6"/><path d="M12 6l6 6-6 6"/></svg></div></div></div></section>
 
-<nav class="dock" id="dock"><button id="dHome" class="on" aria-label="Home"><svg class="ic" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9H4z"/></svg></button><button id="dSearch" aria-label="Search"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button><button id="dTix" aria-label="My tickets"><svg class="ic" viewBox="0 0 24 24"><path d="M3 9V6h18v3a3 3 0 0 0 0 6v3H3v-3a3 3 0 0 0 0-6zM14 6v12"/></svg><b class="bdg" id="bdg"></b></button><button id="dAI" aria-label="AI picks"><svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg></button><button id="dPro" aria-label="Profile"><svg class="ic" viewBox="0 0 24 24"><path d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21c1-4 4-6 8-6s7 2 8 6"/></svg></button></nav>
+<nav class="dock" id="dock" aria-label="Main navigation"><button id="dHome" class="on" aria-label="Home" title="Home"><svg class="ic" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9H4z"/></svg></button><button id="dSearch" aria-label="Search" title="Search"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button><button id="dTix" aria-label="My tickets" title="My tickets"><svg class="ic" viewBox="0 0 24 24"><path d="M3 9V6h18v3a3 3 0 0 0 0 6v3H3v-3a3 3 0 0 0 0-6zM14 6v12"/></svg><b class="bdg" id="bdg"></b></button><button id="dAI" aria-label="AI picks" title="Vibora AI"><svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg></button><button id="dMessages" aria-label="Messages" title="Messages"><svg class="ic" viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l-1 2v-5.5A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 10h8M8 14h5"/></svg></button><button id="dPro" aria-label="Profile" title="Profile"><svg class="ic" viewBox="0 0 24 24"><path d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21c1-4 4-6 8-6s7 2 8 6"/></svg></button></nav>
 
 <div class="ok" id="ok">
 <div class="okc"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div><h2>You’re going!</h2><p class="mono" style="font-size:12.5px;color:var(--mut)">Your tickets are confirmed</p>
@@ -795,8 +795,8 @@ $('savedB').onclick=e=>{const h=e.target.closest('.hrt');if(h){toggleSave(+h.dat
 /* ---------- navigation stack ---------- */
 let stack=['home'];
 function paintStack(){closeSheet();document.querySelectorAll('.view').forEach(v=>{const i=stack.indexOf(v.id);v.classList.toggle('off',i<0);v.classList.toggle('under',i>=0&&i<stack.length-1);v.style.zIndex=i<0?0:i+1});
-  const top=stack[stack.length-1];$('dock').classList.toggle('hide',!['home','tickets','profile'].includes(top));
-  $('dHome').classList.toggle('on',top==='home');$('dTix').classList.toggle('on',top==='tickets');$('dPro').classList.toggle('on',top==='profile')}
+  const top=stack[stack.length-1];$('dock').classList.toggle('hide',!['home','tickets','profile','messages'].includes(top));
+  $('dHome').classList.toggle('on',top==='home');$('dTix').classList.toggle('on',top==='tickets');$('dMessages').classList.toggle('on',top==='messages');$('dPro').classList.toggle('on',top==='profile')}
 const push=id=>{if(stack[stack.length-1]===id)return;stack.push(id);buzz(10);paintStack()};
 const pop=()=>{if(stack.length>1){stack.pop();buzz(6);paintStack()}};
 document.querySelectorAll('.back').forEach(b=>b.onclick=pop);
@@ -1057,7 +1057,7 @@ function renderNext(){const t=byDate()[0],el=$('next');el.style.display=t?'flex'
   el.dataset.id=t.id;el.innerHTML=`<div class="nth">${art(e)}</div><div class="nin"><small>YOUR NEXT EVENT</small><b>${e.t}</b><em>${ms<0?'Happening now':d>0?`in ${d}d ${h}h`:`in ${h}h`} · ${e.venue}</em></div><svg class="ic" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>`}
 $('next').onclick=()=>viewTicket(+$('next').dataset.id);
 $('dHome').onclick=()=>{if(stack.length===1)$('home').querySelector('.body').scrollTo({top:0,behavior:'smooth'});stack=['home'];paintStack();buzz(6)};
-$('dTix').onclick=openTickets;$('dAI').onclick=()=>{openAI();push('ai')};
+$('dTix').onclick=openTickets;$('dAI').onclick=()=>{openAI();push('ai')};$('dMessages').onclick=openViboraInbox;
 
 /* ---------- iOS-style edge swipe back ---------- */
 let sw=null;
