@@ -77,6 +77,9 @@ The Meta webhook endpoint remains `https://<your-domain>/api/whatsapp/webhook`.
 
 ## Production domain
 
+See [AI_SETUP.md](AI_SETUP.md) for configuring the server-side Vibora AI model
+provider and notes about the supplied AI runtime archives.
+
 The production web and API origin is `https://www.littx.in`. Keep this value
 consistent in Vercel's `BASE_URL`, `WEBAUTHN_ORIGIN`, `WEBAUTHN_RP_ID`, and
 `SELLER_API_BASE_URL` variables. The legacy `littx1.vercel.app` address remains
