@@ -1,5 +1,8 @@
 {
   "version": 2,
+  "crons": [
+    { "path": "/api/cron/vibora-proactive", "schedule": "0 10 * * *" }
+  ],
   "buildCommand": "cd staging/combined-app && npm install && npm run vercel-build",
   "outputDirectory": "staging/combined-app/dist",
   "redirects": [

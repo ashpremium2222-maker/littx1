@@ -506,6 +506,72 @@ const CustomerSchema = new mongoose.Schema({
     createdAt: { type: String }
 });
 
+// Opt-in Vibora social profile. Identity is established by email OTP; no
+// booking details or purchaser data are exposed through discovery.
+const ViboraProfileSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    viboraId: { type: String, required: true, unique: true },
+    displayName: { type: String, required: true, maxlength: 48 },
+    avatarUrl: { type: String, default: '', maxlength: 500 },
+    bio: { type: String, default: '', maxlength: 180 },
+    city: { type: String, default: '', maxlength: 80 },
+    interests: { type: [String], default: [] },
+    musicGenres: { type: [String], default: [] },
+    partyVibes: { type: [String], default: [] },
+    discoverable: { type: Boolean, default: false },
+    blockedViboraIds: { type: [String], default: [] },
+    sessionVersion: { type: Number, default: 1 },
+    proactiveEnabled: { type: Boolean, default: false },
+    proactiveFrequency: { type: String, enum: ['off', '48h'], default: 'off' },
+    timezone: { type: String, default: 'Asia/Kolkata' },
+    quietStart: { type: String, default: '22:00' },
+    quietEnd: { type: String, default: '09:00' },
+    mutedUntil: { type: Date, default: null },
+    proactiveClaimedAt: { type: Date, default: null },
+    lastInteractionAt: { type: Date, default: Date.now },
+    lastProactiveAt: { type: Date, default: null },
+    recentProactiveMessages: { type: [String], default: [] },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+ViboraProfileSchema.index({ discoverable: 1, updatedAt: -1 });
+
+const ViboraChatSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    messages: [{ role: { type: String, enum: ['user', 'assistant'], required: true }, content: { type: String, maxlength: 2000 }, createdAt: { type: Date, default: Date.now } }],
+    approvedMemory: { type: String, default: '', maxlength: 500 },
+    consentAt: { type: Date, required: true },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+const ViboraConnectionSchema = new mongoose.Schema({
+    pairKey: { type: String, required: true, unique: true },
+    requesterId: { type: String, required: true },
+    recipientId: { type: String, required: true },
+    status: { type: String, enum: ['pending', 'accepted'], default: 'pending' },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+ViboraConnectionSchema.index({ requesterId: 1, status: 1, createdAt: -1 });
+ViboraConnectionSchema.index({ recipientId: 1, status: 1, createdAt: -1 });
+
+const ViboraMessageSchema = new mongoose.Schema({
+    pairKey: { type: String, required: true },
+    senderId: { type: String, required: true },
+    body: { type: String, required: true, maxlength: 2000 },
+    createdAt: { type: Date, default: Date.now }
+});
+ViboraMessageSchema.index({ pairKey: 1, createdAt: 1 });
+
+const ViboraReportSchema = new mongoose.Schema({
+    reportId: { type: String, required: true, unique: true },
+    reporterId: { type: String, required: true },
+    reportedId: { type: String, required: true },
+    reason: { type: String, enum: ['harassment', 'spam', 'fake_profile', 'other'], required: true },
+    details: { type: String, default: '', maxlength: 500 },
+    createdAt: { type: Date, default: Date.now }
+});
+
 const PartnerLockSchema = new mongoose.Schema({
     partnerId: { type: String, required: true, unique: true },
     name: { type: String, required: true },
@@ -566,7 +632,7 @@ const CheckoutRequest = mongoose.model('CheckoutRequest', CheckoutRequestSchema)
 const OtpChallengeSchema = new mongoose.Schema({
     challengeId: { type: String, required: true, unique: true },
     subjectHash: { type: String, required: true },
-    purpose: { type: String, enum: ['booking_recovery', 'refund_request', 'organizer_application', 'organizer_activation'], required: true },
+    purpose: { type: String, enum: ['booking_recovery', 'refund_request', 'organizer_application', 'organizer_activation', 'vibora_identity'], required: true },
     codeHash: { type: String, required: true },
     attempts: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now },
@@ -589,6 +655,11 @@ const OrganizerApplication = mongoose.model('OrganizerApplication', OrganizerApp
 const EventInvitation = mongoose.model('EventInvitation', EventInvitationSchema);
 const PartnerAccessPolicy = mongoose.model('PartnerAccessPolicy', PartnerAccessPolicySchema);
 const Customer = mongoose.model('Customer', CustomerSchema);
+const ViboraProfile = mongoose.model('ViboraProfile', ViboraProfileSchema);
+const ViboraChat = mongoose.model('ViboraChat', ViboraChatSchema);
+const ViboraConnection = mongoose.model('ViboraConnection', ViboraConnectionSchema);
+const ViboraMessage = mongoose.model('ViboraMessage', ViboraMessageSchema);
+const ViboraReport = mongoose.model('ViboraReport', ViboraReportSchema);
 const SellerSession = mongoose.model('SellerSession', SellerSessionSchema);
 const ScanLog = mongoose.model('ScanLog', ScanLogSchema);
 const UserSession = mongoose.model('UserSession', UserSessionSchema);
@@ -1637,6 +1708,11 @@ module.exports = {
     Company,
     AuditLog,
     Customer,
+    ViboraProfile,
+    ViboraChat,
+    ViboraConnection,
+    ViboraMessage,
+    ViboraReport,
     SellerSession,
     ScanLog,
     UserSession,

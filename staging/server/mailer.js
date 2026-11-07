@@ -254,12 +254,13 @@ function hasConfiguredEmailDelivery() {
     return Boolean(process.env.BREVO_API_KEY || mgClient || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
 }
 
-async function sendBookingRecoveryOtp({ to, code, expiresMinutes = 10 }) {
+async function sendBookingRecoveryOtp({ to, code, expiresMinutes = 10, purpose = 'booking_recovery' }) {
     if (!hasConfiguredEmailDelivery()) return { success: false, error: 'A real email delivery provider is not configured.' };
     try {
             const from = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'events@littx.com';
-        const subject = 'Your Stageway booking recovery code';
-        const text = `Your booking recovery code is ${code}. It expires in ${expiresMinutes} minutes and can be used once. If you did not request this code, you can ignore this email.`;
+        const viboraIdentity = purpose === 'vibora_identity';
+        const subject = viboraIdentity ? 'Your LITTX Vibora verification code' : 'Your Stageway booking recovery code';
+        const text = `${viboraIdentity ? 'Your Vibora sign-in code' : 'Your booking recovery code'} is ${code}. It expires in ${expiresMinutes} minutes and can be used once. If you did not request this code, you can ignore this email.`;
         if (process.env.BREVO_API_KEY) {
             const from = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'events@littx.com';
             const [name, address] = from.includes('<') ? [from.replace(/<.*$/, '').replace(/"/g, '').trim() || 'Stageway', from.match(/<([^>]+)>/)?.[1]] : ['Stageway', from];
@@ -355,4 +356,28 @@ async function sendEventInvitation({ to, role, eventName, token, expiresAt }) {
     } catch (_) { return { success: false, error: 'Invitation email delivery failed.' }; }
 }
 
-module.exports = { sendTicketEmail, sendBookingRecoveryOtp, sendAccountSecurityOtp, sendEventInvitation, hasConfiguredEmailDelivery, renderTicketEmailContent, getTestMessageOutbox: () => process.env.NODE_ENV === 'test' ? testMessageOutbox : [] };
+async function sendViboraProactiveMessage({ to, name, message, events = [] }) {
+    if (process.env.NODE_ENV === 'test') { testMessageOutbox.push({ to, purpose: 'vibora_proactive', text: message }); return { success: true, testOnly: true }; }
+    if (!hasConfiguredEmailDelivery()) return { success: false, error: 'A real email delivery provider is not configured.' };
+    try {
+        const from = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'events@littx.com';
+        const subject = 'A little night-out inspo from Vibora';
+        const text = `Hey ${String(name || 'there').slice(0, 48)}!\n\n${String(message || '').slice(0, 700)}${events.length ? `\n\nOn your radar:\n${events.map(event => `• ${event.name}${event.city ? ` · ${event.city}` : ''}${event.startsAt ? ` · ${new Date(event.startsAt).toLocaleDateString('en-IN', { dateStyle: 'medium', timeZone: event.timezone || 'Asia/Kolkata' })}` : ''}`).join('\n')}` : ''}\n\nOpen Vibora AI → Vibe matches to change or turn off these check-ins.`;
+        if (process.env.BREVO_API_KEY) {
+            const [senderName, address] = from.includes('<') ? [from.replace(/<.*$/, '').replace(/"/g, '').trim() || 'LITTX', from.match(/<([^>]+)>/)?.[1]] : ['LITTX', from];
+            if (!address) return { success: false, error: 'Email sender is not configured.' };
+            const payload = JSON.stringify({ sender: { name: senderName, email: address }, to: [{ email: to }], subject, textContent: text });
+            await new Promise((resolve, reject) => {
+                const request = require('https').request('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { accept: 'application/json', 'api-key': process.env.BREVO_API_KEY, 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, result => { result.resume(); result.on('end', () => result.statusCode >= 200 && result.statusCode < 300 ? resolve() : reject(new Error('Email provider rejected message.'))); });
+                request.on('error', reject); request.write(payload); request.end();
+            });
+        } else if (mgClient) {
+            await mgClient.messages.create(process.env.MAILGUN_DOMAIN, { from, to: [to], subject, text });
+        } else {
+            await (await getTransporter()).sendMail({ from, to, subject, text });
+        }
+        return { success: true };
+    } catch (_) { return { success: false, error: 'Vibora reminder delivery failed.' }; }
+}
+
+module.exports = { sendTicketEmail, sendBookingRecoveryOtp, sendAccountSecurityOtp, sendEventInvitation, sendViboraProactiveMessage, hasConfiguredEmailDelivery, renderTicketEmailContent, getTestMessageOutbox: () => process.env.NODE_ENV === 'test' ? testMessageOutbox : [] };
