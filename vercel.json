@@ -28,11 +28,6 @@
       "has": [{ "type": "host", "value": "pr.littx.in" }],
       "destination": "/pr",
       "permanent": false
-    },
-    {
-      "source": "/",
-      "destination": "/customer/login",
-      "permanent": false
     }
   ],
   "rewrites": [
