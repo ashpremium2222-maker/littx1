@@ -64,6 +64,18 @@
       "destination": "/app.html"
     },
     {
+      "source": "/customer/login",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/customer/register",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/customer/account",
+      "destination": "/app.html"
+    },
+    {
       "source": "/accept-invitation",
       "destination": "/app.html"
     },

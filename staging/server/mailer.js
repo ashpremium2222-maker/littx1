@@ -272,7 +272,12 @@ async function sendBookingRecoveryOtp({ to, code, expiresMinutes = 10, purpose =
                 }, result => {
                     let body = '';
                     result.on('data', chunk => { body += chunk; });
-                    result.on('end', () => result.statusCode >= 200 && result.statusCode < 300 ? resolve(true) : reject(new Error(`Email provider returned HTTP ${result.statusCode}.`)));
+                    result.on('end', () => {
+                        if (result.statusCode >= 200 && result.statusCode < 300) return resolve(true);
+                        const error = new Error('Email provider rejected the request.');
+                        error.statusCode = result.statusCode;
+                        reject(error);
+                    });
                 });
                 request.on('error', reject);
                 request.write(payload); request.end();
@@ -286,7 +291,9 @@ async function sendBookingRecoveryOtp({ to, code, expiresMinutes = 10, purpose =
         const info = await (await getTransporter()).sendMail({ from, to, subject, text });
         return { success: true, messageId: info.messageId };
     } catch (error) {
-        return { success: false, error: 'Email delivery failed.' };
+        const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : null;
+        console.error('[Booking Recovery] Email delivery failed.', { provider: process.env.BREVO_API_KEY ? 'brevo' : mgClient ? 'mailgun' : 'smtp', statusCode, errorName: error?.name || 'Error' });
+        return { success: false, error: 'Email delivery failed.', errorCode: statusCode };
     }
 }
 

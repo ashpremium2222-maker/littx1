@@ -509,7 +509,7 @@ const CustomerSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     name: { type: String, required: true },
-    phone: { type: String },
+    phone: { type: String, default: '' },
     createdAt: { type: String }
 });
 
@@ -2494,7 +2494,6 @@ module.exports = {
         }
         return await getCustomerByEmail(email);
     },
-
     // Event Helpers
     getAllEvents: async () => {
         if (useMock()) return mockDb.events;

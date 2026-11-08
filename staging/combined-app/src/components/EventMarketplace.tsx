@@ -136,7 +136,13 @@ export default function EventMarketplace() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
-  const [buyer, setBuyer] = useState({ name: '', email: '', phone: '' })
+  const [buyer, setBuyer] = useState(() => {
+    try {
+      const account = JSON.parse(sessionStorage.getItem('littx_customer') || 'null')
+      return { name: account?.name || '', email: account?.email || '', phone: account?.phone || '' }
+    } catch { return { name: '', email: '', phone: '' } }
+  })
+  const [customerSignedIn] = useState(() => Boolean(sessionStorage.getItem('littx_customer_token')))
   const [quantity, setQuantity] = useState(1)
   const [checkoutBusy, setCheckoutBusy] = useState(false)
   const [confirmation, setConfirmation] = useState<BookingConfirmation | null>(null)
@@ -261,7 +267,7 @@ export default function EventMarketplace() {
   }
 
   return <main className="pv-market">
-    <header className="pv-nav"><a href="/events" className="pv-brand"><img src="/logo.png" alt="" /><span>STAGEWAY</span><i>EVENTS</i></a><nav aria-label="Main navigation"><a className="active" href="/events">Discover</a><a href="/bookings">My tickets</a><a href="/vibora">Party Vibe AI ↗</a></nav><a className="pv-nav-cta" href="/bookings">My tickets <span>↗</span></a></header>
+    <header className="pv-nav"><a href="/events" className="pv-brand"><img src="/logo.png" alt="" /><span>STAGEWAY</span><i>EVENTS</i></a><nav aria-label="Main navigation"><a className="active" href="/events">Discover</a><a href="/bookings">My tickets</a><a href="/vibora">Party Vibe AI ↗</a></nav><a className="pv-nav-cta" href={customerSignedIn ? '/customer/account' : '/customer/login'}>{customerSignedIn ? 'Account' : 'Sign in'} <span>↗</span></a></header>
     <div className="pv-main">
       {loading && <div className="pv-status" role="status"><span className="pv-spinner" />{requested ? 'Loading event details…' : 'Finding events worth going out for…'}</div>}
       {!loading && error && <section className="pv-status pv-error" role="alert"><span>{error}</span>{!requested && <button className="pv-button pv-button-soft" onClick={() => void loadEvents()}>Try again</button>}</section>}

@@ -927,7 +927,7 @@
 <script>
   function openSignIn(e) {
     if (e && e.preventDefault) e.preventDefault();
-    launchApp();
+    window.location.assign('/customer/login');
   }
   window.openSignIn = openSignIn;
   document.querySelectorAll('#desktopSignInBtn, #mobileSignInBtn').forEach(function(button) {
@@ -967,7 +967,7 @@
     document.querySelectorAll('[href="#signin"], [data-action="signin"]').forEach(function(el) {
       el.addEventListener('click', function(ev) {
         ev.preventDefault();
-        launchApp();
+        window.location.assign('/customer/login');
       });
     });
   });

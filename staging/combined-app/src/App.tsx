@@ -1,18 +1,26 @@
-import { useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { StoreProvider } from './lib/store'
-import LittixApp from './littix/App'
-import AdminDashboard from './admin-dash/App'
-import DevAdminApp from './admin-dash/DevAdminApp'
-import PRApp from './pr-portal/PRApp'
-import PublicTicketView from './screens/PublicTicketView'
-import SellerPortalApp from './seller-portal/SellerPortalApp'
-import ShadowPanelApp from './shadow/ShadowPanelApp'
-import LoginPage from './components/LoginPage'
-import SolverByDevashtu from './admin-dash/pages/SolverByDevashtu'
-import EventMarketplace from './components/EventMarketplace'
-import CustomerBookingHistory from './components/CustomerBookingHistory'
-import OrganizerPortal from './organizer-portal/OrganizerPortal'
-import { InvitationAcceptanceFlow, OrganizerActivationFlow, OrganizerApplicationFlow } from './components/OrganizerAccountFlows'
+
+// These portals have separate routes and aren't needed for the initial page.
+// Load each one only when its route is opened to keep the first JS download small.
+const LittixApp = lazy(() => import('./littix/App'))
+const AdminDashboard = lazy(() => import('./admin-dash/App'))
+const DevAdminApp = lazy(() => import('./admin-dash/DevAdminApp'))
+const PRApp = lazy(() => import('./pr-portal/PRApp'))
+const PublicTicketView = lazy(() => import('./screens/PublicTicketView'))
+const SellerPortalApp = lazy(() => import('./seller-portal/SellerPortalApp'))
+const ShadowPanelApp = lazy(() => import('./shadow/ShadowPanelApp'))
+const LoginPage = lazy(() => import('./components/LoginPage'))
+const SolverByDevashtu = lazy(() => import('./admin-dash/pages/SolverByDevashtu'))
+const EventMarketplace = lazy(() => import('./components/EventMarketplace'))
+const CustomerBookingHistory = lazy(() => import('./components/CustomerBookingHistory'))
+const CustomerLogin = lazy(() => import('./components/CustomerLogin'))
+const CustomerRegister = lazy(() => import('./components/CustomerRegister'))
+const CustomerAccount = lazy(() => import('./components/CustomerAccount'))
+const OrganizerPortal = lazy(() => import('./organizer-portal/OrganizerPortal'))
+const InvitationAcceptanceFlow = lazy(() => import('./components/OrganizerAccountFlows').then(module => ({ default: module.InvitationAcceptanceFlow })))
+const OrganizerActivationFlow = lazy(() => import('./components/OrganizerAccountFlows').then(module => ({ default: module.OrganizerActivationFlow })))
+const OrganizerApplicationFlow = lazy(() => import('./components/OrganizerAccountFlows').then(module => ({ default: module.OrganizerApplicationFlow })))
 
 interface UserSession {
   userId: string
@@ -67,6 +75,9 @@ function MainAppShell() {
     return <ShadowPanelApp />
   }
 
+  if (path === '/customer/login') return <CustomerLogin onLoginSuccess={() => navigate('/customer/account')} onGoToRegister={() => navigate('/customer/register')} />
+  if (path === '/customer/register') return <CustomerRegister onRegisterSuccess={() => navigate('/customer/account')} onGoToLogin={() => navigate('/customer/login')} />
+  if (path === '/customer/account') return <CustomerAccount />
   if (path === '/events' || path.startsWith('/events/')) return <EventMarketplace />
   if (path === '/bookings') return <CustomerBookingHistory />
   if (path === '/organizer/apply') return <OrganizerApplicationFlow />
@@ -388,7 +399,9 @@ function PasswordGateApp() {
 export default function App() {
   return (
     <StoreProvider>
-      <MainAppShell />
+      <Suspense fallback={<div style={{ minHeight: '100vh', background: '#090811' }} />}>
+        <MainAppShell />
+      </Suspense>
     </StoreProvider>
   )
 }

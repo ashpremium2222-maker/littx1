@@ -6,7 +6,7 @@ interface CustomerRegisterProps {
 }
 
 export default function CustomerRegister({ onRegisterSuccess, onGoToLogin }: CustomerRegisterProps) {
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirm: '' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -26,8 +26,8 @@ export default function CustomerRegister({ onRegisterSuccess, onGoToLogin }: Cus
       setError('Passwords do not match.')
       return
     }
-    if (form.password.length < 6) {
-      setError('Password must be at least 6 characters.')
+    if (form.password.length < 8) {
+      setError('Password must be at least 8 characters.')
       return
     }
     setLoading(true)
@@ -37,31 +37,15 @@ export default function CustomerRegister({ onRegisterSuccess, onGoToLogin }: Cus
       const res = await fetch('/api/customer/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: form.email.trim().toLowerCase(),
-          password: form.password,
-          name: form.name.trim(),
-          phone: form.phone.trim(),
-        })
+        body: JSON.stringify({ email: form.email.trim().toLowerCase(), password: form.password, name: form.name.trim() })
       })
       const data = await res.json()
-      if (data.success) {
-        // Auto-login after register
-        const loginRes = await fetch('/api/customer/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: form.email.trim().toLowerCase(), password: form.password })
-        })
-        const loginData = await loginRes.json()
-        if (loginData.success && loginData.user) {
-          sessionStorage.setItem('littx_customer', JSON.stringify(loginData.user))
-          localStorage.removeItem('littx_customer')
-          sessionStorage.setItem('littx_customer_token', loginData.token)
-          localStorage.removeItem('littx_customer_token')
-          onRegisterSuccess(loginData.user)
-        } else {
-          onGoToLogin()
-        }
+      if (data.success && data.user) {
+        sessionStorage.setItem('littx_customer', JSON.stringify(data.user))
+        localStorage.removeItem('littx_customer')
+        sessionStorage.setItem('littx_customer_token', data.token)
+        localStorage.removeItem('littx_customer_token')
+        onRegisterSuccess(data.user)
       } else {
         setError(data.message || 'Registration failed. Please try again.')
       }
@@ -182,18 +166,6 @@ export default function CustomerRegister({ onRegisterSuccess, onGoToLogin }: Cus
               />
             </Field>
 
-            {/* Phone */}
-            <Field label="Phone Number (Optional)" id="reg-phone">
-              <input
-                id="reg-phone"
-                type="tel"
-                value={form.phone}
-                onChange={set('phone')}
-                placeholder="+91 98765 43210"
-                style={inputStyle(!!form.phone)}
-              />
-            </Field>
-
             {/* Password */}
             <Field label="Password" id="reg-password">
               <div style={{ position: 'relative' }}>
@@ -202,7 +174,7 @@ export default function CustomerRegister({ onRegisterSuccess, onGoToLogin }: Cus
                   type={showPassword ? 'text' : 'password'}
                   value={form.password}
                   onChange={set('password')}
-                  placeholder="Min. 6 characters"
+                placeholder="Min. 8 characters"
                   required
                   style={{ ...inputStyle(!!form.password), paddingRight: 48 }}
                 />
