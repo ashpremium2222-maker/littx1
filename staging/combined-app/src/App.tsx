@@ -75,8 +75,8 @@ function MainAppShell() {
     return <ShadowPanelApp />
   }
 
-  if (path === '/customer/login') return <CustomerLogin onLoginSuccess={() => { window.location.assign('/vibora-littx.html') }} onGoToRegister={() => navigate('/customer/register')} />
-  if (path === '/customer/register') return <CustomerRegister onRegisterSuccess={() => { window.location.assign('/vibora-littx.html') }} onGoToLogin={() => navigate('/customer/login')} />
+  if (path === '/customer/login') return <CustomerLogin onLoginSuccess={() => { window.location.assign('/index.html') }} onGoToRegister={() => navigate('/customer/register')} />
+  if (path === '/customer/register') return <CustomerRegister onRegisterSuccess={() => { window.location.assign('/index.html') }} onGoToLogin={() => navigate('/customer/login')} />
   if (path === '/customer/account') return <CustomerAccount />
   if (path === '/events' || path.startsWith('/events/')) return <EventMarketplace />
   if (path === '/bookings') return <CustomerBookingHistory />

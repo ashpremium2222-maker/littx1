@@ -1694,6 +1694,7 @@ const _staticCandidates = [
 ];
 const _staticDir = _staticCandidates.find(p => fs2.existsSync(path.join(p, 'index.html'))) || _staticCandidates[0];
 console.log(`Static dir: ${_staticDir} (exists: ${fs2.existsSync(path.join(_staticDir, 'index.html'))})`);
+app.get('/', (_req, res) => res.redirect(302, '/customer/login'));
 app.use(express.static(_staticDir));
 
 // ==================== HELPERS ====================

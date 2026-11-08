@@ -8,17 +8,16 @@ const distDir = resolve(repoRoot, 'staging/combined-app/dist');
 renameSync(resolve(distDir, 'index.html'), resolve(distDir, 'app.html'));
 
 for (const file of [
+  'index.html',
   'logo.png',
-  'vibora-littx.html',
   'dholida-garba-royale.png',
 ]) {
   copyFileSync(resolve(repoRoot, file), resolve(distDir, file));
 }
 
-// The user's full-screen Vibora HTML app is the public landing experience.
-// Keep the React shell available as app.html for its dedicated portal routes.
-copyFileSync(resolve(repoRoot, 'vibora-littx.html'), resolve(distDir, 'index.html'));
+// Retain legacy URLs as aliases for the main LITTX index page.
+copyFileSync(resolve(repoRoot, 'index.html'), resolve(distDir, 'vibora-littx.html'));
 copyFileSync(
-  resolve(repoRoot, 'vibora-littx.html'),
+  resolve(repoRoot, 'index.html'),
   resolve(distDir, 'vibora.html'),
 );
