@@ -141,11 +141,11 @@
     },
     {
       "source": "/events",
-      "destination": "/app.html"
+      "destination": "/index.html"
     },
     {
       "source": "/events/(.*)",
-      "destination": "/app.html"
+      "destination": "/index.html"
     },
     {
       "source": "/vibora",
