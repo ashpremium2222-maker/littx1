@@ -30,8 +30,13 @@ export default function CustomerLogin({ onLoginSuccess, onGoToRegister }: Custom
         body: JSON.stringify({ email: email.trim().toLowerCase(), password })
       })
       const data = await res.json()
-      if (data.success && data.user) finishLogin(data)
-      else {
+      if (data.success && data.user) {
+        sessionStorage.setItem('littx_customer', JSON.stringify(data.user))
+        localStorage.removeItem('littx_customer')
+        sessionStorage.setItem('littx_customer_token', data.token)
+        localStorage.removeItem('littx_customer_token')
+        onLoginSuccess(data.user)
+      } else {
         setError(data.message || 'Invalid email or password.')
       }
     } catch {
@@ -39,14 +44,6 @@ export default function CustomerLogin({ onLoginSuccess, onGoToRegister }: Custom
     } finally {
       setLoading(false)
     }
-  }
-
-  const finishLogin = (data: any) => {
-    sessionStorage.setItem('littx_customer', JSON.stringify(data.user))
-    localStorage.removeItem('littx_customer')
-    sessionStorage.setItem('littx_customer_token', data.token)
-    localStorage.removeItem('littx_customer_token')
-    onLoginSuccess(data.user)
   }
 
   return (
@@ -131,6 +128,7 @@ export default function CustomerLogin({ onLoginSuccess, onGoToRegister }: Custom
               ⚠️ {error}
             </div>
           )}
+
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {/* Email */}
             <div>

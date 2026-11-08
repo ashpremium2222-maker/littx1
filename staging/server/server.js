@@ -338,7 +338,7 @@ function rateLimit({ limit, windowMs, keyPrefix }) {
         const windowStartMs = Math.floor(now / windowMs) * windowMs;
         const windowStart = new Date(windowStartMs);
         const windowExpiresAt = new Date(windowStartMs + windowMs);
-        const secret = process.env.BOOKING_OTP_SECRET || process.env.SESSION_SIGNING_SECRET || process.env.SCANNER_SESSION_SECRET;
+        const secret = process.env.BOOKING_OTP_SECRET || process.env.SCANNER_SESSION_SECRET;
         if (!secret || secret.length < 32) {
             return res.status(503).json({ success: false, message: 'Request protection is temporarily unavailable.' });
         }
@@ -355,7 +355,6 @@ function rateLimit({ limit, windowMs, keyPrefix }) {
     };
 }
 const loginRateLimit = rateLimit({ limit: 100, windowMs: 15 * 60 * 1000, keyPrefix: 'login' });
-const customerAuthRateLimit = rateLimit({ limit: 20, windowMs: 15 * 60 * 1000, keyPrefix: 'customer-auth' });
 const ticketResendRateLimit = rateLimit({ limit: 3, windowMs: 15 * 60 * 1000, keyPrefix: 'ticket-resend' });
 const bookingRecoveryRequestRateLimit = rateLimit({ limit: 5, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-request' });
 const bookingRecoveryVerifyRateLimit = rateLimit({ limit: 10, windowMs: 15 * 60 * 1000, keyPrefix: 'booking-recovery-verify' });
@@ -1668,9 +1667,6 @@ app.get('/admin', (req, res) => res.sendFile(distIndexHtml));
 app.get('/admin/:splat', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashboard', (req, res) => res.sendFile(distIndexHtml));
 app.get('/dashboard/:splat', (req, res) => res.sendFile(distIndexHtml));
-app.get('/customer/login', (req, res) => res.sendFile(distIndexHtml));
-app.get('/customer/register', (req, res) => res.sendFile(distIndexHtml));
-app.get('/customer/account', (req, res) => res.sendFile(distIndexHtml));
 
 // Seller portal
 app.get('/seller', (req, res) => res.sendFile(distIndexHtml));
@@ -4703,23 +4699,16 @@ app.post('/api/customer/bookings/recovery/request', bookingRecoveryRequestRateLi
     }
     const secret = process.env.BOOKING_OTP_SECRET;
     if (process.env.NODE_ENV === 'test' || !secret || secret.length < 32 || !hasConfiguredEmailDelivery()) {
-        console.error('[Booking Recovery] Setup incomplete.', { environment: process.env.NODE_ENV || 'unknown', hasOtpSecret: Boolean(secret && secret.length >= 32), hasEmailProvider: hasConfiguredEmailDelivery() });
         return res.status(503).json({ success: false, message: 'Booking recovery email is temporarily unavailable. Please contact event support.' });
     }
-    let failureStage = 'otp_storage';
     try {
         const challenge = await issueOtp({ subject: email, purpose: 'booking_recovery', secret, db });
         if (!challenge.ok) return res.status(429).json({ success: false, message: 'Too many recovery requests. Please try again later.' });
-        failureStage = 'email_delivery';
         const delivered = await sendBookingRecoveryOtp({ to: email, code: challenge.deliveryCode });
-        if (!delivered.success) {
-            console.error('[Booking Recovery] Provider did not deliver the code.', { errorCode: delivered.errorCode || null });
-            return res.status(503).json({ success: false, message: 'Booking recovery email is temporarily unavailable. Please contact event support.' });
-        }
+        if (!delivered.success) return res.status(503).json({ success: false, message: 'Booking recovery email is temporarily unavailable. Please contact event support.' });
         res.set('Cache-Control', 'no-store');
         return res.json({ success: true, message: 'If bookings match this email, a verification code has been sent.', challengeId: challenge.challengeId, expiresAt: challenge.expiresAt });
     } catch (error) {
-        console.error('[Booking Recovery] Request failed.', { stage: failureStage, errorName: error?.name || 'Error' });
         return res.status(503).json({ success: false, message: 'Booking recovery email is temporarily unavailable. Please contact event support.' });
     }
 });
@@ -6683,78 +6672,6 @@ app.post('/api/auth/login', loginRateLimit, browserSessionLoginGuard, async (req
     }
 
     return res.status(401).json({ success: false, message: 'Invalid credentials.' });
-});
-
-// Public customer accounts use MongoDB-backed profiles and the same signed,
-// revocable browser sessions as the rest of the app.
-function publicCustomer(customer) {
-    return { email: customer.email, name: customer.name, phone: customer.phoneVerifiedAt ? (customer.phone || '') : '', phoneVerified: Boolean(customer.phoneVerifiedAt), role: 'customer' };
-}
-
-async function createCustomerAuthSession(req, res, customer) {
-    const loginAt = new Date().toISOString();
-    const user = publicCustomer(customer);
-    const token = generateToken({ userId: customer.email, role: 'customer', companyId: 'customer', displayName: customer.name, loginAt });
-    await db.setUserSession(customer.email, { token, ip: clientIp(req), loginAt, role: 'customer', companyId: 'customer', displayName: customer.name });
-    return respondWithSession(req, res, 'user', token, { user }, 'token', loginAt);
-}
-
-function validCustomerEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254; }
-function customerAuthSetupMessage() {
-    if (!process.env.MONGODB_URI) return 'Customer sign-in requires MONGODB_URI in the Vercel environment.';
-    const signingSecret = process.env.SESSION_SIGNING_SECRET || process.env.SCANNER_SESSION_SECRET;
-    if (!signingSecret || signingSecret.length < 32) return 'Customer sign-in requires a session signing secret of at least 32 characters.';
-    return '';
-}
-
-app.post('/api/customer/register', customerAuthRateLimit, browserSessionLoginGuard, async (req, res) => {
-    const setupError = customerAuthSetupMessage();
-    if (setupError) return res.status(503).json({ success: false, message: setupError });
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    const name = String(req.body?.name || '').trim();
-    const password = String(req.body?.password || '');
-    if (!validCustomerEmail(email) || name.length < 1 || name.length > 100 || password.length < 8 || password.length > 128) {
-        return res.status(400).json({ success: false, message: 'Enter a valid email, name, and password of at least 8 characters.' });
-    }
-    if (String(req.body?.phone || '').trim()) return res.status(400).json({ success: false, message: 'Verify your phone with the SMS code before creating an account.' });
-    try {
-        if (await db.getCustomerByEmail(email)) return res.status(409).json({ success: false, message: 'An account with this email already exists. Sign in instead.' });
-        const customer = await db.createCustomer({ email, name, password: hashPassword(password) });
-        return createCustomerAuthSession(req, res, customer);
-    } catch (_) { return res.status(503).json({ success: false, message: 'Account storage is temporarily unavailable. Please try again.' }); }
-});
-
-app.post('/api/customer/login', customerAuthRateLimit, browserSessionLoginGuard, async (req, res) => {
-    const setupError = customerAuthSetupMessage();
-    if (setupError) return res.status(503).json({ success: false, message: setupError });
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    const password = String(req.body?.password || '');
-    if (!validCustomerEmail(email) || !password || password.length > 128) return res.status(400).json({ success: false, message: 'Enter your email and password.' });
-    try {
-        const customer = await db.getCustomerByEmail(email);
-        if (!customer || !verifyPassword(password, customer.password)) return res.status(401).json({ success: false, message: 'Invalid email or password.' });
-        return createCustomerAuthSession(req, res, customer);
-    } catch (_) { return res.status(503).json({ success: false, message: 'Sign-in is temporarily unavailable. Please try again.' }); }
-});
-
-app.get('/api/customer/session', async (req, res) => {
-    const token = req.headers['x-auth-token'] || String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-    const session = token ? await db.getUserSessionByToken(token).catch(() => null) : null;
-    if (!isValidUserSession(session, token) || session.role !== 'customer') return res.status(401).json({ success: false, message: 'Sign in again to continue.' });
-    const customer = await db.getCustomerByEmail(session.userId).catch(() => null);
-    if (!customer) return res.status(401).json({ success: false, message: 'Customer account not found.' });
-    res.set('Cache-Control', 'no-store');
-    return res.json({ success: true, user: publicCustomer(customer) });
-});
-
-app.post('/api/customer/logout', async (req, res) => {
-    const token = req.headers['x-auth-token'] || String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-    const session = token ? await db.getUserSessionByToken(token).catch(() => null) : null;
-    if (!isValidUserSession(session, token) || session.role !== 'customer') return res.status(401).json({ success: false, message: 'Customer session expired.' });
-    await db.deleteUserSessionByToken(token);
-    if (req.cookieSessionFamily === 'user') clearSessionCookies(res, 'user', secureCookieRequest(req));
-    res.set('Cache-Control', 'no-store');
-    return res.json({ success: true });
 });
 
 app.post('/api/auth/logout', async (req, res) => {
