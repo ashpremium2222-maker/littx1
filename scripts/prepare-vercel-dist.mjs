@@ -10,14 +10,14 @@ renameSync(resolve(distDir, 'index.html'), resolve(distDir, 'app.html'));
 for (const file of [
   'index.html',
   'logo.png',
+  'vibora-littx.html',
   'dholida-garba-royale.png',
 ]) {
   copyFileSync(resolve(repoRoot, file), resolve(distDir, file));
 }
 
-// Retain legacy URLs as aliases for the main LITTX index page.
-copyFileSync(resolve(repoRoot, 'index.html'), resolve(distDir, 'vibora-littx.html'));
+// Retain the legacy Vibora URL as an alias for the standalone app.
 copyFileSync(
-  resolve(repoRoot, 'index.html'),
+  resolve(repoRoot, 'vibora-littx.html'),
   resolve(distDir, 'vibora.html'),
 );
