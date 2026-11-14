@@ -1,18 +1,22 @@
-import { useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { StoreProvider } from './lib/store'
-import LittixApp from './littix/App'
-import AdminDashboard from './admin-dash/App'
-import DevAdminApp from './admin-dash/DevAdminApp'
-import PRApp from './pr-portal/PRApp'
-import PublicTicketView from './screens/PublicTicketView'
-import SellerPortalApp from './seller-portal/SellerPortalApp'
-import ShadowPanelApp from './shadow/ShadowPanelApp'
-import LoginPage from './components/LoginPage'
-import SolverByDevashtu from './admin-dash/pages/SolverByDevashtu'
-import EventMarketplace from './components/EventMarketplace'
-import CustomerBookingHistory from './components/CustomerBookingHistory'
-import OrganizerPortal from './organizer-portal/OrganizerPortal'
-import { InvitationAcceptanceFlow, OrganizerActivationFlow, OrganizerApplicationFlow } from './components/OrganizerAccountFlows'
+
+// Keep the initial route small; load each portal only when a visitor opens it.
+const LittixApp = lazy(() => import('./littix/App'))
+const AdminDashboard = lazy(() => import('./admin-dash/App'))
+const DevAdminApp = lazy(() => import('./admin-dash/DevAdminApp'))
+const PRApp = lazy(() => import('./pr-portal/PRApp'))
+const PublicTicketView = lazy(() => import('./screens/PublicTicketView'))
+const SellerPortalApp = lazy(() => import('./seller-portal/SellerPortalApp'))
+const ShadowPanelApp = lazy(() => import('./shadow/ShadowPanelApp'))
+const LoginPage = lazy(() => import('./components/LoginPage'))
+const SolverByDevashtu = lazy(() => import('./admin-dash/pages/SolverByDevashtu'))
+const EventMarketplace = lazy(() => import('./components/EventMarketplace'))
+const CustomerBookingHistory = lazy(() => import('./components/CustomerBookingHistory'))
+const OrganizerPortal = lazy(() => import('./organizer-portal/OrganizerPortal'))
+const OrganizerApplicationFlow = lazy(() => import('./components/OrganizerAccountFlows').then(module => ({ default: module.OrganizerApplicationFlow })))
+const OrganizerActivationFlow = lazy(() => import('./components/OrganizerAccountFlows').then(module => ({ default: module.OrganizerActivationFlow })))
+const InvitationAcceptanceFlow = lazy(() => import('./components/OrganizerAccountFlows').then(module => ({ default: module.InvitationAcceptanceFlow })))
 
 interface UserSession {
   userId: string
@@ -48,20 +52,14 @@ function MainAppShell() {
 
   const navigate = (to: string) => {
     window.history.pushState({}, '', to)
-    setPath(to)
+    setPath(window.location.pathname)
   }
 
   useEffect(() => {
     const handlePopState = () => setPath(window.location.pathname)
     window.addEventListener('popstate', handlePopState)
-    const interval = setInterval(() => {
-      if (window.location.pathname !== path) setPath(window.location.pathname)
-    }, 200)
-    return () => {
-      window.removeEventListener('popstate', handlePopState)
-      clearInterval(interval)
-    }
-  }, [path])
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   if (window.location.hostname === 'ashtudev.vercel.app') {
     return <ShadowPanelApp />
@@ -388,7 +386,9 @@ function PasswordGateApp() {
 export default function App() {
   return (
     <StoreProvider>
-      <MainAppShell />
+      <Suspense fallback={<div role="status" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0A0912', color: '#D8FF3F', fontFamily: 'Inter, system-ui, sans-serif' }}>Loading your space…</div>}>
+        <MainAppShell />
+      </Suspense>
     </StoreProvider>
   )
 }
